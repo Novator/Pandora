@@ -10,5 +10,8 @@
 
 ## Push files from local to repository
 #git add --all
-git commit -a -m "second commit"
+git commit -a -m "fourth commit"
 #git push -u origin master
+
+## Make ignore list
+#nano .gitignore
