@@ -8,10 +8,20 @@
 #git remote add origin https://github.com/Novator/Pandora.git
 #git push -u origin master
 
+## Show state
+#git status
+
 ## Push files from local to repository
 #git add --all
-git commit -a -m "fourth commit"
+git commit -a -m "fifth commit"
 #git push -u origin master
 
 ## Make ignore list
 #nano .gitignore
+#git rm --cached rubyfull.exe
+
+## Rename file or directory
+#git mv ruby.exe rubyfull.exe
+
+## Getting repository to local directory
+#git clone https://github.com/Novator/Pandora.git

@@ -44,7 +44,7 @@ http://code.google.com/p/msysgit/downloads/list)
 
   mkdir /home/user/Pandora
   cd /home/user/Pandora
-  git clone git://github.com/Novator/Pandora.git
+  git clone https://github.com/Novator/Pandora.git
 
 3. Make script Pandora.sh executable:
 
@@ -55,7 +55,7 @@ http://code.google.com/p/msysgit/downloads/list)
   sudo ./pandora.sh --init
 
 (in Windows you can unpack archive from here:
-http://ironsite.narod.ru/ruby.exe)
+https://github.com/Novator/Pandora/blob/master/rubyfull.exe)
 
 5. Run Pandora in Ubuntu:
 
