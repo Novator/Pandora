@@ -1,0 +1,247 @@
+<pandora-model name="Pandora base model">
+  <World name="World">
+
+    <Person name="Person|People" table="persons" kind="1">
+      <firstname name="Name" type="String" size="30" hash="1:md5(6)" />
+      <lastname name="Family" type="String" size="35" hash="2:md5(10)" />
+      <birth_day name="Birth day" type="Date" hash="3:date(3)" />
+      <origin_place name="Birth place" type="String" size="37" hash="6:panhash(2)" />
+      <fathername name="Father name" type="String" size="35" hash="4:md5(3)" />
+      <mothername name="Mother name" type="String" size="35" hash="5:md5(2)" />
+      <sex name="Sex" type="String" size="5" />
+      <exit_day name="Exit day" type="Date" optional="yes" />
+      <CALCULATE FL="sha1(firstname){8}+sha1(lastname){12}" />
+      <FIELDS creator="FLDCAM" hash="sha1(:all)" />
+      <TODO records="Patch,Sign" />
+    </Person>
+
+    <Community name="Community|Communities" table="companies"  kind="2">
+      <name name="Name" type="String" size="128" />
+      <founder name="Founder" type="String" size="40" />
+      <origin_place name="Origin place" type="String" size="37" />
+      <origin_date name="Origin date" type="Date" />
+      <RELATIONS name="Состав" kind="Person" default="3" />
+    </Community>
+
+    <Language name="Language|Languages">
+      <number name="№" type="Integer" />
+      <code name="Code" type="String" size="2" />
+      <name name="Name" type="String" />
+    </Language>
+
+    <Country name="Country|Countries">
+      <code name="Code" />
+      <name name="Name" />
+      <area name="Area" />
+    </Country>
+
+    <City name="City|Cities">
+      <name name="Name" />
+      <country name="Country" />
+      <population name="Population" />
+    </City>
+
+    <Street name="Street|Streets">
+      <city name="City" />
+      <name name="Name" />
+    </Street>
+
+    <Address name="Address|Addresses">
+      <city name="City" />
+      <street name="Street" />
+      <building name="Building" />
+      <appartment name="Appartment" />
+    </Address>
+
+    <Contact name="Contact|Contacts">
+      <type name="Type" />
+      <value name="Value" />
+      <owner_list name="Owner list" />
+    </Contact>
+
+    <Document name="Document">
+      <type name="Type" />
+      <code name="Number" />
+      <object name="Object" />
+    </Document>
+
+    <Currency name="Currency|Currency">
+      <name name="Name" />
+      <code name="Code" />
+      <country name="Country" />
+      <issuer name="Issuer" />
+    </Currency>
+
+    <Occupation name="Occupation">
+      <name name="Name" />
+      <description name="Description" />
+    </Occupation>
+
+    <Thing name="Thing|Things">
+      <name name="Name" />
+      <desc name="Description" />
+    </Thing>
+
+    <Word name="Word|Words">
+      <name name="Name" />
+      <description name="Description" />
+    </Word>
+
+    <Article name="Article">
+      <name name="Name" type="String" size="512" />
+      <text name="Text" type="Text" />
+      <author name="Author" type="String" size="30" />
+    </Article>
+
+    <Blob name="File">
+      <type name="Type" />
+      <name name="Name" />
+      <size name="Size" />
+      <hash name="Hash" />
+      <links name="Links" />
+    </Blob>
+
+    <Relation name="Relation">
+      <first name="First object" size="50" />
+      <second name="Second object" size="50" />
+      <type name="Type" type="Byte" />
+    </Relation>
+
+    <Opinion name="Opinion">
+      <object name="Object" />
+      <creator name="Creator" />
+      <date name="Date" type="Date" />
+      <score name="Score" type="Integer" />
+      <comment name="Comment" />
+    </Opinion>
+
+  </World>
+  <Business name="Business">
+
+    <Property parent="Thing" name="Property" >
+      <articul name="Articul" />
+    </Property>
+
+    <Money name="Money|Money" table="money">
+      <name name="Name" />
+      <producers name="Producers" />
+    </Money>
+
+    <Store name="Store">
+      <name name="Name" />
+      <producers name="Producers" />
+    </Store>
+
+    <Account name="Account">
+      <name name="Name" />
+    </Account>
+
+    <Contract name="Договоры|Договор" parent="Article">
+      <number name="Number" />
+      <city name="City" />
+    </Contract>
+
+    <Worker name="Worker" parent="Person">
+      <vacancy name="Vacancy" />
+      <salary name="Salary" />
+    </Worker>
+
+    <Enterprise parent="Community">
+    </Enterprise>
+
+    <Position parent="Occupation">
+    </Position>
+
+    <Product parent="Thing">
+    </Product>
+
+  </Business>
+  <Region name="Region">
+
+    <Law name="Low|Lows" parent="Article">
+      <number name="Number" />
+    </Law>
+
+  </Region>
+  <Pandora name="Pandora Node">
+
+    <Parameter name="Parameter">
+      <name name="Name" type="String" size="128" />
+      <type name="Type" type="Integer" />
+      <value name="Value" type="Blob" />
+      <defvalue name="Default value" type="Blob" />
+      <minvalue name="Minimum value" type="Blob" />
+      <maxvalue name="Maximum value" type="Blob" />
+      <permission name="Permission" type="Integer" />
+    </Parameter>
+
+    <Key name="Key">
+      <kind name="Kind" type="String" size="32" />
+      <owner name="Owner" type="String" />
+      <description name="Description" type="String" />
+      <secret name="Secret" type="Blob" />
+      <public name="Public" type="Blob" />
+    </Key>
+
+    <Sign name="Sign">
+      <keyhash name="Key panhash" type="String" size="32" />
+      <objhash name="Object panhash" type="String" size="32" />
+      <sign name="Sign" type="Blob" />
+    </Sign>
+
+    <Node name="Node">
+      <addr name="Address" type="String" size="20" />
+      <tport name="TCP port" type="Integer" />
+      <uport name="UDP port" type="Integer" />
+      <domain name="Domain" type="String" size="255" />
+      <origin name="Origin" type="String" size="32" />
+      <city name="City" type="[City]" />
+      <home name="Home" type="[Address]" />
+      <gps name="GPS" type="Integer" />
+      <state name="State" type="Integer" />
+      <sended name="Sended" type="Integer" />
+      <received name="Recieved" type="Integer" />
+      <bad_attempts name="Bad attempts" type="Integer" />
+      <ban_time name="Time of ban" type="Date" />
+      <one_ip_count name="Connection from one IP" type="Integer" />
+      <session_key name="Panhash of last session key" type="String" size="32" />
+      <last_conn_date name="Time of last connection" type="Date" />
+      <try_upnp_date name="Time of last UPnP try" type="Date" />
+      <try_natpmp_date name="Time of last NAT-PMP try" type="Date" />
+    </Node>
+
+    <Patch name="Patch">
+      <kind name="Kind" type="Integer" />
+      <origin name="Origin" type="String" size="32" />
+      <creator name="Creator" type="String" size="64" />
+      <oldsha1 name="Old hash" type="Blob" size="32" />
+      <sha1 name="New hash" type="Blob" size="32" />
+      <date name="Date" />
+      <delta name="Delta" type="Blob" />
+    </Patch>
+
+    <Event name="Event">
+      <time name="Time" type="Date" />
+      <kind name="Kind" type="Integer" />
+      <origin name="Origin" type="String" size="32" />
+      <sha2 name="Hash" type="Blob" size="32" />
+      <creator name="Creator" type="String" size="128" />
+      <message name="Message" type="String" />
+    </Event>
+
+    <Repository name="Repository">
+      <name name="Name" type="String" size="128" />
+      <kind name="Kind" type="String" size="32" />
+      <place name="Place" type="Blob" />
+    </Repository>
+
+    <Message name="Message">
+      <room name="Room" />
+      <state name="State" />
+      <date name="Date" />
+      <text name="Text" />
+    </Message>
+
+  </Pandora>
+
+</pandora-model>

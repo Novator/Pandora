@@ -1,0 +1,82 @@
+# Pandora language file EN=>FR
+Nodes=>Nœuds
+Punishments=>Châtiment
+States=>Pays
+Freeware=>Logiciel Libre
+Offenses=>Infractions
+"Pandora is licensed under GNU GPLv2.
+
+Fundamentals:
+- program code is open, distributed free and without warranty;
+- author does not require you money, but demands respect authorship;
+- you can change the code, sent to the authors for inclusion in the next release;
+- your own release you must distribute with another name and only licensed under GPL;
+- if you do not understand the GPL or disagree with it, you have to uninstall the program.
+
+"=>"Pandora est protégé par une licence de la GNU GPLv2.
+
+La fondement de base:
+- code d'un programme est ouvert, distribué librement et sans aucune garantie;
+- auteur ne nécessite pas l'argent, mais exige de respecter la paternité;
+- vous pouvez envoyer à l'auteur de modifier le code pour inclusion dans la version suivante;
+votre communiqué vous devez distribuer l'autre avec le nom et juste en vertu de la licence GPL;
+si vous ne comprenez pas la licence GPL ou en désaccord avec elle, vous devez supprimer le programme.
+
+"
+Transfer=>Déplacer
+Accounts=>Comptes
+Positions=>Poste
+Repositories=>Référentiel
+Parameters=>Paramètres
+Expenditures=>Dépenses
+Nomenclatures=>Nomenclatures
+Files=>Fichiers
+Streets=>Rues
+Storages=>Dépôt
+Full text=>Texte intégral
+Distributed Social Network=>Distribué réseau social
+_About=>_A propos
+Profile=>Profil
+Signs=>Signature
+_Pandora=>_Pandora
+Contributions=>Revenus
+_Region=>_Région
+Services=>Service
+Articles=>Article
+Things=>Choses
+Documents=>Documents
+Addresses=>Adresses
+Towns=>Villes
+Rights to logo are owned by 21th Century Fox=>Les droits sur le logo sont la propriété de 21ème siècle Fox
+Michael Galyuk=>Michel Galyuk
+_Quit=>_Quitter
+On line!=>En ligne!
+Deals=>Transaction
+Workers=>Travailleurs
+Opinions=>Avis
+Languages=>Langues
+_Close=>_Fermer
+Events=>Événements
+Payments=>Paiements
+Products=>Produits
+Activities=>Activités
+Contacts=>Contacts
+People=>Gens
+_World=>_Monde
+Wizards=>Maître
+Search=>Recherche
+Resolutions=>Résolutions
+Resources=>Ressources
+Reports=>Rapports
+Clients=>Clients
+_Bussiness=>_Enterprise
+Communities=>Communautés
+"Base directory: "=>"Répertoire de données: "
+Patches=>Correctifs
+Keys=>Clefs
+Projects=>Projets
+Laws=>Lois
+Words=>Mots
+Property=>Propriété
+Orders=>Ordres
+Currency=>Devise

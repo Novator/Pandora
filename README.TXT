@@ -1,27 +1,25 @@
 #############################################
- The Pandora. Distributed information system
+ The Pandora. P2P Social Network
 #############################################
 
 Contents
 
 1) overview
-2) system require
-3) installation
-
+2) system requirements
+3) installation for users
+4) installation for programmers
 
 
 OVERVIEW
 
-Pandora is a free multiplatform information system.
+Pandora is a free multiplatform distributed (p2p) information system.
 Pandora includes functions of social network, instant messanger, audio and
-video chatting system, commercial system, distributed development system
-and vote system.
-Pandora provides three level of data: world, business and state.
-Pandora allows you to keep accounts, print forms, make reports
-and export files in any formats.
+video chatting system, commercial system, distributed development system,
+file exchange system and vote system.
+Read more in the guide at /doc/guide.ru.odt (Russian version yet only)
 
 
-SYSTEM REQUIRE
+SYSTEM REQUIREMENTS
 
 Mandatory:
 - Ubuntu or Windows (another also possible)
@@ -32,7 +30,44 @@ Optional:
 - GStreamer media library
 
 
-INSTALLATION
+INSTALLATION FOR USERS
+
+1. Create empty directory "Pandora", download archive with Pandora and extract it:
+
+  https://github.com/Novator/Pandora/archive/master.zip
+
+2. Make script Pandora.sh executable if you use Linux:
+
+  chmod +x ./pandora.sh
+
+3. Also it's necessary to install additional packets.
+
+3.1) in Ubuntu you can do this:
+
+  sudo ./pandora.sh --init
+
+3.2) in other Linux install packets:
+
+  ruby1.8 ruby-sqlite3 ruby-gtk2 ruby-gstreamer gstreamer0.10-ffmpeg gstreamer0.10-x openssl
+
+3.3) in Windows you can unpack archive from here:
+
+  https://github.com/Novator/RubyFull/raw/master/rubyfull.exe
+
+4. Run Pandora
+
+4.1) in Linux run script:
+
+  ./pandora.sh
+
+4.2) in Windows run batch file:
+
+  .\pandora.bat
+
+
+INSTALLATION FOR PROGRAMMERS
+
+Use git if you want to change a code of Pandora and send patch.
 
 1. Install git in Ubuntu:
 
@@ -41,25 +76,8 @@ INSTALLATION
 (in Windows install "Git-x.x.x...exe" from here:
 http://code.google.com/p/msysgit/downloads/list)
 
-2. Create empty directory "Pandora", stay there, download Pandora with git:
+2. Create empty directory "Pandora.dev", stay there, download Pandora with git:
 
-  mkdir /home/user/Pandora
-  cd /home/user/Pandora
-  git clone git://github.com/Novator/Pandora.git
+  git clone --depth=1 https://github.com/Novator/Pandora.git
 
-3. Make script Pandora.sh executable:
-
-  chmod +x ./pandora.sh
-
-4. Install additional utils and packets in Ubuntu:
-
-  sudo ./pandora.sh --init
-
-(in Windows you can unpack archive from here:
-http://ironsite.narod.ru/ruby.exe)
-
-5. Run Pandora in Ubuntu:
-
-  ./pandora.sh
-
-(in Windows run batch file pandora.bat)
+Now you can change the code and make patches.

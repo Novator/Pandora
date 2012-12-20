@@ -1,0 +1,113 @@
+# Pandora language file EN=>RU
+Contracts=>Договоры
+Synonyms=>Синонимы
+Authorize=>Авторизация
+Messages=>Сообщения
+Parameters=>Параметры
+Resources=>Ресурсы
+Orders=>Заказы
+Property=>Имущество
+Opinions=>Мнения
+Clients=>Клиенты
+Laws=>Законы
+States=>Страны
+Freeware=>Свободное ПО
+Keys=>Ключи
+_Close=>_Закрыть
+Patches=>Патчи
+Communities=>Сообщества
+_About=>_О программе
+Contributions=>Взносы
+Words=>Слова
+Insert=>Создать
+Positions=>Должности
+Sound=>Звук
+Search=>Поиск
+Copy=>Копировать
+Warning=>Внимание
+Listening=>Слушаю
+Video=>Видео
+Deals=>Сделки
+Towns=>Города
+Services=>Услуги
+_World=>_Мир
+_Pandora=>_Пандора
+Rights to logo are owned by 21th Century Fox=>Права на логотип принадлежат компании 21th Century Fox
+Languages=>Языки
+Not listen=>Не слушаю
+Transfer=>Перемещения
+Signs=>Подписи
+Events=>События
+Projects=>Проекты
+People=>Люди
+Products=>Товары
+Contacts=>Контакты
+Not logged=>Не авторизован
+Trace=>Отладка
+Nodes=>Узлы
+Michael Galyuk=>Михаил Галюк
+Documents=>Документы
+Relations=>Связи
+Express=>Оценить
+_Region=>_Регион
+Wizards=>Мастера
+Workers=>Сотрудники
+Nomenclatures=>Номенклатура
+Activities=>Деятельность
+Online=>Онлайн
+public=>публикую
+Delete=>Удалить
+Accounts=>Счета
+Listen=>Слушать
+Distributed Social Network=>Распределённая социальная сеть
+"Base directory: "=>"Каталог данных: "
+Streets=>Улицы
+Resolutions=>Постановления
+Enterprises=>Предприятия
+Disregards=>Игнорируемое
+Edit=>Править
+Punishments=>Наказания
+trust=>доверяю
+Repositories=>Хранилища
+Files=>Файлы
+Recreate the table=>Пересоздать таблицу
+Expenditures=>Расходы
+_Quit=>_Выход
+Addresses=>Адреса
+Things=>Вещи
+"Pandora is licensed under GNU GPLv2.
+
+Fundamentals:
+- program code is open, distributed free and without warranty;
+- author does not require you money, but demands respect authorship;
+- you can change the code, sent to the authors for inclusion in the next release;
+- your own release you must distribute with another name and only licensed under GPL;
+- if you do not understand the GPL or disagree with it, you have to uninstall the program.
+
+"=>"Пандора защищена лицензией GNU GPLv2.
+
+Основные положения:
+- код программы открыт, распространяется свободно и без гарантий;
+- автор не требует от вас денег, но требует уважать авторство;
+- можно высылать автору изменения кода для включения в следующий релиз;
+- свой релиз вы обязаны распространять с другим названием и только под лицензией GPL;
+- если вы не поняли лицензию GPL или не согласны с ней, то должны удалить программу.
+
+"
+Offenses=>Нарушения
+Profile=>Профиль
+Create=>Создать
+Storages=>Склады
+Error=>Ошибка
+Menu handler is not defined yet=>Обработчик меню ещё не определён
+Articles=>Статьи
+Full text=>Полный текст
+Reports=>Отчёты
+support=>поддерживаю
+Hunt=>Охотиться
+Deletion=>Удаление
+Payments=>Платежи
+Record will be deleted. Sure?=>Запись будет удалена. Уверены?
+_Bussiness=>_Дело
+Currency=>Валюта
+Talk=>Говорить
