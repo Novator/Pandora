@@ -14,7 +14,7 @@
 ## Push files from local to repository
 #git add --all
 git commit -a -m "version 0.1 alfa"
-#git push -u origin master
+git push -u origin master
 
 ## Ignore list. Exclude or remove(!) files
 #nano .gitignore
