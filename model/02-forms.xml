@@ -1,0 +1,25 @@
+<pandora-model>
+  <World>
+
+    <Person order="1">
+      <firstname pos="1" fsize="20" />
+      <lastname pos="+1" fsize="25" />
+      <birth_day pos="|+1" />
+      <origin_place pos="+0.10up" />
+      <fathername pos="|up+0.3" />
+      <mothername pos="up+0.1" />
+      <sex pos="|left" />
+      <exit_day pos="left,hide" />
+    </Person>
+
+    <Community order="2">
+      <name pos="1" />
+      <origin_place pos="|+1" />
+      <origin_date pos="+1" />
+      <creator pos="+1" />
+      <person_list view="PersonList" pos="|+1" />
+    </Community>
+
+  </World>
+
+</pandora-model>

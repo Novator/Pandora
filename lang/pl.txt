@@ -1,0 +1,82 @@
+# Pandora language file EN=>PL
+_About=>_O programie
+_Quit=>_Wyjście
+On line!=>Zamieniły!
+Reports=>Raporty
+Currency=>Waluta
+_Bussiness=>_Sprawa
+Words=>Słowa
+Towns=>Miasta
+Full text=>Pełny tekst
+Freeware=>Wolne programy
+Rights to logo are owned by 21th Century Fox=>Prawa do logo są własnością firmy 21th Century Fox
+Contributions=>Przychodu
+Resolutions=>Uchwały
+Deals=>Operacje
+Nomenclatures=>Nomenklatura
+People=>Ludzie
+Search=>Wyszukiwanie
+Punishments=>Kary
+Orders=>Rzędy
+Files=>Pliki
+Languages=>Języki
+Addresses=>Adresy
+Communities=>Communities
+Distributed Social Network=>Ukazuje społecznościowy
+Products=>Towary
+_World=>_Świat
+Workers=>Pracownicy
+Accounts=>Konto
+Storages=>Magazyny
+Services=>Usługi
+Opinions=>Opinie
+"Pandora is licensed under GNU GPLv2.
+
+Fundamentals:
+- program code is open, distributed free and without warranty;
+- author does not require you money, but demands respect authorship;
+- you can change the code, sent to the authors for inclusion in the next release;
+- your own release you must distribute with another name and only licensed under GPL;
+- if you do not understand the GPL or disagree with it, you have to uninstall the program.
+
+"=>"Pandora jest chroniony licencją GNU GPLv2.
+
+Podstawowe przepisy:
+- kod programu otwarty, rozprzestrzenia się swobodnie i bez żadnych gwarancji;
+- autor nie wymaga od ciebie pieniędzy, ale wymaga poszanowania autorstwa;
+- można wysyłać autorowi zmiany kodu, aby włączyć w następnej wersji.
+- ich wyzwolenie wy musicie rozpowszechniać, z innymi nazwami, a tylko pod licencji GPL;
+- jeśli nie rozumiesz licencji GPL lub nie zgadzają się z nią, musisz usunąć program.
+
+"
+Michael Galyuk=>Michał Galyuk
+Events=>Zdarzenia
+Laws=>Prawa
+Transfer=>Przenoszenia
+Articles=>Artykuły
+_Close=>_Zamknij
+Wizards=>Kreatora
+Repositories=>Repozytorium
+_Pandora=>_Pandora
+Offenses=>Naruszenia
+Expenditures=>Opanowanie
+Projects=>Projekty
+Clients=>Klienci
+Activities=>Czynność
+Documents=>Dokumenty
+Profile=>Profil
+Property=>Własność
+Things=>Rzeczy
+Patches=>Poprawki
+Signs=>Etykiety
+Keys=>Klucze
+Parameters=>Ustawienia
+Resources=>Zasoby
+Payments=>Płatności
+Positions=>Pozycje
+"Base directory: "=>"Katalog danych: "
+Nodes=>Węzły
+_Region=>_Powiat
+Contacts=>Kontakty
+Streets=>Ulicy
+States=>Kraj

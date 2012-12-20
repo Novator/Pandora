@@ -1,0 +1,82 @@
+# Pandora language file EN=>ES
+Opinions=>Opiniones
+On line!=>Connect!
+Keys=>Claves
+Property=>Propiedad
+Clients=>Clientes
+Words=>Clave
+_World=>_Mundo
+Wizards=>Asistente
+Search=>Búsqueda
+Profile=>Perfil
+_Pandora=>_Pandora
+Offenses=>Violación
+Orders=>Órdenes
+Workers=>Personal
+Communities=>Comunidad
+Full text=>Texto Completo
+Michael Galyuk=>Miguel Galyuk
+Signs=>Firma
+Laws=>Leyes
+Transfer=>Mover
+Accounts=>Cuenta
+_Bussiness=>_Asunto
+Activities=>Actividad
+Documents=>Documentos
+People=>Personas
+_Quit=>_Salir
+Repositories=>Repositorio
+Nodes=>Nodos
+Punishments=>Castigo
+Payments=>Pagos
+Articles=>Artículos
+Contacts=>Contactos
+Distributed Social Network=>Distribuido Red Social
+Positions=>Cargo
+Services=>Servicios
+"Pandora is licensed under GNU GPLv2.
+
+Fundamentals:
+- program code is open, distributed free and without warranty;
+- author does not require you money, but demands respect authorship;
+- you can change the code, sent to the authors for inclusion in the next release;
+- your own release you must distribute with another name and only licensed under GPL;
+- if you do not understand the GPL or disagree with it, you have to uninstall the program.
+
+"=>"Pandora protegida por la licencia GNU GPLv2.
+
+Aspectos básicos de:
+- código de programa está abierto, distribuido libremente y sin ninguna garantía;
+- el autor no requiere de usted el dinero, pero necesita respetar la autoría de la;
+- se puede expulsar el autor de los cambios de código para incluir en la siguiente versión;
+- su liberación usted tiene que distribuir con otro nombre bajo la licencia GPL de gnu;
+- si usted no entiende la licencia GPL, o no está de acuerdo con ella, entonces tiene que quitar el programa.
+
+"
+_Close=>_Cerrar
+Patches=>Parches
+Resolutions=>Estatutos
+Storages=>Almacenes
+Files=>Archivos
+Resources=>Recursos
+Products=>Artículos
+Things=>Cosas
+Languages=>Idiomas
+Freeware=>Software Libre
+Parameters=>Opciones
+Expenditures=>Expenditures
+_Region=>_Región
+States=>País
+Rights to logo are owned by 21th Century Fox=>Derechos sobre el logotipo de pertenecen a la empresa 21th Century Fox
+Events=>Evento
+Projects=>Proyectos
+Nomenclatures=>Nomenclatura
+Currency=>Moneda
+Addresses=>Enlace
+Streets=>Calle
+"Base directory: "=>"Directorio de datos: "
+_About=>_Acerca de
+Contributions=>Entrada
+Reports=>Informes
+Deals=>Transacción
+Towns=>Ciudad

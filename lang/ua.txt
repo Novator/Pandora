@@ -1,0 +1,82 @@
+# Pandora language file EN=>UA
+Profile=>Профіль
+Expenditures=>Освоєння
+_Region=>_Регіон
+Property=>Майно
+Deals=>Операції
+Languages=>Мови
+Full text=>Повний текст
+_Quit=>_Вихід
+Nodes=>Вузли
+Offenses=>Злочини
+Products=>Товари
+Events=>Події
+Keys=>Ключі
+Storages=>Склади
+Services=>Послуги
+Communities=>Спільноти
+Michael Galyuk=>Михайло Галюк
+_About=>_Про програму
+Wizards=>Майстри
+Transfer=>Переміщення
+Nomenclatures=>Номенклатура
+Things=>Речі
+Addresses=>Адреси
+Freeware=>Вільне ПЗ
+Patches=>Латки
+Signs=>Підписи
+Reports=>Звіти
+Opinions=>Думки
+Articles=>Статті
+_Close=>_Закрити
+Contributions=>Надходження
+Projects=>Проекти
+Clients=>Клієнти
+Workers=>Співробітники
+_Bussiness=>_Дело
+Files=>Файли
+Words=>Слова
+Activities=>Діяльність
+Streets=>Вулиці
+Accounts=>Рахунки
+_World=>_Світ
+_Pandora=>_Пандора
+Resolutions=>Постанови
+Payments=>Платежі
+Orders=>Замовлення
+Positions=>Посади
+Documents=>Документи
+Distributed Social Network=>Розподілена соціальна мережа
+Rights to logo are owned by 21th Century Fox=>Права на логотип належать компанії 21th Century Fox
+Search=>Пошук
+Parameters=>Параметри
+Punishments=>Покарання
+People=>Люди
+"Pandora is licensed under GNU GPLv2.
+
+Fundamentals:
+- program code is open, distributed free and without warranty;
+- author does not require you money, but demands respect authorship;
+- you can change the code, sent to the authors for inclusion in the next release;
+- your own release you must distribute with another name and only licensed under GPL;
+- if you do not understand the GPL or disagree with it, you have to uninstall the program.
+
+"=>"Пандора захищена ліцензією GNU GPLv2.
+
+Основні положення:
+- код програми відкритий, поширюється вільно і без гарантій;
+- автор не вимагає від вас грошей, але вимагає поважати авторство;
+- можна надсилати автору зміни коду для включення в наступний реліз;
+- свій реліз ви повинні поширювати з іншою назвою і тільки під ліцензією GPL;
+- якщо ви не зрозуміли ліцензію GPL або не згодні з нею, то повинні видалити програму.
+
+"
+Repositories=>Сховища
+Laws=>Закони
+Contacts=>Контакти
+"Base directory: "=>"Каталог даних: "
+On line!=>Коннект!
+Resources=>Ресурси
+Currency=>Валюта
+Towns=>Міста
+States=>Країни

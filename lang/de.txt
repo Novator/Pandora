@@ -1,0 +1,82 @@
+# Pandora language file EN=>DE
+Distributed Social Network=>Distributed Social Network
+_About=>_Über Programm
+_Quit=>_Verlassen
+Repositories=>Läger
+Projects=>Projekte
+_Region=>_Region
+Nomenclatures=>Nomenklaturen
+Positions=>Positionen
+Contacts=>Kontakte
+On line!=>Connect!
+Search=>Suchen
+Keys=>Schlüssel
+Orders=>Bestellungen
+Currency=>Währung
+Wizards=>Assistenten
+Laws=>Gesetze
+Workers=>Arbeiter
+Accounts=>Konten
+Storages=>Lager
+Towns=>Städte
+Communities=>Gemeinschaften
+Freeware=>Freie Software
+Rights to logo are owned by 21th Century Fox=>Die Rechte an dem Logo von 21th Century Fox im Besitz
+Punishments=>Strafen
+Offenses=>Verbrechen
+_Close=>_Schließen
+Nodes=>Knoten
+Signs=>Signatur
+Contributions=>Erlöse
+Deals=>Transaktionen
+Streets=>Straßen
+Profile=>Profil
+Parameters=>Optionen
+_Bussiness=>Bussiness
+Opinions=>Meinungen
+Addresses=>Adressen
+States=>Ländern
+Things=>Dinge
+Words=>Wörter
+Events=>Ereignisse
+Patches=>Patches
+Resources=>Ressourcen
+Languages=>Sprachen
+Documents=>Dokumente
+Full text=>Der vollständige Text
+Michael Galyuk=>Michael Galyuk
+_Pandora=>_Pandora
+Expenditures=>Ausgaben
+Resolutions=>Beschlüsse
+Reports=>Berichte
+Payments=>Zahlungen
+Clients=>Klienten
+Products=>Produkte
+Files=>Dateien
+Articles=>Artikel
+Activities=>Tätigkeiten
+People=>Menschen
+_World=>_Welt
+"Pandora is licensed under GNU GPLv2.
+
+Fundamentals:
+- program code is open, distributed free and without warranty;
+- author does not require you money, but demands respect authorship;
+- you can change the code, sent to the authors for inclusion in the next release;
+- your own release you must distribute with another name and only licensed under GPL;
+- if you do not understand the GPL or disagree with it, you have to uninstall the program.
+
+"=>"Pandora steht unter der GNU GPLv2 lizenziert.
+
+Basics:
+- Programm-Code ist offen, kostenlos verteilt und ohne Garantie;
+- Autor nicht verlangen Sie Geld, sondern verlangt Respekt Urheberschaft;
+- Sie können den Code ändern, an die Autoren für die Aufnahme in die nächste release;
+- Ihre eigene Version, müssen Sie sich mit einem anderen Namen zu verteilen und nur lizenzierteunter GPL;
+- Wenn Sie nicht verstehen die GPL, oder nicht mit ihm, müssen Siedeinstallieren des Programms.
+
+"
+"Base directory: "=>"Daten-Verzeichnis"
+Transfer=>Verschieben
+Property=>Eigenschaft
+Services=>Dienste

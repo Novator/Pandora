@@ -1,0 +1,245 @@
+<pandora-model name.ru="Модель форм Пандоры">
+  <World name.ru="Мир">
+
+    <Person name.ru="Человек|Люди">
+      <firstname name.ru="Имя" />
+      <lastname name.ru="Фамилия" />
+      <birth_day name.ru="Дата рождения" />
+      <origin_place name.ru="Место рождения" />
+      <fathername name.ru="Имя отца" />
+      <mothername name.ru="Имя матери" />
+      <sex name.ru="Пол" />
+      <exit_day name.ru="Дата ухода" />
+    </Person>
+
+    <Community name.ru="Сообщество|Сообщества">
+      <name name.ru="Название" />
+      <origin_place name.ru="Место создания" />
+      <origin_date name.ru="Дата создания" />
+      <creator name.ru="Основатель" />
+      <person_list name.ru="Состав сообщества" />
+    </Community>
+
+    <Country name.ru="Страна|Страны">
+      <code name.ru="Код" />
+      <name name.ru="Название" />
+      <area name.ru="Площадь" />
+    </Country>
+
+    <City name.ru="Город|Города">
+      <name name.ru="Название" />
+      <country name.ru="Страна" />
+      <population name.ru="Население" />
+    </City>
+
+    <Street name.ru="Улица|Улицы">
+      <city name.ru="Город" />
+      <name name.ru="Название" />
+    </Street>
+
+    <Address name.ru="Страна|Страны">
+      <street name.ru="Улица" />
+      <building name.ru="Дом" />
+      <appartment name.ru="Квартира" />
+    </Address>
+
+    <Contact name.ru="Контакт|Контакты">
+      <type name.ru="Тип" />
+      <value name.ru="Значение" />
+      <owner_list name.ru="Владельцы" />
+    </Contact>
+
+    <Document name.ru="Документ|Документы">
+      <type name.ru="Тип" />
+      <code name.ru="Номер" />
+      <object name.ru="Объект" />
+    </Document>
+
+    <Currency name.ru="Валюта|Валюты">
+      <name name.ru="Название" />
+      <code name.ru="Код" />
+      <country name.ru="Страна" />
+      <issuer name.ru="Эммитент" />
+    </Currency>
+
+    <Occupation name.ru="Деятельность|Увлечения">
+      <name name.ru="Название" />
+      <description name.ru="Описание" />
+    </Occupation>
+
+    <Thing name.ru="Вещь|Вещи">
+      <name name.ru="Название" />
+      <desc name.ru="Описание" />
+      <attr name.ru="Аттрибуты" />
+      <producers name.ru="Изготовители" />
+    </Thing>
+
+    <Word name.ru="Слово|Слова">
+      <name name.ru="Написание" />
+      <description name.ru="Описание" />
+    </Word>
+
+    <Article name.ru="Статья|Статьи">
+      <name name.ru="Название" />
+      <text name.ru="Текст" />
+    </Article>
+
+    <Blob name.ru="Файл|Файлы">
+      <type name.ru="Тип" />
+      <name name.ru="Название" />
+      <hash name.ru="Хэш" />
+      <size name.ru="Размер" />
+    </Blob>
+
+    <Comment name.ru="Комментарий|Комментарии">
+      <object name.ru="Объект" />
+      <creator name.ru="Создатель" />
+      <date name.ru="Дата создания" />
+      <text name.ru="Текст" />
+    </Comment>
+
+  </World>
+  <Business name.ru="Дело">
+
+    <Property name.ru="Имущество" >
+      <articul name.ru="Артикул" />
+    </Property>
+
+    <Money name.ru="Деньги|Деньги">
+      <name name.ru="" />
+      <producers name.ru="" />
+    </Money>
+
+    <Store name.ru="Склады">
+      <name name.ru="" />
+      <producers name.ru="" />
+    </Store>
+
+    <Account name.ru="Счета|Счёт">
+      <name name.ru="Название" />
+    </Account>
+
+    <Contract name.ru="Договоры|Договор">
+      <number name.ru="Номер" />
+      <city name.ru="Город" />
+    </Contract>
+
+    <Worker name.ru="Сотрудники|Резюме">
+      <vacancy name.ru="Должность" />
+      <salary name.ru="Оклад" />
+    </Worker>
+
+    <Client name.ru="Клиенты">
+      <name name.ru="" />
+      <producers name.ru="" />
+    </Client>
+
+    <Position name.ru="Должности/Вакансии">
+      <name name.ru="" />
+      <producers name.ru="" />
+    </Position>
+
+    <Product name.ru="Номенклатура">
+      <name name.ru="" />
+      <producers name.ru="" />
+    </Product>
+
+  </Business>
+  <Country name.ru="Страна">
+
+    <Law name.ru="Закон|Законы">
+      <number name.ru="Номер" />
+    </Law>
+
+    <Algorithm name.ru="Режим">
+      <name name.ru="" />
+      <producers name.ru="" />
+    </Algorithm>
+
+    <AccountCard name.ru="План счетов">
+      <name name.ru="" />
+      <producers name.ru="" />
+    </AccountCard>
+
+    <Bill name.ru="Проводки">
+      <name name.ru="" />
+      <producers name.ru="" />
+    </Bill>
+
+  </Country>
+  <Pandora name.ru="Узел">
+
+    <Parameter name.ru="Параметр|Параметры">
+      <name name.ru="Название" />
+      <type name.ru="Тип" />
+      <value name.ru="Значение" />
+      <defvalue name.ru="Значение" />
+      <minvalue name.ru="Значение" />
+      <maxvalue name.ru="Значение" />
+      <permission name.ru="Видимость" />
+    </Parameter>
+
+    <Key name.ru="Ключ|Ключи">
+      <kind name.ru="Тип" />
+      <owner name.ru="Владелец" />
+      <description name.ru="Описание" />
+      <secret name.ru="Секретный" />
+      <public name.ru="Публичный" />
+    </Key>
+
+    <Sign name.ru="Подпись|Подписи">
+      <keyhash name.ru="Панхэш ключа" />
+      <objhash name.ru="Панхэш объекта"/>
+      <sign name.ru="Подпись" />
+    </Sign>
+
+    <Node name.ru="Узел|Узлы">
+      <domain name.ru="Домен" />
+      <addr name.ru="Адрес" />
+      <tport name.ru="Порт TCP" />
+      <uport name.ru="Порт UDP" />
+      <state name.ru="Состояние" />
+      <sended name.ru="Отправлено" />
+      <received name.ru="Принято" />
+      <bad_attempts name.ru="Число ошибочных попыток" />
+      <ban_time name.ru="Время бана" />
+      <last_conn_date name.ru="Время последнего соединения" />
+      <try_upnp_date name.ru="Время последней попытки UPnP" />
+      <try_natpmp_date name.ru="Время последней попытки NAT-PMP" />
+    </Node>
+
+    <Patch name.ru="Изменение|Изменения">
+      <kind name.ru="Тип" />
+      <origin name.ru="Источник" />
+      <creator name.ru="Создатель" />
+      <oldsha1 name.ru="Старый хэш" />
+      <sha1 name.ru="Новый хэш" />
+      <date name.ru="Дата" />
+      <delta name.ru="Разница" />
+    </Patch>
+
+    <Event name.ru="Событие|События">
+      <time name.ru="Время" />
+      <kind name.ru="Тип" />
+      <origin name.ru="Источник" />
+      <sha2 name.ru="Хэш" />
+      <creator name.ru="Создатель" />
+      <message name.ru="Пояснение" />
+    </Event>
+
+    <Repository name.ru="Хранилище|Хранилища">
+      <name name.ru="Название" />
+      <kind name.ru="Тип" />
+      <place name.ru="Расположение" />
+    </Repository>
+
+    <Message name.ru="Сообщение|Сообщения">
+      <room name.ru="Комната" />
+      <state name.ru="Состояние" />
+      <date name.ru="Дата" />
+      <text name.ru="Текст" />
+    </Message>
+
+  </Pandora>
+
+</pandora-model>

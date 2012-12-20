@@ -1,0 +1,82 @@
+# Pandora language file EN=>TR
+_About=>_Hakkında
+Clients=>Müşteriler
+Workers=>Çalışanlar
+Services=>Hizmetler
+Opinions=>Görüş
+Files=>Dosyalar
+Languages=>Diller
+Activities=>Etkinlik
+Streets=>Cadde
+Towns=>Şehir
+"Pandora is licensed under GNU GPLv2.
+
+Fundamentals:
+- program code is open, distributed free and without warranty;
+- author does not require you money, but demands respect authorship;
+- you can change the code, sent to the authors for inclusion in the next release;
+- your own release you must distribute with another name and only licensed under GPL;
+- if you do not understand the GPL or disagree with it, you have to uninstall the program.
+
+"=>"Pandora korunmaktadır GNU genel kamu lisansı (GPLv2).
+
+Temel hükümleri:
+- program kodu açık, serbestçe dağıtılan ve garantisiz;
+- yazar değil gerektirir, ama para gerektirir saygı yazarlık;
+- bir sınırdışı etme yazar kod değişiklikleri etkinleştirmek için bir sonraki sürümü;
+- kendi açıklaması var mı dağıtmak farklı bir isim ile ve hemen altında GPL lisansı;
+- eğer yanlış GPL lisansını ya da değil kabul, ona bir şey kaldırmak gerekir program.
+
+"
+Full text=>Tam metin
+Signs=>İmza
+_World=>_Dünya
+Parameters=>Parametreler
+Payments=>Ödemeler
+Things=>Şeyler
+"Base directory: "=>"Katalog veri: "
+_Close=>_Kapat
+On line!=>Bağlantılarınız!
+Wizards=>Sihirbaz
+Freeware=>Özgür yazılım
+Rights to logo are owned by 21th Century Fox=>Hak logo şirketine aittir 21th Century Fox
+Keys=>Anahtarlar
+Laws=>Kanunlar
+Transfer=>Taşımak
+Storages=>Depo
+Products=>Mal
+Articles=>Yazı
+Contacts=>Rehber
+People=>İnsanlar
+Patches=>Yamalar
+Punishments=>Ceza
+_Region=>_Bölge
+Orders=>Emir
+Accounts=>Hesap
+Positions=>Yazı
+Distributed Social Network=>Dağıtılmış sosyal ağ
+Search=>Arama
+Profile=>Profil
+Repositories=>Raporlar
+Offenses=>İhlal
+Contributions=>Kazanç
+Reports=>Raporlar
+Property=>Mülkiyet
+_Quit=>_Çıkış
+Nodes=>Siteler
+_Pandora=>_Pandora
+Expenditures=>Mastering
+Deals=>İşlem
+_Bussiness=>_Anlaşma
+Addresses=>Adresi
+States=>Ülke
+Events=>Olay
+Currency=>Para birimi
+Communities=>Topluluk
+Michael Galyuk=>Michael Galyuk
+Resolutions=>İktidar
+Projects=>Projeler
+Resources=>Kaynaklar
+Nomenclatures=>Adlandırma
+Words=>Kelimeler
+Documents=>Belgeler

@@ -1,0 +1,82 @@
+# Pandora language file EN=>IT
+_Quit=>_Uscita
+Profile=>Profilo
+Events=>Eventi
+Projects=>Progetti
+Deals=>Affare
+Nomenclatures=>Gamma
+Languages=>Lingue
+Currency=>Valuta
+Workers=>Personale
+Towns=>Città
+Communities=>Comunità
+Search=>Cerca
+Parameters=>Impostazioni
+Expenditures=>Sviluppo
+States=>Paese
+"Base directory: "=>"Directory dei dati: "
+Reports=>Report
+Transfer=>Spostamento
+Clients=>Eventi
+Products=>Prodotti
+Things=>Cose
+Activities=>Attività
+Full text=>Testo Completo
+Payments=>Pagamenti
+Positions=>Posizioni
+Contacts=>Contatti
+Distributed Social Network=>Distribuito social network
+Michael Galyuk=>Michele Galyuk
+Wizards=>Wizard
+Nodes=>Nodi
+Signs=>Firma
+Contributions=>Entrate
+Resolutions=>Termini
+Accounts=>Conto
+Files=>File
+Words=>Parole
+Addresses=>Indirizzo
+"Pandora is licensed under GNU GPLv2.
+
+Fundamentals:
+- program code is open, distributed free and without warranty;
+- author does not require you money, but demands respect authorship;
+- you can change the code, sent to the authors for inclusion in the next release;
+- your own release you must distribute with another name and only licensed under GPL;
+- if you do not understand the GPL or disagree with it, you have to uninstall the program.
+
+"=>"Pandora è protetto da GNU GPLv2.
+
+La situazione di base:
+- è un codice di programma è aperto, è distribuito liberamente e senza alcuna garanzia;
+- autore non hai bisogno di soldi, ma richiede di rispettare la paternità;
+- si possono espellere l'autore di modificare il codice per l'inclusione nel prossimo rilascio;
+- il rilascio si sono tenuti a distribuire con un altro nome e solo sotto la licenza GPL;
+- se non si è capito la licenza GPL, o non è d'accordo con esso, è necessario rimuovere il programma.
+
+"
+_About=>_Sul programma
+Patches=>Patch
+_Pandora=>_Pandora
+Resources=>Risorse
+Freeware=>Software Libero
+_Close=>_Chiudi
+Offenses=>Violazione
+Streets=>Strada
+People=>Persone
+On line!=>Connect!
+Repositories=>Magazzino
+Keys=>Chiavi
+Punishments=>Punizione
+Property=>Proprietà
+Storages=>Magazzini
+Services=>Servizio
+Opinions=>Viste
+Articles=>Articoli
+Rights to logo are owned by 21th Century Fox=>Diritti di logo appartengono a una società 21th Century Fox
+Laws=>Leggi
+_Region=>_Regione
+Documents=>Documenti
+Orders=>Ordini
+_Bussiness=>_Affare
+_World=>_Mondo
