@@ -9,7 +9,6 @@ Contents
 3) installation
 
 
-
 OVERVIEW
 
 Pandora is a free multiplatform information system.
