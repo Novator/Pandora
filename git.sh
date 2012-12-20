@@ -13,7 +13,7 @@
 
 ## Push files from local to repository
 #git add --all
-git commit -a -m "fifth commit"
+git commit -a -m "sixth commit"
 #git push -u origin master
 
 ## Make ignore list

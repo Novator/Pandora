@@ -11,13 +11,11 @@ Contents
 
 OVERVIEW
 
-Pandora is a free multiplatform information system.
+Pandora is a free multiplatform distributed (p2p) information system.
 Pandora includes functions of social network, instant messanger, audio and
 video chatting system, commercial system, distributed development system
 and vote system.
-Pandora provides three level of data: world, business and state.
-Pandora allows you to keep accounts, print forms, make reports
-and export files in any formats.
+Read more in the guide at /doc/guide.ru.odt (Russian version yet only)
 
 
 SYSTEM REQUIRE
