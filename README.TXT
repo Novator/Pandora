@@ -1,5 +1,5 @@
 #############################################
- The Pandora. Distributed information system
+ The Pandora. Distributed Social Network
 #############################################
 
 Contents
