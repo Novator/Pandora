@@ -1,8 +1,6 @@
 #!/usr/bin/env ruby
 # encoding: utf-8
 
-$KCODE='u'
-
 # The Pandora. Free decentralized information system
 # RU: Пандора. Децентрализованная информационная система
 #
@@ -12,7 +10,7 @@ $KCODE='u'
 # RU: 2012 (c) Михаил Галюк
 #
 # coding: utf-8
-
+$KCODE='u'
 #Encoding.default_external = 'UTF-8'
 #Encoding.default_internal = 'UTF-8'
 
@@ -29,8 +27,22 @@ def os_family
   end
 end
 
-# If it's runned under WinOS, redirect console output to file
-# RU: Если под Виндой, то перенаправить консольный вывод в файл
+# Paths and files  ('join' gets '/' for Linux and '\' for Windows)
+# RU: Пути и файлы ('join' дает '/' для Линукса и '\' для Винды)
+if os_family != 'windows'
+  $pandora_root_dir = Dir.pwd                                       # Current Pandora directory
+else
+  $pandora_root_dir = '.'
+end
+$pandora_base_dir = File.join($pandora_root_dir, 'base')            # Default database directory
+$pandora_view_dir = File.join($pandora_root_dir, 'view')            # Media files directory
+$pandora_model_dir = File.join($pandora_root_dir, 'model')          # Model description directory
+$pandora_lang_dir = File.join($pandora_root_dir, 'lang')            # Languages directory
+$pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Default database file
+$pandora_sqlite_db2 = File.join($pandora_base_dir, 'pandora2.sqlite')  # Default database file
+
+# If it's runned under WinOS, redirect console output to file, because of rubyw.exe crush
+# RU: Если под Виндой, то перенаправить консольный вывод в файл из-за краша rubyw.exe
 if os_family=='windows'
   $stdout.reopen(File.join($pandora_base_dir, 'stdout.log'), 'w')
   $stderr = $stdout
@@ -44,25 +56,12 @@ end
 require 'rexml/document'
 require 'zlib'
 require 'socket'
-#require 'timeout'
-#require 'digest/sha1'
 begin
   require 'jcode'
   $jcode_on = true
 rescue Exception
   $jcode_on = false
 end
-
-=begin
-# DBI is required to connect to databases
-# RU: DBI нужен для подключения к базам данных
-begin
-  require 'dbi'
-  $dbi_on = true
-rescue Exception
-  $dbi_on = false
-end
-=end
 
 # The particular sqlite database interface
 # RU: Отдельный модуль для подключения к базам sqlite
@@ -109,6 +108,17 @@ rescue Exception
   $openssl_on = false
 end
 
+# GStreamer is a media library
+# RU: Обвязка для медиа библиотеки GStreamer
+begin
+  require 'gst'
+  $gst_on = true
+rescue Exception
+  $gst_on = false
+end
+
+# Default language when environment LANG variable is not defined
+# RU: Язык по умолчанию, когда не задана переменная окружения LANG
 $lang = 'ru'
 
 # Define environment parameters
@@ -118,15 +128,17 @@ if (lang.is_a? String) and (lang.size>1)
   $lang = lang[0, 2].downcase
 end
 
-# Expand the arguments of command line
-# RU: Разобрать аргументы командной строки
-
+# Default values of variables
+# RU: Значения переменных по умолчанию
 $host = 'localhost'
 $port = '5577'
 $base_index = 0
+$hunt_list = {}
 
+# Expand the arguments of command line
+# RU: Разобрать аргументы командной строки
 arg = nil
-while ARGV.length >0 do
+while ARGV.length >0
   val = ARGV.shift
   if val.is_a? String and (val[0,1]=='-')
     arg = val
@@ -145,18 +157,6 @@ while ARGV.length >0 do
   end
 end
 
-# GStreamer is a media library
-# RU: Обвязка для медиа библиотеки GStreamer
-begin
-  require 'gst'
-  $gst_on = true
-rescue Exception
-  $gst_on = false
-end
-
-# ==Language section
-# ==RU: Базовый модуль Пандора
-
 # Array of localization phrases
 # RU: Вектор переведеных фраз
 $lang_trans = {}
@@ -171,28 +171,10 @@ def _(frase)
   trans
 end
 
-# ==Base module of Pandora
-# ==RU: Базовый модуль Пандора
+# ==============================================================================
+# == Base module of Pandora
+# == RU: Базовый модуль Пандора
 module PandoraKernel
-
-  # Paths and files  ('join' gets '/' for Linux and '\' for Windows)
-  # RU: Пути и файлы ('join' дает '/' для Линукса и '\' для Винды)
-  $pandora_root_dir = Dir.pwd                                        # Root Pandora directory
-  if os_family == 'windows'
-    #begin
-    #  require 'iconv'
-    #  converter = Iconv.new('UTF-8', 'WINDOWS-1251')
-    #  $pandora_root_dir = converter.iconv($pandora_root_dir)
-    #rescue Exception
-      $pandora_root_dir = '.'
-    #end
-  end
-  $pandora_base_dir = File.join($pandora_root_dir, 'base')            # Default database directory
-  $pandora_view_dir = File.join($pandora_root_dir, 'view')            # Media files directory
-  $pandora_model_dir = File.join($pandora_root_dir, 'model')          # Model description directory
-  $pandora_lang_dir = File.join($pandora_root_dir, 'lang')            # Languages directory
-  $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Default database file
-  $pandora_sqlite_db2 = File.join($pandora_base_dir, 'pandora2.sqlite')  # Default database file
 
   # Load translated phrases
   # RU: Загрузить переводы фраз
@@ -399,12 +381,12 @@ module PandoraKernel
         @exist[table_name] = TRUE
       end
       tab_def = PandoraKernel::subj_fld_to_sqlite_tab(def_flds[table_name])
-      #p tab_def
+      p tab_def
       if (! exist[table_name] or recreate) and tab_def != nil
         if exist[table_name] and recreate
           res = db.execute('DROP TABLE '+table_name)
         end
-        #p 'CREATE TABLE '+table_name+' '+tab_def
+        p 'CREATE TABLE '+table_name+' '+tab_def
         res = db.execute('CREATE TABLE '+table_name+' '+tab_def)
         @exist[table_name] = TRUE
       end
@@ -548,9 +530,9 @@ module PandoraKernel
 
   # Pandora's subject
   # RU: Субъект (справочник) Пандора
-  class Subject
+  class BaseSubject
     class << self
-      @ider = 'Subject'
+      @ider = 'BaseSubject'
       @name = 'Субъект Пандора'
       @tables = []
       @def_fields = []
@@ -560,14 +542,11 @@ module PandoraKernel
       def ider=(x)
         @ider = x
       end
-      def name
-        @name
+      def def_fields
+        @def_fields
       end
-      def name=(x)
-        @name = x
-      end
-      def repositories
-        $repositories
+      def def_fields=(x)
+        @def_fields = x
       end
       def tables
         @tables
@@ -575,34 +554,53 @@ module PandoraKernel
       def tables=(x)
         @tables = x
       end
-      def def_fields
-        @def_fields
+      def name
+        @name
       end
-      def def_fields=(x)
-        @def_fields = x
+      def name=(x)
+        @name = x
+      end
+      def BaseSubject.repositories
+        $repositories
       end
     end
     def ider
       self.class.ider
     end
+    def ider=(x)
+      self.class.ider = x
+    end
+    def def_fields
+      self.class.def_fields
+    end
+    def def_fields=(x)
+      self.class.def_fields = x
+    end
+    def tables
+      self.class.tables
+    end
+    def tables=(x)
+      self.class.tables = x
+    end
     def name
       self.class.name
     end
+    def name=(x)
+      self.class.name = x
+    end
+    def repositories
+      $repositories
+    end
+
     def sname
       PandoraKernel.get_name_or_names(name)
     end
     def pname
       PandoraKernel.get_name_or_names(name, true)
     end
-    def tables
-      self.class.tables
-    end
-    def def_fields
-      self.class.def_fields
-    end
-    def initialize
-      super
-    end
+    #def initialize
+    #  super
+    #end
     def select(afilter='')
       self.class.repositories.get_tab_select(self, self.class.tables[0], afilter)
     end
@@ -631,26 +629,19 @@ module PandoraKernel
     end
   end
 
-  # Pandora's document
-  # RU: Документ Пандора
-  class Document < Subject
-    self.name = "Документ Пандора"
-    def field_des(fld_name)
-      super
-    end
-  end
-
-  # Pandora's report
-  # RU: Отчет Пандора
-  class Report < Document
-    self.name = "Отчет Пандора"
-  end
-
 end
 
-# ==Pandora logic model
-# RU: ==Логическая модель Пандора
+# ==============================================================================
+# == Pandora logic model
+# == RU: Логическая модель Пандора
 module PandoraModel
+
+  # Pandora's document
+  # RU: Документ Пандора
+  class Subject < PandoraKernel::BaseSubject
+    ider = 'Subject'
+    name = "Документ Пандора"
+  end
 
   # Composing pandora model definition from XML file
   # RU: Сформировать описание модели по XML-файлу
@@ -659,27 +650,42 @@ module PandoraModel
     #dir_mask = File.join(File.join($pandora_model_dir, '**'), '*.xml')
     dir_mask = File.join($pandora_model_dir, '*.xml')
     dir_list = Dir.glob(dir_mask).sort
-    dir_list.each do |filename|
-      file = Object::File.open(filename)
+    dir_list.each do |pathfilename|
+      filename = File.basename(pathfilename)
+      file = Object::File.open(pathfilename)
       xml_doc = REXML::Document.new(file)
       xml_doc.elements.each('pandora-model/*/*') do |element|
         subj_id = element.name
+        new_subj = true
+        flds = []
         if PandoraModel.const_defined? subj_id
           subject_class = PandoraModel.const_get(subj_id)
           subj_name = subject_class.name
           subj_tabl = subject_class.tables
-          flds = subject_class.def_fields
+          new_subj = false
+          #p subject_class
         else
           subj_name = subj_id
-          module_eval('class '+subj_id+' < PandoraKernel::Subject; self.name = "'+subj_name+'"; end')
+          parent_class = element.attributes['parent']
+          if (parent_class==nil) or (not(PandoraModel.const_defined? parent_class))
+            parent_class = 'Subject'
+          else
+            PandoraModel.const_get(parent_class).def_fields.each do |f|
+              flds << f
+            end
+          end
+          module_eval('class '+subj_id+' < PandoraModel::'+parent_class+'; name = "'+subj_name+'"; end')
           subject_class = PandoraModel.const_get(subj_id)
+          subject_class.def_fields = flds
+          #p subject_class
           subject_class.ider = subj_id
           subj_tabl = subj_id
           subj_tabl = PandoraKernel::get_name_or_names(subj_tabl, true)
           subj_tabl.downcase!
           subject_class.tables = [['robux', subj_tabl], ['perm', subj_tabl]]
-          flds = []
         end
+        flds = subject_class.def_fields
+        #p flds
         subj_name_en = element.attributes['name']
         subj_name = subj_name_en if (subj_name==subj_id) and (subj_name_en != nil) and (subj_name_en != '')
         subj_name_lang = element.attributes['name'+lang]
@@ -692,36 +698,38 @@ module PandoraModel
 
         element.elements.each('*') do |sub_elem|
           seu = sub_elem.name.upcase
-          if seu=='CALCULATE'
-            #p sub_elem.name
-          elsif seu=='FIELDS'
-            #p sub_elem.name
-          elsif seu=='TODO'
-            #p sub_elem.name
+          if seu==sub_elem.name
+            #p 'Функция не определена: ['+sub_elem.name+']'
           else
             i = 0
             while (i<flds.size) and (flds[i][0] != sub_elem.name) do i+=1 end
-            if i<flds.size
-              fld_name = flds[i][1]
+            if new_subj or (i<flds.size)
+              if i<flds.size
+                fld_name = flds[i][1]
+              else
+                flds[i] = [sub_elem.name]
+                fld_name = sub_elem.name
+              end
+              fld_name_en = sub_elem.attributes['name']
+              fld_name = fld_name_en if (fld_name_en != nil) and (fld_name_en != '')
+              fld_name_lang = sub_elem.attributes['name'+lang]
+              fld_name = fld_name_lang if (fld_name_lang != nil) and (fld_name_lang != '')
+              flds[i][1] = fld_name
+              fld_type = sub_elem.attributes['type']
+              flds[i][2] = fld_type if (fld_type != nil) and (fld_type != '')
+              fld_size = sub_elem.attributes['size']
+              flds[i][3] = fld_size if (fld_size != nil) and (fld_size != '')
+              fld_pos = sub_elem.attributes['pos']
+              flds[i][4] = fld_pos if (fld_pos != nil) and (fld_pos != '')
+              fld_fsize = sub_elem.attributes['fsize']
+              flds[i][5] = fld_fsize if (fld_fsize != nil) and (fld_fsize != '')
             else
-              flds[i] = [sub_elem.name]
-              fld_name = sub_elem.name
+              puts _('Property was not defined, ignored')+' /'+filename+':'+subj_id+'.'+sub_elem.name
             end
-            fld_name_en = sub_elem.attributes['name']
-            fld_name = fld_name_en if (fld_name_en != nil) and (fld_name_en != '')
-            fld_name_lang = sub_elem.attributes['name'+lang]
-            fld_name = fld_name_lang if (fld_name_lang != nil) and (fld_name_lang != '')
-            flds[i][1] = fld_name
-            fld_type = sub_elem.attributes['type']
-            flds[i][2] = fld_type if (fld_type != nil) and (fld_type != '')
-            fld_size = sub_elem.attributes['size']
-            flds[i][3] = fld_size if (fld_size != nil) and (fld_size != '')
-            fld_pos = sub_elem.attributes['pos']
-            flds[i][4] = fld_pos if (fld_pos != nil) and (fld_pos != '')
-            fld_fsize = sub_elem.attributes['fsize']
-            flds[i][5] = fld_fsize if (fld_fsize != nil) and (fld_fsize != '')
           end
         end
+        #p flds
+        #p "========"
         subject_class.def_fields = flds
       end
       file.close
@@ -730,8 +738,9 @@ module PandoraModel
 
 end
 
-# ==Graphical user interface of Pandora
-# RU: ==Оконный интерфейс Пандора
+# ==============================================================================
+# == Graphical user interface of Pandora
+# == RU: Графический интерфейс Пандора
 module PandoraGUI
 
   if not $gtk2_on
@@ -833,7 +842,7 @@ module PandoraGUI
       cancelbutton.signal_connect('clicked') { @response=2 }
       bbox.pack_start(cancelbutton, false, false, 0)
 
-      hbox.pack_start(bbox, false, false, 1.0)
+      hbox.pack_start(bbox, true, false, 1.0)
 
       window.signal_connect("delete-event") {
         @response=2
@@ -910,6 +919,7 @@ module PandoraGUI
       @vbox = Gtk::VBox.new
       viewport.add(@vbox)
 
+=begin
       rbvbox = Gtk::VBox.new
       button1 = Gtk::RadioButton.new('ручное/по порядку')
       rbvbox.pack_start(button1, false, false, 0)
@@ -928,9 +938,11 @@ module PandoraGUI
         @selected_branch = 'C'
       end
       hbox.add(rbvbox)
+=end
 
-      bw,bh = button1.size_request
-      @radio_height = bh*3
+      hbox.show_all
+      bw,bh = hbox.size_request
+      @btn_panel_height = bh
 
       # create labels, remember them, calc middle char width
       texts_width = 0
@@ -961,7 +973,7 @@ module PandoraGUI
       scr = Gdk::Screen.default
       window_width, window_height = scr.width-50, scr.height-100
       form_width = window_width-36
-      form_height = window_height-@radio_height-55
+      form_height = window_height-@btn_panel_height-55
 
       # compose first matrix, calc its geometry
       def_size = 10
@@ -1017,7 +1029,7 @@ module PandoraGUI
       mw, mh = [mw, rw].max, mh+rh
 
       if (mw<=form_width) and (mh<=form_height) then
-        window_width, window_height = mw+36, mh+@radio_height+55
+        window_width, window_height = mw+36, mh+@btn_panel_height+55
       end
       window.set_default_size(window_width, window_height)
 
@@ -1092,7 +1104,7 @@ module PandoraGUI
       @window_width, @window_height = event.width, event.height
 
       form_width = @window_width-36
-      form_height = @window_height-@radio_height-55
+      form_height = @window_height-@btn_panel_height-55
 
 =begin
       TODO:
@@ -1137,20 +1149,19 @@ module PandoraGUI
 
       p '---fill'
 
-      fields = []
-      @fields.each do |field|
-        fields << field.dup
-      end
-
       # create and fill field matrix to merge in form
-      #step = 1
-      step = 5
+      step = 1
       found = false
       while not found do
+        fields = []
+        @fields.each do |field|
+          fields << field.dup
+        end
+
         field_matrix = []
         mw, mh = 0, 0
         case step
-          when 1,5  #normal compose. change "left" to "up" when doesn't fit to width
+          when 1  #normal compose. change "left" to "up" when doesn't fit to width
             row = []
             row_index = -1
             rw, rh = 0, 0
@@ -1162,7 +1173,7 @@ module PandoraGUI
                 field_matrix << row if row != []
                 mw, mh = [mw, rw].max, mh+rh
                 p [mh, form_height]
-                if (mh>form_height) and (step==1)
+                if (mh>form_height)
                   #step = 2
                   step = 5
                   break
@@ -1188,27 +1199,52 @@ module PandoraGUI
                     rw, rh = calc_row_size(row)
                   end
                 end
-                if (rw>form_width) and (step==1)
+                if (rw>form_width)
                   #step = 3
                   step = 5
                   break
                 end
               end
             end
-            if (step==1) or (step==5)
-              field_matrix << row if row != []
-              mw, mh = [mw, rw].max, mh+rh
-              if ((mh>form_height) and (step==1))
-                #step = 2
-                step = 5
-              end
+            field_matrix << row if row != []
+            mw, mh = [mw, rw].max, mh+rh
+            if (mh>form_height)
+              #step = 2
+              step = 5
             end
-            found = ((step==1) or (step==5))
+            found = (step==1)
           when 2
             p "222"
             found = true
           when 3
             p "333"
+            found = true
+          when 5  #need to rebuild rows by width
+            row = []
+            row_index = -1
+            rw, rh = 0, 0
+            orient = :up
+            fields.each_index do |index|
+              field = fields[index]
+              if ! [:up, :down, :left, :right].include?(field[4]) then field[4]=orient; end
+              orient = field[4]
+              field_size = calc_field_size(field)
+
+              if (rw+field_size[0]>form_width)
+                row_index += 1
+                field_matrix << row if row != []
+                mw, mh = [mw, rw].max, mh+rh
+                p [mh, form_height]
+                row = []
+                rw, rh = 0, 0
+              end
+
+              row << field
+              rw, rh = rw+field_size[0], [rh, field_size[1]].max
+
+            end
+            field_matrix << row if row != []
+            mw, mh = [mw, rw].max, mh+rh
             found = true
           else
             found = true
@@ -1238,6 +1274,7 @@ module PandoraGUI
         end
       end
 
+      # compare matrix with previous
       if matrix_is_changed
         p "----+++++redraw"
         @old_field_matrix = field_matrix
@@ -1446,8 +1483,8 @@ module PandoraGUI
 
   # Showing subject list
   # RU: Показ списка субъектов
-  def self.show_subject_list(subject_class, widget=nil)
-  end
+  #def self.show_subject_list(subject_class, widget=nil)
+  #end
 
   class TabLabelBox < Gtk::HBox
 
@@ -1772,7 +1809,7 @@ module PandoraGUI
     end
     segindex = 0
     i = segsize
-    while (datasize-i)>0   #это надо затащить в цикл?
+    while (datasize-i)>0
       segsize = datasize-i
       segsize = MaxSegSize if segsize>MaxSegSize
       if segindex<0xFFFFFFFF then segindex += 1 else segindex = 0 end
@@ -1813,6 +1850,202 @@ module PandoraGUI
   RM_SegmentS  = 3   # Чтение одиночного сегмента
   RM_Segment1  = 4   # Чтение первого сегмента среди нескольких
   RM_SegmentN  = 5   # Чтение второго (и следующих) сегмента в серии
+
+  $connections = []
+
+  def self.index_of_connection_for_column(value, column=0)
+    index = nil
+    $connections.each_with_index do |e, i|
+      if (e.is_a? Array) and (e[column] == value)
+        index = i
+        break
+      end
+    end
+    index
+  end
+
+  $proc_buf_count = 10
+  $proc_mes_count = 2
+
+  def self.start_exchange_cicle(socket, node, hunter=true)
+    read_thread = Thread.current
+
+    conn_ind = index_of_connection_for_column(node, 0)
+
+    if hunter
+      log_mes = 'HUN: '
+    else
+      log_mes = 'LIS: '
+    end
+
+    if conn_ind
+      read_notice = 0
+      read_buffers = []
+      read_queries = []
+      send_notice = 0
+      send_buffers = []
+      send_queries = []
+
+      #$connections[conn_ind] += [socket, read_notice, read_buffers, read_queries, send_notice, send_buffers, send_queries]
+
+      scmd = EC_More
+      sbuf = ''
+
+      send_thread = Thread.new do
+        $connections[conn_ind][3] = Thread.current
+        if hunter
+          sindex = 0
+          scmd = EC_Init
+          sbuf='pandora 0.1'
+          scode = ECC_Init0_Hello
+
+          # tos_sip    cs3   0x60  0x18
+          # tos_video  af41  0x88  0x22
+          # tos_xxx    cs5   0xA0  0x28
+          # tos_audio  ef    0xB8  0x2E
+
+          #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
+          sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+          #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
+        end
+        while (conn_state>0)
+          # обработка принятых сообщений, их удаление
+          processedmes = 0
+          while (read_buffers.size>0) and (processedmes<$proc_mes_count) and (conn_state>0)
+            processedmes += 1
+            sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+          end
+          # разгрузка принятых буферов в gstreamer
+          processedbuf = 0
+          while (read_buffers.size>0) and (processedbuf<$proc_buf_count) and (conn_state>0)
+            processedbuf += 1
+            sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+          end
+          # обработка принятых запросов, их удаление
+          processedmes = 0
+          while (read_buffers.size>0) and (processedmes<$proc_mes_count) and (conn_state>0)
+            processedmes += 1
+            sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+          end
+          # отправка сформированных буферов
+
+          # формирование запросов на отправку и их отправка
+
+        end
+      end
+
+      sleep 1
+      p $connections
+
+      rcmd = EC_More
+      rindex = 0
+      rbuf = ''
+      rdata = ''
+      readmode = RM_Comm
+      nextreadmode = RM_Comm
+      waitlen = CommSize
+      last_scmd = scmd
+      # Цикл обработки команд и блоков данных
+      while (conn_state>0) and (recived = socket.recv(MaxPackSize))
+        rbuf += recived
+        processedlen = 0
+        while (conn_state>0) and (rbuf.size>=waitlen)
+          p log_mes+'begin=['+rbuf+']  L='+rbuf.size.to_s+'  WL='+waitlen.to_s
+          processedlen = waitlen
+          nextreadmode = readmode
+          # Определимся с данными по режиму чтения
+          case readmode
+            when RM_Comm
+              comm = rbuf[0, processedlen]
+              rindex, rcmd, rcode, rsegsign, errcode = unpack_comm(comm)
+              if errcode == 0
+                p log_mes+' RM_Comm: '+[rindex, rcmd, rcode, rsegsign].inspect
+                if rsegsign == LONG_SEG_SIGN
+                  nextreadmode = RM_CommExt
+                  waitlen = CommExtSize
+                elsif rsegsign > 0
+                  nextreadmode = RM_SegmentS
+                  waitlen = rsegsign+4  #+CRC32
+                  rdatasize, rsegsize = rsegsign
+                end
+              elsif errcode == 1
+                log_message(LM_Error, 'Ошибочный CRC полученой команды')
+                scmd=EC_Bye; scode=ECC_Bye_BadCommCRC
+              elsif errcode == 2
+                log_message(LM_Error, 'Ошибочная длина полученой команды')
+                scmd=EC_Bye; scode=ECC_Bye_BadCommLen
+              else
+                log_message(LM_Error, 'Ошибка в полученой команде')
+                scmd=EC_Bye; scode=ECC_Bye_Unknown
+              end
+            when RM_CommExt
+              comm = rbuf[0, processedlen]
+              rdatasize, fullcrc32, rsegsize = unpack_comm_ext(comm)
+              p log_mes+' RM_CommExt: '+[rdatasize, fullcrc32, rsegsize].inspect
+              nextreadmode = RM_Segment1
+              waitlen = rsegsize+4   #+CRC32
+            when RM_SegLenN
+              comm = rbuf[0, processedlen]
+              rindex, rsegindex, rsegsize = comm.unpack('CNn')
+              p log_mes+' RM_SegLenN: '+[rindex, rsegindex, rsegsize].inspect
+              nextreadmode = RM_SegmentN
+              waitlen = rsegsize+4   #+CRC32
+            when RM_SegmentS, RM_Segment1, RM_SegmentN
+              p log_mes+' RM_SegLenX['+readmode.to_s+']  rbuf=['+rbuf+']'
+              if (readmode==RM_Segment1) or (readmode==RM_SegmentN)
+                nextreadmode = RM_SegLenN
+                waitlen = 7    #index + segindex + rseglen (1+4+2)
+              end
+              rseg = rbuf[0, processedlen-4]
+              p log_mes+'rseg=['+rseg+']'
+              rsegcrc32 = rbuf[processedlen-4, 4].unpack('N')[0]
+              fsegcrc32 = Zlib.crc32(rseg)
+              if fsegcrc32 == rsegcrc32
+                rdata << rseg
+              else
+                log_message(LM_Error, 'Ошибка CRC полученного сегмента')
+                scmd=EC_Bye; scode=ECC_Bye_BadCRC
+              end
+              p log_mes+'RM_SegmentX: data['+rdata+']'+rdata.size.to_s+'/'+rdatasize.to_s
+              if rdata.size == rdatasize
+                nextreadmode = RM_Comm
+                waitlen = CommSize
+              elsif rdata.size > rdatasize
+                log_message(LM_Error, 'Слишком много полученных данных')
+                scmd=EC_Bye; scode=ECC_Bye_DataTooLong
+              end
+          end
+          # Очистим буфер от определившихся данных
+          rbuf.slice!(0, processedlen)
+          p log_mes+'PL='+processedlen.to_s+'  rbuf=('+rbuf+')  scmd='+scmd.to_s
+          scmd = EC_Data if (scmd != EC_Bye) and (scmd != EC_Wait)
+          p log_mes+'nrm='+nextreadmode.to_s
+          # Обработаем поступившие команды и блоки данных
+          if (scmd != EC_Bye) and (scmd != EC_Wait) and (nextreadmode == RM_Comm)
+            # ..вызвав заданный обработчик
+            p log_mes+'Matter?='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
+            rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = matter_process[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd]
+            rdata = ''
+            p log_mes+'Matter!='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
+          end
+          if scmd != EC_Data
+            sbuf='' if scmd == EC_Bye
+            p log_mes+'SEND: '+scmd.to_s+"/"+scode.to_s+"+("+sbuf+')'
+            sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+            last_scmd = scmd
+            sbuf = ''
+          end
+          readmode = nextreadmode
+          sleep 0.5
+        end
+      end
+
+    else
+      puts _('Cannot add socket to connection list')+' ['+socket.to_s+']'
+    end
+
+    socket
+  end
 
 
   def self.do_exchange_cicle(active, socket, &matter_process)
@@ -1934,18 +2167,19 @@ module PandoraGUI
 
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
-  def self.open_close_server_socket
+  def self.listen_socket(open=true)
     host = $host
     port = $port
     server = TCPServer.open(host, port)
     addr = server.addr
     log_message(LM_Info, 'Слушаю порт "'+host+':'+port+'" ('+addr.join(':')+')')
+    $listen_btn.label = _('Online')
     Thread.new do
       loop do
         # Создать поток при подключении клиента
         Thread.start(server.accept) do |socket|
           log_message(LM_Info, "Подключился клиент: "+socket.to_s)
-          # Вызвать пассивный цикл собработкой данных
+          # Вызвать пассивный цикл с обработкой данных
           do_exchange_cicle(false, socket) do |rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd|
             case rcmd  # СЕРВЕР!!! (пассив)
               when EC_Init
@@ -2042,96 +2276,85 @@ module PandoraGUI
   end
 
   # RU: Открывает клиентский сокет и начинает обмен
-  def self.open_client_socket(host, port)
-    Thread.new do
-      socket = TCPSocket.open(host, port)
-      log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
-      # Вызвать активный цикл собработкой данных
-      do_exchange_cicle(true, socket) { |rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd|
-        case rcmd  # КЛИЕНТ!!! (актив)
-          when EC_Init
-            case rcode
-              when ECC_Init0_Hello
-                hello=rdata
-                scmd=EC_Init
-                scode=ECC_Init1_KeyPhrase
-                akey="a1b2c3"
-                sbuf=akey
-              when ECC_Init1_KeyPhrase
-                pphrase=rdata
-                scmd=EC_Init
-                scode=ECC_Init2_SignKey
-                asign="f4443ef"
-                sbuf=asign
-              when ECC_Init2_SignKey
-                psign=rdata
-                scmd=EC_Init
-                scode=ECC_Init3_PhraseSign
-                aphrase="Yyyzzzzzz"
-                sbuf=aphrase
-              when ECC_Init3_PhraseSign
-                psign=rdata
-                scmd=EC_Init
-                scode=ECC_Init4_Permission
-                aperm="011101"
-                sbuf=aperm
-              when ECC_Init4_Permission
-                pperm=rdata
-                scmd=EC_Query
-                scode=ECC_Query0_Kinds
-                fromdate="fromdate=01.01.01"
-                sbuf=fromdate
-            end
-          when EC_News
-            p "news!!!!"
-            if rcode==EC_News0_Kinds
-              pcount = rcode
-              pkinds = rdata
-              scmd=EC_Query
-              scode=ECC_Query255_AllChanges
-              fromdate="01.01.2012"
-              sbuf=fromdate
-            else
-              p "more!!!!"
-              pkind = rcode
-              pnoticecount = rdata.unpack('N')
-              scmd=EC_More
-              scode=0
-              sbuf=''
-            end
-          when EC_Notice
-            p "!!notice!!!"
-            pkind = rcode
-            phashid = rdata
-            scmd=EC_More
-            scode=0 #-не надо, 1-патч, 2-запись, 3-миниатюру
-            sbuf=''
-          when EC_Change
-            p "!change!"
-          when EC_Record
-            p "!record!"
-          when EC_Bye
-            if rcode != ECC_Bye_Exit
-              log_message(LM_Error, 'Ошибка на сервере ErrCode='+rcode.to_s)
-            end
-            scmd=EC_Bye
-            scode=ECC_Bye_Exit
-          else
-            scmd=EC_Bye
-            scode=ECC_Bye_Unknown
-            log_message(LM_Error, 'Получена неизвестная команда от сервера='+rcmd.to_s)
+  def self.start_client_socket(node, persistent=false)
+    conn_ind = index_of_connection_for_column(node, 0)
+    if not conn_ind
+      conn_state = 1
+      $connections << [ node, conn_state ]
+      conn_ind = index_of_connection_for_column(node, 0)
+      if conn_ind
+        read_thread = Thread.new do
+          #$connections[conn_ind] += [read_thread, nil, socket, read_notice, read_buffers, read_queries, send_notice, send_buffers, send_queries]
+          host, port, proto = decode_node(node)
+          begin
+            socket = TCPSocket.open(host, port)
+          rescue #IO::WaitReadable, Errno::EINTR
+            socket = nil
+            log_message(LM_Warning, "Ошибка подключения к: "+host+':'+port)
+          end
+          if socket != nil
+            # Вызвать активный цикл собработкой данных
+            log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
+            socket = start_exchange_cicle(socket, true)
+            socket.close
+            log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
+          end
         end
-        [rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd]
-      }
-      socket.close
-      log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
+      end
+    end
+    conn_ind
+  end
+
+  def self.encode_node(host, port, proto)
+    node = host+':'+port+proto
+  end
+
+  def self.decode_node(node)
+    i = node.index(':')
+    if i
+      host = node[0, i]
+      port = node[i+1, node.size-4-i]
+      proto = node[node.size-3, 3]
+    else
+      host = node
+      port = 5577
+      proto = 'tcp'
+    end
+    [host, port, proto]
+  end
+
+  # Searching a node by current record in treeview
+  # RU: Поиск узла по текущей записи в таблице
+  def self.define_node_by_current_record(treeview)
+    # it's still a hack!
+    node = encode_node($host, $port, 'tcp')
+  end
+
+  $hunter_thread = nil
+
+  def self.hunt_nodes
+    if $hunter_thread == nil
+      subject = PandoraModel.const_get('Node')
+      p subject
+      $hunter_thread = Thread.new do
+        host = '127.0.0.1'
+        port = 5577
+        proto = 'tcp'
+        thread = start_client_socket(host, port, proto)
+        p thread
+        $hunt_list[thread] = [host, port] if thread != nil
+      end
+    else
+      $hunter_thread.exit
+      $hunter_thread = nil
     end
   end
 
   $thread = nil
+  $play_video = false
 
   def self.play_pipeline
-    if $thread != nil
+    if ($thread != nil) and $play_video
       pipeline1 = $thread[:pipeline1]
       pipeline2 = $thread[:pipeline2]
       p $thread.inspect
@@ -2151,17 +2374,19 @@ module PandoraGUI
     end
   end
 
-  # Searching a node by current record in treeview
-  # RU: Поиск узла по текущей записи в таблице
-  def self.define_node_by_current_record(treeview)
-    # it's still a hack!
-    nil
+  def self.send_mes_to_node(mes, node)
+    sended = false
+    if conn_ind=start_client_socket(node)
+      p 'send_mes_to_node [' +mes+']'
+      #mes_queue = $connections[conn_ind][7]
+      #add_mes_to_queue(mes, mes_queue)
+    end
+    sended
   end
 
   # Show conversation dialog
   # RU: Показать диалог общения
-  def self.show_talk_dialog(node)
-    title = 'Иван Петров'
+  def self.show_talk_dialog(node, title=_('Talk'))
 
     $notebook.children.each do |child|
       if child.name==title
@@ -2190,25 +2415,78 @@ module PandoraGUI
     area.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
 
     view = Gtk::TextView.new
+    view.wrap_mode = Gtk::TextTag::WRAP_WORD
     view.set_size_request(200, 270)
 
     edit_box = Gtk::TextView.new
+    edit_box.wrap_mode = Gtk::TextTag::WRAP_WORD
     edit_box.set_size_request(200, 70)
+
+    view.buffer.create_tag("red", "foreground" => "red")
+    view.buffer.create_tag("blue", "foreground" => "blue")
+    view.buffer.create_tag("red_bold", "foreground" => "red", 'weight' => Pango::FontDescription::WEIGHT_BOLD)
+    view.buffer.create_tag("blue_bold", "foreground" => "blue",  'weight' => Pango::FontDescription::WEIGHT_BOLD)
+
+    edit_box.signal_connect('key-press-event') do |widget, event|
+      if ((event.hardware_keycode==36) or  #Enter pressed
+        ([Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)))
+      then
+        #send_btn.activate
+        t = Time.now
+        mes = edit_box.buffer.text
+        view.buffer.insert(view.buffer.end_iter, "\n") if view.buffer.text != ''
+        view.buffer.insert(view.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "red")
+        view.buffer.insert(view.buffer.end_iter, 'You:', "red_bold")
+        view.buffer.insert(view.buffer.end_iter, ' '+mes)
+
+
+        view.buffer.insert(view.buffer.end_iter, "\n") if view.buffer.text != ''
+        view.buffer.insert(view.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "blue")
+        view.buffer.insert(view.buffer.end_iter, 'Dude:', "blue_bold")
+        view.buffer.insert(view.buffer.end_iter, ' '+mes)
+
+        if send_mes_to_node(mes, node)
+          edit_box.buffer.text = ''
+        end
+        true
+      elsif (event.hardware_keycode==9) or #Esc pressed
+        (Gdk::Keyval::GDK_Escape==event.keyval)
+      then
+        p "escape!"
+        #clear_btn.activate
+        false
+      end
+    end
 
     hbox = Gtk::HBox.new
 
     bbox = Gtk::HBox.new
-    bbox.border_width = 15
-    bbox.spacing = 10
-    okbutton = Gtk::Button.new(Gtk::Stock::OK)
-    okbutton.width_request = 110
-    okbutton.signal_connect('clicked') { @response=1 }
-    bbox.pack_start(okbutton, false, false, 0)
+    bbox.border_width = 5
+    bbox.spacing = 5
 
+    snd_button = Gtk::CheckButton.new(_('Sound'), true)
+    snd_button.signal_connect('toggled') do |widget, event|
+      #widget.active
+    end
+    bbox.pack_start(snd_button, false, false, 0)
+
+    vid_button = Gtk::CheckButton.new(_('Video'), true)
+    vid_button.signal_connect('toggled') do |widget, event|
+      $play_video = widget.active?
+      if $play_video
+        play_pipeline
+      else
+        stop_pipeline
+      end
+    end
+    bbox.pack_start(vid_button, false, false, 0)
+
+=begin
     cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
     cancelbutton.width_request = 110
     cancelbutton.signal_connect('clicked') { @response=2 }
     bbox.pack_start(cancelbutton, false, false, 0)
+=end
 
     hbox.pack_start(bbox, false, false, 1.0)
 
@@ -2221,6 +2499,8 @@ module PandoraGUI
 
     hpaned.pack1(vpaned1, false, true)
     hpaned.pack2(vpaned2, true, true)
+
+    $thread = nil
 
     $thread = Thread.new do
       Thread.stop
@@ -2302,9 +2582,6 @@ module PandoraGUI
         pipeline1.stop
       end
 
-      pipeline1.play
-      pipeline2.play
-
       Thread.current[:pipeline1] = pipeline1
       Thread.current[:pipeline2] = pipeline2
 
@@ -2312,6 +2589,7 @@ module PandoraGUI
         #Gtk.main_iteration
       end
     end
+
 
     label_box = TabLabelBox.new(image, title, sw, false, 0) do
       stop_pipeline
@@ -2327,7 +2605,7 @@ module PandoraGUI
     sw.show_all
     $notebook.page = $notebook.n_pages-1
 
-    $thread.run
+    $thread.run if $thread
   end
 
   # Menu event handler
@@ -2359,9 +2637,18 @@ module PandoraGUI
           subject.update(nil, nil, nil)
         end
       when 'Listen'
-        open_close_server_socket
-      when 'Wander'
-        open_client_socket('127.0.0.1', 5577)
+        listen_socket(true)
+      when 'Connect'
+        if $notebook.page >= 0
+          sw = $notebook.get_nth_page($notebook.page)
+          treeview = sw.children[0]
+          subject = treeview.subject
+          subject.update(nil, nil, nil)
+          node = define_node_by_current_record(treeview)
+          start_client_socket(node)
+        end
+      when 'Hunt'
+        hunt_nodes
       when 'Talk'
         if $notebook.page >= 0
           sw = $notebook.get_nth_page($notebook.page)
@@ -2372,8 +2659,13 @@ module PandoraGUI
       when 'Wizard'
         PandoraKernel.save_as_language($lang)
       else
-        subject_class = PandoraModel.const_get(widget.name)
-        show_subject_list(subject_class, widget)
+        subj_id = widget.name
+        if PandoraModel.const_defined? subj_id
+          subject_class = PandoraModel.const_get(subj_id)
+          show_subject_list(subject_class, widget)
+        else
+          log_message(LM_Warning, _('Menu handler is not defined yet')+' ['+subj_id+']')
+        end
     end
   end
 
@@ -2407,11 +2699,12 @@ module PandoraGUI
     ["-", nil, "-"],
     ["Position", nil, _("Positions")],
     ["Nomenclature", nil, _("Nomenclatures")],
-    ["Storage", nil, _("Storages")],
+    ["Contract", nil, _("Contracts")],
     ["Account", nil, _("Accounts")],
     ["-", nil, "-"],
     ["Worker", nil, _("Workers")],
     ["Client", nil, _("Clients")],
+    ["Storage", nil, _("Storages")],
     ["-", nil, "-"],
     ["Order", nil, _("Orders")],
     ["Deal", nil, _("Deals")],
@@ -2439,13 +2732,13 @@ module PandoraGUI
     ["Key", nil, _("Keys")],
     ["Sign", nil, _("Signs")],
     ["Node", Gtk::Stock::NETWORK, _("Nodes")],
-    ["Patche", nil, _("Patches")],
+    ["Patch", nil, _("Patches")],
     ["Event", nil, _("Events")],
     ["Repository", nil, _("Repositories")],
     ["-", nil, "-"],
     ["Authorize", Gtk::Stock::DIALOG_AUTHENTICATION, _("Authorize")],
     ["Listen", Gtk::Stock::CONNECT, _("Listen")],
-    ["Wander", Gtk::Stock::REFRESH, _("Wander")],
+    ["Hunt", Gtk::Stock::REFRESH, _("Hunt")],
     ["Search", Gtk::Stock::FIND, _("Search")],
     ["-", nil, "-"],
     ["Profile", Gtk::Stock::HOME, _("Profile")],
@@ -2507,7 +2800,7 @@ module PandoraGUI
     end
   end
 
-  # Showing main Gtk window
+  # Show main Gtk window
   # RU: Показать главное окно Gtk
   def self.show_main_window
     $window = Gtk::Window.new('Pandora')
@@ -2550,13 +2843,13 @@ module PandoraGUI
     $view.border_width = 0
     statusbar = Gtk::Statusbar.new
     statusbar.push(0, _('Base directory: ')+$pandora_base_dir)
-    btn = Gtk::Button.new('Not logged')
+    btn = Gtk::Button.new(_('Not logged'))
     btn.relief = Gtk::RELIEF_NONE
     statusbar.pack_start(btn, false, false, 2)
     statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
-    btn = Gtk::Button.new('Offline')
-    btn.relief = Gtk::RELIEF_NONE
-    statusbar.pack_start(btn, false, false, 2)
+    $listen_btn = Gtk::Button.new(_('Offline'))
+    $listen_btn.relief = Gtk::RELIEF_NONE
+    statusbar.pack_start($listen_btn, false, false, 2)
 
     sw = Gtk::ScrolledWindow.new(nil, nil)
     sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
@@ -2639,11 +2932,16 @@ module PandoraGUI
 end
 
 
-# ===Entry point
-# RU: ===Точка входа
+# ==============================================================================
 
+# Some module settings
+# RU: Некоторые настройки модулей
 BasicSocket.do_not_reverse_lookup = true
+Thread.abort_on_exception = true
 
+# == Running the Pandora!
+# == RU: Запуск Пандоры!
+#$lang = 'en'
 PandoraKernel.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
 PandoraGUI.show_main_window

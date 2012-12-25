@@ -13,8 +13,8 @@ OVERVIEW
 
 Pandora is a free multiplatform distributed (p2p) information system.
 Pandora includes functions of social network, instant messanger, audio and
-video chatting system, commercial system, distributed development system
-and vote system.
+video chatting system, commercial system, distributed development system,
+file exchange system and vote system.
 Read more in the guide at /doc/guide.ru.odt (Russian version yet only)
 
 
