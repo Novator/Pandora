@@ -1,5 +1,9 @@
 #!/bin/sh
 
+## These hot commands of Git are using for maintenance of Pandora project at GitHub
+## Uncomment necessary line, comment out unnecessary, and run the script.
+## 2012(c) Michael Galyuk, Pandora, freeware
+
 ## Start new repository
 #git init
 #git add README.TXT
