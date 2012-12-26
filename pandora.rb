@@ -939,6 +939,28 @@ module PandoraGUI
       end
       hbox.add(rbvbox)
 =end
+      rbvbox = Gtk::VBox.new
+
+      support_btn = Gtk::CheckButton.new(_('support'), true)
+      support_btn.signal_connect('toggled') do |widget, event|
+        p "support"
+      end
+      rbvbox.pack_start(support_btn, false, false, 0)
+
+      trust_btn = Gtk::CheckButton.new(_('trust'), true)
+      trust_btn.signal_connect('toggled') do |widget, event|
+        p "trust"
+      end
+      rbvbox.pack_start(trust_btn, false, false, 0)
+
+      public_btn = Gtk::CheckButton.new(_('public'), true)
+      public_btn.signal_connect('toggled') do |widget, event|
+        p "public"
+      end
+      rbvbox.pack_start(public_btn, false, false, 0)
+
+      hbox.pack_start(rbvbox, false, false, 1.0)
+      #hbox.add(rbvbox)
 
       hbox.show_all
       bw,bh = hbox.size_request
@@ -1585,12 +1607,13 @@ module PandoraGUI
     $notebook.page = $notebook.n_pages-1
 
     menu = Gtk::Menu.new
-    menu.append(create_menu_item(["Create", Gtk::Stock::NEW, _("Insert"), "Insert"]))
+    menu.append(create_menu_item(["Create", Gtk::Stock::NEW, _("Create"), "Insert"]))
     menu.append(create_menu_item(["Edit", Gtk::Stock::EDIT, _("Edit"), "Return"]))
     menu.append(create_menu_item(["Delete", Gtk::Stock::DELETE, _("Delete"), "Delete"]))
     menu.append(create_menu_item(["Copy", Gtk::Stock::COPY, _("Copy"), "<control>Insert"]))
     menu.append(create_menu_item(["-", nil, nil]))
     menu.append(create_menu_item(["Talk", Gtk::Stock::MEDIA_PLAY, _("Talk"), "<control>T"]))
+    menu.append(create_menu_item(["Express", Gtk::Stock::JUMP_TO, _("Express"), "BackSpace"]))
     menu.append(create_menu_item(["-", nil, nil]))
     menu.append(create_menu_item(["Clone", Gtk::Stock::CONVERT, _("Recreate the table")]))
     menu.show_all

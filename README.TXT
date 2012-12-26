@@ -1,5 +1,5 @@
 #############################################
- The Pandora. Distributed Social Network
+ The Pandora. P2P Social Network
 #############################################
 
 Contents
