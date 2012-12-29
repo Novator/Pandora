@@ -2917,11 +2917,11 @@ module PandoraGUI
     ["Occupation", nil, _("Activities")],
     ["Language", nil, _("Languages")],
     ["Word", Gtk::Stock::SPELL_CHECK, _("Words")],
-    ["Synonym", nil, _("Synonyms")],
     ["Thing", nil, _("Things")],
     ["Article", nil, _("Articles")],
     ["Blob", Gtk::Stock::HARDDISK, _("Files")], #Gtk::Stock::FILE
     ["-", nil, "-"],
+    ["Relation", nil, _("Relations")],
     ["Opinion", nil, _("Opinions")],
     [nil, nil, _("_Bussiness")],
     ["Product", nil, _("Products")],

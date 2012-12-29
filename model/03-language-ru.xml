@@ -17,7 +17,6 @@
       <origin_place name.ru="Место создания" />
       <origin_date name.ru="Дата создания" />
       <creator name.ru="Основатель" />
-      <person_list name.ru="Состав сообщества" />
     </Community>
 
     <Country name.ru="Страна|Страны">
@@ -91,12 +90,19 @@
       <size name.ru="Размер" />
     </Blob>
 
-    <Comment name.ru="Комментарий|Комментарии">
+    <Relation name.ru="Связь|Связи">
+      <first name.ru="Первый объект" />
+      <second name.ru="Второй объект" />
+      <type name.ru="Тип" />
+    </Relation>
+
+    <Opinion name.ru="Мнение|Мнения">
       <object name.ru="Объект" />
       <creator name.ru="Создатель" />
       <date name.ru="Дата создания" />
-      <text name.ru="Текст" />
-    </Comment>
+      <score name.ru="Оценка" />
+      <comment name.ru="Комментарий" />
+    </Opinion>
 
   </World>
   <Business name.ru="Дело">

@@ -17,7 +17,6 @@
       <origin_place pos="|+1" />
       <origin_date pos="+1" />
       <creator pos="+1" />
-      <person_list view="PersonList" pos="|+1" />
     </Community>
 
   </World>

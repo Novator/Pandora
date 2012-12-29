@@ -20,7 +20,7 @@
       <origin_place name="Origin place" type="String" size="37" />
       <origin_date name="Origin date" type="Date" />
       <creator name="Creator" type="String" size="40" />
-      <person_list name="Person list" type="Blob" size="128" />
+      <RELATIONS name="Состав" kind="Person" default="3" />
     </Community>
 
     <Country parent="Community" name="Country|Countries">
@@ -83,11 +83,6 @@
       <description name="Description" />
     </Word>
 
-    <Synonym name="Synonym">
-      <base name="Base subject" size="50" />
-      <synonym name="Synonym subject" size="50" />
-    </Synonym>
-
     <Article name="Article">
       <name name="Name" />
       <text name="Text" />
@@ -101,11 +96,17 @@
       <links name="Links" />
     </Blob>
 
+    <Relation name="Relation">
+      <first name="First object" size="50" />
+      <second name="Second object" size="50" />
+      <type name="Type" type="Byte" />
+    </Relation>
+
     <Opinion name="Opinion">
       <object name="Object" />
       <creator name="Creator" />
-      <origin_date name="Origin date" type="Date" />
-      <score name="Score" />
+      <date name="Date" type="Date" />
+      <score name="Score" type="Integer" />
       <comment name="Comment" />
     </Opinion>
 
