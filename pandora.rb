@@ -850,7 +850,7 @@ module PandoraGUI
       }
       window.signal_connect("destroy") { @response=2 }
 
-      window.signal_connect('key-press-event') do |widget, event|
+      window.signal_connect('key_press_event') do |widget, event|
         enter_works_like_tab = false
         if (event.hardware_keycode==36) and (enter_works_like_tab)  # Enter works like Tab
           event.hardware_keycode=23
@@ -1509,6 +1509,7 @@ module PandoraGUI
   #end
 
   class TabLabelBox < Gtk::HBox
+    attr_accessor :label
 
     def initialize(image, title, bodywin, *args)
       super(*args)
@@ -1516,7 +1517,7 @@ module PandoraGUI
 
       label_box.pack_start(image, false, false, 0) if image != nil
 
-      label = Gtk::Label.new(title)
+      @label = Gtk::Label.new(title)
       label_box.pack_start(label, false, false, 0)
 
       btn = Gtk::Button.new
@@ -1613,7 +1614,7 @@ module PandoraGUI
     menu.append(create_menu_item(["Copy", Gtk::Stock::COPY, _("Copy"), "<control>Insert"]))
     menu.append(create_menu_item(["-", nil, nil]))
     menu.append(create_menu_item(["Talk", Gtk::Stock::MEDIA_PLAY, _("Talk"), "<control>T"]))
-    menu.append(create_menu_item(["Express", Gtk::Stock::JUMP_TO, _("Express"), "BackSpace"]))
+    menu.append(create_menu_item(["Express", Gtk::Stock::JUMP_TO, _("Express"), "<control>BackSpace"]))
     menu.append(create_menu_item(["-", nil, nil]))
     menu.append(create_menu_item(["Clone", Gtk::Stock::CONVERT, _("Recreate the table")]))
     menu.show_all
@@ -1887,76 +1888,158 @@ module PandoraGUI
     index
   end
 
-  $proc_buf_count = 10
-  $proc_mes_count = 2
+  # Connection data indexes
+  # RU: Индексы данных соединения
+  CDI_HostName    = 0
+  CDI_HostIP      = 1
+  CDI_Port        = 2
+  CDI_Proto       = 3
+  CDI_ConnMode    = 4
+  CDI_ConnState   = 5
+  CDI_ReadThread  = 6
+  CDI_SendThread  = 7
+  CDI_Socket      = 8
+  CDI_ReadState   = 9
+  CDI_SendState   = 10
+  CDI_ReadMes     = 11
+  CDI_ReadMedia   = 12
+  CDI_ReadReq     = 13
+  CDI_SendMes     = 14
+  CDI_SendMedia   = 15
+  CDI_SendReq     = 16
 
-  def self.start_exchange_cicle(socket, node, hunter=true)
-    read_thread = Thread.current
-
-    conn_ind = index_of_connection_for_column(node, 0)
-
-    if hunter
-      log_mes = 'HUN: '
-    else
-      log_mes = 'LIS: '
+  def self.index_of_connection_for_node(node)
+    index = nil
+    host, port, proto = decode_node(node)
+    $connections.each_with_index do |e, i|
+      if (e.is_a? Array) and ((e[CDI_HostIP] == host) or (e[CDI_HostName] == host)) and (e[CDI_Port] == port) \
+      and (e[CDI_Proto] == proto)
+        index = i
+        break
+      end
     end
+    index
+  end
 
+  # Connection mode
+  # RU: Режим соединения
+  CM_Hunter       = 1
+  CM_Persistent   = 2
+
+  # Connected state
+  # RU: Состояние соединения
+  CS_Connecting   = 1
+  CS_Connected    = 2
+  CS_Disconnected = 0
+
+  # Number of messages per cicle
+  # RU: Число сообщений за цикл
+  $mes_block_count = 2
+  # Number of media blocks per cicle
+  # RU: Число медиа блоков за цикл
+  $media_block_count = 10
+  # Number of requests per cicle
+  # RU: Число запросов за цикл
+  $req_block_count = 1
+
+  # Start two exchange cicle of socket: read and send
+  # RU: Запускает два цикла обмена сокета: чтение и отправка
+  def self.start_exchange_cicle(node)
+    #read_thread = Thread.current
+    socket = nil
+    conn_ind = index_of_connection_for_node(node)
     if conn_ind
-      read_notice = 0
-      read_buffers = []
-      read_queries = []
-      send_notice = 0
-      send_buffers = []
-      send_queries = []
+      conn_mode    =  $connections[conn_ind][CDI_ConnMode]
+      conn_state   =  $connections[conn_ind][CDI_ConnState]
+      read_thread  =  $connections[conn_ind][CDI_ReadThread]
+      socket       =  $connections[conn_ind][CDI_Socket]
+      read_state   =  $connections[conn_ind][CDI_ReadState]
+      send_state   =  $connections[conn_ind][CDI_SendState]
+      read_mes     =  $connections[conn_ind][CDI_ReadMes]
+      read_media   =  $connections[conn_ind][CDI_ReadMedia]
+      read_req     =  $connections[conn_ind][CDI_ReadReq]
+      send_mes     =  $connections[conn_ind][CDI_SendMes]
+      send_media   =  $connections[conn_ind][CDI_SendMedia]
+      send_req     =  $connections[conn_ind][CDI_SendReq]
 
-      #$connections[conn_ind] += [socket, read_notice, read_buffers, read_queries, send_notice, send_buffers, send_queries]
+      p "!read_mes: "+read_mes.inspect
+      p "!send_mes: "+send_mes.inspect
+
+      hunter = (conn_mode & CM_Hunter)>0
+      if hunter
+        log_mes = 'HUN: '
+      else
+        log_mes = 'LIS: '
+      end
 
       scmd = EC_More
       sbuf = ''
 
-      send_thread = Thread.new do
-        $connections[conn_ind][3] = Thread.current
-        if hunter
-          sindex = 0
-          scmd = EC_Init
-          sbuf='pandora 0.1'
-          scode = ECC_Init0_Hello
+      # Send cicle
+      # RU: Цикл отправки
+      if ($connections[conn_ind][CDI_SendThread] == nil)
+        send_thread = Thread.new do
+          send_thread = Thread.current
+          $connections[conn_ind][CDI_SendThread] = send_thread
+          if hunter
+            sindex = 0
+            scmd = EC_Init
+            sbuf='pandora 0.1'
+            scode = ECC_Init0_Hello
 
-          # tos_sip    cs3   0x60  0x18
-          # tos_video  af41  0x88  0x22
-          # tos_xxx    cs5   0xA0  0x28
-          # tos_audio  ef    0xB8  0x2E
+            # tos_sip    cs3   0x60  0x18
+            # tos_video  af41  0x88  0x22
+            # tos_xxx    cs5   0xA0  0x28
+            # tos_audio  ef    0xB8  0x2E
 
-          #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
-          sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
-          #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
+            p "hunter hello!"
+            #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
+            sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+            #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
+          end
+          p "cicles"
+          p "!!!!"+$connections[conn_ind].inspect
+          while (conn_state>0)
+            #p "read_mes"
+            # обработка принятых сообщений, их удаление
+            processedmes = 0
+            while (read_mes.size>0) and (processedmes<$mes_block_count) and (conn_state>0)
+              processedmes += 1
+              p "read_mes.delete_at: " +read_mes.delete_at(0).inspect
+              #sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+            end
+            # разгрузка принятых буферов в gstreamer
+            processedbuf = 0
+            while (read_media.size>0) and (processedbuf<$media_block_count) and (conn_state>0)
+              processedbuf += 1
+              p read_media.delete_at(0)
+            end
+            # обработка принятых запросов, их удаление
+            processedmes = 0
+            while (read_req.size>0) and (processedmes<$req_block_count) and (conn_state>0)
+              processedmes += 1
+              p read_req.delete_at(0)
+            end
+
+            # отправка принятых сообщений, пометка как отправленных
+            processedmes = 0
+            while (send_mes.size>0) and (processedmes<$mes_block_count) and (conn_state>0)
+              processedmes += 1
+              p "send_mes.delete_at: " +send_mes.delete_at(0).inspect
+              #sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+            end
+
+            # отправка сформированных буферов
+
+            # формирование запросов на отправку и их отправка
+
+          end
         end
-        while (conn_state>0)
-          # обработка принятых сообщений, их удаление
-          processedmes = 0
-          while (read_buffers.size>0) and (processedmes<$proc_mes_count) and (conn_state>0)
-            processedmes += 1
-            sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
-          end
-          # разгрузка принятых буферов в gstreamer
-          processedbuf = 0
-          while (read_buffers.size>0) and (processedbuf<$proc_buf_count) and (conn_state>0)
-            processedbuf += 1
-            sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
-          end
-          # обработка принятых запросов, их удаление
-          processedmes = 0
-          while (read_buffers.size>0) and (processedmes<$proc_mes_count) and (conn_state>0)
-            processedmes += 1
-            sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
-          end
-          # отправка сформированных буферов
-
-          # формирование запросов на отправку и их отправка
-
-        end
+        $connections[conn_ind][CDI_SendThread] = send_thread
       end
 
+      # Read cicle
+      # RU: Цикл приёма
       sleep 1
       p $connections
 
@@ -2062,12 +2145,9 @@ module PandoraGUI
           sleep 0.5
         end
       end
-
     else
-      puts _('Cannot add socket to connection list')+' ['+socket.to_s+']'
+      puts _('Node is not found in connection list')+' ['+node.to_s+']'
     end
-
-    socket
   end
 
 
@@ -2191,17 +2271,60 @@ module PandoraGUI
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
   def self.listen_socket(open=true)
-    host = $host
-    port = $port
-    server = TCPServer.open(host, port)
+    server = TCPServer.open($host, $port)
     addr = server.addr
-    log_message(LM_Info, 'Слушаю порт "'+host+':'+port+'" ('+addr.join(':')+')')
+    log_message(LM_Info, 'Слушаю порт :'+addr.join(':')+')')
     $listen_btn.label = _('Online')
     Thread.new do
       loop do
         # Создать поток при подключении клиента
         Thread.start(server.accept) do |socket|
           log_message(LM_Info, "Подключился клиент: "+socket.to_s)
+
+          #local_address
+          p "remote_address: "+socket.peeraddr.inspect
+          p socket.peeraddr.to_s
+          host_ip = socket.peeraddr[2]
+          host_name = socket.peeraddr[3]
+          port = socket.peeraddr[1]
+          port = "5577"
+          proto = "tcp"
+          node = encode_node(host_ip, port, proto)
+          p "подключенный node: "+node.inspect
+
+          p "----"
+          p socket.methods
+          p "----"
+
+          conn_ind = index_of_connection_for_node(node)
+          if conn_ind
+            log_message(LM_Info, "Замкнутая петля: "+socket.to_s)
+            conn_state = $connections[conn_ind][CDI_ConnState]
+            while conn_ind and (conn_state==CS_Connecting) and not socket.closed?
+              conn_ind = index_of_connection_for_node(node)
+              conn_state = $connections[conn_ind][CDI_ConnState] if conn_ind
+            end
+          else
+            conn_state = CS_Connected
+            conn_mode = 0
+            p "serv: conn_mode: "+ conn_mode.inspect
+            # CDI_HostName, CDI_HostIP, CDI_Port, CDI_Proto, CDI_ConnMode, CDI_ConnState
+            $connections << [ host_name, host_ip, port, proto, conn_mode, conn_state ]
+            conn_ind = index_of_connection_for_node(node)
+            if conn_ind
+              # CDI_ReadThread, CDI_SendThread, CDI_Socket, CDI_ReadState, CDI_SendState
+              $connections[conn_ind] += [Thread.current, nil, socket, 0, 0]
+              # CDI_ReadMes, CDI_ReadMedia, CDI_ReadReq, CDI_SendMes, CDI_SendMedia, CDI_SendReq]
+              $connections[conn_ind] += Array.new(6, NullQueue)
+              p "server: ind!"+ conn_ind.to_s
+              p "server: conn!"+ $connections[conn_ind].inspect
+              start_exchange_cicle(node)
+            else
+              p "Не удалось добавить подключенного в список!!!"
+            end
+          end
+
+=begin
           # Вызвать пассивный цикл с обработкой данных
           do_exchange_cicle(false, socket) do |rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd|
             case rcmd  # СЕРВЕР!!! (пассив)
@@ -2289,6 +2412,8 @@ module PandoraGUI
             end
             [rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd]
           end
+=end
+
           socket.close
           log_message(LM_Info, "Отключился клиент: "+socket.to_s)
         end
@@ -2298,40 +2423,75 @@ module PandoraGUI
     server
   end
 
-  # RU: Открывает клиентский сокет и начинает обмен
-  def self.start_client_socket(node, persistent=false)
-    conn_ind = index_of_connection_for_column(node, 0)
+  NullQueue = [0, 0, []]
+
+  # Create or find connection with necessary node
+  # RU: Создает или находит соединение с нужным узлом
+  def self.start_or_find_connection(node, persistent=false, wait_connection=false)
+    conn_ind = index_of_connection_for_node(node)
     if not conn_ind
-      conn_state = 1
-      $connections << [ node, conn_state ]
-      conn_ind = index_of_connection_for_column(node, 0)
+      conn_state = CS_Connecting
+      conn_mode = CM_Hunter
+      conn_mode = conn_mode | CM_Persistent if persistent
+      p "conn_mode"
+      p conn_mode
+      host, port, proto = decode_node(node)
+      # CDI_HostName, CDI_HostIP, CDI_Port, CDI_Proto, CDI_ConnMode, CDI_ConnState
+      $connections << [ host, host, port, proto, conn_mode, conn_state ]
+      conn_ind = index_of_connection_for_node(node)
       if conn_ind
         read_thread = Thread.new do
-          #$connections[conn_ind] += [read_thread, nil, socket, read_notice, read_buffers, read_queries, send_notice, send_buffers, send_queries]
+          $connections[conn_ind] += [Thread.current]   # CDI_ReadThread
           host, port, proto = decode_node(node)
           begin
             socket = TCPSocket.open(host, port)
+            conn_state = CS_Connected
+            $connections[conn_ind][CDI_HostIP] = socket.addr[2]
           rescue #IO::WaitReadable, Errno::EINTR
             socket = nil
+            conn_state = CS_Disconnected
+            p "Conn Err"
             log_message(LM_Warning, "Ошибка подключения к: "+host+':'+port)
           end
+          $connections[conn_ind][CDI_ConnState] = conn_state
+          p "after conn"
           if socket != nil
+            # CDI_SendThread, CDI_Socket, CDI_ReadState, CDI_SendState
+            $connections[conn_ind] += [nil, socket, 0, 0]
+            # CDI_ReadMes, CDI_ReadMedia, CDI_ReadReq, CDI_SendMes, CDI_SendMedia, CDI_SendReq]
+            $connections[conn_ind] += Array.new(6, NullQueue)
+            p "socket!"
+            p $connections[conn_ind]
             # Вызвать активный цикл собработкой данных
             log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
-            socket = start_exchange_cicle(socket, true)
+            socket = start_exchange_cicle(node)
             socket.close
             log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
           end
+        end
+        $connections[conn_ind][CDI_ReadThread] = read_thread
+        while wait_connection and (conn_state==CS_Connecting)
+        end
+        p "aaaaaa"
+        if conn_state == CS_Disconnected
+          p conn_ind
+          $connections.delete_at(conn_ind) if conn_ind
+          conn_ind = nil
+          p "dellllll"
         end
       end
     end
     conn_ind
   end
 
+  # Form node marker
+  # RU: Сформировать маркер узла
   def self.encode_node(host, port, proto)
     node = host+':'+port+proto
   end
 
+  # Unpack node marker
+  # RU: Распаковать маркер узла
   def self.decode_node(node)
     i = node.index(':')
     if i
@@ -2355,6 +2515,8 @@ module PandoraGUI
 
   $hunter_thread = nil
 
+  # Start hunt
+  # RU: Начать охоту
   def self.hunt_nodes
     if $hunter_thread == nil
       subject = PandoraModel.const_get('Node')
@@ -2363,7 +2525,7 @@ module PandoraGUI
         host = '127.0.0.1'
         port = 5577
         proto = 'tcp'
-        thread = start_client_socket(host, port, proto)
+        thread = start_or_find_connection([host, port, proto])
         p thread
         $hunt_list[thread] = [host, port] if thread != nil
       end
@@ -2376,8 +2538,11 @@ module PandoraGUI
   $thread = nil
   $play_video = false
 
+  # Play media stream
+  # RU: Запустить медиа поток
   def self.play_pipeline
     if ($thread != nil) and $play_video
+      $thread.run
       pipeline1 = $thread[:pipeline1]
       pipeline2 = $thread[:pipeline2]
       p $thread.inspect
@@ -2386,6 +2551,8 @@ module PandoraGUI
     end
   end
 
+  # Stop media stream
+  # RU: Остановить медиа поток
   def self.stop_pipeline
     if $thread != nil
       pipeline1 = $thread[:pipeline1]
@@ -2397,13 +2564,51 @@ module PandoraGUI
     end
   end
 
+  # Maximal size of queue
+  # RU: Максимальный размер очереди
+  MaxQueue = 128
+
+  # Add block to queue for send
+  # Добавление блока в очередь на отправку
+  def self.add_block_to_queue(block, queue)
+    p "add_block_to_queue: "+queue.inspect
+    if queue[1]<MaxQueue
+      queue[1] += 1
+    else
+      queue[1] = 0
+    end
+    queue[2][queue[1]] = block
+    p "--end add_block_to_queue"
+    p queue[2]
+  end
+
+  # Connection state flags
+  # RU: Флаги состояния соединения
+  CSF_Message    = 1
+  CSF_Media      = 2
+  CSF_Quit       = 4
+
+  # Send message to node
+  # RU: Отправляет сообщение на узел
   def self.send_mes_to_node(mes, node)
     sended = false
-    if conn_ind=start_client_socket(node)
-      p 'send_mes_to_node [' +mes+']'
-      #mes_queue = $connections[conn_ind][7]
-      #add_mes_to_queue(mes, mes_queue)
+    p 'begin send_mes_to_node [' +mes+']'
+    if conn_ind=start_or_find_connection(node, true, true)
+      p "!!!connected: "+conn_ind.inspect
+      # add mess to mes queue
+      p "!!!mes_queue: "+ CDI_SendMes.inspect
+      p "!!!$connections[conn_ind]: "+ $connections[conn_ind].inspect
+      mes_queue = $connections[conn_ind][CDI_SendMes]
+      p "!!!mes_queue: "+mes_queue.inspect
+      add_block_to_queue(mes, mes_queue)
+      # update send state
+      send_state = $connections[conn_ind][CDI_SendState]
+      send_state = send_state | CSF_Message
+    else
+      p "not connected"
     end
+    p conn_ind
+    p 'end send_mes_to_node [' +mes+']'
     sended
   end
 
@@ -2438,8 +2643,10 @@ module PandoraGUI
     area.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
 
     view = Gtk::TextView.new
-    view.wrap_mode = Gtk::TextTag::WRAP_WORD
     view.set_size_request(200, 270)
+    view.wrap_mode = Gtk::TextTag::WRAP_WORD
+    #view.cursor_visible = false
+    #view.editable = false
 
     edit_box = Gtk::TextView.new
     edit_box.wrap_mode = Gtk::TextTag::WRAP_WORD
@@ -2450,33 +2657,47 @@ module PandoraGUI
     view.buffer.create_tag("red_bold", "foreground" => "red", 'weight' => Pango::FontDescription::WEIGHT_BOLD)
     view.buffer.create_tag("blue_bold", "foreground" => "blue",  'weight' => Pango::FontDescription::WEIGHT_BOLD)
 
-    edit_box.signal_connect('key-press-event') do |widget, event|
-      if ((event.hardware_keycode==36) or  #Enter pressed
-        ([Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)))
+    edit_box.grab_focus
+
+    # because of bug - doesnt work Enter at 'key-press-event'
+    edit_box.signal_connect('key-release-event') do |widget, event|
+      if (event.hardware_keycode==36) or \
+        [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
       then
-        #send_btn.activate
-        t = Time.now
-        mes = edit_box.buffer.text
-        view.buffer.insert(view.buffer.end_iter, "\n") if view.buffer.text != ''
-        view.buffer.insert(view.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "red")
-        view.buffer.insert(view.buffer.end_iter, 'You:', "red_bold")
-        view.buffer.insert(view.buffer.end_iter, ' '+mes)
+        widget.signal_emit('key-press-event', event)
+        false
+      end
+    end
 
-
-        view.buffer.insert(view.buffer.end_iter, "\n") if view.buffer.text != ''
-        view.buffer.insert(view.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "blue")
-        view.buffer.insert(view.buffer.end_iter, 'Dude:', "blue_bold")
-        view.buffer.insert(view.buffer.end_iter, ' '+mes)
-
-        if send_mes_to_node(mes, node)
+    edit_box.signal_connect('key-press-event') do |widget, event|
+      if (event.hardware_keycode==36) or \
+        [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
+      then
+        if edit_box.buffer.text != ''
+          mes = edit_box.buffer.text
           edit_box.buffer.text = ''
+          t = Time.now
+          view.buffer.insert(view.buffer.end_iter, "\n") if view.buffer.text != ''
+          view.buffer.insert(view.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "red")
+          view.buffer.insert(view.buffer.end_iter, 'You:', "red_bold")
+          view.buffer.insert(view.buffer.end_iter, ' '+mes)
+
+          view.buffer.insert(view.buffer.end_iter, "\n") if view.buffer.text != ''
+          view.buffer.insert(view.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "blue")
+          view.buffer.insert(view.buffer.end_iter, 'Dude:', "blue_bold")
+          view.buffer.insert(view.buffer.end_iter, ' '+mes)
+
+          if send_mes_to_node(mes, node)
+            edit_box.buffer.text = ''
+          end
         end
         true
       elsif (event.hardware_keycode==9) or #Esc pressed
         (Gdk::Keyval::GDK_Escape==event.keyval)
       then
-        p "escape!"
-        #clear_btn.activate
+        edit_box.buffer.text = ''
+        false
+      else
         false
       end
     end
@@ -2489,7 +2710,7 @@ module PandoraGUI
 
     snd_button = Gtk::CheckButton.new(_('Sound'), true)
     snd_button.signal_connect('toggled') do |widget, event|
-      #widget.active
+      p 'Sound: '+widget.active?.to_s
     end
     bbox.pack_start(snd_button, false, false, 0)
 
@@ -2497,19 +2718,13 @@ module PandoraGUI
     vid_button.signal_connect('toggled') do |widget, event|
       $play_video = widget.active?
       if $play_video
+        $thread.run if $thread
         play_pipeline
       else
         stop_pipeline
       end
     end
     bbox.pack_start(vid_button, false, false, 0)
-
-=begin
-    cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
-    cancelbutton.width_request = 110
-    cancelbutton.signal_connect('clicked') { @response=2 }
-    bbox.pack_start(cancelbutton, false, false, 0)
-=end
 
     hbox.pack_start(bbox, false, false, 1.0)
 
@@ -2524,11 +2739,13 @@ module PandoraGUI
     hpaned.pack2(vpaned2, true, true)
 
     $thread = nil
-
     $thread = Thread.new do
-      Thread.stop
       pipeline1 = Gst::Pipeline.new
       pipeline2 = Gst::Pipeline.new
+      Thread.current[:pipeline1] = pipeline1
+      Thread.current[:pipeline2] = pipeline2
+
+      Thread.stop
 
       webcam = Gst::ElementFactory.make('v4l2src')
       webcam.decimate=3
@@ -2605,14 +2822,10 @@ module PandoraGUI
         pipeline1.stop
       end
 
-      Thread.current[:pipeline1] = pipeline1
-      Thread.current[:pipeline2] = pipeline2
-
       while Thread.current.alive? do
         #Gtk.main_iteration
       end
     end
-
 
     label_box = TabLabelBox.new(image, title, sw, false, 0) do
       stop_pipeline
@@ -2627,8 +2840,7 @@ module PandoraGUI
     page = $notebook.append_page(sw, label_box)
     sw.show_all
     $notebook.page = $notebook.n_pages-1
-
-    $thread.run if $thread
+    edit_box.grab_focus
   end
 
   # Menu event handler
@@ -2668,7 +2880,7 @@ module PandoraGUI
           subject = treeview.subject
           subject.update(nil, nil, nil)
           node = define_node_by_current_record(treeview)
-          start_client_socket(node)
+          start_or_find_connection(node)
         end
       when 'Hunt'
         hunt_nodes
@@ -2863,7 +3075,10 @@ module PandoraGUI
 
     $view = Gtk::TextView.new
     $view.can_focus = false
+    $view.has_focus = false
+    $view.receives_default = true
     $view.border_width = 0
+
     statusbar = Gtk::Statusbar.new
     statusbar.push(0, _('Base directory: ')+$pandora_base_dir)
     btn = Gtk::Button.new(_('Not logged'))
@@ -2906,6 +3121,7 @@ module PandoraGUI
       stop_pipeline
       Gtk.main_quit
     end
+
     $window.signal_connect('key-press-event') do |widget, event|
       if ((event.hardware_keycode==24) and event.state.control_mask?) or #Ctrl+Q
         ((event.hardware_keycode==53) and event.state.mod1_mask?) or #Alt+X
