@@ -1896,8 +1896,8 @@ module PandoraGUI
   CDI_Proto       = 3
   CDI_ConnMode    = 4
   CDI_ConnState   = 5
-  CDI_ReadThread  = 6
-  CDI_SendThread  = 7
+  CDI_SendThread  = 6
+  CDI_ReadThread  = 7
   CDI_Socket      = 8
   CDI_ReadState   = 9
   CDI_SendState   = 10
@@ -1945,13 +1945,12 @@ module PandoraGUI
   # Start two exchange cicle of socket: read and send
   # RU: Запускает два цикла обмена сокета: чтение и отправка
   def self.start_exchange_cicle(node)
-    #read_thread = Thread.current
     socket = nil
     conn_ind = index_of_connection_for_node(node)
     if conn_ind
       conn_mode    =  $connections[conn_ind][CDI_ConnMode]
       conn_state   =  $connections[conn_ind][CDI_ConnState]
-      read_thread  =  $connections[conn_ind][CDI_ReadThread]
+      send_thread  =  $connections[conn_ind][CDI_SendThread]
       socket       =  $connections[conn_ind][CDI_Socket]
       read_state   =  $connections[conn_ind][CDI_ReadState]
       send_state   =  $connections[conn_ind][CDI_SendState]
@@ -1962,8 +1961,8 @@ module PandoraGUI
       send_media   =  $connections[conn_ind][CDI_SendMedia]
       send_req     =  $connections[conn_ind][CDI_SendReq]
 
-      p "!read_mes: "+read_mes.inspect
-      p "!send_mes: "+send_mes.inspect
+      p "exch: !read_mes: "+read_mes.inspect
+      p "exch: !send_mes: "+send_mes.inspect
 
       hunter = (conn_mode & CM_Hunter)>0
       if hunter
@@ -1975,182 +1974,185 @@ module PandoraGUI
       scmd = EC_More
       sbuf = ''
 
-      # Send cicle
-      # RU: Цикл отправки
-      if ($connections[conn_ind][CDI_SendThread] == nil)
-        send_thread = Thread.new do
-          send_thread = Thread.current
-          $connections[conn_ind][CDI_SendThread] = send_thread
-          if hunter
-            sindex = 0
-            scmd = EC_Init
-            sbuf='pandora 0.1'
-            scode = ECC_Init0_Hello
-
-            # tos_sip    cs3   0x60  0x18
-            # tos_video  af41  0x88  0x22
-            # tos_xxx    cs5   0xA0  0x28
-            # tos_audio  ef    0xB8  0x2E
-
-            p "hunter hello!"
-            #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
-            sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
-            #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
-          end
-          p "cicles"
-          p "!!!!"+$connections[conn_ind].inspect
-          while (conn_state>0)
-            #p "read_mes"
-            # обработка принятых сообщений, их удаление
-            processedmes = 0
-            while (read_mes.size>0) and (processedmes<$mes_block_count) and (conn_state>0)
-              processedmes += 1
-              p "read_mes.delete_at: " +read_mes.delete_at(0).inspect
-              #sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
-            end
-            # разгрузка принятых буферов в gstreamer
-            processedbuf = 0
-            while (read_media.size>0) and (processedbuf<$media_block_count) and (conn_state>0)
-              processedbuf += 1
-              p read_media.delete_at(0)
-            end
-            # обработка принятых запросов, их удаление
-            processedmes = 0
-            while (read_req.size>0) and (processedmes<$req_block_count) and (conn_state>0)
-              processedmes += 1
-              p read_req.delete_at(0)
-            end
-
-            # отправка принятых сообщений, пометка как отправленных
-            processedmes = 0
-            while (send_mes.size>0) and (processedmes<$mes_block_count) and (conn_state>0)
-              processedmes += 1
-              p "send_mes.delete_at: " +send_mes.delete_at(0).inspect
-              #sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
-            end
-
-            # отправка сформированных буферов
-
-            # формирование запросов на отправку и их отправка
-
-          end
-        end
-        $connections[conn_ind][CDI_SendThread] = send_thread
-      end
-
       # Read cicle
       # RU: Цикл приёма
-      sleep 1
-      p $connections
+      if ($connections[conn_ind][CDI_ReadThread] == nil)
+        read_thread = Thread.new do
+          read_thread = Thread.current
+          $connections[conn_ind][CDI_ReadThread] = read_thread
 
-      rcmd = EC_More
-      rindex = 0
-      rbuf = ''
-      rdata = ''
-      readmode = RM_Comm
-      nextreadmode = RM_Comm
-      waitlen = CommSize
-      last_scmd = scmd
-      # Цикл обработки команд и блоков данных
-      while (conn_state>0) and (recived = socket.recv(MaxPackSize))
-        rbuf += recived
-        processedlen = 0
-        while (conn_state>0) and (rbuf.size>=waitlen)
-          p log_mes+'begin=['+rbuf+']  L='+rbuf.size.to_s+'  WL='+waitlen.to_s
-          processedlen = waitlen
-          nextreadmode = readmode
-          # Определимся с данными по режиму чтения
-          case readmode
-            when RM_Comm
-              comm = rbuf[0, processedlen]
-              rindex, rcmd, rcode, rsegsign, errcode = unpack_comm(comm)
-              if errcode == 0
-                p log_mes+' RM_Comm: '+[rindex, rcmd, rcode, rsegsign].inspect
-                if rsegsign == LONG_SEG_SIGN
-                  nextreadmode = RM_CommExt
-                  waitlen = CommExtSize
-                elsif rsegsign > 0
-                  nextreadmode = RM_SegmentS
-                  waitlen = rsegsign+4  #+CRC32
-                  rdatasize, rsegsize = rsegsign
-                end
-              elsif errcode == 1
-                log_message(LM_Error, 'Ошибочный CRC полученой команды')
-                scmd=EC_Bye; scode=ECC_Bye_BadCommCRC
-              elsif errcode == 2
-                log_message(LM_Error, 'Ошибочная длина полученой команды')
-                scmd=EC_Bye; scode=ECC_Bye_BadCommLen
-              else
-                log_message(LM_Error, 'Ошибка в полученой команде')
-                scmd=EC_Bye; scode=ECC_Bye_Unknown
+          rcmd = EC_More
+          rindex = 0
+          rbuf = ''
+          rdata = ''
+          readmode = RM_Comm
+          nextreadmode = RM_Comm
+          waitlen = CommSize
+          last_scmd = scmd
+          # Цикл обработки команд и блоков данных
+          while (conn_state>0) and (recived = socket.recv(MaxPackSize)) and not socket.closed?
+            rbuf += recived
+            processedlen = 0
+            while (conn_state>0) and (rbuf.size>=waitlen)
+              p log_mes+'begin=['+rbuf+']  L='+rbuf.size.to_s+'  WL='+waitlen.to_s
+              processedlen = waitlen
+              nextreadmode = readmode
+              # Определимся с данными по режиму чтения
+              case readmode
+                when RM_Comm
+                  comm = rbuf[0, processedlen]
+                  rindex, rcmd, rcode, rsegsign, errcode = unpack_comm(comm)
+                  if errcode == 0
+                    p log_mes+' RM_Comm: '+[rindex, rcmd, rcode, rsegsign].inspect
+                    if rsegsign == LONG_SEG_SIGN
+                      nextreadmode = RM_CommExt
+                      waitlen = CommExtSize
+                    elsif rsegsign > 0
+                      nextreadmode = RM_SegmentS
+                      waitlen = rsegsign+4  #+CRC32
+                      rdatasize, rsegsize = rsegsign
+                    end
+                  elsif errcode == 1
+                    log_message(LM_Error, 'Ошибочный CRC полученой команды')
+                    scmd=EC_Bye; scode=ECC_Bye_BadCommCRC
+                  elsif errcode == 2
+                    log_message(LM_Error, 'Ошибочная длина полученой команды')
+                    scmd=EC_Bye; scode=ECC_Bye_BadCommLen
+                  else
+                    log_message(LM_Error, 'Ошибка в полученой команде')
+                    scmd=EC_Bye; scode=ECC_Bye_Unknown
+                  end
+                when RM_CommExt
+                  comm = rbuf[0, processedlen]
+                  rdatasize, fullcrc32, rsegsize = unpack_comm_ext(comm)
+                  p log_mes+' RM_CommExt: '+[rdatasize, fullcrc32, rsegsize].inspect
+                  nextreadmode = RM_Segment1
+                  waitlen = rsegsize+4   #+CRC32
+                when RM_SegLenN
+                  comm = rbuf[0, processedlen]
+                  rindex, rsegindex, rsegsize = comm.unpack('CNn')
+                  p log_mes+' RM_SegLenN: '+[rindex, rsegindex, rsegsize].inspect
+                  nextreadmode = RM_SegmentN
+                  waitlen = rsegsize+4   #+CRC32
+                when RM_SegmentS, RM_Segment1, RM_SegmentN
+                  p log_mes+' RM_SegLenX['+readmode.to_s+']  rbuf=['+rbuf+']'
+                  if (readmode==RM_Segment1) or (readmode==RM_SegmentN)
+                    nextreadmode = RM_SegLenN
+                    waitlen = 7    #index + segindex + rseglen (1+4+2)
+                  end
+                  rseg = rbuf[0, processedlen-4]
+                  p log_mes+'rseg=['+rseg+']'
+                  rsegcrc32 = rbuf[processedlen-4, 4].unpack('N')[0]
+                  fsegcrc32 = Zlib.crc32(rseg)
+                  if fsegcrc32 == rsegcrc32
+                    rdata << rseg
+                  else
+                    log_message(LM_Error, 'Ошибка CRC полученного сегмента')
+                    scmd=EC_Bye; scode=ECC_Bye_BadCRC
+                  end
+                  p log_mes+'RM_SegmentX: data['+rdata+']'+rdata.size.to_s+'/'+rdatasize.to_s
+                  if rdata.size == rdatasize
+                    nextreadmode = RM_Comm
+                    waitlen = CommSize
+                  elsif rdata.size > rdatasize
+                    log_message(LM_Error, 'Слишком много полученных данных')
+                    scmd=EC_Bye; scode=ECC_Bye_DataTooLong
+                  end
               end
-            when RM_CommExt
-              comm = rbuf[0, processedlen]
-              rdatasize, fullcrc32, rsegsize = unpack_comm_ext(comm)
-              p log_mes+' RM_CommExt: '+[rdatasize, fullcrc32, rsegsize].inspect
-              nextreadmode = RM_Segment1
-              waitlen = rsegsize+4   #+CRC32
-            when RM_SegLenN
-              comm = rbuf[0, processedlen]
-              rindex, rsegindex, rsegsize = comm.unpack('CNn')
-              p log_mes+' RM_SegLenN: '+[rindex, rsegindex, rsegsize].inspect
-              nextreadmode = RM_SegmentN
-              waitlen = rsegsize+4   #+CRC32
-            when RM_SegmentS, RM_Segment1, RM_SegmentN
-              p log_mes+' RM_SegLenX['+readmode.to_s+']  rbuf=['+rbuf+']'
-              if (readmode==RM_Segment1) or (readmode==RM_SegmentN)
-                nextreadmode = RM_SegLenN
-                waitlen = 7    #index + segindex + rseglen (1+4+2)
+              # Очистим буфер от определившихся данных
+              rbuf.slice!(0, processedlen)
+              p log_mes+'PL='+processedlen.to_s+'  rbuf=('+rbuf+')  scmd='+scmd.to_s
+              scmd = EC_Data if (scmd != EC_Bye) and (scmd != EC_Wait)
+              p log_mes+'nrm='+nextreadmode.to_s
+              # Обработаем поступившие команды и блоки данных
+              if (scmd != EC_Bye) and (scmd != EC_Wait) and (nextreadmode == RM_Comm)
+                # ..вызвав заданный обработчик
+                p log_mes+'Matter?='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
+                rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = matter_process[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd]
+                rdata = ''
+                p log_mes+'Matter!='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
               end
-              rseg = rbuf[0, processedlen-4]
-              p log_mes+'rseg=['+rseg+']'
-              rsegcrc32 = rbuf[processedlen-4, 4].unpack('N')[0]
-              fsegcrc32 = Zlib.crc32(rseg)
-              if fsegcrc32 == rsegcrc32
-                rdata << rseg
-              else
-                log_message(LM_Error, 'Ошибка CRC полученного сегмента')
-                scmd=EC_Bye; scode=ECC_Bye_BadCRC
+              if scmd != EC_Data
+                sbuf='' if scmd == EC_Bye
+                p log_mes+'SEND: '+scmd.to_s+"/"+scode.to_s+"+("+sbuf+')'
+                sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+                last_scmd = scmd
+                sbuf = ''
               end
-              p log_mes+'RM_SegmentX: data['+rdata+']'+rdata.size.to_s+'/'+rdatasize.to_s
-              if rdata.size == rdatasize
-                nextreadmode = RM_Comm
-                waitlen = CommSize
-              elsif rdata.size > rdatasize
-                log_message(LM_Error, 'Слишком много полученных данных')
-                scmd=EC_Bye; scode=ECC_Bye_DataTooLong
-              end
+              readmode = nextreadmode
+              sleep 0.5
+            end
           end
-          # Очистим буфер от определившихся данных
-          rbuf.slice!(0, processedlen)
-          p log_mes+'PL='+processedlen.to_s+'  rbuf=('+rbuf+')  scmd='+scmd.to_s
-          scmd = EC_Data if (scmd != EC_Bye) and (scmd != EC_Wait)
-          p log_mes+'nrm='+nextreadmode.to_s
-          # Обработаем поступившие команды и блоки данных
-          if (scmd != EC_Bye) and (scmd != EC_Wait) and (nextreadmode == RM_Comm)
-            # ..вызвав заданный обработчик
-            p log_mes+'Matter?='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
-            rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = matter_process[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd]
-            rdata = ''
-            p log_mes+'Matter!='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
-          end
-          if scmd != EC_Data
-            sbuf='' if scmd == EC_Bye
-            p log_mes+'SEND: '+scmd.to_s+"/"+scode.to_s+"+("+sbuf+')'
-            sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
-            last_scmd = scmd
-            sbuf = ''
-          end
-          readmode = nextreadmode
-          sleep 0.5
+
         end
+        $connections[conn_ind][CDI_ReadThread] = read_thread
       end
+
+
+      # Send cicle
+      # RU: Цикл отправки
+
+      if hunter
+        sindex = 0
+        scmd = EC_Init
+        sbuf='pandora 0.1'
+        scode = ECC_Init0_Hello
+
+        # tos_sip    cs3   0x60  0x18
+        # tos_video  af41  0x88  0x22
+        # tos_xxx    cs5   0xA0  0x28
+        # tos_audio  ef    0xB8  0x2E
+
+        p "exch: hunter hello!"
+        #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
+        sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+        #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
+      end
+      p "exch: cicles"
+      p "exch: conn_data: "+$connections[conn_ind].inspect
+      while (conn_state>0)
+        #p "read_mes"
+        # обработка принятых сообщений, их удаление
+        processedmes = 0
+        while (read_mes.size>0) and (processedmes<$mes_block_count) and (conn_state>0)
+          processedmes += 1
+          p "exch: read_mes.delete_at: " +read_mes.delete_at(0).inspect
+          #sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+        end
+        # разгрузка принятых буферов в gstreamer
+        processedbuf = 0
+        while (read_media.size>0) and (processedbuf<$media_block_count) and (conn_state>0)
+          processedbuf += 1
+          p read_media.delete_at(0)
+        end
+        # обработка принятых запросов, их удаление
+        processedmes = 0
+        while (read_req.size>0) and (processedmes<$req_block_count) and (conn_state>0)
+          processedmes += 1
+          p read_req.delete_at(0)
+        end
+
+        # отправка принятых сообщений, пометка как отправленных
+        processedmes = 0
+        while (send_mes.size>0) and (processedmes<$mes_block_count) and (conn_state>0)
+          processedmes += 1
+          p "exch: send_mes.delete_at: " +send_mes.delete_at(0).inspect
+          #sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
+        end
+
+        # отправка сформированных буферов
+
+        # формирование запросов на отправку и их отправка
+
+      end
+
+      p "exch: exit cicles!!!"
     else
-      puts _('Node is not found in connection list')+' ['+node.to_s+']'
+      puts _('exch: Node is not found in connection list')+' ['+node.to_s+']'
     end
   end
 
-
+=begin
   def self.do_exchange_cicle(active, socket, &matter_process)
     rcmd = EC_More
     sindex = 0
@@ -2267,6 +2269,10 @@ module PandoraGUI
       end
     end
   end
+=end
+
+  NullQueue = [0, 0, []]
+
 
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
@@ -2282,25 +2288,20 @@ module PandoraGUI
           log_message(LM_Info, "Подключился клиент: "+socket.to_s)
 
           #local_address
-          p "remote_address: "+socket.peeraddr.inspect
-          p socket.peeraddr.to_s
+          p "list: remote_address: "+socket.peeraddr.inspect
           host_ip = socket.peeraddr[2]
           host_name = socket.peeraddr[3]
           port = socket.peeraddr[1]
           port = "5577"
           proto = "tcp"
           node = encode_node(host_ip, port, proto)
-          p "подключенный node: "+node.inspect
-
-          p "----"
-          p socket.methods
-          p "----"
+          p "list: node: "+node.inspect
 
           conn_ind = index_of_connection_for_node(node)
           if conn_ind
             log_message(LM_Info, "Замкнутая петля: "+socket.to_s)
             conn_state = $connections[conn_ind][CDI_ConnState]
-            while conn_ind and (conn_state==CS_Connecting) and not socket.closed?
+            while conn_ind and (conn_state==CS_Connected) and not socket.closed?
               conn_ind = index_of_connection_for_node(node)
               conn_state = $connections[conn_ind][CDI_ConnState] if conn_ind
             end
@@ -2312,10 +2313,10 @@ module PandoraGUI
             $connections << [ host_name, host_ip, port, proto, conn_mode, conn_state ]
             conn_ind = index_of_connection_for_node(node)
             if conn_ind
-              # CDI_ReadThread, CDI_SendThread, CDI_Socket, CDI_ReadState, CDI_SendState
+              # CDI_SendThread, CDI_ReadThread, CDI_Socket, CDI_ReadState, CDI_SendState
               $connections[conn_ind] += [Thread.current, nil, socket, 0, 0]
               # CDI_ReadMes, CDI_ReadMedia, CDI_ReadReq, CDI_SendMes, CDI_SendMedia, CDI_SendReq]
-              $connections[conn_ind] += Array.new(6, NullQueue)
+              $connections[conn_ind] += Array.new(6, NullQueue.dup)
               p "server: ind!"+ conn_ind.to_s
               p "server: conn!"+ $connections[conn_ind].inspect
               start_exchange_cicle(node)
@@ -2423,8 +2424,6 @@ module PandoraGUI
     server
   end
 
-  NullQueue = [0, 0, []]
-
   # Create or find connection with necessary node
   # RU: Создает или находит соединение с нужным узлом
   def self.start_or_find_connection(node, persistent=false, wait_connection=false)
@@ -2433,15 +2432,14 @@ module PandoraGUI
       conn_state = CS_Connecting
       conn_mode = CM_Hunter
       conn_mode = conn_mode | CM_Persistent if persistent
-      p "conn_mode"
-      p conn_mode
       host, port, proto = decode_node(node)
       # CDI_HostName, CDI_HostIP, CDI_Port, CDI_Proto, CDI_ConnMode, CDI_ConnState
       $connections << [ host, host, port, proto, conn_mode, conn_state ]
       conn_ind = index_of_connection_for_node(node)
       if conn_ind
-        read_thread = Thread.new do
-          $connections[conn_ind] += [Thread.current]   # CDI_ReadThread
+        send_thread = Thread.new do
+          send_thread = Thread.current
+          $connections[conn_ind] += [send_thread]   # CDI_SendThread
           host, port, proto = decode_node(node)
           begin
             socket = TCPSocket.open(host, port)
@@ -2454,30 +2452,29 @@ module PandoraGUI
             log_message(LM_Warning, "Ошибка подключения к: "+host+':'+port)
           end
           $connections[conn_ind][CDI_ConnState] = conn_state
-          p "after conn"
           if socket != nil
             # CDI_SendThread, CDI_Socket, CDI_ReadState, CDI_SendState
             $connections[conn_ind] += [nil, socket, 0, 0]
             # CDI_ReadMes, CDI_ReadMedia, CDI_ReadReq, CDI_SendMes, CDI_SendMedia, CDI_SendReq]
-            $connections[conn_ind] += Array.new(6, NullQueue)
-            p "socket!"
-            p $connections[conn_ind]
+            $connections[conn_ind] += Array.new(6, NullQueue.dup)
+            p "start_or_find_con: socket created!"+ $connections[conn_ind].inspect
             # Вызвать активный цикл собработкой данных
             log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
-            socket = start_exchange_cicle(node)
+            start_exchange_cicle(node)
             socket.close
             log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
           end
         end
-        $connections[conn_ind][CDI_ReadThread] = read_thread
+        $connections[conn_ind][CDI_SendThread] = send_thread
         while wait_connection and (conn_state==CS_Connecting)
+          conn_state = $connections[conn_ind][CDI_ConnState]
         end
-        p "aaaaaa"
+        p "start_or_find_con: to end! wait_connection="+wait_connection.to_s
+        p "start_or_find_con: to end! conn_state="+conn_state.to_s
         if conn_state == CS_Disconnected
-          p conn_ind
+          p 'start_or_find_con: conn_ind '+conn_ind.to_s
           $connections.delete_at(conn_ind) if conn_ind
           conn_ind = nil
-          p "dellllll"
         end
       end
     end
@@ -2571,15 +2568,14 @@ module PandoraGUI
   # Add block to queue for send
   # Добавление блока в очередь на отправку
   def self.add_block_to_queue(block, queue)
-    p "add_block_to_queue: "+queue.inspect
+    p "add_block_to_queue: queue[]: "+queue.inspect
     if queue[1]<MaxQueue
       queue[1] += 1
     else
       queue[1] = 0
     end
     queue[2][queue[1]] = block
-    p "--end add_block_to_queue"
-    p queue[2]
+    p "add_block_to_queue: finish! queue[]: "+queue.inspect
   end
 
   # Connection state flags
@@ -2592,22 +2588,21 @@ module PandoraGUI
   # RU: Отправляет сообщение на узел
   def self.send_mes_to_node(mes, node)
     sended = false
-    p 'begin send_mes_to_node [' +mes+']'
+    p 'send_mes_to_node: mes: [' +mes+'], start_or_find...'
     if conn_ind=start_or_find_connection(node, true, true)
-      p "!!!connected: "+conn_ind.inspect
+      p "send_mes_to_node: conn_ind: "+conn_ind.inspect
       # add mess to mes queue
-      p "!!!mes_queue: "+ CDI_SendMes.inspect
-      p "!!!$connections[conn_ind]: "+ $connections[conn_ind].inspect
+      p "send_mes_to_node: conn_data: "+ $connections[conn_ind].inspect
       mes_queue = $connections[conn_ind][CDI_SendMes]
-      p "!!!mes_queue: "+mes_queue.inspect
+      p "send_mes_to_node: mes_queue: "+mes_queue.inspect
       add_block_to_queue(mes, mes_queue)
       # update send state
       send_state = $connections[conn_ind][CDI_SendState]
       send_state = send_state | CSF_Message
     else
-      p "not connected"
+      p "send_mes_to_node: not connected"
     end
-    p conn_ind
+    p 'send_mes_to_node: conn_ind '+conn_ind.to_s
     p 'end send_mes_to_node [' +mes+']'
     sended
   end

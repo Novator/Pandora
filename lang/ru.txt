@@ -96,6 +96,6 @@ Contracts=>Договоры
 Sound=>Звук
 Video=>Видео
 Express=>Оценить
-support=>храню
+support=>поддерживаю
 trust=>доверяю
 public=>публикую
