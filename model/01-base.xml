@@ -210,6 +210,8 @@
       <addr name="Address" type="String" size="20" />
       <tport name="TCP port" type="Integer" />
       <uport name="UDP port" type="Integer" />
+      <city name="City" type="City" />
+      <gps name="Coordinate" type="Integer" />
       <state name="State" type="Integer" />
       <sended name="Sended" type="Integer" />
       <received name="Recieved" type="Integer" />
@@ -239,13 +241,13 @@
       <message name="Message" type="String" />
     </Event>
 
-    <Repository name.ru="Repository">
+    <Repository name="Repository">
       <name name="Name" type="String" size="128" />
       <kind name="Kind" type="String" size="32" />
       <place name="Place" type="Blob" />
     </Repository>
 
-    <Message name.ru="Message">
+    <Message name="Message">
       <room name="Room" />
       <state name="State" />
       <date name="Date" />

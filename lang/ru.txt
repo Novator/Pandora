@@ -100,3 +100,6 @@ support=>поддерживаю
 trust=>доверяю
 public=>публикую
 Relations=>Связи
+Disregards=>Игнорируемое
+Messages=>Сообщения
+Online=>Онлайн
