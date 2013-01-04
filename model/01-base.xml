@@ -17,30 +17,36 @@
 
     <Community name="Community|Communities" table="companies"  kind="2">
       <name name="Name" type="String" size="128" />
+      <founder name="Founder" type="String" size="40" />
       <origin_place name="Origin place" type="String" size="37" />
       <origin_date name="Origin date" type="Date" />
-      <creator name="Creator" type="String" size="40" />
       <RELATIONS name="Состав" kind="Person" default="3" />
     </Community>
 
-    <Country parent="Community" name="Country|Countries">
+    <Language name="Language|Languages">
+      <number name="№" type="Integer" />
+      <code name="Code" type="String" size="2" />
+      <name name="Name" type="String" />
+    </Language>
+
+    <Country name="Country|Countries">
       <code name="Code" />
       <name name="Name" />
       <area name="Area" />
     </Country>
 
-    <City parent="Community" name="City|Cities">
+    <City name="City|Cities">
       <name name="Name" />
       <country name="Country" />
       <population name="Population" />
     </City>
 
-    <Street parent="Community" name="Street|Streets">
+    <Street name="Street|Streets">
       <city name="City" />
       <name name="Name" />
     </Street>
 
-    <Address parent="Community" name="Address|Addresses">
+    <Address name="Address|Addresses">
       <city name="City" />
       <street name="Street" />
       <building name="Building" />
@@ -74,8 +80,6 @@
     <Thing name="Thing|Things">
       <name name="Name" />
       <desc name="Description" />
-      <attr name="Attributes" />
-      <producers name="Producers" />
     </Thing>
 
     <Word name="Word|Words">
@@ -86,6 +90,7 @@
     <Article name="Article">
       <name name="Name" />
       <text name="Text" />
+      <author name="Author" />
     </Article>
 
     <Blob name="File">
@@ -111,7 +116,7 @@
     </Opinion>
 
   </World>
-  <Business name="Дело">
+  <Business name="Business">
 
     <Property parent="Thing" name="Property" >
       <articul name="Articul" />
@@ -141,45 +146,24 @@
       <salary name="Salary" />
     </Worker>
 
-    <Client name="Клиенты" parent="Community">
-      <name name="" />
-      <producers name="" />
-    </Client>
+    <Enterprise parent="Community">
+    </Enterprise>
 
-    <Position name="Должности/Вакансии" parent="Occupation">
-      <name name="" />
-      <producers name="" />
+    <Position parent="Occupation">
     </Position>
 
-    <Product name="Номенклатура" parent="Thing">
-      <name name="" />
-      <producers name="" />
+    <Product parent="Thing">
     </Product>
 
   </Business>
-  <Country name="Страна">
+  <Region name="Region">
 
-    <Law name="Low|Lows" name.ru="Закон|Законы" parent="Article">
-      <number name="Номер" />
+    <Law name="Low|Lows" parent="Article">
+      <number name="Number" />
     </Law>
 
-    <Algorithm name="Режим">
-      <name name="" />
-      <producers name="" />
-    </Algorithm>
-
-    <AccountCard name="План счетов">
-      <name name="" />
-      <producers name="" />
-    </AccountCard>
-
-    <Bill name="Проводки">
-      <name name="" />
-      <producers name="" />
-    </Bill>
-
-  </Country>
-  <Pandora name="Node">
+  </Region>
+  <Pandora name="Pandora Node">
 
     <Parameter name="Parameter">
       <name name="Name" type="String" size="128" />

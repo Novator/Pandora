@@ -14,10 +14,15 @@
 
     <Community name.ru="Сообщество|Сообщества">
       <name name.ru="Название" />
+      <founder name.ru="Основатель" />
       <origin_place name.ru="Место создания" />
       <origin_date name.ru="Дата создания" />
-      <creator name.ru="Основатель" />
     </Community>
+
+    <Language name.ru="Язык|Языки">
+      <code name.ru="Код" />
+      <name name.ru="Название" />
+    </Language>
 
     <Country name.ru="Страна|Страны">
       <code name.ru="Код" />
@@ -69,8 +74,6 @@
     <Thing name.ru="Вещь|Вещи">
       <name name.ru="Название" />
       <desc name.ru="Описание" />
-      <attr name.ru="Аттрибуты" />
-      <producers name.ru="Изготовители" />
     </Thing>
 
     <Word name.ru="Слово|Слова">
@@ -81,6 +84,7 @@
     <Article name.ru="Статья|Статьи">
       <name name.ru="Название" />
       <text name.ru="Текст" />
+      <author name.ru="Автор" />
     </Article>
 
     <Blob name.ru="Файл|Файлы">
@@ -130,50 +134,29 @@
       <city name.ru="Город" />
     </Contract>
 
-    <Worker name.ru="Сотрудники|Резюме">
+    <Worker name.ru="Сотрудники|Сотрудник">
       <vacancy name.ru="Должность" />
       <salary name.ru="Оклад" />
     </Worker>
 
-    <Client name.ru="Клиенты">
-      <name name.ru="" />
-      <producers name.ru="" />
-    </Client>
+    <Enterprise name.ru="Предприятия|Предприятие">
+    </Enterprise>
 
-    <Position name.ru="Должности/Вакансии">
-      <name name.ru="" />
-      <producers name.ru="" />
+    <Position name.ru="Должности|Должность">
     </Position>
 
-    <Product name.ru="Номенклатура">
-      <name name.ru="" />
-      <producers name.ru="" />
+    <Product name.ru="Товар|Товары">
     </Product>
 
   </Business>
-  <Country name.ru="Страна">
+  <Region name.ru="Регион">
 
     <Law name.ru="Закон|Законы">
       <number name.ru="Номер" />
     </Law>
 
-    <Algorithm name.ru="Режим">
-      <name name.ru="" />
-      <producers name.ru="" />
-    </Algorithm>
-
-    <AccountCard name.ru="План счетов">
-      <name name.ru="" />
-      <producers name.ru="" />
-    </AccountCard>
-
-    <Bill name.ru="Проводки">
-      <name name.ru="" />
-      <producers name.ru="" />
-    </Bill>
-
-  </Country>
-  <Pandora name.ru="Узел">
+  </Region>
+  <Pandora name.ru="Узел Пандоры">
 
     <Parameter name.ru="Параметр|Параметры">
       <name name.ru="Название" />

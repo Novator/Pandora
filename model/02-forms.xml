@@ -14,9 +14,9 @@
 
     <Community order="2">
       <name pos="1" />
-      <origin_place pos="|+1" />
+      <founder pos="|+1" />
+      <origin_place pos="+1" />
       <origin_date pos="+1" />
-      <creator pos="+1" />
     </Community>
 
   </World>

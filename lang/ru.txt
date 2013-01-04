@@ -1,5 +1,6 @@
 # Pandora language file EN=>RU
 Patches=>Патчи
+Create=>Создать
 Edit=>Править
 Articles=>Статьи
 Nodes=>Узлы
@@ -103,3 +104,10 @@ Relations=>Связи
 Disregards=>Игнорируемое
 Messages=>Сообщения
 Online=>Онлайн
+Listening=>Слушаю
+Not listen=>Не слушаю
+Error=>Ошибка
+Warning=>Внимание
+Trace=>Отладка
+Not logged=>Не авторизован
+Enterprises=>Предприятия
