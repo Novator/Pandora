@@ -108,15 +108,6 @@ rescue Exception
   $openssl_on = false
 end
 
-# GStreamer is a media library
-# RU: Обвязка для медиа библиотеки GStreamer
-begin
-  require 'gst'
-  $gst_on = true
-rescue Exception
-  $gst_on = false
-end
-
 # Default language when environment LANG variable is not defined
 # RU: Язык по умолчанию, когда не задана переменная окружения LANG
 $lang = 'ru'
@@ -136,24 +127,57 @@ $base_index = 0
 
 # Expand the arguments of command line
 # RU: Разобрать аргументы командной строки
+
 arg = nil
-while ARGV.length >0
-  val = ARGV.shift
-  if val.is_a? String and (val[0,1]=='-')
-    arg = val
+val = nil
+next_arg = nil
+while (ARGV.length>0) or next_arg
+  if next_arg
+    arg = next_arg
+    next_arg = nil
   else
-    case arg
-      when '-h','--host'
-        $host = val
-      when '-p','--port'
-        $port = val.to_i
-      when '-bi'
-        $base_index = val.to_i
-      when '--help', '/?', '-?'
-        puts 'Usage: ruby pandora.rb [-h localaddress] [-p localport] [-bi baseindex]'
-    end
-    arg = nil
+    arg = ARGV.shift
   end
+  if arg.is_a? String and (arg[0,1]=='-')
+    if ARGV.length>0
+      next_arg = ARGV.shift
+    end
+    if next_arg and next_arg.is_a? String and (next_arg[0,1] != '-')
+      val = next_arg
+      next_arg = nil
+    end
+  end
+  case arg
+    when '-h','--host'
+      $host = val if val
+    when '-p','--port'
+      $port = val.to_i if val
+    when '-bi'
+      $base_index = val.to_i if val
+    when '--shell', '--help', '/?', '-?'
+      runit = '  '
+      if arg=='--shell' then
+        runit += 'pandora.sh'
+      else
+        runit += 'ruby pandora.rb'
+      end
+      runit += ' '
+      puts 'Оriginal Pandora params for examples:'
+      puts runit+'-h localhost   - set listen address'
+      puts runit+'-p 5577        - set listen port'
+      puts runit+'-bi 0          - set index of database'
+      Thread.exit
+  end
+  val = nil
+end
+
+# GStreamer is a media library
+# RU: Обвязка для медиа библиотеки GStreamer
+begin
+  require 'gst'
+  $gst_on = true
+rescue Exception
+  $gst_on = false
 end
 
 # Array of localization phrases
@@ -1749,6 +1773,7 @@ module PandoraGUI
 
   # Network exchange comands
   # RU: Команды сетевого обмена
+  EC_Media     = 0     # Медиа данные
   EC_Init      = 1     # Инициализация диалога (версия протокола, сжатие, авторизация, шифрование)
   EC_Message   = 2     # Мгновенное текстовое сообщение
   EC_Channel   = 3     # Запрос открытия медиа-канала
@@ -1757,13 +1782,14 @@ module PandoraGUI
   EC_Request   = 6     # Запрос записи/патча/миниатюры
   EC_Record    = 7     # Выдача записи
   EC_Patch     = 8     # Выдача патча
-  EC_Image     = 9     # Выдача миниатюры
-  EC_Pipe      = 10    # Данные канала
+  EC_Preview   = 9     # Выдача миниатюры
+  EC_Fishing   = 10    # Управление рыбалкой
+  EC_Pipe      = 11    # Данные канала двух рыбаков
+  EC_Sync      = 12    # Последняя команда в серии, или индикация "живости"
   EC_Wait      = 253   # Временно недоступен
   EC_More      = 254   # Давай дальше
   EC_Bye       = 255   # Рассоединение
   EC_Data      = 256   # Ждем данные
-  #EC_Media     = 0
   #EC_Notice    = 5
   #EC_Pack      = 7
 
@@ -1843,7 +1869,15 @@ module PandoraGUI
     end
     buf = comm + buf
     p "!SEND: ("+buf+')'
+
+    # tos_sip    cs3   0x60  0x18
+    # tos_video  af41  0x88  0x22
+    # tos_xxx    cs5   0xA0  0x28
+    # tos_audio  ef    0xB8  0x2E
+    #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
     sended = socket.write(buf)
+    #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
+
     if sended < buf.size
       log_message(LM_Error, 'Не все данные отправлены '+seg.size+'/'+sended.size)
     end
@@ -1864,6 +1898,10 @@ module PandoraGUI
       i += segsize
     end
     index
+  end
+
+  def self.add_to_pack_and_send(connection, cmd, code, data=nil, last=false)
+    p "add_to_pack_and_send  "
   end
 
   ECC_Init0_Hello       = 0
@@ -1904,12 +1942,22 @@ module PandoraGUI
   CS_StopRead      = 3
   CS_Disconnected  = 4
 
+  # Stage of exchange
+  # RU: Стадия обмена
+  ST_Connected    = 0
+  ST_IpAllowed    = 1
+  ST_Protocoled   = 2
+  ST_Hashed       = 3
+  ST_KeyAllowed   = 4
+  ST_Signed       = 5
+
   class Connection
-    attr_accessor :host_name, :host_ip, :port, :proto, :conn_mode, :conn_state, :send_thread, \
-      :read_thread, :socket, :read_state, :send_state, :read_mes, :read_media, :read_req, :send_mes, \
-      :send_media, :send_req
-    def initialize(ahost_name, ahost_ip, aport, aproto, aconn_mode=0, aconn_state=CS_Connecting)
+    attr_accessor :host_name, :host_ip, :port, :proto, :conn_mode, :conn_state, :stage, :dialog, \
+      :send_thread, :read_thread, :socket, :read_state, :send_state, :read_mes, :read_media, \
+      :read_req, :send_mes, :send_media, :send_req
+    def initialize(ahost_name, ahost_ip, aport, aproto, aconn_mode=0, aconn_state=CS_Disconnected)
       super()
+      @stage         = ST_Connected
       @host_name     = ahost_name
       @host_ip       = ahost_ip
       @port          = aport
@@ -1929,42 +1977,7 @@ module PandoraGUI
     end
   end
 
-=begin
-  # Connection attributes indexes
-  # RU: Индексы аттрибутов соединения
-  CAI_HostName    = 0
-  CAI_HostIP      = 1
-  CAI_Port        = 2
-  CAI_Proto       = 3
-  CAI_ConnMode    = 4
-  CAI_ConnState   = 5
-  CAI_SendThread  = 6
-  CAI_ReadThread  = 7
-  CAI_Socket      = 8
-  CAI_ReadState   = 9
-  CAI_SendState   = 10
-  CAI_ReadMes     = 11
-  CAI_ReadMedia   = 12
-  CAI_ReadReq     = 13
-  CAI_SendMes     = 14
-  CAI_SendMedia   = 15
-  CAI_SendReq     = 16
-=end
-
   $connections = []
-
-=begin
-  def self.index_of_connection_for_column(value, column=0)
-    index = nil
-    $connections.each_with_index do |e, i|
-      if (e.is_a? Array) and (e[column] == value)
-        index = i
-        break
-      end
-    end
-    index
-  end
-=end
 
   def self.connection_of_node(node)
     host, port, proto = decode_node(node)
@@ -1973,6 +1986,155 @@ module PandoraGUI
       and (e.proto == proto)
     end
     connection
+  end
+
+  # RU: Принять данные запроса
+  def self.AcceptRequest(connection, rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
+    case rcmd  # КЛИЕНТ!!! (актив)
+      when EC_Init
+        case rcode
+          when ECC_Init0_Hello
+            hello=rdata
+            scmd=EC_Init
+            scode=ECC_Init1_KeyPhrase
+            akey="a1b2c3"
+            sbuf=akey
+          when ECC_Init1_KeyPhrase
+            pphrase=rdata
+            scmd=EC_Init
+            scode=ECC_Init2_SignKey
+            asign="f4443ef"
+            sbuf=asign
+          when ECC_Init2_SignKey
+            psign=rdata
+            scmd=EC_Init
+            scode=ECC_Init3_PhraseSign
+            aphrase="Yyyzzzzzz"
+            sbuf=aphrase
+          when ECC_Init3_PhraseSign
+            psign=rdata
+            scmd=EC_Init
+            scode=ECC_Init4_Permission
+            aperm="011101"
+            sbuf=aperm
+          when ECC_Init4_Permission
+            pperm=rdata
+            scmd=EC_Query
+            scode=ECC_Query0_Kinds
+            fromdate="fromdate=01.01.01"
+            sbuf=fromdate
+        end
+      when EC_Query
+        case rcode
+          when ECC_Query0_Kinds
+            afrom_data=rdata
+            scmd=EC_News
+            pkinds="3,7,11"
+            scode=EC_News0_Kinds
+            sbuf=pkinds
+          else #(1..255) - запрос сорта/всех сортов, если 255
+            afrom_data=rdata
+            akind=rcode
+            if akind==ECC_Query255_AllChanges
+              pkind=3 #отправка первого кайнда из серии
+            else
+              pkind=akind  #отправка только запрашиваемого
+            end
+            scmd=EC_News
+            pnoticecount=3
+            scode=pkind
+            sbuf=[pnoticecount].pack('N')
+        end
+      when EC_News
+        p "news!!!!"
+        if rcode==EC_News0_Kinds
+          pcount = rcode
+          pkinds = rdata
+          scmd=EC_Query
+          scode=ECC_Query255_AllChanges
+          fromdate="01.01.2012"
+          sbuf=fromdate
+        else
+          p "more!!!!"
+          pkind = rcode
+          pnoticecount = rdata.unpack('N')
+          scmd=EC_More
+          scode=0
+          sbuf=''
+        end
+      when EC_More
+        case last_scmd
+          when EC_News
+            p "!!!!!MORE!"
+            pkind = 110
+            if pkind <= 10
+              scmd=EC_News
+              scode=pkind
+              ahashid = "id=gfs225,hash=asdsad"
+              sbuf=ahashid
+              pkind += 1
+            else
+              scmd=EC_Bye
+              scode=ECC_Bye_Unknown
+              log_message(LM_Error, '1Получена неизвестная команда от сервера='+rcmd.to_s)
+              p '1Получена неизвестная команда от сервера='+rcmd.to_s
+
+              connection.conn_state = CS_Stoping
+            end
+          else
+            scmd=EC_Bye
+            scode=ECC_Bye_Unknown
+            log_message(LM_Error, '2Получена неизвестная команда от сервера='+rcmd.to_s)
+            p '2Получена неизвестная команда от сервера='+rcmd.to_s
+
+            connection.conn_state = CS_Stoping
+        end
+      when EC_News
+        p "!!notice!!!"
+        pkind = rcode
+        phashid = rdata
+        scmd=EC_More
+        scode=0 #-не надо, 1-патч, 2-запись, 3-миниатюру
+        sbuf=''
+      when EC_Patch
+        p "!patch!"
+      when EC_Request
+        p "EC_Request"
+      when EC_Record
+        p "!record!"
+      when EC_Pipe
+        p "EC_Pipe"
+      when EC_Bye
+        if rcode != ECC_Bye_Exit
+          log_message(LM_Error, 'Ошибка на сервере ErrCode='+rcode.to_s)
+        end
+        scmd=EC_Bye
+        scode=ECC_Bye_Exit
+
+        p 'Ошибка на сервере ErrCode='+rcode.to_s
+
+        connection.conn_state = CS_Stoping
+      else
+        scmd=EC_Bye
+        scode=ECC_Bye_Unknown
+        log_message(LM_Error, 'Получена неизвестная команда от сервера='+rcmd.to_s)
+        p 'Получена неизвестная команда от сервера='+rcmd.to_s
+
+        connection.conn_state = CS_Stoping
+    end
+    [rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd]
+  end
+
+  # Take current client socket from listener, or return nil
+  # RU: Взять текущий сокет клиента со слушателя, или вернуть nil
+  def self.recv_socket(socket, maxsize)
+    recieved = ''
+    begin
+      recieved = socket.recv(maxsize)
+    rescue Errno::ECONNRESET # Errno::EAGAIN
+      recieved = nil
+    end
+    recieved
   end
 
   # Number of messages per cicle
@@ -2030,31 +2192,15 @@ module PandoraGUI
         scmd = EC_Init
         sbuf='pandora 0.1'
         scode = ECC_Init0_Hello
-
-        # tos_sip    cs3   0x60  0x18
-        # tos_video  af41  0x88  0x22
-        # tos_xxx    cs5   0xA0  0x28
-        # tos_audio  ef    0xB8  0x2E
-
         p "exch: hunter hello!"
-        #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
         sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
-        #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
       end
-
 
       # Read cicle
       # RU: Цикл приёма
       if (connection.read_thread == nil)
-        read_thread = Thread.new do
+        connection.read_thread = Thread.new do
           connection.read_thread = Thread.current
-
-          #if hunter
-          #  scmd = EC_Init
-          #  sbuf='pandora 0.1'
-          #  scode = ECC_Init0_Hello
-          #  sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
-          #end
 
           scmd = EC_More
           sbuf = ''
@@ -2073,14 +2219,16 @@ module PandoraGUI
           p "Цикл ЧТЕНИЯ начало"
           # Цикл обработки команд и блоков данных
           while (connection.conn_state != CS_Disconnected) and (connection.conn_state != CS_StopRead) \
-          and (not socket.closed?) and (recived = socket.recv(MaxPackSize))
-            rbuf += recived
+          and (not socket.closed?) and (recieved = recv_socket(socket, MaxPackSize))
+            p "recieved=["+recieved+']'
+            rbuf += recieved
             processedlen = 0
             while (connection.conn_state != CS_Disconnected) and (connection.conn_state != CS_StopRead) \
             and (connection.conn_state != CS_Stoping) and (not socket.closed?) and (rbuf.size>=waitlen)
               p log_mes+'begin=['+rbuf+']  L='+rbuf.size.to_s+'  WL='+waitlen.to_s
               processedlen = waitlen
               nextreadmode = readmode
+
               # Определимся с данными по режиму чтения
               case readmode
                 when RM_Comm
@@ -2151,144 +2299,15 @@ module PandoraGUI
               # Обработаем поступившие команды и блоки данных
               if (scmd != EC_Bye) and (scmd != EC_Wait) and (nextreadmode == RM_Comm)
                 # ..вызвав заданный обработчик
-                p log_mes+'Matter?='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
-                #rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = matter_process[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd]
+                p log_mes+'AcceptRequest Before='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
 
-                case rcmd  # КЛИЕНТ!!! (актив)
-                  when EC_Init
-                    case rcode
-                      when ECC_Init0_Hello
-                        hello=rdata
-                        scmd=EC_Init
-                        scode=ECC_Init1_KeyPhrase
-                        akey="a1b2c3"
-                        sbuf=akey
-                      when ECC_Init1_KeyPhrase
-                        pphrase=rdata
-                        scmd=EC_Init
-                        scode=ECC_Init2_SignKey
-                        asign="f4443ef"
-                        sbuf=asign
-                      when ECC_Init2_SignKey
-                        psign=rdata
-                        scmd=EC_Init
-                        scode=ECC_Init3_PhraseSign
-                        aphrase="Yyyzzzzzz"
-                        sbuf=aphrase
-                      when ECC_Init3_PhraseSign
-                        psign=rdata
-                        scmd=EC_Init
-                        scode=ECC_Init4_Permission
-                        aperm="011101"
-                        sbuf=aperm
-                      when ECC_Init4_Permission
-                        pperm=rdata
-                        scmd=EC_Query
-                        scode=ECC_Query0_Kinds
-                        fromdate="fromdate=01.01.01"
-                        sbuf=fromdate
-                    end
-                  when EC_Query
-                    case rcode
-                      when ECC_Query0_Kinds
-                        afrom_data=rdata
-                        scmd=EC_News
-                        pkinds="3,7,11"
-                        scode=EC_News0_Kinds
-                        sbuf=pkinds
-                      else #(1..255) - запрос сорта/всех сортов, если 255
-                        afrom_data=rdata
-                        akind=rcode
-                        if akind==ECC_Query255_AllChanges
-                          pkind=3 #отправка первого кайнда из серии
-                        else
-                          pkind=akind  #отправка только запрашиваемого
-                        end
-                        scmd=EC_News
-                        pnoticecount=3
-                        scode=pkind
-                        sbuf=[pnoticecount].pack('N')
-                    end
-                  when EC_News
-                    p "news!!!!"
-                    if rcode==EC_News0_Kinds
-                      pcount = rcode
-                      pkinds = rdata
-                      scmd=EC_Query
-                      scode=ECC_Query255_AllChanges
-                      fromdate="01.01.2012"
-                      sbuf=fromdate
-                    else
-                      p "more!!!!"
-                      pkind = rcode
-                      pnoticecount = rdata.unpack('N')
-                      scmd=EC_More
-                      scode=0
-                      sbuf=''
-                    end
-                  when EC_More
-                    case last_scmd
-                      when EC_News
-                        p "!!!!!MORE!"
-                        pkind = 110
-                        if pkind <= 10
-                          scmd=EC_News
-                          scode=pkind
-                          ahashid = "id=gfs225,hash=asdsad"
-                          sbuf=ahashid
-                          pkind += 1
-                        else
-                          scmd=EC_Bye
-                          scode=ECC_Bye_Unknown
-                          log_message(LM_Error, '1Получена неизвестная команда от сервера='+rcmd.to_s)
-                          p '1Получена неизвестная команда от сервера='+rcmd.to_s
+                rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = \
+                  AcceptRequest(connection, rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
 
-                          connection.conn_state = CS_Stoping
-                        end
-                      else
-                        scmd=EC_Bye
-                        scode=ECC_Bye_Unknown
-                        log_message(LM_Error, '2Получена неизвестная команда от сервера='+rcmd.to_s)
-                        p '2Получена неизвестная команда от сервера='+rcmd.to_s
-
-                        connection.conn_state = CS_Stoping
-                    end
-                  when EC_News
-                    p "!!notice!!!"
-                    pkind = rcode
-                    phashid = rdata
-                    scmd=EC_More
-                    scode=0 #-не надо, 1-патч, 2-запись, 3-миниатюру
-                    sbuf=''
-                  when EC_Patch
-                    p "!patch!"
-                  when EC_Request
-                    p "EC_Request"
-                  when EC_Record
-                    p "!record!"
-                  when EC_Pipe
-                    p "EC_Pipe"
-                  when EC_Bye
-                    if rcode != ECC_Bye_Exit
-                      log_message(LM_Error, 'Ошибка на сервере ErrCode='+rcode.to_s)
-                    end
-                    scmd=EC_Bye
-                    scode=ECC_Bye_Exit
-
-                    p 'Ошибка на сервере ErrCode='+rcode.to_s
-
-                    connection.conn_state = CS_Stoping
-                  else
-                    scmd=EC_Bye
-                    scode=ECC_Bye_Unknown
-                    log_message(LM_Error, 'Получена неизвестная команда от сервера='+rcmd.to_s)
-                    p 'Получена неизвестная команда от сервера='+rcmd.to_s
-
-                    connection.conn_state = CS_Stoping
-                end
                 rdata = ''
-                p log_mes+'Matter!='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
+                p log_mes+'AcceptRequest After='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
               end
+
               if scmd != EC_Data
                 sbuf='' if scmd == EC_Bye
                 p log_mes+'SEND: '+scmd.to_s+"/"+scode.to_s+"+("+sbuf+')'
@@ -2307,8 +2326,8 @@ module PandoraGUI
           p "Цикл ЧТЕНИЯ конец!"
           socket.close if not socket.closed?
           connection.conn_state = CS_Disconnected
+          connection.read_thread = nil
         end
-        connection.read_thread = read_thread
       end
 
       p "exch: cicles"
@@ -2326,21 +2345,15 @@ module PandoraGUI
           p "exch: read_mes: conn_data: "+connection.inspect
           #sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
         end
-=begin
+
         # разгрузка принятых буферов в gstreamer
-        processedbuf = 0
-        while (read_media.size>0) and (processedbuf<$media_block_count) and (conn_state>0)
-          processedbuf += 1
-          p read_media.delete_at(0)
-        end
+
+
         # обработка принятых запросов, их удаление
-        processedmes = 0
-        while (read_req.size>0) and (processedmes<$req_block_count) and (conn_state>0)
-          processedmes += 1
-          p read_req.delete_at(0)
-        end
-=end
+
+
         sleep 2
+        # пакетирование сообщений
         processed = 0
         while (send_mes) and (send_mes[0]) and (send_mes[0] != send_mes[1]) and (processed<$mes_block_count) \
         and (connection.conn_state != CS_Disconnected)
@@ -2355,19 +2368,29 @@ module PandoraGUI
           p "??exch: send_mes: " +mes.inspect
           send_mes[2][buf_ind] = nil
           p "??exch: send_mes: conn_data: "+connection.inspect
+
+          scmd = EC_Message
+          scode = 0
+          sbuf = mes
           #sindex = send_comm_and_data(socket, sindex, scmd, scode, sbuf)
         end
 
-        # отправка сформированных буферов
+        # пакетирование буферов
 
-        # формирование запросов на отправку и их отправка
       end
 
       p "exch: exit cicles!!!"
 
       socket.close if not socket.closed?
-      $connections.delete(connection)
+      connection.conn_state = CS_Disconnected
+      connection.socket = nil
 
+      if (connection.conn_mode & CM_Persistent) == 0
+        connection.send_thread = nil
+        Thread.critical = true
+        $connections.delete(connection)
+        Thread.critical = false
+      end
     else
       puts _('exch: Node is not found in connection list')+' ['+node.to_s+']'
     end
@@ -2409,8 +2432,9 @@ module PandoraGUI
           # Создать поток при подключении клиента
           client = get_listener_client_or_nil(server)
           while Thread.current[:need_to_listen] and not server.closed? and not client
-            client = get_listener_client_or_nil(server)
             sleep 0.03
+            Thread.pass
+            client = get_listener_client_or_nil(server)
           end
 
           if Thread.current[:need_to_listen] and not server.closed? and client
@@ -2443,7 +2467,9 @@ module PandoraGUI
                 conn_mode = 0
                 p "serv: conn_mode: "+ conn_mode.inspect
                 connection = Connection.new(host_name, host_ip, port, proto, conn_mode, conn_state)
+                Thread.critical = true
                 $connections << connection
+                Thread.critical = false
                 connection = connection_of_node(node)
                 if connection
                   connection.send_thread = Thread.current
@@ -2452,6 +2478,7 @@ module PandoraGUI
                   p "server: connection="+ connection.inspect
                   p "server: $connections"+ $connections.inspect
                   start_exchange_cicle(node)
+                  p "END LISTEN SOKET CLIENT!!!"
                 else
                   p "Не удалось добавить подключенного в список!!!"
                 end
@@ -2477,39 +2504,48 @@ module PandoraGUI
 
   # Create or find connection with necessary node
   # RU: Создает или находит соединение с нужным узлом
-  def self.start_or_find_connection(node, persistent=false, wait_connection=false)
+  def self.start_or_find_connection(node, persistent=false, wait_connection=false, need_connect=true)
     connection = connection_of_node(node)
     p "start_or_find_conn00: connection="+ connection.inspect
-    if not connection
-      conn_state = CS_Connecting
+    if (not connection) or (connection and (connection.conn_state==CS_Disconnected) and not connection.socket)
+      conn_state = CS_Disconnected
       conn_mode = CM_Hunter
       conn_mode = conn_mode | CM_Persistent if persistent
       host, port, proto = decode_node(node)
-      p "333"
-      connection = Connection.new(host, host, port, proto, conn_mode, conn_state)
-      p "444"
-      $connections << connection
-      connection = connection_of_node(node)
       if connection
-        send_thread = Thread.new do
+        connection.conn_mode  = conn_mode
+        connection.conn_state = conn_state
+        p "start_or_find_conn: !!!!! OLD CONNECTION="+ connection.to_s
+      else
+        connection = Connection.new(host, host, port, proto, conn_mode, conn_state)
+        Thread.critical = true
+        $connections << connection
+        Thread.critical = false
+        connection = connection_of_node(node)
+        p "start_or_find_conn: !!!!! NEW CONNECTION="+ connection.to_s
+      end
+      if connection and need_connect
+        connection.conn_state  = CS_Connecting
+        connection.send_thread = Thread.new do
           connection.send_thread = Thread.current
-                  p "start_or_find_conn: connection="+ connection.inspect
-                  p "start_or_find_conn: $connections"+ $connections.inspect
+                  p "start_or_find_conn: THREAD connection="+ connection.inspect
+                  p "start_or_find_conn: THREAD $connections"+ $connections.inspect
           host, port, proto = decode_node(node)
+          conn_state = CS_Disconnected
           begin
             socket = TCPSocket.open(host, port)
             conn_state = CS_Connected
             connection.host_ip = socket.addr[2]
           rescue #IO::WaitReadable, Errno::EINTR
             socket = nil
-            conn_state = CS_Disconnected
-            p "Conn Err"
+            p "!!Conn Err!!"
             log_message(LM_Warning, "Не удается подключиться к: "+host+':'+port.to_s)
           end
           connection.conn_state = conn_state
           if socket
             connection.socket = socket
             connection.post_init
+            connection.dialog.active = true if connection.dialog
                   p "start_or_find_conn1: connection="+ connection.inspect
                   p "start_or_find_conn1: $connections"+ $connections.inspect
             # Вызвать активный цикл собработкой данных
@@ -2517,16 +2553,25 @@ module PandoraGUI
             start_exchange_cicle(node)
             socket.close if not socket.closed?
             log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
-          else  # delete failture connection
-            $connections.delete(connection)
           end
+          connection.socket = nil
+          connection.dialog.active = false if connection.dialog
+          p "END HUNTER CLIENT!!!!"
+          if (connection.conn_mode & CM_Persistent) == 0
+            Thread.critical = true
+            $connections.delete(connection)
+            Thread.critical = false
+          end
+          connection.send_thread = nil
         end
         while wait_connection and connection and (connection.conn_state==CS_Connecting)
           sleep 0.05
+          Thread.pass
           connection = connection_of_node(node)
         end
-        p "start_or_find_con: to end! wait_connection="+wait_connection.to_s
-        p "start_or_find_con: to end! conn_state="+conn_state.to_s
+        p "start_or_find_con: THE end! CONNECTION="+ connection.to_s
+        p "start_or_find_con: THE end! wait_connection="+wait_connection.to_s
+        p "start_or_find_con: THE end! conn_state="+conn_state.to_s
         connection = connection_of_node(node)
       end
     end
@@ -2537,18 +2582,19 @@ module PandoraGUI
   # RU: Останавливает соединение с заданным узлом
   def self.stop_connection(node, wait_disconnect=true)
     connection = connection_of_node(node)
-    if connection
+    if connection and (connection.conn_state != CS_Disconnected)
       p "stop_connection: 1"
       connection.conn_state = CS_Stoping
       p "stop_connection: 2"
-      while wait_disconnect and connection
+      while wait_disconnect and connection and (connection.conn_state != CS_Disconnected)
         sleep 0.05
+        Thread.pass
         connection = connection_of_node(node)
       end
       p "stop_connection: 3"
       connection = connection_of_node(node)
     end
-    connection and wait_disconnect
+    connection and (connection.conn_state != CS_Disconnected) and wait_disconnect
   end
 
   # Form node marker
@@ -2681,7 +2727,7 @@ module PandoraGUI
     sended = false
     p 'send_mes_to_node: mes: [' +mes+'], start_or_find...'
     connection = start_or_find_connection(node, true, true)
-    if connection
+    if connection and (connection.conn_state==CS_Connected)
       p "send_mes_to_node: connection="+connection.inspect
       mes_queue = connection.send_mes
       p "send_mes_to_node: mes_queue: "+mes_queue.inspect
@@ -2735,13 +2781,18 @@ module PandoraGUI
     online_button = Gtk::CheckButton.new(_('Online'), true)
     online_button.signal_connect('toggled') do |widget, event|
       if widget.active?
-        connection = start_or_find_connection(node, true, true)
-        widget.active = connection
+        p "connect!!!"
+        connection = connection_of_node(node)
+        if not connection or (connection.conn_state == CS_Disconnected)
+          connection = start_or_find_connection(node, true, true, true)
+        end
+        #widget.active = connection and (connection.conn_state != CS_Disconnected)
+        p connection.conn_state
       else
         p "disconnect!!!"
-        stopped = stop_connection(node, true)
+        stop_connection(node, true)
         p "disconnect!!! 222"
-        widget.active = stopped
+        #widget.active = stopped
       end
     end
     bbox.pack_start(online_button, false, false, 0)
@@ -2926,6 +2977,10 @@ module PandoraGUI
       end
     end
 
+    connection = start_or_find_connection(node, true, false, false)
+    connection.dialog = online_button if connection
+
+
     label_box = TabLabelBox.new(image, title, sw, false, 0) do
       stop_pipeline
       $thread[:pipeline1] = nil
@@ -2934,6 +2989,17 @@ module PandoraGUI
       $thread.join(2)
       $thread.exit
       $thread = nil
+
+      connection = connection_of_node(node)
+      if connection
+        connection.dialog = nil
+        connection.conn_mode = connection.conn_mode & (~CM_Persistent)
+        if connection.conn_state == CS_Disconnected
+          Thread.critical = true
+          $connections.delete(connection)
+          Thread.critical = false
+        end
+      end
     end
 
     page = $notebook.append_page(sw, label_box)

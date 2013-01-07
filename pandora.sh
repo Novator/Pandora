@@ -37,13 +37,15 @@ fi
 
 # Make an action according to command line arguments
 case "$PARAMS" in
-  help|h|--help|-h|?|/?|/h)
-    echo "Pandora setup/run script for Linux."
-    echo "Examples:"
+  help|h|--help|?|/?)
+    echo "Script Pandora params:"
     echo "  $CURFILE --help     - show this help"
-    echo "  $CURFILE --init     - install all necessary packets (through apt-get)"
-    echo "  $CURFILE --gem-init - install minimum packets, ruby packet install through rubygem"
-    echo "  $CURFILE [params]   - run Pandora with (or without) params"
+    echo "  $CURFILE --init     - install necessary packets with apt-get (recommended)"
+    echo "  $CURFILE --gem-init - install minimum packets, install ruby packet with rubygem"
+    echo "  $CURFILE [params]   - run Pandora with original params"
+    if [ -f "$RUBY" ]; then
+      $RUBY ./pandora.rb --shell
+    fi
     ;;
   init|install|--init|--install|-i)
     echo "Installing Ruby and necessary packages with apt-get.."
@@ -58,6 +60,6 @@ case "$PARAMS" in
   *)
     # Advice: change your path to Pandora here, if you run the script from other directory
     cd $CURDIR
-    $RUBY ./pandora.rb
+    $RUBY ./pandora.rb $@
     ;;
 esac
