@@ -5,8 +5,8 @@
 ## 2012(c) Michael Galyuk, Pandora, freeware
 
 ## Init git on your computer
-git config --global user.name "Michael Galyuk"
-git config --global user.email robux@mail.ru
+#git config --global user.name "Michael Galyuk"
+#git config --global user.email robux@mail.ru
 
 ## Start new repository
 #git init
