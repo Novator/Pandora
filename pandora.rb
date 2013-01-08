@@ -2545,7 +2545,7 @@ module PandoraGUI
           if socket
             connection.socket = socket
             connection.post_init
-            connection.dialog.active = true if connection.dialog
+            connection.dialog.online_button.active = true if connection.dialog
                   p "start_or_find_conn1: connection="+ connection.inspect
                   p "start_or_find_conn1: $connections"+ $connections.inspect
             # Вызвать активный цикл собработкой данных
@@ -2555,7 +2555,7 @@ module PandoraGUI
             log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
           end
           connection.socket = nil
-          connection.dialog.active = false if connection.dialog
+          connection.dialog.online_button.active = false if connection.dialog
           p "END HUNTER CLIENT!!!!"
           if (connection.conn_mode & CM_Persistent) == 0
             Thread.critical = true
@@ -2672,35 +2672,6 @@ module PandoraGUI
     end
   end
 
-  $thread = nil
-  $play_video = false
-
-  # Play media stream
-  # RU: Запустить медиа поток
-  def self.play_pipeline
-    if ($thread != nil) and $play_video
-      $thread.run
-      pipeline1 = $thread[:pipeline1]
-      pipeline2 = $thread[:pipeline2]
-      p $thread.inspect
-      pipeline1.play if pipeline1 != nil
-      pipeline2.play if pipeline2 != nil
-    end
-  end
-
-  # Stop media stream
-  # RU: Остановить медиа поток
-  def self.stop_pipeline
-    if $thread != nil
-      pipeline1 = $thread[:pipeline1]
-      pipeline2 = $thread[:pipeline2]
-      p $thread.inspect
-      pipeline2.stop if pipeline2 != nil
-      pipeline1.stop if pipeline1 != nil
-      #$thread.stop
-    end
-  end
-
   # Add block to queue for send
   # Добавление блока в очередь на отправку
   def self.add_block_to_queue(block, queue)
@@ -2742,6 +2713,94 @@ module PandoraGUI
     sended
   end
 
+  class TalkScrolledWindow < Gtk::ScrolledWindow
+    attr_accessor :online_button, :snd_button, :vid_button, :textview, :editbox, \
+      :area, :pipeline1, :pipeline2, :connection
+
+    # Play media stream
+    # RU: Запустить медиа поток
+    def play_pipeline
+      pipeline1.play if pipeline1
+      pipeline2.play if pipeline2
+    end
+
+    # Stop media stream
+    # RU: Остановить медиа поток
+    def stop_pipeline
+      pipeline2.stop if pipeline2
+      pipeline1.stop if pipeline1
+    end
+
+    def init_media
+      if not pipeline1
+        p "init_media!!!!"
+
+        @pipeline1 = Gst::Pipeline.new
+        @pipeline2 = Gst::Pipeline.new
+
+        webcam = Gst::ElementFactory.make('v4l2src')
+        webcam.decimate=3
+
+        capsfilter = Gst::ElementFactory.make('capsfilter')
+        capsfilter.caps = Gst::Caps.parse('video/x-raw-rgb,width=320,height=240')
+
+        ffmpegcolorspace1 = Gst::ElementFactory.make('ffmpegcolorspace')
+
+        vp8enc = Gst::ElementFactory.make('vp8enc')
+        vp8enc.max_latency=1
+
+        appsink = Gst::ElementFactory.make('appsink')
+
+        appsrc = Gst::ElementFactory.make('appsrc')
+        appsrc.caps = Gst::Caps.parse('caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
+        p appsrc.max_bytes
+        p appsrc.blocksize
+        appsrc.signal_connect('need-data') do |src, length|
+          buf1 = appsink.pull_buffer
+          if buf1 != nil
+            buf2 = Gst::Buffer.new
+            buf2.data = String.new(buf1.data)
+            buf2.timestamp = Time.now.to_i * Gst::NSECOND
+
+            #buf2.caps = Gst::Caps.parse('caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
+            #p buf2.size
+            src.push_buffer(buf2)
+            #src.signal_emit('enough-data')
+          end
+        end
+
+        vp8dec = Gst::ElementFactory.make('vp8dec')
+
+        ffmpegcolorspace2 = Gst::ElementFactory.make('ffmpegcolorspace')
+
+        ximagesink = Gst::ElementFactory.make('ximagesink');
+        ximagesink.sync = false
+
+        pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, vp8enc, appsink)
+        webcam >> capsfilter >> ffmpegcolorspace1 >> vp8enc >> appsink
+
+        pipeline2.add(appsrc, vp8dec, ffmpegcolorspace2, ximagesink)
+        appsrc >> vp8dec >> ffmpegcolorspace2 >> ximagesink
+
+        ximagesink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
+        pipeline2.bus.add_watch do |bus, message|
+          if ((message != nil) and (message.structure != nil) and (message.structure.name != nil) \
+            and (message.structure.name == 'prepare-xwindow-id'))
+          then
+            message.src.set_xwindow_id(area.window.xid) if not area.destroyed? and (area.window != nil)
+          end
+          true
+        end
+
+        #ximagesink.xwindow_id = viewport.window.xid
+        area.signal_connect('expose-event') do
+          ximagesink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
+        end
+      end
+    end
+  end
+
+
   # Show conversation dialog
   # RU: Показать диалог общения
   def self.show_talk_dialog(node, title=_('Talk'))
@@ -2753,7 +2812,7 @@ module PandoraGUI
       end
     end
 
-    sw = Gtk::ScrolledWindow.new(nil, nil)
+    sw = TalkScrolledWindow.new(nil, nil)
     sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
     sw.name = title
     #sw.add(treeview)
@@ -2771,6 +2830,7 @@ module PandoraGUI
     area = Gtk::DrawingArea.new
     area.set_size_request(350, 270)
     area.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
+    sw.area = area
 
     hbox = Gtk::HBox.new
 
@@ -2805,14 +2865,14 @@ module PandoraGUI
 
     vid_button = Gtk::CheckButton.new(_('Video'), true)
     vid_button.signal_connect('toggled') do |widget, event|
-      $play_video = widget.active?
-      if $play_video
-        $thread.run if $thread
-        play_pipeline
+      if widget.active?
+        sw.init_media
+        sw.play_pipeline
       else
-        stop_pipeline
+        sw.stop_pipeline
       end
     end
+
     bbox.pack_start(vid_button, false, false, 0)
 
     hbox.pack_start(bbox, false, false, 1.0)
@@ -2821,26 +2881,25 @@ module PandoraGUI
     vpaned1.pack2(hbox, false, true)
     vpaned1.set_size_request(350, 270)
 
-
-    view = Gtk::TextView.new
-    view.set_size_request(200, 270)
-    view.wrap_mode = Gtk::TextTag::WRAP_WORD
+    textview = Gtk::TextView.new
+    textview.set_size_request(200, 270)
+    textview.wrap_mode = Gtk::TextTag::WRAP_WORD
     #view.cursor_visible = false
     #view.editable = false
 
-    edit_box = Gtk::TextView.new
-    edit_box.wrap_mode = Gtk::TextTag::WRAP_WORD
-    edit_box.set_size_request(200, 70)
+    textview.buffer.create_tag("red", "foreground" => "red")
+    textview.buffer.create_tag("blue", "foreground" => "blue")
+    textview.buffer.create_tag("red_bold", "foreground" => "red", 'weight' => Pango::FontDescription::WEIGHT_BOLD)
+    textview.buffer.create_tag("blue_bold", "foreground" => "blue",  'weight' => Pango::FontDescription::WEIGHT_BOLD)
 
-    view.buffer.create_tag("red", "foreground" => "red")
-    view.buffer.create_tag("blue", "foreground" => "blue")
-    view.buffer.create_tag("red_bold", "foreground" => "red", 'weight' => Pango::FontDescription::WEIGHT_BOLD)
-    view.buffer.create_tag("blue_bold", "foreground" => "blue",  'weight' => Pango::FontDescription::WEIGHT_BOLD)
+    editbox = Gtk::TextView.new
+    editbox.wrap_mode = Gtk::TextTag::WRAP_WORD
+    editbox.set_size_request(200, 70)
 
-    edit_box.grab_focus
+    editbox.grab_focus
 
     # because of bug - doesnt work Enter at 'key-press-event'
-    edit_box.signal_connect('key-release-event') do |widget, event|
+    editbox.signal_connect('key-release-event') do |widget, event|
       if (event.hardware_keycode==36) or \
         [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
       then
@@ -2849,146 +2908,72 @@ module PandoraGUI
       end
     end
 
-    edit_box.signal_connect('key-press-event') do |widget, event|
+    editbox.signal_connect('key-press-event') do |widget, event|
       if (event.hardware_keycode==36) or \
         [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
       then
-        if edit_box.buffer.text != ''
-          mes = edit_box.buffer.text
-          edit_box.buffer.text = ''
+        if editbox.buffer.text != ''
+          mes = editbox.buffer.text
+          editbox.buffer.text = ''
           t = Time.now
-          view.buffer.insert(view.buffer.end_iter, "\n") if view.buffer.text != ''
-          view.buffer.insert(view.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "red")
-          view.buffer.insert(view.buffer.end_iter, 'You:', "red_bold")
-          view.buffer.insert(view.buffer.end_iter, ' '+mes)
+          textview.buffer.insert(textview.buffer.end_iter, "\n") if textview.buffer.text != ''
+          textview.buffer.insert(textview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "red")
+          textview.buffer.insert(textview.buffer.end_iter, 'You:', "red_bold")
+          textview.buffer.insert(textview.buffer.end_iter, ' '+mes)
 
-          view.buffer.insert(view.buffer.end_iter, "\n") if view.buffer.text != ''
-          view.buffer.insert(view.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "blue")
-          view.buffer.insert(view.buffer.end_iter, 'Dude:', "blue_bold")
-          view.buffer.insert(view.buffer.end_iter, ' '+mes)
+          textview.buffer.insert(textview.buffer.end_iter, "\n") if textview.buffer.text != ''
+          textview.buffer.insert(textview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "blue")
+          textview.buffer.insert(textview.buffer.end_iter, 'Dude:', "blue_bold")
+          textview.buffer.insert(textview.buffer.end_iter, ' '+mes)
 
           if send_mes_to_node(mes, node)
-            edit_box.buffer.text = ''
+            editbox.buffer.text = ''
           end
         end
         true
       elsif (event.hardware_keycode==9) or #Esc pressed
         (Gdk::Keyval::GDK_Escape==event.keyval)
       then
-        edit_box.buffer.text = ''
+        editbox.buffer.text = ''
         false
       else
         false
       end
     end
 
-    vpaned2.pack1(view, true, true)
-    vpaned2.pack2(edit_box, false, true)
+    vpaned2.pack1(textview, true, true)
+    vpaned2.pack2(editbox, false, true)
 
     hpaned.pack1(vpaned1, false, true)
     hpaned.pack2(vpaned2, true, true)
 
-    $thread = nil
-    $thread = Thread.new do
-      pipeline1 = Gst::Pipeline.new
-      pipeline2 = Gst::Pipeline.new
-      Thread.current[:pipeline1] = pipeline1
-      Thread.current[:pipeline2] = pipeline2
+    sw.online_button    = online_button
+    sw.snd_button       = snd_button
+    sw.vid_button       = vid_button
+    sw.textview         = textview
+    sw.editbox          = editbox
 
-      Thread.stop
-
-      webcam = Gst::ElementFactory.make('v4l2src')
-      webcam.decimate=3
-
-      capsfilter = Gst::ElementFactory.make('capsfilter')
-      capsfilter.caps = Gst::Caps.parse('video/x-raw-rgb,width=320,height=240')
-
-      ffmpegcolorspace1 = Gst::ElementFactory.make('ffmpegcolorspace')
-
-      vp8enc = Gst::ElementFactory.make('vp8enc')
-      vp8enc.max_latency=1
-
-      appsink = Gst::ElementFactory.make('appsink')
-
-      appsrc = Gst::ElementFactory.make('appsrc')
-      appsrc.caps = Gst::Caps.parse('caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
-      p appsrc.max_bytes
-      p appsrc.blocksize
-      appsrc.signal_connect('need-data') do |src, length|
-        buf1 = appsink.pull_buffer
-        if buf1 != nil
-          buf2 = Gst::Buffer.new
-          buf2.data = String.new(buf1.data)
-          buf2.timestamp = Time.now.to_i * Gst::NSECOND
-
-          #buf2.caps = Gst::Caps.parse('caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
-          #p buf2.size
-          src.push_buffer(buf2)
-          #src.signal_emit('enough-data')
-        end
-      end
-
-      vp8dec = Gst::ElementFactory.make('vp8dec')
-
-      ffmpegcolorspace2 = Gst::ElementFactory.make('ffmpegcolorspace')
-
-      ximagesink = Gst::ElementFactory.make('ximagesink');
-      ximagesink.sync = false
-
-      pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, vp8enc, appsink)
-      webcam >> capsfilter >> ffmpegcolorspace1 >> vp8enc >> appsink
-
-      pipeline2.add(appsrc, vp8dec, ffmpegcolorspace2, ximagesink)
-      appsrc >> vp8dec >> ffmpegcolorspace2 >> ximagesink
-
-      area.show
-
-      ximagesink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
-      pipeline2.bus.add_watch do |bus, message|
-        if ((message != nil) and (message.structure != nil) and (message.structure.name != nil) \
-          and (message.structure.name == 'prepare-xwindow-id'))
-        then
-          message.src.set_xwindow_id(area.window.xid) if not area.destroyed? and (area.window != nil)
-        end
-        true
-      end
-
-      area.signal_connect('visibility_notify_event') do |widget, event_visibility|
-        case event_visibility.state
-          when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
-            play_pipeline
-          when Gdk::EventVisibility::FULLY_OBSCURED
-            stop_pipeline
-        end
-      end
-
-      #ximagesink.xwindow_id = viewport.window.xid
-      area.signal_connect('expose-event') do
-        ximagesink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
-      end
-
-      area.signal_connect('destroy') do
-        pipeline2.stop
-        pipeline1.stop
-      end
-
-      while Thread.current.alive? do
-        #Gtk.main_iteration
+    area.signal_connect('visibility_notify_event') do |widget, event_visibility|
+      case event_visibility.state
+        when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
+          sw.play_pipeline
+        when Gdk::EventVisibility::FULLY_OBSCURED
+          sw.stop_pipeline
       end
     end
 
-    connection = start_or_find_connection(node, true, false, false)
-    connection.dialog = online_button if connection
+    area.signal_connect('destroy') do
+      sw.stop_pipeline
+    end
 
+    area.show
+
+    connection = start_or_find_connection(node, true, false, false)
+    connection.dialog = sw if connection
 
     label_box = TabLabelBox.new(image, title, sw, false, 0) do
-      stop_pipeline
-      $thread[:pipeline1] = nil
-      $thread[:pipeline2] = nil
+      sw.stop_pipeline
       area.destroy
-      $thread.join(2)
-      $thread.exit
-      $thread = nil
 
       connection = connection_of_node(node)
       if connection
@@ -3005,7 +2990,7 @@ module PandoraGUI
     page = $notebook.append_page(sw, label_box)
     sw.show_all
     $notebook.page = $notebook.n_pages-1
-    edit_box.grab_focus
+    editbox.grab_focus
   end
 
   # Menu event handler
@@ -3235,7 +3220,7 @@ module PandoraGUI
     $notebook.signal_connect('switch-page') do |widget, page, page_num|
       sw = $notebook.get_nth_page(page_num)
       treeview = sw.children[0]
-      stop_pipeline if treeview.is_a? PandoraGUI::SubjTreeView
+      #sw.stop_pipeline if treeview.is_a? PandoraGUI::SubjTreeView
     end
 
     $view = Gtk::TextView.new
@@ -3283,7 +3268,7 @@ module PandoraGUI
     $window.maximize
     $window.show_all
     $window.signal_connect('destroy') do
-      stop_pipeline
+      #sw.stop_pipeline
       Gtk.main_quit
     end
 
@@ -3304,7 +3289,7 @@ module PandoraGUI
       if (event_window_state.changed_mask == Gdk::EventWindowState::ICONIFIED) \
         and ((event_window_state.new_window_state & Gdk::EventWindowState::ICONIFIED)>0)
       then
-        stop_pipeline
+        sw.stop_pipeline
         if widget.visible? and widget.active?
           $window.hide
           #$window.skip_taskbar_hint = true
