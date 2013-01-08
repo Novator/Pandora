@@ -4,6 +4,10 @@
 ## Uncomment necessary line, comment out unnecessary, and run the script.
 ## 2012(c) Michael Galyuk, Pandora, freeware
 
+## Init git on your computer
+git config --global user.name "Michael Galyuk"
+git config --global user.email robux@mail.ru
+
 ## Start new repository
 #git init
 #git add README.TXT
