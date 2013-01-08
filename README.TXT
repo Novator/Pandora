@@ -42,7 +42,7 @@ http://code.google.com/p/msysgit/downloads/list)
 
   mkdir /home/user/Pandora
   cd /home/user/Pandora
-  git clone https://github.com/Novator/Pandora.git
+  git clone --depth=1 https://github.com/Novator/Pandora.git
 
 3. Make script Pandora.sh executable:
 
