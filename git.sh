@@ -9,7 +9,7 @@
 ## Init git on your computer
 ## (Change name and email!)
 #git config --global user.name "Michael Galyuk"
-#git config --global user.email robux@mail.ru
+#git config --global user.email ironsoft@mail.ru
 #git config --global color.ui true
 #git config --global core.autocrlf input
 #git config --global core.safecrlf true
@@ -30,7 +30,7 @@
 ## Push files from local to repository
 #git add --all
 git commit -a -m "version 0.1 alfa"
-git push -f -u origin master
+git push -u origin master
 
 ##Modify last commit
 #git commit --amend
