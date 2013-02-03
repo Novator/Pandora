@@ -2492,9 +2492,9 @@ module PandoraGUI
 
       if (connection.conn_mode & CM_Persistent) == 0
         connection.send_thread = nil
-        Thread.critical = true
+        #Thread.critical = true
         $connections.delete(connection)
-        Thread.critical = false
+        #Thread.critical = false
       end
     else
       puts _('exch: Node is not found in connection list')+' ['+node.to_s+']'
@@ -2580,9 +2580,9 @@ module PandoraGUI
                   conn_mode = 0
                   #p "serv: conn_mode: "+ conn_mode.inspect
                   connection = Connection.new(host_name, host_ip, port, proto, node, conn_mode, conn_state)
-                  Thread.critical = true
+                  #Thread.critical = true
                   $connections << connection
-                  Thread.critical = false
+                  #Thread.critical = false
                   connection = connection_of_node(node)
                   if connection
                     connection.send_thread = Thread.current
@@ -2636,9 +2636,9 @@ module PandoraGUI
         #p "start_or_find_conn: !!!!! OLD CONNECTION="+ connection.to_s
       else
         connection = Connection.new(host, host, port, proto, node, conn_mode, conn_state)
-        Thread.critical = true
+        #Thread.critical = true
         $connections << connection
-        Thread.critical = false
+        #Thread.critical = false
         connection = connection_of_node(node)
         #p "start_or_find_conn: !!!!! NEW CONNECTION="+ connection.to_s
       end
@@ -2677,9 +2677,9 @@ module PandoraGUI
           connection.dialog.online_button.active = false if connection.dialog
           p "END HUNTER CLIENT!!!!"
           if (connection.conn_mode & CM_Persistent) == 0
-            Thread.critical = true
+            #Thread.critical = true
             $connections.delete(connection)
-            Thread.critical = false
+            #Thread.critical = false
           end
           connection.send_thread = nil
         end
@@ -2834,7 +2834,7 @@ module PandoraGUI
 
   class TalkScrolledWindow < Gtk::ScrolledWindow
     attr_accessor :node, :online_button, :snd_button, :vid_button, :textview, :editbox, \
-      :area, :pipeline1, :pipeline2, :connection, :area2
+      :area, :pipeline1, :pipeline2, :connection, :area2, :ximagesink, :xvimagesink
 
     # Play media stream
     # RU: Запустить медиа поток
@@ -2848,6 +2848,8 @@ module PandoraGUI
     def stop_pipeline
       pipeline2.stop if pipeline2
       pipeline1.stop if pipeline1
+      ximagesink.xwindow_id = 0
+      xvimagesink.xwindow_id = 0
     end
 
     def init_media
@@ -2864,13 +2866,13 @@ module PandoraGUI
 
           ffmpegcolorspace1 = Gst::ElementFactory.make('ffmpegcolorspace')
 
-          #tee = Gst::ElementFactory.make('tee')
-          #tee.name = 'tee1'
+          tee = Gst::ElementFactory.make('tee')
+          tee.name = 'tee1'
 
-          #queue1 = Gst::ElementFactory.make('queue')
+          queue1 = Gst::ElementFactory.make('queue')
 
-          xvimagesink = Gst::ElementFactory.make('xvimagesink');
-          xvimagesink.sync = false
+          @xvimagesink = Gst::ElementFactory.make('xvimagesink');
+          xvimagesink.sync = true
 
           #queue2 = Gst::ElementFactory.make('queue')
 
@@ -2901,14 +2903,15 @@ module PandoraGUI
 
           ffmpegcolorspace2 = Gst::ElementFactory.make('ffmpegcolorspace')
 
-          ximagesink = Gst::ElementFactory.make('ximagesink');
+          @ximagesink = Gst::ElementFactory.make('ximagesink');
           ximagesink.sync = false
 
+          #pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, vp8enc, appsink)
+          #webcam >> capsfilter >> ffmpegcolorspace1 >> vp8enc >> appsink
           #pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, tee, queue1, xvimagesink, queue2, vp8enc, appsink)
-          #webcam >> capsfilter >> ffmpegcolorspace1 >> tee
-          pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, vp8enc, appsink)
-          webcam >> capsfilter >> ffmpegcolorspace1 >> vp8enc >> appsink
-          #tee >> queue1 >> xvimagesink
+          pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, tee, vp8enc, appsink, queue1, xvimagesink)
+          webcam >> capsfilter >> ffmpegcolorspace1 >> tee >> vp8enc >> appsink
+          tee >> queue1 >> xvimagesink
           #tee >> queue2 >> vp8enc >> appsink
 
           #tee_src_pad = tee.get_request_pad("src%d")
@@ -2927,8 +2930,6 @@ module PandoraGUI
             end
             true
           end
-
-          #ximagesink.xwindow_id = viewport.window.xid
           area.signal_connect('expose-event') do
             ximagesink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
           end
@@ -2942,7 +2943,6 @@ module PandoraGUI
             end
             true
           end
-
           area2.signal_connect('expose-event') do
             xvimagesink.xwindow_id = area2.window.xid if not area2.destroyed? and (area2.window != nil)
           end
@@ -3029,6 +3029,9 @@ module PandoraGUI
         sw.play_pipeline
       else
         sw.stop_pipeline
+        #if (sw.area2 and (not sw.area2.destroyed?) and sw.area2.drawable?)
+        #  sw.area2.queue_draw
+        #end
       end
     end
 
@@ -3118,7 +3121,7 @@ module PandoraGUI
     area.signal_connect('visibility_notify_event') do |widget, event_visibility|
       case event_visibility.state
         when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
-          sw.play_pipeline
+          sw.play_pipeline if vid_button.active?
         when Gdk::EventVisibility::FULLY_OBSCURED
           sw.stop_pipeline
       end
@@ -3142,9 +3145,9 @@ module PandoraGUI
         connection.dialog = nil
         connection.conn_mode = connection.conn_mode & (~CM_Persistent)
         if connection.conn_state == CS_Disconnected
-          Thread.critical = true
+          #Thread.critical = true
           $connections.delete(connection)
-          Thread.critical = false
+          #Thread.critical = false
         end
       end
     end
@@ -3452,7 +3455,11 @@ module PandoraGUI
       if (event_window_state.changed_mask == Gdk::EventWindowState::ICONIFIED) \
         and ((event_window_state.new_window_state & Gdk::EventWindowState::ICONIFIED)>0)
       then
-        sw.stop_pipeline
+        if $notebook.page >= 0
+          sw = $notebook.get_nth_page($notebook.page)
+          #treeview = sw.children[0]
+          sw.stop_pipeline if sw.is_a? TalkScrolledWindow
+        end
         if widget.visible? and widget.active?
           $window.hide
           #$window.skip_taskbar_hint = true
