@@ -26,6 +26,8 @@
 
 ## Show state
 #git status
+#git remote -v
+#git diff
 
 ## Push files from local to repository
 #git add --all
