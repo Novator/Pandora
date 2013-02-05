@@ -27,6 +27,7 @@
 ## Show state
 #git status
 #git remote -v
+#git branch -v
 #git diff
 
 ## Push files from local to repository
@@ -48,8 +49,9 @@ git push -f -u origin master
 ## Getting repository to local directory
 #git clone https://github.com/Novator/Pandora.git
 
-## Getting changes from repository to local
+## Getting changes from repository to local (with or without merge)
 #git pull
+#git fetch
 
 ## Merge pull from another brunch
 #git pull https://github.com/rc5hack/Pandora master
@@ -59,3 +61,22 @@ git push -f -u origin master
 #git reflog
 #git rebase -i HEAD~4
 #git push -f
+
+##Pack git objects
+#git gc
+
+##Create branch, move to it, or both
+#git branch testing
+#git checkout testing
+#git checkout -b 'testing'
+
+##Merge branch, see conflits, add corrects, and delete unused branch
+#git checkout master
+#git merge testing
+#git status
+#git add pandora.rb
+#git commit
+#git branch --merged
+#git branch --no-merged
+#git branch -d testing
+
