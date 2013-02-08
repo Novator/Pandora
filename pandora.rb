@@ -679,6 +679,10 @@ module PandoraKernel
     end
     def field_des(fld_name)
       df = def_fields.detect{ |e| (e.is_a? Array) and (e[0].to_s == fld_name) or (e.to_s == fld_name) }
+      df
+    end
+    def field_title(fld_name)
+      df = field_des(fld_name)
       df = df[1] if df.is_a? Array
       df = fld_name if df == nil
       df
@@ -854,12 +858,15 @@ module PandoraGUI
   # Advanced dialog window
   # RU: Продвинутое окно диалога
   class AdvancedDialog < Gtk::Window
-    attr_accessor :response, :window, :notebook, :vpaned, :viewport, :hbox
+    attr_accessor :response, :window, :notebook, :vpaned, :viewport, :hbox, :enter_like_tab, :enter_like_ok, \
+      :panelbox, :okbutton, :cancelbutton
 
     def initialize(*args)
       super(*args)
       @response = 0
       @window = self
+      @enter_like_tab = false
+      @enter_like_ok = true
 
       window.transient_for = $window
       window.modal = true
@@ -882,22 +889,24 @@ module PandoraGUI
 
       @notebook = Gtk::Notebook.new
       page = notebook.append_page(sw, label_box1)
-
       vpaned.pack1(notebook, true, true)
 
+      @panelbox = Gtk::VBox.new
       @hbox = Gtk::HBox.new
-      vpaned.pack2(hbox, false, true)
+      panelbox.pack_start(hbox, false, false, 0)
+
+      vpaned.pack2(panelbox, false, true)
 
       bbox = Gtk::HBox.new
       bbox.border_width = 2
       bbox.spacing = 4
 
-      okbutton = Gtk::Button.new(Gtk::Stock::OK)
+      @okbutton = Gtk::Button.new(Gtk::Stock::OK)
       okbutton.width_request = 110
       okbutton.signal_connect('clicked') { @response=1 }
       bbox.pack_start(okbutton, false, false, 0)
 
-      cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
+      @cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
       cancelbutton.width_request = 110
       cancelbutton.signal_connect('clicked') { @response=2 }
       bbox.pack_start(cancelbutton, false, false, 0)
@@ -911,17 +920,20 @@ module PandoraGUI
       window.signal_connect("destroy") { @response=2 }
 
       window.signal_connect('key_press_event') do |widget, event|
-        enter_works_like_tab = false
-        if (event.hardware_keycode==36) and (enter_works_like_tab)  # Enter works like Tab
+        if (event.hardware_keycode==36) and enter_like_tab  # Enter works like Tab
           event.hardware_keycode=23
           event.keyval=Gdk::Keyval::GDK_Tab
           window.signal_emit('key-press-event', event)
           true
-        elsif (event.hardware_keycode==36) or  #Enter pressed
-          ([Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval))
+        elsif ((event.hardware_keycode==36) \
+          or ([Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval))) \
+          and (event.state.control_mask? or (enter_like_ok and (not (self.focus.is_a? Gtk::TextView))))
         then
+          p "=-=-=-"
+          p self.focus
+          p self.focus.is_a? Gtk::TextView
           okbutton.activate
-          false
+          true
         elsif (event.hardware_keycode==9) or #Esc pressed
           ((event.hardware_keycode==25) and event.state.control_mask?) or #Ctrl+W
           (Gdk::Keyval::GDK_Escape==event.keyval) or
@@ -948,24 +960,35 @@ module PandoraGUI
       show_all
       while (not destroyed?) and (@response == 0) do
         Gtk.main_iteration
+        #sleep 0.03
       end
-      if not destroyed?
-        if @response == 1
-          @fields.each do |field|
-            entry = field[9]
-            field[13] = entry.text
-          end
-          yield(@response) if block_given?
-        end
-        destroy
-      end
+    end
+  end
+
+  def self.add_tool_btn(toolbar, stock, title)
+    image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
+    btn = Gtk::ToolButton.new(image, _(title))
+    new_api = false
+    begin
+      btn.tooltip_text = btn.label
+      new_api = true
+    rescue Exception
+    end
+    btn.signal_connect('clicked') do
+      yield if block_given?
+    end
+
+    if new_api
+      toolbar.add(btn)
+    else
+      toolbar.append(btn, btn.label, btn.label)
     end
   end
 
   # Dialog with enter fields
   # RU: Диалог с полями ввода
   class FieldsDialog < AdvancedDialog
-    attr_accessor :fields
+    attr_accessor :fields, :text_fields, :toolbar, :toolbar2
 
     def initialize(afields=[], *args)
       super(*args)
@@ -974,6 +997,57 @@ module PandoraGUI
       window.signal_connect('configure-event') do |widget, event|
         window.on_resize_window(widget, event)
         false
+      end
+
+      @toolbar = Gtk::Toolbar.new
+      toolbar.toolbar_style = Gtk::Toolbar::Style::ICONS
+      panelbox.pack_start(toolbar, false, false, 0)
+
+      @toolbar2 = Gtk::Toolbar.new
+      toolbar2.toolbar_style = Gtk::Toolbar::Style::ICONS
+      panelbox.pack_start(toolbar2, false, false, 0)
+
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::BOLD, 'Bold') do
+        p "bold"
+      end
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::ITALIC, 'Italic')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::STRIKETHROUGH, 'Strike')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::UNDERLINE, 'Underline')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::UNDO, 'Undo')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::REDO, 'Redo')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::COPY, 'Copy')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::CUT, 'Cut')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::FIND, 'Find')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_LEFT, 'Left')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_RIGHT, 'Right')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_CENTER, 'Center')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_FILL, 'Fill')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::SAVE, 'Save')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::OPEN, 'Open')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::HOME, 'Image')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::OK, 'Ok') { @response=1 }
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::CANCEL, 'Cancel') { @response=2 }
+
+      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::ADD, 'Add')
+      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::DELETE, 'Delete')
+      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::OK, 'Ok') { @response=1 }
+      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::CANCEL, 'Cancel') { @response=2 }
+
+      notebook.signal_connect('switch-page') do |widget, page, page_num|
+        if page_num==0
+          toolbar.hide
+          toolbar2.hide
+          hbox.show
+        elsif notebook.get_nth_page(page_num).is_a? Gtk::TextView
+          toolbar2.hide
+          hbox.hide
+          toolbar.show
+        else
+          toolbar.hide
+          hbox.hide
+          toolbar2.show
+        end
       end
 
       @vbox = Gtk::VBox.new
@@ -1006,7 +1080,12 @@ module PandoraGUI
       bw,bh = hbox.size_request
       @btn_panel_height = bh
 
-      @fields.each do |field|
+      @text_fields = []
+      i = @fields.size
+
+      while i>0 do
+        i -= 1
+        p field = @fields[i]
         atext = field[1]
         atype = field[14]
         asize = field[15]
@@ -1015,18 +1094,38 @@ module PandoraGUI
           image.set_padding(2, 0)
           textview = Gtk::TextView.new
           textview.wrap_mode = Gtk::TextTag::WRAP_WORD
-          label_box = TabLabelBox.new(image, atext, nil, false, 0) do
-            p "Close!"
+
+          textview.signal_connect('key-press-event') do |widget, event|
+            if ((event.hardware_keycode==36) or \
+              [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)) \
+              and event.state.control_mask?
+            then
+              true
+            end
           end
+
+          label_box = TabLabelBox.new(image, atext, nil, false, 0)
           page = notebook.append_page(textview, label_box)
+          textview.buffer.text = field[13].to_s
+          field[9] = textview
+
+          txt_fld = field
+          txt_fld << page
+          @text_fields << txt_fld
+          #@enter_like_ok = false
+
+          @fields.delete_at(i)
         end
       end
 
       image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
       image.set_padding(2, 0)
       label_box2 = TabLabelBox.new(image, 'Связи', nil, false, 0)
-      page = notebook.append_page(Gtk::TreeView.new, label_box2)
+      sw = Gtk::ScrolledWindow.new(nil, nil)
+      page = notebook.append_page(sw, label_box2)
+      #Gtk::TreeView.new
 
+      PandoraGUI.show_subject_list(PandoraModel::Relation, nil, sw)
 
       # create labels, remember them, calc middle char width
       texts_width = 0
@@ -1119,6 +1218,25 @@ module PandoraGUI
 
       @window_width, @window_height = 0, 0
       @old_field_matrix = []
+    end
+
+    # show dialog and if pressed "OK" do a block
+    def run
+      super
+      if not destroyed?
+        if @response == 1
+          @fields.each do |field|
+            entry = field[9]
+            field[13] = entry.text
+          end
+          @text_fields.each do |field|
+            textview = field[9]
+            field[13] = textview.buffer.text
+          end
+          yield(@response) if block_given?
+        end
+        destroy
+      end
     end
 
     def calc_field_size(field)
@@ -1479,12 +1597,12 @@ module PandoraGUI
         p subject.def_fields
 
         subject.def_fields.each do |field|
-          if field[3] != nil
+          if field[3]
             fldsize = field[3].to_i
           else
             fldsize = 10
           end
-          if field[5] != nil
+          if field[5]
             fldfsize = field[5].to_i
             fldfsize = fldsize if fldfsize > fldsize
           else
@@ -1492,10 +1610,10 @@ module PandoraGUI
             fldfsize *= 0.67 if fldfsize>40
           end
           indd, lab_or, new_row = decode_pos(field[4])
-          plus = ((indd != nil) and (indd[0, 1]=='+'))
+          plus = (indd and (indd[0, 1]=='+'))
           indd = indd[1..-1] if plus
           indd = indd.to_f if (indd != nil) and (indd.size>0)
-          if indd == nil
+          if not indd
             ind += 1.0
           else
             if plus
@@ -1545,6 +1663,13 @@ module PandoraGUI
               fldvalues << field[13]
             #end
           end
+          dialog.text_fields.each_index do |index|
+            field = dialog.text_fields[index]
+            #if formfields[index][13] != field[13]
+              fldnames << field[0]
+              fldvalues << field[13]
+            #end
+          end
           if new_act or (action=='Copy')
             id = nil
           else
@@ -1562,11 +1687,8 @@ module PandoraGUI
     attr_accessor :subject
   end
 
-  # Showing subject list
-  # RU: Показ списка субъектов
-  #def self.show_subject_list(subject_class, widget=nil)
-  #end
-
+  # Tab box for notebook with image and close button
+  # RU: Бокс закладки для блокнота с картинкой и кнопкой
   class TabLabelBox < Gtk::HBox
     attr_accessor :label
 
@@ -1611,62 +1733,72 @@ module PandoraGUI
 
   # Showing subject list
   # RU: Показ списка субъектов
-  def self.show_subject_list(subject_class, widget=nil)
-    $notebook.children.each do |child|
-      if child.name==subject_class.ider
-        $notebook.page = $notebook.children.index(child)
-        return
+  def self.show_subject_list(subject_class, widget=nil, sw=nil)
+    embedded = (sw != nil)
+    if embedded
+      $notebook.children.each do |child|
+        if child.name==subject_class.ider
+          $notebook.page = $notebook.children.index(child)
+          return
+        end
       end
     end
     subject = subject_class.new
     sel = subject.select
+    flds = subject.tab_fields
     #store_fields = [String, String, String, String, String, String, String, String]
     store = Gtk::ListStore.new(String, String, String, String, String, String, String, String, String, String, String, String, String, String, String, String)
     sel.each do |row|
       iter = store.append
-      row.each_index { |i| iter.set_value(i, row[i].to_s) }
+      row.each_index do |i|
+        val = row[i].to_s
+        fld_def = subject.field_des(flds[i])
+        val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ') if fld_def.is_a? Array and fld_def[2]=='Text'
+        iter.set_value(i, val[0,35])
+      end
     end
     treeview = SubjTreeView.new(store)
     treeview.name = subject.ider
     treeview.subject = subject
-    flds = subject.tab_fields
     flds = subject.def_fields if flds == []
     flds.each_with_index do |v,i|
       v = v[0].to_s if v.is_a? Array
-      column = Gtk::TreeViewColumn.new(subject.field_des(v), Gtk::CellRendererText.new, {:text => i} )
+      column = Gtk::TreeViewColumn.new(subject.field_title(v), Gtk::CellRendererText.new, {:text => i} )
       treeview.append_column(column)
     end
     treeview.signal_connect('row_activated') do |tree_view, path, column|
       edit_subject(tree_view, 'Edit')
     end
 
-    sw = Gtk::ScrolledWindow.new(nil, nil)
+    sw ||= Gtk::ScrolledWindow.new(nil, nil)
     sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
     sw.name = subject.ider
     sw.add(treeview)
     sw.border_width = 0;
 
-    if widget.is_a? Gtk::ImageMenuItem
-      animage = widget.image
-    elsif widget.is_a? Gtk::ToolButton
-      animage = widget.icon_widget
-    else
-      animage = nil
-    end
-    image = nil
-    if animage != nil
-      image = Gtk::Image.new(animage.stock, Gtk::IconSize::MENU)
-      image.set_padding(2, 0)
-    end
+    if not embedded
+      if widget.is_a? Gtk::ImageMenuItem
+        animage = widget.image
+      elsif widget.is_a? Gtk::ToolButton
+        animage = widget.icon_widget
+      else
+        animage = nil
+      end
+      image = nil
+      if animage != nil
+        image = Gtk::Image.new(animage.stock, Gtk::IconSize::MENU)
+        image.set_padding(2, 0)
+      end
 
-    label_box = TabLabelBox.new(image, subject.pname, sw, false, 0) do
-      store.clear
-      treeview.destroy
-    end
+      label_box = TabLabelBox.new(image, subject.pname, sw, false, 0) do
+        store.clear
+        treeview.destroy
+      end
 
-    page = $notebook.append_page(sw, label_box)
-    sw.show_all
-    $notebook.page = $notebook.n_pages-1
+      page = $notebook.append_page(sw, label_box)
+      sw.show_all
+      $notebook.page = $notebook.n_pages-1
+    end
 
     menu = Gtk::Menu.new
     menu.append(create_menu_item(['Create', Gtk::Stock::NEW, _('Create'), 'Insert']))
@@ -2848,8 +2980,8 @@ module PandoraGUI
     def stop_pipeline
       pipeline2.stop if pipeline2
       pipeline1.stop if pipeline1
-      ximagesink.xwindow_id = 0
-      xvimagesink.xwindow_id = 0
+      ximagesink.xwindow_id = 0 if ximagesink
+      xvimagesink.xwindow_id = 0 if xvimagesink
     end
 
     def init_media
@@ -3385,8 +3517,8 @@ module PandoraGUI
 
     $notebook.signal_connect('switch-page') do |widget, page, page_num|
       sw = $notebook.get_nth_page(page_num)
-      treeview = sw.children[0]
-      #sw.stop_pipeline if treeview.is_a? PandoraGUI::SubjTreeView
+      #treeview = sw.children[0]
+      sw.stop_pipeline if sw.is_a? PandoraGUI::TalkScrolledWindow
     end
 
     $view = Gtk::TextView.new
