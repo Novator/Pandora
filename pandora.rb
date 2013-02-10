@@ -385,9 +385,9 @@ module PandoraKernel
 
   # Fields definitions to SQL table definitions of SQLite
   # RU: Описание таблицы SQLite из описания полей
-  def self.subj_fld_to_sqlite_tab(subj_fld)
+  def self.panobj_fld_to_sqlite_tab(panobj_fld)
     res = ''
-    subj_fld.each do |f|
+    panobj_fld.each do |f|
       res = res + ', ' if res != ''
       res = res + f[0].to_s + ' ' + PandoraKernel::ruby_type_to_sqlite_type(f[2], f[3])
     end
@@ -436,7 +436,7 @@ module PandoraKernel
       else
         @exist[table_name] = TRUE
       end
-      tab_def = PandoraKernel::subj_fld_to_sqlite_tab(def_flds[table_name])
+      tab_def = PandoraKernel::panobj_fld_to_sqlite_tab(def_flds[table_name])
       p tab_def
       if (! exist[table_name] or recreate) and tab_def != nil
         if exist[table_name] and recreate
@@ -527,7 +527,7 @@ module PandoraKernel
          ['robux', 'companies', nil],
          ['robux', 'laws', nil]]
     end
-    def get_adapter(subj, table_ptr, recreate=false)
+    def get_adapter(panobj, table_ptr, recreate=false)
       #find db_ptr in db_list
       base_des = base_list[$base_index]
       if base_des[3] == nil
@@ -538,28 +538,28 @@ module PandoraKernel
         adap = base_des[3]
       end
       table_name = table_ptr[1]
-      adap.def_flds[table_name] = subj.def_fields
+      adap.def_flds[table_name] = panobj.def_fields
       if table_name==nil or table_name=='' then
-        puts 'No table name for ['+subj.name+']'
+        puts 'No table name for ['+panobj.name+']'
       else
         adap.create_table(table_name, recreate)
         #adap.create_table(table_name, TRUE)
       end
       adap
     end
-    def get_tab_select(subj, table_ptr, filter='')
-      adap = get_adapter(subj, table_ptr)
+    def get_tab_select(panobj, table_ptr, filter='')
+      adap = get_adapter(panobj, table_ptr)
       adap.select_table(table_ptr[1], filter)
     end
-    def get_tab_update(subj, table_ptr, fldvalues, fldnames, filter='')
+    def get_tab_update(panobj, table_ptr, fldvalues, fldnames, filter='')
       recreate = ((fldvalues == nil) and (fldnames == nil) and (filter == nil))
-      adap = get_adapter(subj, table_ptr, recreate)
+      adap = get_adapter(panobj, table_ptr, recreate)
       if not recreate
         adap.update_table(table_ptr[1], fldvalues, fldnames, filter)
       end
     end
-    def get_tab_fields(subj, table_ptr)
-      adap = get_adapter(subj, table_ptr)
+    def get_tab_fields(panobj, table_ptr)
+      adap = get_adapter(panobj, table_ptr)
       adap.fields_table(table_ptr[1])
     end
   end
@@ -584,11 +584,11 @@ module PandoraKernel
     res
   end
 
-  # Pandora's subject
+  # Pandora's panobject
   # RU: Субъект (справочник) Пандора
-  class BaseSubject
+  class BasePanobject
     class << self
-      @ider = 'BaseSubject'
+      @ider = 'BasePanobject'
       @name = 'Субъект Пандора'
       @tables = []
       @def_fields = []
@@ -616,7 +616,7 @@ module PandoraKernel
       def name=(x)
         @name = x
       end
-      def BaseSubject.repositories
+      def BasePanobject.repositories
         $repositories
       end
     end
@@ -698,8 +698,8 @@ module PandoraModel
 
   # Pandora's document
   # RU: Документ Пандора
-  class Subject < PandoraKernel::BaseSubject
-    ider = 'Subject'
+  class Panobject < PandoraKernel::BasePanobject
+    ider = 'Panobject'
     name = "Документ Пандора"
   end
 
@@ -715,46 +715,46 @@ module PandoraModel
       file = Object::File.open(pathfilename)
       xml_doc = REXML::Document.new(file)
       xml_doc.elements.each('pandora-model/*/*') do |element|
-        subj_id = element.name
-        new_subj = true
+        panobj_id = element.name
+        new_panobj = true
         flds = []
-        if PandoraModel.const_defined? subj_id
-          subject_class = PandoraModel.const_get(subj_id)
-          subj_name = subject_class.name
-          subj_tabl = subject_class.tables
-          new_subj = false
-          #p subject_class
+        if PandoraModel.const_defined? panobj_id
+          panobject_class = PandoraModel.const_get(panobj_id)
+          panobj_name = panobject_class.name
+          panobj_tabl = panobject_class.tables
+          new_panobj = false
+          #p panobject_class
         else
-          subj_name = subj_id
+          panobj_name = panobj_id
           parent_class = element.attributes['parent']
           if (parent_class==nil) or (not(PandoraModel.const_defined? parent_class))
-            parent_class = 'Subject'
+            parent_class = 'Panobject'
           else
             PandoraModel.const_get(parent_class).def_fields.each do |f|
               flds << f
             end
           end
-          module_eval('class '+subj_id+' < PandoraModel::'+parent_class+'; name = "'+subj_name+'"; end')
-          subject_class = PandoraModel.const_get(subj_id)
-          subject_class.def_fields = flds
-          #p subject_class
-          subject_class.ider = subj_id
-          subj_tabl = subj_id
-          subj_tabl = PandoraKernel::get_name_or_names(subj_tabl, true)
-          subj_tabl.downcase!
-          subject_class.tables = [['robux', subj_tabl], ['perm', subj_tabl]]
+          module_eval('class '+panobj_id+' < PandoraModel::'+parent_class+'; name = "'+panobj_name+'"; end')
+          panobject_class = PandoraModel.const_get(panobj_id)
+          panobject_class.def_fields = flds
+          #p panobject_class
+          panobject_class.ider = panobj_id
+          panobj_tabl = panobj_id
+          panobj_tabl = PandoraKernel::get_name_or_names(panobj_tabl, true)
+          panobj_tabl.downcase!
+          panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]]
         end
-        flds = subject_class.def_fields
+        flds = panobject_class.def_fields
         #p flds
-        subj_name_en = element.attributes['name']
-        subj_name = subj_name_en if (subj_name==subj_id) and (subj_name_en != nil) and (subj_name_en != '')
-        subj_name_lang = element.attributes['name'+lang]
-        subj_name = subj_name_lang if (subj_name_lang != nil) and (subj_name_lang != '')
-        #puts subj_id+'=['+subj_name+']'
-        subject_class.name = subj_name
+        panobj_name_en = element.attributes['name']
+        panobj_name = panobj_name_en if (panobj_name==panobj_id) and (panobj_name_en != nil) and (panobj_name_en != '')
+        panobj_name_lang = element.attributes['name'+lang]
+        panobj_name = panobj_name_lang if (panobj_name_lang != nil) and (panobj_name_lang != '')
+        #puts panobj_id+'=['+panobj_name+']'
+        panobject_class.name = panobj_name
 
-        subj_tabl = element.attributes['table']
-        subject_class.tables = [['robux', subj_tabl], ['perm', subj_tabl]] if subj_tabl != nil
+        panobj_tabl = element.attributes['table']
+        panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]] if panobj_tabl != nil
 
         element.elements.each('*') do |sub_elem|
           seu = sub_elem.name.upcase
@@ -763,7 +763,7 @@ module PandoraModel
           else
             i = 0
             while (i<flds.size) and (flds[i][0] != sub_elem.name) do i+=1 end
-            if new_subj or (i<flds.size)
+            if new_panobj or (i<flds.size)
               if i<flds.size
                 fld_name = flds[i][1]
               else
@@ -784,13 +784,13 @@ module PandoraModel
               fld_fsize = sub_elem.attributes['fsize']
               flds[i][5] = fld_fsize if (fld_fsize != nil) and (fld_fsize != '')
             else
-              puts _('Property was not defined, ignored')+' /'+filename+':'+subj_id+'.'+sub_elem.name
+              puts _('Property was not defined, ignored')+' /'+filename+':'+panobj_id+'.'+sub_elem.name
             end
           end
         end
         #p flds
         #p "========"
-        subject_class.def_fields = flds
+        panobject_class.def_fields = flds
       end
       file.close
     end
@@ -1125,7 +1125,7 @@ module PandoraGUI
       page = notebook.append_page(sw, label_box2)
       #Gtk::TreeView.new
 
-      PandoraGUI.show_subject_list(PandoraModel::Relation, nil, sw)
+      PandoraGUI.show_panobject_list(PandoraModel::Relation, nil, sw)
 
       # create labels, remember them, calc middle char width
       texts_width = 0
@@ -1518,7 +1518,7 @@ module PandoraGUI
 
   # View and edit record dialog
   # RU: Окно просмотра и правки записи
-  def self.edit_subject(tree_view, action)
+  def self.edit_panobject(tree_view, action)
 
     def self.decode_pos(pos='')
       pos = '' if pos == nil
@@ -1543,50 +1543,50 @@ module PandoraGUI
       [ind, lab_or, new_row]
     end
 
-    def self.get_subject_icon(subject)
+    def self.get_panobject_icon(panobj)
       ind = -1
       $notebook.children.each do |child|
-        if child.name==subject.ider
+        if child.name==panobj.ider
           ind = $notebook.children.index(child)
           break
         end
       end
-      subjecticon = nil
+      panobj_icon = nil
       first_lab_widget = $notebook.get_tab_label($notebook.children[ind]).children[0] if ind>=0
       if first_lab_widget.is_a? Gtk::Image
         image = first_lab_widget
-        subjecticon = $window.render_icon(image.stock, Gtk::IconSize::MENU)
+        panobj_icon = $window.render_icon(image.stock, Gtk::IconSize::MENU)
       end
-      subjecticon
+      panobj_icon
     end
 
     path, column = tree_view.cursor
     new_act = action == 'Create'
     if path != nil or new_act
-      subject = tree_view.subject
+      panobject = tree_view.panobject
       store = tree_view.model
       sel = nil
       id = nil
       if path != nil and ! new_act
         iter = store.get_iter(path)
         id = iter[0]
-        sel = subject.select('id='+id)
+        sel = panobject.select('id='+id)
       end
       p sel
 
-      subjecticon = get_subject_icon(subject)
+      panobjecticon = get_panobject_icon(panobject)
 
       if action=='Delete'
         dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
           Gtk::MessageDialog::QUESTION,
           Gtk::MessageDialog::BUTTONS_OK_CANCEL,
           _('Record will be deleted. Sure?')+"\n["+sel[0][1,2].join(', ')+']')
-        dialog.title = _('Deletion')+': '+subject.sname
+        dialog.title = _('Deletion')+': '+panobject.sname
         dialog.default_response = Gtk::Dialog::RESPONSE_OK
-        dialog.icon = subjecticon
+        dialog.icon = panobjecticon
         if dialog.run == Gtk::Dialog::RESPONSE_OK
           id = 'id='+id
-          res = subject.update(nil, nil, id)
+          res = panobject.update(nil, nil, id)
         end
         dialog.destroy
       else
@@ -1594,9 +1594,9 @@ module PandoraGUI
         formfields = []
         ind = 0.0
 
-        p subject.def_fields
+        p panobject.def_fields
 
-        subject.def_fields.each do |field|
+        panobject.def_fields.each do |field|
           if field[3]
             fldsize = field[3].to_i
           else
@@ -1625,7 +1625,7 @@ module PandoraGUI
           new_fld = [field[0], field[1], fldsize, ind, lab_or, new_row]
           new_fld[12] = fldfsize
           fldval = nil
-          fldval = subject.field_val(field[0], sel[0]) if (sel != nil) and (sel[0] != nil)
+          fldval = panobject.field_val(field[0], sel[0]) if (sel != nil) and (sel[0] != nil)
           fldval = '' if fldval == nil
           new_fld[13] = fldval
 
@@ -1636,10 +1636,10 @@ module PandoraGUI
         end
         formfields.sort! {|a,b| a[3]<=>b[3] }
 
-        dialog = FieldsDialog.new(formfields.clone, subject.sname)
-        dialog.icon = subjecticon
+        dialog = FieldsDialog.new(formfields.clone, panobject.sname)
+        dialog.icon = panobjecticon
 
-        if subject.class==PandoraModel::Key
+        if panobject.class==PandoraModel::Key
           mi = Gtk::MenuItem.new("Действия")
           menu = Gtk::MenuBar.new
           menu.append(mi)
@@ -1675,16 +1675,16 @@ module PandoraGUI
           else
             id = 'id='+id
           end
-          res = subject.update(fldvalues, fldnames, id)
+          res = panobject.update(fldvalues, fldnames, id)
         end
       end
     end
   end
 
-  # Tree of subjects
+  # Tree of panobjects
   # RU: Дерево субъектов
   class SubjTreeView < Gtk::TreeView
-    attr_accessor :subject
+    attr_accessor :panobject
   end
 
   # Tab box for notebook with image and close button
@@ -1731,48 +1731,55 @@ module PandoraGUI
 
   end
 
-  # Showing subject list
+  # Showing panobject list
   # RU: Показ списка субъектов
-  def self.show_subject_list(subject_class, widget=nil, sw=nil)
+  def self.show_panobject_list(panobject_class, widget=nil, sw=nil)
     embedded = (sw != nil)
     if embedded
       $notebook.children.each do |child|
-        if child.name==subject_class.ider
+        if child.name==panobject_class.ider
           $notebook.page = $notebook.children.index(child)
           return
         end
       end
     end
-    subject = subject_class.new
-    sel = subject.select
-    flds = subject.tab_fields
+    panobject = panobject_class.new
+    sel = panobject.select
+    flds = panobject.tab_fields
     #store_fields = [String, String, String, String, String, String, String, String]
     store = Gtk::ListStore.new(String, String, String, String, String, String, String, String, String, String, String, String, String, String, String, String)
     sel.each do |row|
       iter = store.append
       row.each_index do |i|
         val = row[i].to_s
-        fld_def = subject.field_des(flds[i])
+        fld_def = panobject.field_des(flds[i])
+        # clean text fields
         val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ') if fld_def.is_a? Array and fld_def[2]=='Text'
-        iter.set_value(i, val[0,35])
+        # truncate all fields
+        if $jcode_on
+          val = val[/.{0,#{34}}/m]
+        else
+          val = val[0,34]
+        end
+        iter.set_value(i, val.rstrip)
       end
     end
     treeview = SubjTreeView.new(store)
-    treeview.name = subject.ider
-    treeview.subject = subject
-    flds = subject.def_fields if flds == []
+    treeview.name = panobject.ider
+    treeview.panobject = panobject
+    flds = panobject.def_fields if flds == []
     flds.each_with_index do |v,i|
       v = v[0].to_s if v.is_a? Array
-      column = Gtk::TreeViewColumn.new(subject.field_title(v), Gtk::CellRendererText.new, {:text => i} )
+      column = Gtk::TreeViewColumn.new(panobject.field_title(v), Gtk::CellRendererText.new, {:text => i} )
       treeview.append_column(column)
     end
     treeview.signal_connect('row_activated') do |tree_view, path, column|
-      edit_subject(tree_view, 'Edit')
+      edit_panobject(tree_view, 'Edit')
     end
 
     sw ||= Gtk::ScrolledWindow.new(nil, nil)
     sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-    sw.name = subject.ider
+    sw.name = panobject.ider
     sw.add(treeview)
     sw.border_width = 0;
 
@@ -1790,7 +1797,7 @@ module PandoraGUI
         image.set_padding(2, 0)
       end
 
-      label_box = TabLabelBox.new(image, subject.pname, sw, false, 0) do
+      label_box = TabLabelBox.new(image, panobject.pname, sw, false, 0) do
         store.clear
         treeview.destroy
       end
@@ -1831,7 +1838,7 @@ module PandoraGUI
     cert = OpenSSL::X509::Certificate.new
     cert.version = 2
     cert.serial = 1
-    cert.subject = ca
+    cert.panobject = ca
     cert.issuer = ca
     cert.public_key = pub
     cert.not_before = Time.now
@@ -2208,14 +2215,14 @@ module PandoraGUI
           end
           if rcmd==EC_Message
             mes = rdata
-            textview = nil
-            textview = dialog.textview if dialog
-            if textview
+            talkview = nil
+            talkview = dialog.talkview if dialog
+            if talkview
               t = Time.now
-              textview.buffer.insert(textview.buffer.end_iter, "\n") if textview.buffer.text != ''
-              textview.buffer.insert(textview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "blue")
-              textview.buffer.insert(textview.buffer.end_iter, 'Dude:', "blue_bold")
-              textview.buffer.insert(textview.buffer.end_iter, ' '+mes)
+              talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
+              talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "blue")
+              talkview.buffer.insert(talkview.buffer.end_iter, 'Dude:', "blue_bold")
+              talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
             else
               log_message(LM_Error, 'Пришло сообщение, но окно чата не найдено!')
             end
@@ -2551,7 +2558,7 @@ module PandoraGUI
                 sbuf='' if scmd == EC_Bye
                 p log_mes+'SEND: '+scmd.to_s+"/"+scode.to_s+"+("+sbuf+')'
                 sindex = send_comm_and_data(connection.socket, sindex, scmd, scode, sbuf)
-                sleep 2
+                #sleep 2
                 last_scmd = scmd
                 sbuf = ''
               end
@@ -2676,7 +2683,8 @@ module PandoraGUI
           client = get_listener_client_or_nil(server)
           while Thread.current[:need_to_listen] and not server.closed? and not client
             sleep 0.03
-            Thread.pass
+            #Thread.pass
+            #Gtk.main_iteration
             client = get_listener_client_or_nil(server)
           end
 
@@ -2817,7 +2825,8 @@ module PandoraGUI
         end
         while wait_connection and connection and (connection.conn_state==CS_Connecting)
           sleep 0.05
-          Thread.pass
+          #Thread.pass
+          #Gtk.main_iteration
           connection = connection_of_node(node)
         end
         #p "start_or_find_con: THE end! CONNECTION="+ connection.to_s
@@ -2839,7 +2848,8 @@ module PandoraGUI
       p "stop_connection: 2"
       while wait_disconnect and (connection.conn_state != CS_Disconnected)
         sleep 0.05
-        Thread.pass
+        #Thread.pass
+        #Gtk.main_iteration
         connection = connection_of_node(node)
       end
       p "stop_connection: 3"
@@ -2874,10 +2884,10 @@ module PandoraGUI
   # RU: Поиск узла по текущей записи в таблице
   def self.define_node_by_current_record(treeview)
     # it's still a hack!
-    subject = nil
-    subject = treeview.subject if treeview.instance_variable_defined?('@subject')
+    panobject = nil
+    panobject = treeview.panobject if treeview.instance_variable_defined?('@panobject')
     node = nil
-    if subject.ider=='Node'
+    if panobject.ider=='Node'
       path, column = treeview.cursor
       if path != nil
         store = treeview.model
@@ -2885,12 +2895,12 @@ module PandoraGUI
         id = nil
         iter = store.get_iter(path)
         id = iter[0]
-        sel = subject.select('id='+id)
+        sel = panobject.select('id='+id)
         p sel = sel[0]
 
-        p domain = subject.field_val('domain', sel)
-        p addr = subject.field_val('addr', sel)
-        p tport = subject.field_val('tport', sel)
+        p domain = panobject.field_val('domain', sel)
+        p addr = panobject.field_val('addr', sel)
+        p tport = panobject.field_val('tport', sel)
 
         domain = addr if domain == ''
         node = encode_node(domain, tport, 'tcp')
@@ -2907,8 +2917,8 @@ module PandoraGUI
   # RU: Начать охоту
   def self.hunt_nodes
     if $hunter_thread == nil
-      subject = PandoraModel.const_get('Node')
-      p subject
+      panobject = PandoraModel.const_get('Node')
+      p panobject
       $hunter_thread = Thread.new do
         host = '127.0.0.1'
         port = 5577
@@ -2965,7 +2975,7 @@ module PandoraGUI
   end
 
   class TalkScrolledWindow < Gtk::ScrolledWindow
-    attr_accessor :node, :online_button, :snd_button, :vid_button, :textview, :editbox, \
+    attr_accessor :node, :online_button, :snd_button, :vid_button, :talkview, :editbox, \
       :area, :pipeline1, :pipeline2, :connection, :area2, :ximagesink, :xvimagesink
 
     # Play media stream
@@ -3175,16 +3185,16 @@ module PandoraGUI
     vpaned1.pack2(hbox, false, true)
     vpaned1.set_size_request(350, 270)
 
-    textview = Gtk::TextView.new
-    textview.set_size_request(200, 200)
-    textview.wrap_mode = Gtk::TextTag::WRAP_WORD
+    talkview = Gtk::TextView.new
+    talkview.set_size_request(200, 200)
+    talkview.wrap_mode = Gtk::TextTag::WRAP_WORD
     #view.cursor_visible = false
     #view.editable = false
 
-    textview.buffer.create_tag("red", "foreground" => "red")
-    textview.buffer.create_tag("blue", "foreground" => "blue")
-    textview.buffer.create_tag("red_bold", "foreground" => "red", 'weight' => Pango::FontDescription::WEIGHT_BOLD)
-    textview.buffer.create_tag("blue_bold", "foreground" => "blue",  'weight' => Pango::FontDescription::WEIGHT_BOLD)
+    talkview.buffer.create_tag("red", "foreground" => "red")
+    talkview.buffer.create_tag("blue", "foreground" => "blue")
+    talkview.buffer.create_tag("red_bold", "foreground" => "red", 'weight' => Pango::FontDescription::WEIGHT_BOLD)
+    talkview.buffer.create_tag("blue_bold", "foreground" => "blue",  'weight' => Pango::FontDescription::WEIGHT_BOLD)
 
     editbox = Gtk::TextView.new
     editbox.wrap_mode = Gtk::TextTag::WRAP_WORD
@@ -3210,10 +3220,10 @@ module PandoraGUI
           mes = editbox.buffer.text
           editbox.buffer.text = ''
           t = Time.now
-          textview.buffer.insert(textview.buffer.end_iter, "\n") if textview.buffer.text != ''
-          textview.buffer.insert(textview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "red")
-          textview.buffer.insert(textview.buffer.end_iter, 'You:', "red_bold")
-          textview.buffer.insert(textview.buffer.end_iter, ' '+mes)
+          talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
+          talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "red")
+          talkview.buffer.insert(talkview.buffer.end_iter, 'You:', "red_bold")
+          talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
 
           if send_mes_to_node(mes, node)
             editbox.buffer.text = ''
@@ -3238,7 +3248,12 @@ module PandoraGUI
     hpaned2.pack1(area2, false, true)
     hpaned2.pack2(editbox, true, true)
 
-    vpaned2.pack1(textview, true, true)
+    talksw = Gtk::ScrolledWindow.new(nil, nil)
+    talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+    talksw.add(talkview)
+
+    vpaned2.pack1(talksw, true, true)
+
     vpaned2.pack2(hpaned2, false, true)
 
     hpaned.pack1(vpaned1, false, true)
@@ -3247,7 +3262,7 @@ module PandoraGUI
     sw.online_button    = online_button
     sw.snd_button       = snd_button
     sw.vid_button       = vid_button
-    sw.textview         = textview
+    sw.talkview         = talkview
     sw.editbox          = editbox
 
     area.signal_connect('visibility_notify_event') do |widget, event_visibility|
@@ -3310,14 +3325,14 @@ module PandoraGUI
         if $notebook.page >= 0
           sw = $notebook.get_nth_page($notebook.page)
           treeview = sw.children[0]
-          edit_subject(treeview, widget.name) if treeview.is_a? PandoraGUI::SubjTreeView
+          edit_panobject(treeview, widget.name) if treeview.is_a? PandoraGUI::SubjTreeView
         end
       when 'Clone'
         if $notebook.page >= 0
           sw = $notebook.get_nth_page($notebook.page)
           treeview = sw.children[0]
-          subject = treeview.subject
-          subject.update(nil, nil, nil)
+          panobject = treeview.panobject
+          panobject.update(nil, nil, nil)
         end
       when 'Listen'
         start_or_stop_listen
@@ -3340,12 +3355,12 @@ module PandoraGUI
       when 'Wizard'
         PandoraKernel.save_as_language($lang)
       else
-        subj_id = widget.name
-        if PandoraModel.const_defined? subj_id
-          subject_class = PandoraModel.const_get(subj_id)
-          show_subject_list(subject_class, widget)
+        panobj_id = widget.name
+        if PandoraModel.const_defined? panobj_id
+          panobject_class = PandoraModel.const_get(panobj_id)
+          show_panobject_list(panobject_class, widget)
         else
-          log_message(LM_Warning, _('Menu handler is not defined yet')+' ['+subj_id+']')
+          log_message(LM_Warning, _('Menu handler is not defined yet')+' ['+panobj_id+']')
         end
     end
   end
