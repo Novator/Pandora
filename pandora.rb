@@ -830,7 +830,7 @@ module PandoraGUI
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
     dlg.comments = _('Distributed Social Network')
-    dlg.copyright = _('Freeware')+' 2012, '+_('Michael Galyuk')
+    dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
     begin
       file = File.open(File.join($pandora_root_dir, 'LICENSE.TXT'), 'r')
       gpl_text = '================='+_('Full text')+" LICENSE.TXT==================\n"+file.read

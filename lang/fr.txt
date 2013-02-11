@@ -2,7 +2,7 @@
 Nodes=>Nœuds
 Punishments=>Châtiment
 States=>Pays
-Freeware=>Logiciel Libre
+Free software=>Logiciel Libre
 Offenses=>Infractions
 "Pandora is licensed under GNU GPLv2.
 
