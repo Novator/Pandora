@@ -56,6 +56,7 @@ end
 require 'rexml/document'
 require 'zlib'
 require 'socket'
+require 'md5'
 begin
   require 'jcode'
   $jcode_on = true
@@ -323,7 +324,7 @@ module PandoraKernel
   end
 
   # Save language phrases
-  # RU: Сохранить фразы для перевода
+  # RU: Сохранить языковые фразы
   def self.save_as_language(lang='ru')
 
     def self.slash_quotes(str)
@@ -352,7 +353,7 @@ module PandoraKernel
     end
   end
 
-  # Type translation
+  # Type translation Ruby->SQLite
   # RU: Трансляция типа Ruby->SQLite
   def self.ruby_type_to_sqlite_type(rt, size)
     rt_str = rt.to_s
@@ -383,7 +384,7 @@ module PandoraKernel
     end
   end
 
-  # Fields definitions to SQL table definitions of SQLite
+  # Table definitions of SQLite from fields definitions
   # RU: Описание таблицы SQLite из описания полей
   def self.panobj_fld_to_sqlite_tab(panobj_fld)
     res = ''
@@ -667,15 +668,13 @@ module PandoraKernel
       self.class.repositories.get_tab_fields(self, self.class.tables[0])
     end
     def field_val(fld_name, sel_row=nil)
-      if sel_row == nil
-        '<no sel>'
-      else
+      res = nil
+      if sel_row != nil
         @last_tab_fields = tab_fields if @last_tab_fields == nil
         i = @last_tab_fields.index(fld_name)
-        res = nil
         res = sel_row[i] if i != nil
-        res
       end
+      res
     end
     def field_des(fld_name)
       df = def_fields.detect{ |e| (e.is_a? Array) and (e[0].to_s == fld_name) or (e.to_s == fld_name) }
@@ -687,6 +686,65 @@ module PandoraKernel
       df = fld_name if df == nil
       df
     end
+    def panhash_pattern
+      res = []
+      def_fields.each do |e|
+        if (e.is_a? Array) and (e[6] != nil) and (e[6].to_s != '')
+          hash = e[6]
+          ind = 0
+          len = 0
+          i = hash.index(':')
+          if i
+            ind = hash[0, i].to_i
+            hash = hash[i+1..-1]
+          end
+          i = hash.index('(')
+          if i
+            len = hash[i+1..-2].to_i
+            hash = hash[0, i]
+          end
+          res << [ind, e[0], hash, len]
+        end
+      end
+      res.sort! { |a,b| a[0]<=>b[0] }
+      res.collect { |e| [e[1],e[2],e[3]] }
+    end
+    def hex_of_str(str)
+      res = ''
+      str.each_byte{ |a| res += sprintf('%02x', a) }
+      res
+    end
+    def calc_hash(hfor, hlen, fval)
+      res = [0].pack('C')
+      case hfor
+        when 'md5', 'panhash'
+          res = MD5.new(fval).digest[0, hlen] if (fval != nil) and (fval != '')
+        when 'date'
+          res = [5,5,5].pack('CCC')
+        else
+          p 'Unknown hash function: ['+hfor.to_s+']'
+      end
+      while res.size<hlen
+        res += [0].pack('C')
+      end
+      p 'hash='+res.to_s
+      p 'hex_of_str='+hex_of_str(res)
+      res
+    end
+    def panhash(values)
+      res = ''
+      pattern = panhash_pattern
+      pattern.each do |pat|
+        fname = pat[0]
+        hfor  = pat[1]
+        hlen  = pat[2]
+        p 'fname='+fname.inspect
+        fval = field_val(fname, values)
+        p 'fval='+fval.inspect
+        res += calc_hash(hfor, hlen, fval)
+      end
+      res
+    end
   end
 
 end
@@ -696,11 +754,11 @@ end
 # == RU: Логическая модель Пандора
 module PandoraModel
 
-  # Pandora's document
-  # RU: Документ Пандора
+  # Pandora's object
+  # RU: Объект Пандоры
   class Panobject < PandoraKernel::BasePanobject
     ider = 'Panobject'
-    name = "Документ Пандора"
+    name = "Объект Пандоры"
   end
 
   # Composing pandora model definition from XML file
@@ -783,6 +841,8 @@ module PandoraModel
               flds[i][4] = fld_pos if (fld_pos != nil) and (fld_pos != '')
               fld_fsize = sub_elem.attributes['fsize']
               flds[i][5] = fld_fsize if (fld_fsize != nil) and (fld_fsize != '')
+              fld_hash = sub_elem.attributes['hash']
+              flds[i][6] = fld_hash if (fld_hash != nil) and (fld_hash != '')
             else
               puts _('Property was not defined, ignored')+' /'+filename+':'+panobj_id+'.'+sub_elem.name
             end
@@ -1573,6 +1633,8 @@ module PandoraGUI
         sel = panobject.select('id='+id)
       end
       p sel
+      p 'panhash_pattern='+panobject.panhash_pattern.inspect
+      p 'panhash='+panobject.panhash(sel[0]).inspect
 
       panobjecticon = get_panobject_icon(panobject)
 
