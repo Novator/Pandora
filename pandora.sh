@@ -20,7 +20,7 @@ CURDIR=`dirname "$DIRFILE"`
 
 # Searching a path to ruby
 PARAMS="$1"
-RUBY=`which ruby1.8`
+RUBY=`which ruby`
 if [ "$RUBY" = "" ]; then
   if [ ! -f "$RUBY" ]; then
     RUBY="/usr/bin/ruby"

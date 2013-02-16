@@ -2,12 +2,12 @@
   <World name="World">
 
     <Person name="Person|People" table="persons" kind="1">
-      <firstname name="Name" type="String" size="30" hash="1:md5(6)" />
-      <lastname name="Family" type="String" size="35" hash="2:md5(10)" />
+      <firstname name="Name" type="String" size="30" hash="1:md5(4)" />
+      <lastname name="Family" type="String" size="35" hash="2:md5(8)" />
       <birth_day name="Birth day" type="Date" hash="3:date(3)" />
-      <origin_place name="Birth place" type="String" size="37" hash="6:panhash(2)" />
-      <fathername name="Father name" type="String" size="35" hash="4:md5(3)" />
-      <mothername name="Mother name" type="String" size="35" hash="5:md5(2)" />
+      <origin_place name="Birth place" type="String" size="37" hash="4:panhash(4)" />
+      <fathername name="Father name" type="String" size="35" hash="5:md5(2)" />
+      <mothername name="Mother name" type="String" size="35" hash="6:md5(2)" />
       <sex name="Sex" type="String" size="5" />
       <exit_day name="Exit day" type="Date" optional="yes" />
       <CALCULATE FL="sha1(firstname){8}+sha1(lastname){12}" />
@@ -23,77 +23,77 @@
       <RELATIONS name="Состав" kind="Person" default="3" />
     </Community>
 
-    <Language name="Language|Languages">
-      <number name="№" type="Integer" />
+    <Language name="Language|Languages"  kind="3">
+      <number name="№" type="Word" />
       <code name="Code" type="String" size="2" />
       <name name="Name" type="String" />
     </Language>
 
-    <Country name="Country|Countries">
+    <Country name="Country|Countries" kind="4">
       <code name="Code" />
       <name name="Name" />
       <area name="Area" />
     </Country>
 
-    <City name="City|Cities">
+    <City name="City|Cities" kind="5">
       <name name="Name" />
       <country name="Country" />
       <population name="Population" />
     </City>
 
-    <Street name="Street|Streets">
+    <Street name="Street|Streets" kind="6">
       <city name="City" />
       <name name="Name" />
     </Street>
 
-    <Address name="Address|Addresses">
+    <Address name="Address|Addresses" kind="7">
       <city name="City" />
       <street name="Street" />
       <building name="Building" />
       <appartment name="Appartment" />
     </Address>
 
-    <Contact name="Contact|Contacts">
+    <Contact name="Contact|Contacts" kind="8">
       <type name="Type" />
       <value name="Value" />
       <owner_list name="Owner list" />
     </Contact>
 
-    <Document name="Document">
+    <Document name="Document" kind="9">
       <type name="Type" />
       <code name="Number" />
       <object name="Object" />
     </Document>
 
-    <Currency name="Currency|Currency">
+    <Currency name="Currency|Currency" kind="10">
       <name name="Name" />
       <code name="Code" />
       <country name="Country" />
       <issuer name="Issuer" />
     </Currency>
 
-    <Occupation name="Occupation">
+    <Occupation name="Occupation" kind="11">
       <name name="Name" />
       <description name="Description" />
     </Occupation>
 
-    <Thing name="Thing|Things">
+    <Thing name="Thing|Things" kind="12">
       <name name="Name" />
       <desc name="Description" />
     </Thing>
 
-    <Word name="Word|Words">
+    <Word name="Word|Words" kind="13">
       <name name="Name" />
       <description name="Description" />
     </Word>
 
-    <Article name="Article">
+    <Article name="Article" kind="14">
       <name name="Name" type="String" size="512" />
       <text name="Text" type="Text" />
       <author name="Author" type="String" size="30" />
     </Article>
 
-    <Blob name="File">
+    <Blob name="File" kind="15">
       <type name="Type" />
       <name name="Name" />
       <size name="Size" />
@@ -101,13 +101,13 @@
       <links name="Links" />
     </Blob>
 
-    <Relation name="Relation">
+    <Relation name="Relation" kind="16">
       <first name="First object" size="50" />
       <second name="Second object" size="50" />
       <type name="Type" type="Byte" />
     </Relation>
 
-    <Opinion name="Opinion">
+    <Opinion name="Opinion" kind="17">
       <object name="Object" />
       <creator name="Creator" />
       <date name="Date" type="Date" />
@@ -118,7 +118,7 @@
   </World>
   <Business name="Business">
 
-    <Property parent="Thing" name="Property" >
+    <Property parent="Thing" name="Property" kind="18">
       <articul name="Articul" />
     </Property>
 

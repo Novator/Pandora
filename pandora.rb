@@ -56,7 +56,7 @@ end
 require 'rexml/document'
 require 'zlib'
 require 'socket'
-require 'md5'
+require 'digest'
 begin
   require 'jcode'
   $jcode_on = true
@@ -599,6 +599,18 @@ module PandoraKernel
       def ider=(x)
         @ider = x
       end
+      def kind
+        @kind
+      end
+      def kind=(x)
+        @kind = x
+      end
+      def lang
+        @lang
+      end
+      def lang=(x)
+        @lang = x
+      end
       def def_fields
         @def_fields
       end
@@ -626,6 +638,18 @@ module PandoraKernel
     end
     def ider=(x)
       self.class.ider = x
+    end
+    def kind
+      self.class.kind
+    end
+    def kind=(x)
+      self.class.kind = x
+    end
+    def lang
+      self.class.lang
+    end
+    def lang=(x)
+      self.class.lang = x
     end
     def def_fields
       self.class.def_fields
@@ -686,6 +710,27 @@ module PandoraKernel
       df = fld_name if df == nil
       df
     end
+    def def_hash(e)
+      len = 0
+      hash = ''
+      if (e.is_a? Array) and (e[2] != nil)
+        case e[2].to_s
+          when 'Date'
+            hash = 'date'
+            len = 3
+          when 'Byte'
+            hash = 'byte'
+            len = 1
+          when 'Word'
+            hash = 'word'
+            len = 2
+          when 'Integer'
+            hash = 'integer'
+            len = 4
+        end
+      end
+      [len, hash]
+    end
     def panhash_pattern
       res = []
       def_fields.each do |e|
@@ -694,33 +739,95 @@ module PandoraKernel
           ind = 0
           len = 0
           i = hash.index(':')
+          j = hash.index('(')
+          i ||= j
           if i
-            ind = hash[0, i].to_i
-            hash = hash[i+1..-1]
+            begin
+              ind = hash[0, i].to_i
+            rescue
+              ind = 0
+            end
           end
-          i = hash.index('(')
-          if i
-            len = hash[i+1..-2].to_i
-            hash = hash[0, i]
+          j ||=i
+          if j
+            len = hash[j+1..-1]
+            len = len[0..-2] if len[-1]==')'
+            len = len.to_i
+            if j>i
+              hash = hash[i+1, j-i-1]
+            else
+              hash = ''
+            end
+          end
+          if (hash==nil) or (hash=='')
+            dlen, hash = def_hash(e)
+            len = dlen if len==0
           end
           res << [ind, e[0], hash, len]
         end
       end
       res.sort! { |a,b| a[0]<=>b[0] }
-      res.collect { |e| [e[1],e[2],e[3]] }
+      if res == []
+        used_len = 0
+        nil_count = 0
+        def_fields.each do |e|
+          len, hash = def_hash(e)
+          res << [e[0], hash, len]
+          if len>0
+            used_len += len
+          else
+            nil_count += 1
+          end
+        end
+        mid_len = 0
+        mid_len = (20-used_len)/nil_count if nil_count>0
+        if mid_len>0
+          tail = 20
+          res.each_with_index do |e,i|
+            if e[2]<=0
+              if i==res.size-1
+                e[2]=tail
+              else
+                e[2]=mid_len
+              end
+            end
+            tail -= e[2]
+          end
+        end
+      else
+        res.collect! { |e| [e[1],e[2],e[3]] }
+      end
+      res
     end
     def hex_of_str(str)
       res = ''
-      str.each_byte{ |a| res += sprintf('%02x', a) }
+      #str.each_byte{ |a| res += sprintf('%02x', a) }
+      #str.each_byte{ |b| res += b.to_s(16) }
+      str.each_byte{ |b| res += '%02x' % b }
       res
     end
     def calc_hash(hfor, hlen, fval)
       res = [0].pack('C')
+      #fval = [fval].pack('C*') if fval.is_a? Fixnum
       case hfor
-        when 'md5', 'panhash'
-          res = MD5.new(fval).digest[0, hlen] if (fval != nil) and (fval != '')
+        when 'sha1', 'hash', 'panhash', ''
+          res = Digest::SHA1.digest(fval)[0, hlen] if (fval != nil) and (fval != '')
+        when 'md5'
+          res = Digest::MD5.digest(fval)[0, hlen] if (fval != nil) and (fval != '')
         when 'date'
-          res = [5,5,5].pack('CCC')
+          dmy = fval.split('.')   # D.M.Y
+          # convert DMY to time from 1970 in days
+          t = Time.mktime(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i).to_i / (24*60*60)
+          # convert date to 0 year epoch
+          t += 1970*365
+          res = [t].pack('N')
+          res = res[-hlen..-1]
+        when 'byte', 'integer', 'word'
+          p 'fval='+fval.inspect
+          res = [fval].pack('C*')
+          p '--res='+res.inspect
+          res = res[0, hlen]
+          p '==res='+res.inspect
         else
           p 'Unknown hash function: ['+hfor.to_s+']'
       end
@@ -731,17 +838,30 @@ module PandoraKernel
       p 'hex_of_str='+hex_of_str(res)
       res
     end
-    def panhash(values)
+    def objhash
+      [kind, lang].pack('CC')
+    end
+    def panhash(values, full=true, res_type=0)
       res = ''
+      case res_type
+        when 0
+          res = objhash
+        else
+          res = hex_of_str(objhash)+':'
+      end
       pattern = panhash_pattern
-      pattern.each do |pat|
+      pattern.each_with_index do |pat, ind|
         fname = pat[0]
         hfor  = pat[1]
         hlen  = pat[2]
-        p 'fname='+fname.inspect
         fval = field_val(fname, values)
-        p 'fval='+fval.inspect
-        res += calc_hash(hfor, hlen, fval)
+        case res_type
+          when 0
+            res += calc_hash(hfor, hlen, fval)
+          else
+            res += ' ' if res
+            res += hex_of_str(calc_hash(hfor, hlen, fval))
+        end
       end
       res
     end
@@ -797,11 +917,15 @@ module PandoraModel
           panobject_class.def_fields = flds
           #p panobject_class
           panobject_class.ider = panobj_id
+          panobject_class.kind = 0
+          panobject_class.lang = 5
           panobj_tabl = panobj_id
           panobj_tabl = PandoraKernel::get_name_or_names(panobj_tabl, true)
           panobj_tabl.downcase!
           panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]]
         end
+        panobj_kind = element.attributes['kind']
+        panobject_class.kind = panobj_kind.to_i if panobj_kind
         flds = panobject_class.def_fields
         #p flds
         panobj_name_en = element.attributes['name']
@@ -913,6 +1037,11 @@ module PandoraGUI
     dlg.run
     dlg.destroy
     $window.present
+  end
+
+  def self.set_statusbar_text(statusbar, text)
+    statusbar.pop(0)
+    statusbar.push(0, text)
   end
 
   # Advanced dialog window
@@ -1048,7 +1177,7 @@ module PandoraGUI
   # Dialog with enter fields
   # RU: Диалог с полями ввода
   class FieldsDialog < AdvancedDialog
-    attr_accessor :fields, :text_fields, :toolbar, :toolbar2
+    attr_accessor :fields, :text_fields, :toolbar, :toolbar2, :statusbar
 
     def initialize(afields=[], *args)
       super(*args)
@@ -1112,6 +1241,16 @@ module PandoraGUI
 
       @vbox = Gtk::VBox.new
       viewport.add(@vbox)
+
+      @statusbar = Gtk::Statusbar.new
+      PandoraGUI.set_statusbar_text(statusbar, 'Panhash')
+      statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
+      listen_btn = Gtk::Button.new(_('Test2'))
+      listen_btn.relief = Gtk::RELIEF_NONE
+      statusbar.pack_start(listen_btn, false, false, 0)
+
+      panelbox.pack_start(statusbar, false, false, 0)
+
 
       #rbvbox = Gtk::VBox.new
 
@@ -1633,8 +1772,6 @@ module PandoraGUI
         sel = panobject.select('id='+id)
       end
       p sel
-      p 'panhash_pattern='+panobject.panhash_pattern.inspect
-      p 'panhash='+panobject.panhash(sel[0]).inspect
 
       panobjecticon = get_panobject_icon(panobject)
 
@@ -1700,6 +1837,8 @@ module PandoraGUI
 
         dialog = FieldsDialog.new(formfields.clone, panobject.sname)
         dialog.icon = panobjecticon
+
+        PandoraGUI.set_statusbar_text(dialog.statusbar, panobject.panhash(sel[0], true, 1)) if sel
 
         if panobject.class==PandoraModel::Key
           mi = Gtk::MenuItem.new("Действия")
@@ -3054,6 +3193,8 @@ module PandoraGUI
       pipeline1.stop if pipeline1
       ximagesink.xwindow_id = 0 if ximagesink
       xvimagesink.xwindow_id = 0 if xvimagesink
+      area2.hide
+      area2.show
     end
 
     def init_media
@@ -3605,7 +3746,7 @@ module PandoraGUI
     $view.border_width = 0
 
     statusbar = Gtk::Statusbar.new
-    statusbar.push(0, _('Base directory: ')+$pandora_base_dir)
+    PandoraGUI.set_statusbar_text(statusbar, _('Base directory: ')+$pandora_base_dir)
     btn = Gtk::Button.new(_('Not logged'))
     btn.relief = Gtk::RELIEF_NONE
     statusbar.pack_start(btn, false, false, 2)
