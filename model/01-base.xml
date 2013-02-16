@@ -4,7 +4,7 @@
     <Person name="Person|People" table="persons" kind="1">
       <firstname name="Name" type="String" size="30" hash="1:md5(4)" />
       <lastname name="Family" type="String" size="35" hash="2:md5(8)" />
-      <birth_day name="Birth day" type="Date" hash="3:date(3)" />
+      <birth_day name="Birth day" type="Date" hash="3:date" />
       <origin_place name="Birth place" type="String" size="37" hash="4:panhash(4)" />
       <fathername name="Father name" type="String" size="35" hash="5:md5(2)" />
       <mothername name="Mother name" type="String" size="35" hash="6:md5(2)" />
@@ -88,17 +88,17 @@
     </Word>
 
     <Article name="Article" kind="14">
-      <name name="Name" type="String" size="512" />
-      <text name="Text" type="Text" />
+      <name name="Name" type="String" size="512" hash="(4)" />
+      <type name="Type" type="Word" />
+      <text name="Text" type="Text" hash="(16)" />
+      <hash name="SHA1" type="String" size="20" />
       <author name="Author" type="String" size="30" />
+      <size name="Size" type="Integer" />
     </Article>
 
-    <Blob name="File" kind="15">
-      <type name="Type" />
-      <name name="Name" />
-      <size name="Size" />
-      <hash name="Hash" />
-      <links name="Links" />
+    <Blob name="File" kind="15" parent="Article">
+      <path name="Path" type="String" size="1024" />
+      <text name="Blob" />
     </Blob>
 
     <Relation name="Relation" kind="16">

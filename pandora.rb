@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
 # encoding: utf-8
 
-# The Pandora. Free decentralized information system
-# RU: Пандора. Децентрализованная информационная система
+# The Pandora. Free peer-to-peer information system
+# RU: Пандора. Свободная пиринговая информационная система
 #
 # This program is distributed under the GNU GPLv2
 # RU: Эта программа распространяется под GNU GPLv2
@@ -585,12 +585,12 @@ module PandoraKernel
     res
   end
 
-  # Pandora's panobject
-  # RU: Субъект (справочник) Пандора
+  # Base Pandora's object
+  # RU: Базовый объект Пандоры
   class BasePanobject
     class << self
-      @ider = 'BasePanobject'
-      @name = 'Субъект Пандора'
+      @ider = 'Base Panobject'
+      @name = 'Базовый объект Пандоры'
       @tables = []
       @def_fields = []
       def ider
@@ -733,6 +733,7 @@ module PandoraKernel
     end
     def panhash_pattern
       res = []
+      last_ind = 0
       def_fields.each do |e|
         if (e.is_a? Array) and (e[6] != nil) and (e[6].to_s != '')
           hash = e[6]
@@ -759,11 +760,14 @@ module PandoraKernel
               hash = ''
             end
           end
-          if (hash==nil) or (hash=='')
-            dlen, hash = def_hash(e)
-            len = dlen if len==0
+          if (hash==nil) or (hash=='') or (len<=0)
+            dlen, dhash = def_hash(e)
+            hash = dhash if (hash==nil) or (hash=='')
+            len = dlen if len<=0
           end
+          ind = last_ind + 1 if ind==0
           res << [ind, e[0], hash, len]
+          last_ind = ind
         end
       end
       res.sort! { |a,b| a[0]<=>b[0] }
@@ -809,27 +813,29 @@ module PandoraKernel
     def calc_hash(hfor, hlen, fval)
       res = [0].pack('C')
       #fval = [fval].pack('C*') if fval.is_a? Fixnum
-      case hfor
-        when 'sha1', 'hash', 'panhash', ''
-          res = Digest::SHA1.digest(fval)[0, hlen] if (fval != nil) and (fval != '')
-        when 'md5'
-          res = Digest::MD5.digest(fval)[0, hlen] if (fval != nil) and (fval != '')
-        when 'date'
-          dmy = fval.split('.')   # D.M.Y
-          # convert DMY to time from 1970 in days
-          t = Time.mktime(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i).to_i / (24*60*60)
-          # convert date to 0 year epoch
-          t += 1970*365
-          res = [t].pack('N')
-          res = res[-hlen..-1]
-        when 'byte', 'integer', 'word'
-          p 'fval='+fval.inspect
-          res = [fval].pack('C*')
-          p '--res='+res.inspect
-          res = res[0, hlen]
-          p '==res='+res.inspect
-        else
-          p 'Unknown hash function: ['+hfor.to_s+']'
+      if (fval != nil) and (fval != '')
+        case hfor
+          when 'sha1', 'hash', 'panhash', ''
+            res = Digest::SHA1.digest(fval)[0, hlen]
+          when 'md5'
+            res = Digest::MD5.digest(fval)[0, hlen]
+          when 'date'
+            dmy = fval.split('.')   # D.M.Y
+            # convert DMY to time from 1970 in days
+            t = Time.mktime(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i).to_i / (24*60*60)
+            # convert date to 0 year epoch
+            t += 1970*365
+            res = [t].pack('N')
+            res = res[-hlen..-1]
+          when 'byte', 'integer', 'word'
+            p 'fval='+fval.inspect
+            res = [fval].pack('C*')
+            p '--res='+res.inspect
+            res = res[0, hlen]
+            p '==res='+res.inspect
+          else
+            p 'Unknown hash function: ['+hfor.to_s+']'
+        end
       end
       while res.size<hlen
         res += [0].pack('C')
@@ -881,7 +887,7 @@ module PandoraModel
     name = "Объект Пандоры"
   end
 
-  # Composing pandora model definition from XML file
+  # Compose pandora model definition from XML file
   # RU: Сформировать описание модели по XML-файлу
   def self.load_model_from_xml(lang='ru')
     lang = '.'+lang
@@ -1002,7 +1008,7 @@ module PandoraGUI
     system(a1+' '+link+a2)
   end
 
-  # Showing About dialog
+  # Show About dialog
   # RU: Показ окна "О программе"
   def self.show_about
     dlg = Gtk::AboutDialog.new
@@ -1144,7 +1150,7 @@ module PandoraGUI
       end
     end
 
-    # show dialog and if pressed "OK" do a block
+    # show dialog until key pressed
     def run
       show_all
       while (not destroyed?) and (@response == 0) do
@@ -1154,6 +1160,8 @@ module PandoraGUI
     end
   end
 
+  # Add button to toolbar
+  # RU: Добавить кнопку на панель инструментов
   def self.add_tool_btn(toolbar, stock, title)
     image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
     btn = Gtk::ToolButton.new(image, _(title))
@@ -1243,9 +1251,9 @@ module PandoraGUI
       viewport.add(@vbox)
 
       @statusbar = Gtk::Statusbar.new
-      PandoraGUI.set_statusbar_text(statusbar, 'Panhash')
+      PandoraGUI.set_statusbar_text(statusbar, '')
       statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
-      listen_btn = Gtk::Button.new(_('Test2'))
+      listen_btn = Gtk::Button.new(_('Panhash'))
       listen_btn.relief = Gtk::RELIEF_NONE
       statusbar.pack_start(listen_btn, false, false, 0)
 
@@ -1419,7 +1427,7 @@ module PandoraGUI
       @old_field_matrix = []
     end
 
-    # show dialog and if pressed "OK" do a block
+    # show dialog, and get fields if form was not closed
     def run
       super
       if not destroyed?
