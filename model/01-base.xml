@@ -1,11 +1,22 @@
 <pandora-model name="Pandora base model">
+  <Pandora name="Pandora Node">
+    <Hashed>
+      <panhash name="Panhash" name.ru="Панхэш" type="String" size="32" />
+    </Hashed>
+
+    <HashedCreated parent="Hashed">
+      <creator name="Creator" name.ru="Создатель" type="String" size="32" />
+    </HashedCreated>
+
+  </Pandora>
+
   <World name="World">
 
-    <Person name="Person|People" table="persons" kind="1">
+    <Person parent="Hashed" name="Person|People" table="persons" kind="1">
       <firstname name="Name" type="String" size="30" hash="1:md5(4)" />
       <lastname name="Family" type="String" size="35" hash="2:md5(8)" />
       <birth_day name="Birth day" type="Date" hash="3:date" />
-      <origin_place name="Birth place" type="String" size="37" hash="4:panhash(4)" />
+      <birth_place name="Birth place" type="String" size="37" hash="4:panhash(4)" />
       <fathername name="Father name" type="String" size="35" hash="5:md5(2)" />
       <mothername name="Mother name" type="String" size="35" hash="6:md5(2)" />
       <sex name="Sex" type="String" size="5" />
@@ -15,7 +26,7 @@
       <TODO records="Patch,Sign" />
     </Person>
 
-    <Community name="Community|Communities" table="companies"  kind="2">
+    <Community parent="HashedCreated" name="Community|Communities" table="companies"  kind="2">
       <name name="Name" type="String" size="128" />
       <founder name="Founder" type="String" size="40" />
       <origin_place name="Origin place" type="String" size="37" />
@@ -163,7 +174,7 @@
     </Law>
 
   </Region>
-  <Pandora name="Pandora Node">
+  <Pandora>
 
     <Parameter name="Parameter">
       <name name="Name" type="String" size="128" />

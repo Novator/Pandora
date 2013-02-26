@@ -1,11 +1,12 @@
 <pandora-model>
+
   <World>
 
     <Person order="1">
       <firstname pos="1" fsize="20" />
       <lastname pos="+1" fsize="25" />
       <birth_day pos="|+1" />
-      <origin_place pos="+0.10up" />
+      <birth_place pos="+0.10up" />
       <fathername pos="|up+0.3" />
       <mothername pos="up+0.1" />
       <sex pos="|left" />
@@ -20,5 +21,17 @@
     </Community>
 
   </World>
+
+  <Pandora name="Pandora Node">
+
+    <Hashed>
+      <panhash pos="|255" />
+    </Hashed>
+
+    <HashedCreated parent="Hashed">
+      <creator pos="255.1" />
+    </HashedCreated>
+
+  </Pandora>
 
 </pandora-model>

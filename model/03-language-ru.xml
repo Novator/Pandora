@@ -5,7 +5,7 @@
       <firstname name.ru="Имя" />
       <lastname name.ru="Фамилия" />
       <birth_day name.ru="Дата рождения" />
-      <origin_place name.ru="Место рождения" />
+      <birth_place name.ru="Место рождения" />
       <fathername name.ru="Имя отца" />
       <mothername name.ru="Имя матери" />
       <sex name.ru="Пол" />

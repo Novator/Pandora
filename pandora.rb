@@ -438,7 +438,7 @@ module PandoraKernel
         @exist[table_name] = TRUE
       end
       tab_def = PandoraKernel::panobj_fld_to_sqlite_tab(def_flds[table_name])
-      p tab_def
+      #p tab_def
       if (! exist[table_name] or recreate) and tab_def != nil
         if exist[table_name] and recreate
           res = db.execute('DROP TABLE '+table_name)
@@ -469,14 +469,28 @@ module PandoraKernel
     def update_table(table_name, fldvalues, fldnames=nil, filter=nil)
       connect
       sql = ''
+      values = []
       if (fldvalues == nil) and (fldnames == nil) and (filter != nil)
         sql = 'DELETE FROM ' + table_name + ' where '+filter
       elsif fldvalues.is_a? Array and fldnames.is_a? Array
+        tfd = db.table_info(table_name)
+        tfd_name = tfd.collect { |x| x['name'] }
+        tfd_type = tfd.collect { |x| x['type'] }
         if filter != nil
           fldvalues.each_with_index do |v,i|
-            if fldnames[i] != nil
+            fname = fldnames[i]
+            if fname != nil
               sql = sql + ',' if i > 0
-              sql = sql + ' ' + fldnames[i] + "='" + v + "'"
+              val = "'" + v + "'"
+              ind = tfd_name.index(fname)
+              if ind
+                typ = tfd_type[ind]
+                if (typ=='TEXT') or (typ[0,7]=='VARCHAR')
+                  val = '?'
+                  values << v
+                end
+              end
+              sql = sql + ' ' + fldnames[i] + '=' + val
             end
           end
           sql = 'UPDATE ' + table_name + ' SET' + sql
@@ -500,8 +514,10 @@ module PandoraKernel
       if (tfd == nil) or (tfd == [])
         nil
       else
+        p 'xxxx====xxxx'
         p sql
-        db.execute(sql)
+        p values
+        db.execute(sql, values)
       end
     end
   end
@@ -840,8 +856,8 @@ module PandoraKernel
       while res.size<hlen
         res += [0].pack('C')
       end
-      p 'hash='+res.to_s
-      p 'hex_of_str='+hex_of_str(res)
+      #p 'hash='+res.to_s
+      #p 'hex_of_str='+hex_of_str(res)
       res
     end
     def objhash
@@ -1124,9 +1140,9 @@ module PandoraGUI
           or ([Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval))) \
           and (event.state.control_mask? or (enter_like_ok and (not (self.focus.is_a? Gtk::TextView))))
         then
-          p "=-=-=-"
-          p self.focus
-          p self.focus.is_a? Gtk::TextView
+          #p "=-=-=-"
+          #p self.focus
+          #p self.focus.is_a? Gtk::TextView
           okbutton.activate
           true
         elsif (event.hardware_keycode==9) or #Esc pressed
@@ -1292,7 +1308,7 @@ module PandoraGUI
 
       while i>0 do
         i -= 1
-        p field = @fields[i]
+        field = @fields[i]
         atext = field[1]
         atype = field[14]
         asize = field[15]
@@ -1419,7 +1435,7 @@ module PandoraGUI
       mw, mh = [mw, rw].max, mh+rh
 
       if (mw<=form_width) and (mh<=form_height) then
-        window_width, window_height = mw+36, mh+@btn_panel_height+82
+        window_width, window_height = mw+36, mh+@btn_panel_height+106
       end
       window.set_default_size(window_width, window_height)
 
@@ -1556,7 +1572,7 @@ module PandoraGUI
       из ширины/пропорции формы.
 =end
 
-      p '---fill'
+      #p '---fill'
 
       # create and fill field matrix to merge in form
       step = 1
@@ -1581,7 +1597,7 @@ module PandoraGUI
                 row_index += 1
                 field_matrix << row if row != []
                 mw, mh = [mw, rw].max, mh+rh
-                p [mh, form_height]
+                #p [mh, form_height]
                 if (mh>form_height)
                   #step = 2
                   step = 5
@@ -1685,7 +1701,7 @@ module PandoraGUI
 
       # compare matrix with previous
       if matrix_is_changed
-        p "----+++++redraw"
+        #p "----+++++redraw"
         @old_field_matrix = field_matrix
         clear_vbox(fields)
 
@@ -1779,7 +1795,7 @@ module PandoraGUI
         id = iter[0]
         sel = panobject.select('id='+id)
       end
-      p sel
+      #p sel
 
       panobjecticon = get_panobject_icon(panobject)
 
@@ -1801,7 +1817,7 @@ module PandoraGUI
         formfields = []
         ind = 0.0
 
-        p panobject.def_fields
+        #p panobject.def_fields
 
         panobject.def_fields.each do |field|
           if field[3]
@@ -1863,14 +1879,22 @@ module PandoraGUI
         end
 
         dialog.run do
-          fldvalues = []
           fldnames = []
+          fldvalues = []
+          if (panobject.is_a? PandoraModel::Hashed) and sel
+            fldnames << 'panhash'
+            fldvalues << panobject.panhash(sel[0], true, 0)
+          end
+          if panobject.is_a? PandoraModel::HashedCreated
+            fldnames << 'creator'
+            fldvalues << '[authorized]'
+          end
           dialog.fields.each_index do |index|
             field = dialog.fields[index]
-            #if formfields[index][13] != field[13]
+            if not fldnames.include?(field[0])
               fldnames << field[0]
               fldvalues << field[13]
-            #end
+            end
           end
           dialog.text_fields.each_index do |index|
             field = dialog.text_fields[index]
