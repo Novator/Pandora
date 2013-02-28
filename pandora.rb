@@ -1096,7 +1096,7 @@ module PandoraGUI
 
       image = Gtk::Image.new(Gtk::Stock::PROPERTIES, Gtk::IconSize::MENU)
       image.set_padding(2, 0)
-      label_box1 = TabLabelBox.new(image, 'Основное', nil, false, 0)
+      label_box1 = TabLabelBox.new(image, _('Basic'), nil, false, 0)
 
       @notebook = Gtk::Notebook.new
       page = notebook.append_page(sw, label_box1)
@@ -1343,12 +1343,30 @@ module PandoraGUI
 
       image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
       image.set_padding(2, 0)
-      label_box2 = TabLabelBox.new(image, 'Связи', nil, false, 0)
+      label_box2 = TabLabelBox.new(image, _('Relations'), nil, false, 0)
       sw = Gtk::ScrolledWindow.new(nil, nil)
       page = notebook.append_page(sw, label_box2)
-      #Gtk::TreeView.new
 
       PandoraGUI.show_panobject_list(PandoraModel::Relation, nil, sw)
+
+
+      image = Gtk::Image.new(Gtk::Stock::DIALOG_AUTHENTICATION, Gtk::IconSize::MENU)
+      image.set_padding(2, 0)
+      label_box2 = TabLabelBox.new(image, _('Signs'), nil, false, 0)
+      sw = Gtk::ScrolledWindow.new(nil, nil)
+      page = notebook.append_page(sw, label_box2)
+
+      PandoraGUI.show_panobject_list(PandoraModel::Sign, nil, sw)
+
+      image = Gtk::Image.new(Gtk::Stock::DIALOG_INFO, Gtk::IconSize::MENU)
+      image.set_padding(2, 0)
+      label_box2 = TabLabelBox.new(image, _('Opinions'), nil, false, 0)
+      sw = Gtk::ScrolledWindow.new(nil, nil)
+      page = notebook.append_page(sw, label_box2)
+
+      PandoraGUI.show_panobject_list(PandoraModel::Opinion, nil, sw)
+
+
 
       # create labels, remember them, calc middle char width
       texts_width = 0
