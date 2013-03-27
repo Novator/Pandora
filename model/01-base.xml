@@ -1,7 +1,7 @@
 <pandora-model name="Pandora base model">
   <Pandora name="Pandora Node">
     <Hashed>
-      <panhash name="Panhash" name.ru="Панхэш" type="String" size="32" />
+      <panhash name="Panhash" name.ru="Панхэш" type="String" size="32" pos="|255" />
     </Hashed>
 
     <HashedCreated parent="Hashed">
@@ -186,17 +186,15 @@
       <permission name="Permission" type="Integer" />
     </Parameter>
 
-    <Key name="Key">
+    <Key parent="Hashed" name="Key">
       <kind name="Kind" type="String" size="32" />
-      <owner name="Owner" type="String" />
-      <description name="Description" type="String" />
-      <secret name="Secret" type="Blob" />
-      <public name="Public" type="Blob" />
+      <owner name="Owner" type="String" size="32" hash="1:panhash(15)" />
+      <body name="Body" type="Blob" hash="2:sha1(10)" />
     </Key>
 
     <Sign name="Sign">
-      <keyhash name="Key panhash" type="String" size="32" />
       <objhash name="Object panhash" type="String" size="32" />
+      <keyhash name="Key panhash" type="String" size="32" />
       <sign name="Sign" type="Blob" />
     </Sign>
 

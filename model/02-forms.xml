@@ -28,7 +28,7 @@
       <panhash pos="|255" />
     </Hashed>
 
-    <HashedCreated parent="Hashed">
+    <HashedCreated>
       <creator pos="255.1" />
     </HashedCreated>
 
