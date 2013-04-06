@@ -10,20 +10,24 @@
 # RU: 2012 (c) Михаил Галюк
 #
 # coding: utf-8
-$KCODE='u'
-#Encoding.default_external = 'UTF-8'
-#Encoding.default_internal = 'UTF-8'
+
+if RUBY_VERSION<'1.9'
+  $KCODE='u'
+else
+  Encoding.default_external = 'UTF-8'
+  Encoding.default_internal = 'UTF-8'
+end
 
 # Platform detection
 # RU: Определение платформы
 def os_family
   case RUBY_PLATFORM
     when /ix/i, /ux/i, /gnu/i, /sysv/i, /solaris/i, /sunos/i, /bsd/i
-      "unix"
+      'unix'
     when /win/i, /ming/i
-      "windows"
+      'windows'
     else
-      "other"
+      'other'
   end
 end
 
@@ -607,10 +611,15 @@ module PandoraKernel
     res
   end
 
+  # Convert string of bytes to hex string
+  # RU: Преобрзует строку байт в 16-й формат
   def self.bytes_to_hex(bytes)
     res = ''
-    #bytes.each_byte{ |b| res += b.to_s(16) }
-    bytes.each_byte{ |b| res += '%02x' % b } if bytes
+    if bytes
+      bytes.each_byte do |b|
+        res << ('%02x' % b)
+      end
+    end
     res
   end
 
@@ -618,17 +627,40 @@ module PandoraKernel
   # RU: Преобрзует большое целое в строку байт
   def self.bigint_to_bytes(bigint)
     bytes = ''
-    hexstr = bigint.to_s(16)
-    (hexstr.size/2).times do |i|
-      bytes << hexstr[i*2,2].to_i(16)
+    if bigint<=0xFF
+      bytes = [bigint].pack('C')
+    else
+      #not_null = true
+      #while not_null
+      #  bytes = (bigint & 255).chr + bytes
+      #  bigint = bigint >> 8
+      #  not_null = (bigint>0)
+      #end
+      hexstr = bigint.to_s(16)
+      hexstr = '0'+hexstr if hexstr.size % 2 > 0
+      ((hexstr.size+1)/2).times do |i|
+        bytes << hexstr[i*2,2].to_i(16).chr
+      end
     end
     bytes
   end
 
-  def self.bytes_to_bigin(bytes)
+  # Convert string of bytes to big integer
+  # RU: Преобрзует строку байт в большое целое
+  def self.bytes_to_bigint(bytes)
     hexstr = bytes_to_hex(bytes)
     OpenSSL::BN.new(hexstr, 16)
   end
+
+  # Fill string by zeros from left to defined size
+  # RU: Заполнить строку нулями слева до нужного размера
+  def self.fill_zeros_from_left(data, size)
+    if data.size<size
+      data = [0].pack('C')*(size-data.size) + data
+    end
+    data
+  end
+
 
   # Base Pandora's object
   # RU: Базовый объект Пандоры
@@ -866,11 +898,11 @@ module PandoraKernel
             res = [t].pack('N')
             res = res[-hlen..-1]
           when 'byte', 'integer', 'word'
-            p 'fval='+fval.inspect
+            #p 'fval='+fval.inspect
             res = [fval].pack('C*')
-            p '--res='+res.inspect
+            #p '--res='+res.inspect
             res = res[0, hlen]
-            p '==res='+res.inspect
+            #p '==res='+res.inspect
           else
             p 'Unknown hash function: ['+hfor.to_s+']'
         end
@@ -885,13 +917,11 @@ module PandoraKernel
     def objhash
       [kind, lang].pack('CC')
     end
-    def panhash(values, full=true, res_type=0)
+    def panhash(values, prefix=true, hexview=false)
       res = ''
-      case res_type
-        when 0
-          res = objhash
-        else
-          res = PandoraKernel.bytes_to_hex(objhash)+':'
+      if prefix
+        res = objhash
+        res = PandoraKernel.bytes_to_hex(res)+':' if hexview
       end
       pattern = panhash_pattern
       pattern.each_with_index do |pat, ind|
@@ -899,12 +929,11 @@ module PandoraKernel
         hfor  = pat[1]
         hlen  = pat[2]
         fval = field_val(fname, values)
-        case res_type
-          when 0
-            res += calc_hash(hfor, hlen, fval)
-          else
-            res += ' ' if res
-            res += PandoraKernel.bytes_to_hex(calc_hash(hfor, hlen, fval))
+        if not hexview
+          res += calc_hash(hfor, hlen, fval)
+        else
+          res += ' ' if res
+          res += PandoraKernel.bytes_to_hex(calc_hash(hfor, hlen, fval))
         end
       end
       res
@@ -1190,11 +1219,20 @@ module PandoraGUI
 
     # show dialog until key pressed
     def run
+      res = false
       show_all
       while (not destroyed?) and (@response == 0) do
         Gtk.main_iteration
         #sleep 0.03
       end
+      if not destroyed?
+        if (@response==1)
+          yield(@response) if block_given?
+          res = true
+        end
+        destroy
+      end
+      res
     end
   end
 
@@ -1223,10 +1261,12 @@ module PandoraGUI
   # Dialog with enter fields
   # RU: Диалог с полями ввода
   class FieldsDialog < AdvancedDialog
-    attr_accessor :fields, :text_fields, :toolbar, :toolbar2, :statusbar
+    attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
+      :support_btn, :trust_btn, :public_btn
 
-    def initialize(afields=[], *args)
+    def initialize(apanobject, afields=[], *args)
       super(*args)
+      @panobject = apanobject
       @fields = afields
 
       window.signal_connect('configure-event') do |widget, event|
@@ -1300,23 +1340,23 @@ module PandoraGUI
 
       #rbvbox = Gtk::VBox.new
 
-      support_btn = Gtk::CheckButton.new(_('support'), true)
-      support_btn.signal_connect('toggled') do |widget, event|
-        p "support"
-      end
+      @support_btn = Gtk::CheckButton.new(_('support'), true)
+      #support_btn.signal_connect('toggled') do |widget, event|
+      #  p "support"
+      #end
       #rbvbox.pack_start(support_btn, false, false, 0)
       hbox.pack_start(support_btn, false, false, 0)
 
-      trust_btn = Gtk::CheckButton.new(_('trust'), true)
-      trust_btn.signal_connect('toggled') do |widget, event|
-        p "trust"
-      end
+      @trust_btn = Gtk::CheckButton.new(_('trust'), true)
+      #trust_btn.signal_connect('toggled') do |widget, event|
+      #  p "trust"
+      #end
       hbox.pack_start(trust_btn, false, false, 0)
 
-      public_btn = Gtk::CheckButton.new(_('public'), true)
-      public_btn.signal_connect('toggled') do |widget, event|
-        p "public"
-      end
+      @public_btn = Gtk::CheckButton.new(_('public'), true)
+      #public_btn.signal_connect('toggled') do |widget, event|
+      #  p "public"
+      #end
       hbox.pack_start(public_btn, false, false, 0)
 
       #hbox.pack_start(rbvbox, false, false, 1.0)
@@ -1494,25 +1534,6 @@ module PandoraGUI
 
       @window_width, @window_height = 0, 0
       @old_field_matrix = []
-    end
-
-    # show dialog, and get fields if form was not closed
-    def run
-      super
-      if not destroyed?
-        if @response == 1
-          @fields.each do |field|
-            entry = field[9]
-            field[13] = entry.text
-          end
-          @text_fields.each do |field|
-            textview = field[9]
-            field[13] = textview.buffer.text
-          end
-          yield(@response) if block_given?
-        end
-        destroy
-      end
     end
 
     def calc_field_size(field)
@@ -1792,6 +1813,419 @@ module PandoraGUI
 
   end
 
+  RSA_exponent = 65537
+
+  # Generate a key or key pair
+  # RU: Генерирует ключ или ключевую пару
+  def self.generate_key(type='RSA', length=2048)
+    key1 = nil
+    key2 = nil
+
+    case type
+      when 'RSA'
+        key = OpenSSL::PKey::RSA.generate(length, RSA_exponent)
+
+        #p key1 = key.params['n']
+        #key2 = key.params['p']
+        key1 = PandoraKernel.bigint_to_bytes(key.params['n'])
+        #p PandoraKernel.bytes_to_bigin(key1)
+        #p '************8'
+        key2 = PandoraKernel.bigint_to_bytes(key.params['p'])
+
+        #puts key.to_text
+        p key.params
+
+        #key_der = key.to_der
+        #p key_der.size
+
+        #key = OpenSSL::PKey::RSA.new(key_der)
+        #p 'pub_seq='+asn_seq2 = OpenSSL::ASN1.decode(key.public_key.to_der).inspect
+      else #симметричный ключ
+        #p OpenSSL::Cipher::ciphers
+        cipher = OpenSSL::Cipher.new(type+'-'+length.to_s+'-CBC')
+        cipher.encrypt
+        key1 = cipher.random_key
+    end
+    [key1, key2]
+  end
+
+  # Init key or key pare
+  # RU: Инициализирует ключ или ключевую пару
+  def self.init_key(key_input)
+    key = nil
+    if key_input.is_a? OpenSSL::Cipher or key_input.is_a? OpenSSL::PKey
+      key = key_input
+    else
+      key1 = key_input[0]
+      key2 = key_input[1]
+      type = key_input[2]
+      pass = key_input[3]
+      case type
+        when 'RSA'
+          p '------'
+          #p key.params
+          n = PandoraKernel.bytes_to_bigint(key1)
+          p 'n='+n.inspect
+          e = OpenSSL::BN.new(RSA_exponent.to_s)
+          if key2
+            p0 = PandoraKernel.bytes_to_bigint(key2)
+          else
+            p0 = 0
+          end
+          pass = 0
+
+          #p 'n='+n.inspect+'  p='+p0.inspect+'  e='+e.inspect
+
+          if key2
+            q = (n / p0)[0]
+            p0,q = q,p0 if p0 < q
+            d = e.mod_inverse((p0-1)*(q-1))
+            dmp1 = d % (p0-1)
+            dmq1 = d % (q-1)
+            iqmp = q.mod_inverse(p0)
+
+            #p '[n,d,dmp1,dmq1,iqmp]='+[n,d,dmp1,dmq1,iqmp].inspect
+
+            seq = OpenSSL::ASN1::Sequence([
+              OpenSSL::ASN1::Integer(pass),
+              OpenSSL::ASN1::Integer(n),
+              OpenSSL::ASN1::Integer(e),
+              OpenSSL::ASN1::Integer(d),
+              OpenSSL::ASN1::Integer(p0),
+              OpenSSL::ASN1::Integer(q),
+              OpenSSL::ASN1::Integer(dmp1),
+              OpenSSL::ASN1::Integer(dmq1),
+              OpenSSL::ASN1::Integer(iqmp)
+            ])
+          else
+            seq = OpenSSL::ASN1::Sequence([
+              OpenSSL::ASN1::Integer(n),
+              OpenSSL::ASN1::Integer(e),
+            ])
+          end
+
+          #p asn_seq = OpenSSL::ASN1.decode(key)
+          # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
+          #seq1 = asn_seq.value[1]
+          #str_val = PandoraKernel.bigint_to_bytes(seq1.value)
+          #p 'str_val.size='+str_val.size.to_s
+          #p Base64.encode64(str_val)
+          #key2 = key.public_key
+          #p key2.to_der.size
+          # Seq: Int:n, Int:e
+          #p 'pub_seq='+asn_seq2 = OpenSSL::ASN1.decode(key.public_key.to_der).inspect
+          #p key2.to_s
+
+          # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
+          key = OpenSSL::PKey::RSA.new(seq.to_der)
+          p key.params
+        when 'DSA'
+          seq = OpenSSL::ASN1::Sequence([
+            OpenSSL::ASN1::Integer(0),
+            OpenSSL::ASN1::Integer(key.p),
+            OpenSSL::ASN1::Integer(key.q),
+            OpenSSL::ASN1::Integer(key.g),
+            OpenSSL::ASN1::Integer(key.pub_key),
+            OpenSSL::ASN1::Integer(key.priv_key)
+          ])
+      end
+    end
+    key
+  end
+
+  # Deactivate current or target key
+  # RU: Деактивирует текущий или указанный ключ
+  def self.deactivate_key(key=nil)
+    true
+  end
+
+  # Create sign
+  # RU: Создает подпись
+  def self.make_sign(from_key, data, to_key=nil)
+    sign = nil
+    sign = from_key.sign(OpenSSL::Digest::SHA1.new, data)
+    sign
+  end
+
+  # Verify sign
+  # RU: Проверяет подпись
+  def self.verify_sign(from_key, data, sign, to_key=nil)
+    res = false
+    res = from_key.verify(OpenSSL::Digest::SHA1.new, sign, data)
+    res
+  end
+
+  # Encrypt data
+  # RU: Шифрует данные
+  def self.encrypt(to_key, pure_data)
+    encrypted = nil
+    type ||= 'RSA'
+    case type
+      when 'RSA'
+        #???
+        encrypted = to_key.public_encrypt(pure_data)
+        #Base64.encode64(
+      when 'AES'
+        cipher = OpenSSL::Cipher::AES.new(128, :CBC)
+        cipher.encrypt
+        key = cipher.random_key
+        iv = cipher.random_iv
+        encrypted = cipher.update(data) + cipher.final
+
+        #def AESCrypt.encrypt(data, key, iv, cipher_type)
+        #aes = OpenSSL::Cipher::Cipher.new(cipher_type)
+        #aes.encrypt
+        #aes.key = key
+        #aes.iv = iv if iv != nil
+        #aes.update(data) + aes.final
+      when 'BT'
+        cipher = OpenSSL::Cipher::Cipher.new('bf-cbc').send(mode)
+        cipher.key = Digest::SHA256.digest(key)
+        cipher.update(data) << cipher.final
+        cipher(:encrypt, key, data)
+    end
+    encrypted
+  end
+
+  # Decrypt data
+  # RU: Расшифровывает данные
+  def self.decrypt(from_key, crypt_data)
+    decrypted = nil
+    type ||= 'RSA'
+    case type
+      when 'RSA'
+        #private_key = OpenSSL::PKey::RSA.new(File.read('my_private_key.pem'), 'password')
+        decrypted = from_key.private_decrypt(crypt_data)
+        #Base64.decode64(
+      when 'AES'
+        decipher = OpenSSL::Cipher::AES.new(128, :CBC)
+        decipher.decrypt
+        decipher.key = key
+        decipher.iv = iv
+        decrypted = decipher.update(encrypted) + decipher.final
+
+        #def AESCrypt.decrypt(encrypted_data, key, iv, cipher_type)
+        #aes = OpenSSL::Cipher::Cipher.new(cipher_type)
+        #aes.decrypt
+        #aes.key = key
+        #aes.iv = iv if iv != nil
+        #aes.update(encrypted_data) + aes.final
+
+      when 'BT'
+        cipher = OpenSSL::Cipher::Cipher.new('bf-cbc').send(mode)
+        cipher.key = Digest::SHA256.digest(key)
+        cipher.update(data) << cipher.final
+        cipher(:decrypt, key, text)
+        #p "text" == Blowfish.decrypt("key", Blowfish.encrypt("key", "text"))
+    end
+    decrypted
+  end
+
+  def self.get_param(name, category='Common', type='Integer', dev_values=[0,0,0])
+    value = nil
+    value
+  end
+
+  class << self
+    attr_accessor :the_current_key
+  end
+
+  def self.current_key(reinit=false)
+    key = self.the_current_key
+    if (not key) or reinit
+      last_auth_key = get_param('last_auth_key', 'Crypto', 'String')
+      keys = []
+      if last_auth_key
+        pub_key_panobj = PandoraModel::Key.find_by_panhash(last_auth_key)
+        keys[0] = pub_key_panobj.values['body']
+        priv_key_panobj = PandoraModel::Key.find_by_panhash(last_auth_key)
+        keys[1] = priv_key_panobj.values['body']
+        keys[2] = 'RSA'
+        keys[3] = '12345'
+      else
+        dialog = AdvancedDialog.new(_('Password'))
+        dialog.run do
+          keys = generate_key('RSA', 2048)
+          keys[2] = 'RSA'
+          keys[3] = '12345'
+        end
+      end
+      if keys != []
+        key = init_key(keys)
+        self.the_current_key = key
+      end
+    end
+    key
+  end
+
+  PT_Int   = 0
+  PT_Str   = 1
+  PT_Bool  = 2
+  PT_Time  = 3
+  PT_Array = 4
+  PT_Hash  = 5
+  PT_Sym   = 6
+  PT_Unknown = 32
+
+  def self.encode_pan_type(basetype, int)
+    count = 0
+    while (int>0xFF) and (count<8)
+      int = int >> 8
+      count +=1
+    end
+    if count == 8
+      puts '[encode_pan_type] Too big int='+int.to_s
+      count = 7
+    end
+    [basetype ^ (count << 5), count]
+  end
+
+  def self.decode_pan_type(type)
+    basetype = type & 0x1F
+    count = type >> 5
+    [basetype, count]
+  end
+
+  def self.rubyobj_to_pson_elem(rubyobj)
+    type = PT_Unknown
+    count = 0
+    data = ''
+    elem_size = nil
+    case rubyobj
+      when String
+        data = rubyobj
+        elem_size = data.size
+        type, count = encode_pan_type(PT_Str, elem_size)
+      when Symbol
+        data = rubyobj.to_s
+        elem_size = data.size
+        type, count = encode_pan_type(PT_Sym, elem_size)
+      when Integer
+        data = PandoraKernel.bigint_to_bytes(rubyobj)
+        type, count = encode_pan_type(PT_Int, rubyobj)
+      when TrueClass, FalseClass
+        if rubyobj
+          data = 1
+        else
+          data = 0
+        end
+        data = [data].pack('C')
+        type = PT_Bool
+      when Time
+        data = PandoraKernel.bigint_to_bytes(rubyobj.to_i)
+        type, count = encode_pan_type(PT_Time, rubyobj.to_i)
+      when Array
+        rubyobj.each do |a|
+          data << rubyobj_to_pson_elem(a)
+        end
+        elem_size = rubyobj.size
+        type, count = encode_pan_type(PT_Array, elem_size)
+      when Hash
+        rubyobj = rubyobj.sort_by {|k,v| k.to_s}
+        rubyobj.each do |a|
+          data << rubyobj_to_pson_elem(a[0]) << rubyobj_to_pson_elem(a[1])
+        end
+        elem_size = rubyobj.size
+        type, count = encode_pan_type(PT_Hash, elem_size)
+      else
+        puts 'Unknown elem type: ['+rubyobj.class.name+']'
+    end
+    res = [type].pack('C')
+    if elem_size
+      res << PandoraKernel.fill_zeros_from_left(PandoraKernel.bigint_to_bytes(elem_size), count+1) + data
+    else
+      res << PandoraKernel.fill_zeros_from_left(data, count+1)
+    end
+    res
+  end
+
+  def self.pson_elem_to_rubyobj(data)
+    val = nil
+    len = 0
+    if data.size>0
+      len = 1
+      type = data[0].ord
+      basetype, count = decode_pan_type(type)
+      if data.size>0
+        vlen = count+1
+        int = PandoraKernel.bytes_to_bigint(data[1, vlen])
+        case basetype
+          when PT_Int
+            val = int
+          when PT_Str
+            val = data[1+vlen, int]
+            vlen += int
+          when PT_Sym
+            val = data[1+vlen, int].to_sym
+            vlen += int
+          when PT_Bool
+            val = (int != 0)
+          when PT_Time
+            val = Time.at(int)
+          when PT_Array, PT_Hash
+            val = []
+            int *= 2 if basetype==PT_Hash
+            while (data.size-1-vlen>0) and (int>0)
+              int -= 1
+              aval, alen = pson_elem_to_rubyobj(data[1+vlen..-1])
+              val << aval
+              vlen += alen
+            end
+            val = Hash[*val] if basetype==PT_Hash
+        end
+        len += vlen
+      end
+    end
+    [val, len]
+  end
+
+  # Pack PanObject fields to PSON binary format
+  # RU: Пакует поля ПанОбъекта в бинарный формат PSON
+  def self.hash_to_pson(fldvalues)
+    bytes = ''
+    fldvalues = fldvalues.sort_by {|k,v| k.to_s }
+    fldvalues.each { |nam, val|
+      nam = nam.to_s
+      nsize = nam.size
+      nsize = 255 if nsize>255
+      bytes << [nsize].pack('C') + nam[0, nsize]
+      pson_elem = rubyobj_to_pson_elem(val)
+      bytes << pson_elem
+    }
+    bytes
+  end
+
+  def self.pson_to_hash(pson)
+    hash = {}
+    while (pson != nil) and (pson.size>1)
+      flen = pson[0].ord
+      fname = pson[1, flen]
+      val = nil
+      len = 0
+      if pson.size-flen>1
+        val, len = pson_elem_to_rubyobj(pson[1+flen..-1])
+      end
+      pson = pson[1+flen+len..-1]
+      hash[fname] = val
+    end
+    hash
+  end
+
+  # Sign PSON of PanObject and save sign record
+  # RU: Подписывает PSON ПанОбъекта и сохраняет запись подписи
+  def self.sign_panobject(panobject)
+    key = current_key
+    fldvalues = {:first_name=>'Ivan', :last_name=>'Inavov'}
+    p sign = make_sign(key, hash_to_pson(fldvalues))
+    values = {:kind=>'RSA', :body=>sign}
+    PandoraModel::Key.save(values)
+  end
+
+  def self.unsign_panobject(panhash)
+    count = 0
+    count
+  end
+
   # View and edit record dialog
   # RU: Окно просмотра и правки записи
   def self.edit_panobject(tree_view, action)
@@ -1843,10 +2277,12 @@ module PandoraGUI
       store = tree_view.model
       sel = nil
       id = nil
+      panhash0 = nil
       if path != nil and ! new_act
         iter = store.get_iter(path)
         id = iter[0].to_s
         sel = panobject.select('id='+id)
+        panhash0 = panobject.panhash(sel[0])
       end
       #p sel
 
@@ -1919,10 +2355,10 @@ module PandoraGUI
         p formfields
         formfields.sort! {|a,b| a[3]<=>b[3] }
 
-        dialog = FieldsDialog.new(formfields.clone, panobject.sname)
+        dialog = FieldsDialog.new(panobject, formfields.clone, panobject.sname)
         dialog.icon = panobjecticon
 
-        PandoraGUI.set_statusbar_text(dialog.statusbar, panobject.panhash(sel[0], true, 1)) if sel
+        PandoraGUI.set_statusbar_text(dialog.statusbar, panobject.panhash(sel[0], true, true)) if sel
 
         if panobject.class==PandoraModel::Key
           mi = Gtk::MenuItem.new("Действия")
@@ -1939,11 +2375,20 @@ module PandoraGUI
         end
 
         dialog.run do
+          dialog.fields.each do |field|
+            entry = field[9]
+            field[13] = entry.text
+          end
+          dialog.text_fields.each do |field|
+            textview = field[9]
+            field[13] = textview.buffer.text
+          end
+
           fldnames = []
           fldvalues = []
           if (panobject.is_a? PandoraModel::Hashed) and sel
             fldnames << 'panhash'
-            fldvalues << panobject.panhash(sel[0], true, 0)
+            fldvalues << panobject.panhash(sel[0])
           end
           if panobject.is_a? PandoraModel::HashedCreated
             fldnames << 'creator'
@@ -1969,6 +2414,13 @@ module PandoraGUI
             id = 'id='+id
           end
           res = panobject.update(fldvalues, fldnames, id)
+          p res
+          p dialog.support_btn.active?
+          unsign_panobject(panhash0)
+          if dialog.trust_btn.active?
+            sign_panobject(panobject)
+          end
+          p dialog.public_btn.active?
         end
       end
     end
@@ -2138,213 +2590,6 @@ module PandoraGUI
       end
     end
 
-  end
-
-  RSA_exponent = 65537
-
-  # Generate a key or key pair
-  # RU: Генерирует ключ или ключевую пару
-  def self.generate_key(type='RSA', length=2048)
-    key1 = nil
-    key2 = nil
-
-    case type
-      when 'RSA'
-        key = OpenSSL::PKey::RSA.generate(length, RSA_exponent)
-
-        #p key1 = key.params['n']
-        #key2 = key.params['p']
-        key1 = PandoraKernel.bigint_to_bytes(key.params['n'])
-        #p PandoraKernel.bytes_to_bigin(key1)
-        #p '************8'
-        key2 = PandoraKernel.bigint_to_bytes(key.params['p'])
-
-        #puts key.to_text
-        p key.params
-
-        #key_der = key.to_der
-        #p key_der.size
-
-        #key = OpenSSL::PKey::RSA.new(key_der)
-        p 'pub_seq='+asn_seq2 = OpenSSL::ASN1.decode(key.public_key.to_der).inspect
-      else #симметричный ключ
-        #p OpenSSL::Cipher::ciphers
-        cipher = OpenSSL::Cipher.new(type+'-'+length.to_s+'-CBC')
-        cipher.encrypt
-        key1 = cipher.random_key
-    end
-    [key1, key2]
-  end
-
-  # Init key or key pare
-  # RU: Инициализирует ключ или ключевую пару
-  def self.init_key(key_input)
-    key = nil
-    if key_input.is_a? OpenSSL::Cipher or key_input.is_a? OpenSSL::PKey
-      key = key_input
-    else
-      key1 = key_input[0]
-      key2 = key_input[1]
-      type = key_input[2]
-      pass = key_input[3]
-      case type
-        when 'RSA'
-          p '------'
-          #p key.params
-          n = PandoraKernel.bytes_to_bigin(key1)
-          e = OpenSSL::BN.new(RSA_exponent.to_s)
-          if key2
-            p0 = PandoraKernel.bytes_to_bigin(key2)
-          else
-            p0 = 0
-          end
-          pass = 0
-
-          #p 'n='+n.inspect+'  p='+p0.inspect+'  e='+e.inspect
-
-          if key2
-            q = (n / p0)[0]
-            p0,q = q,p0 if p0 < q
-            d = e.mod_inverse((p0-1)*(q-1))
-            dmp1 = d % (p0-1)
-            dmq1 = d % (q-1)
-            iqmp = q.mod_inverse(p0)
-
-            #p '[n,d,dmp1,dmq1,iqmp]='+[n,d,dmp1,dmq1,iqmp].inspect
-
-            seq = OpenSSL::ASN1::Sequence([
-              OpenSSL::ASN1::Integer(pass),
-              OpenSSL::ASN1::Integer(n),
-              OpenSSL::ASN1::Integer(e),
-              OpenSSL::ASN1::Integer(d),
-              OpenSSL::ASN1::Integer(p0),
-              OpenSSL::ASN1::Integer(q),
-              OpenSSL::ASN1::Integer(dmp1),
-              OpenSSL::ASN1::Integer(dmq1),
-              OpenSSL::ASN1::Integer(iqmp)
-            ])
-          else
-            seq = OpenSSL::ASN1::Sequence([
-              OpenSSL::ASN1::Integer(n),
-              OpenSSL::ASN1::Integer(e),
-            ])
-          end
-
-          #p asn_seq = OpenSSL::ASN1.decode(key)
-          # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
-          #seq1 = asn_seq.value[1]
-          #str_val = PandoraKernel.bigint_to_bytes(seq1.value)
-          #p 'str_val.size='+str_val.size.to_s
-          #p Base64.encode64(str_val)
-          #key2 = key.public_key
-          #p key2.to_der.size
-          # Seq: Int:n, Int:e
-          #p 'pub_seq='+asn_seq2 = OpenSSL::ASN1.decode(key.public_key.to_der).inspect
-          #p key2.to_s
-
-          # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
-          key = OpenSSL::PKey::RSA.new(seq.to_der)
-          p key.params
-        when 'DSA'
-          seq = OpenSSL::ASN1::Sequence([
-            OpenSSL::ASN1::Integer(0),
-            OpenSSL::ASN1::Integer(key.p),
-            OpenSSL::ASN1::Integer(key.q),
-            OpenSSL::ASN1::Integer(key.g),
-            OpenSSL::ASN1::Integer(key.pub_key),
-            OpenSSL::ASN1::Integer(key.priv_key)
-          ])
-      end
-    end
-    key
-  end
-
-  # Deactivate current or target key
-  # RU: Деактивирует текущий или указанный ключ
-  def self.deactivate_key(key=nil)
-    true
-  end
-
-  # Create sign
-  # RU: Создает подпись
-  def self.make_sign(from_key, data, to_key=nil)
-    sign = nil
-    sign = from_key.sign(OpenSSL::Digest::SHA1.new, data)
-    sign
-  end
-
-  # Verify sign
-  # RU: Проверяет подпись
-  def self.verify_sign(from_key, data, sign, to_key=nil)
-    res = false
-    res = from_key.verify(OpenSSL::Digest::SHA1.new, sign, data)
-    res
-  end
-
-  # Encrypt data
-  # RU: Шифрует данные
-  def self.encrypt(to_key, pure_data)
-    encrypted = nil
-    type ||= 'RSA'
-    case type
-      when 'RSA'
-        #???
-        encrypted = to_key.public_encrypt(pure_data)
-        #Base64.encode64(
-      when 'AES'
-        cipher = OpenSSL::Cipher::AES.new(128, :CBC)
-        cipher.encrypt
-        key = cipher.random_key
-        iv = cipher.random_iv
-        encrypted = cipher.update(data) + cipher.final
-
-        #def AESCrypt.encrypt(data, key, iv, cipher_type)
-        #aes = OpenSSL::Cipher::Cipher.new(cipher_type)
-        #aes.encrypt
-        #aes.key = key
-        #aes.iv = iv if iv != nil
-        #aes.update(data) + aes.final
-      when 'BT'
-        cipher = OpenSSL::Cipher::Cipher.new('bf-cbc').send(mode)
-        cipher.key = Digest::SHA256.digest(key)
-        cipher.update(data) << cipher.final
-        cipher(:encrypt, key, data)
-    end
-    encrypted
-  end
-
-  # Decrypt data
-  # RU: Расшифровывает данные
-  def self.decrypt(from_key, crypt_data)
-    decrypted = nil
-    type ||= 'RSA'
-    case type
-      when 'RSA'
-        #private_key = OpenSSL::PKey::RSA.new(File.read('my_private_key.pem'), 'password')
-        decrypted = from_key.private_decrypt(crypt_data)
-        #Base64.decode64(
-      when 'AES'
-        decipher = OpenSSL::Cipher::AES.new(128, :CBC)
-        decipher.decrypt
-        decipher.key = key
-        decipher.iv = iv
-        decrypted = decipher.update(encrypted) + decipher.final
-
-        #def AESCrypt.decrypt(encrypted_data, key, iv, cipher_type)
-        #aes = OpenSSL::Cipher::Cipher.new(cipher_type)
-        #aes.decrypt
-        #aes.key = key
-        #aes.iv = iv if iv != nil
-        #aes.update(encrypted_data) + aes.final
-
-      when 'BT'
-        cipher = OpenSSL::Cipher::Cipher.new('bf-cbc').send(mode)
-        cipher.key = Digest::SHA256.digest(key)
-        cipher.update(data) << cipher.final
-        cipher(:decrypt, key, text)
-        #p "text" == Blowfish.decrypt("key", Blowfish.encrypt("key", "text"))
-    end
-    decrypted
   end
 
   # Socket with defined outbound port
@@ -3853,15 +4098,17 @@ module PandoraGUI
           node = define_node_by_current_record(treeview)
           show_talk_dialog(node)
         end
-      when 'Wizard'
-        #PandoraKernel.save_as_language($lang)
-        keys = generate_key('RSA', 2048)
-        #keys[1] = nil
-        keys[2] = 'RSA'
-        keys[3] = '12345'
-        p '=====generate_key:'+keys.inspect
-        key = init_key(keys)
-        p '=====init_key:'+key.inspect
+      when 'Authorize'
+        key = current_key(true)
+
+        ##PandoraKernel.save_as_language($lang)
+        #keys = generate_key('RSA', 2048)
+        ##keys[1] = nil
+        #keys[2] = 'RSA'
+        #keys[3] = '12345'
+        #p '=====generate_key:'+keys.inspect
+        #key = init_key(keys)
+        p '=====curr_key:'+key.inspect
         data = 'Test string!'
         sign = make_sign(key, data)
         p '=====make_sign:'+sign.inspect
@@ -3872,6 +4119,19 @@ module PandoraGUI
         p '=====encrypted:'+encrypted.inspect
         decrypted = decrypt(key, encrypted)
         p '=====decrypted:'+decrypted.inspect
+      when 'Wizard'
+        #typ, count = encode_pan_type(PT_Str, 0x1FF)
+        #p decode_pan_type(typ)
+        #p pson = rubyobj_to_pson_elem(Time.now)
+        #p elem = pson_elem_to_rubyobj(pson)
+        #p pson = rubyobj_to_pson_elem(12345)
+        #p elem = pson_elem_to_rubyobj(pson)
+        #p pson = rubyobj_to_pson_elem({'zzz'=>'bcd', 'ann'=>['789',123], :bbb=>'dsd'})
+        #p elem = pson_elem_to_rubyobj(pson)
+
+        p pson = hash_to_pson({:first_name=>'Ivan', :last_name=>'Inavov', 'ddd'=>555})
+        p hash = pson_to_hash(pson)
+
       else
         panobj_id = widget.name
         if PandoraModel.const_defined? panobj_id
@@ -3910,24 +4170,23 @@ module PandoraGUI
     ['Relation', nil, _('Relations')],
     ['Opinion', nil, _('Opinions')],
     [nil, nil, _('_Bussiness')],
-    ['Worker', nil, _('Workers')],
-    ['Enterprise', nil, _('Enterprises')],
-    ['-', nil, '-'],
+    ['Member', nil, _('Members')],
+    ['Company', nil, _('Companies')],
+    ['Storage', nil, _('Storages')],
     ['Product', nil, _('Products')],
     ['Service', nil, _('Services')],
     ['-', nil, '-'],
-    ['Position', nil, _('Positions')],
-    ['Contract', nil, _('Contracts')],
-    ['Account', nil, _('Accounts')],
-    ['Storage', nil, _('Storages')],
-    ['-', nil, '-'],
+    ['Ad', nil, _('Ads')],
     ['Order', nil, _('Orders')],
     ['Deal', nil, _('Deals')],
+    ['Waybill', nil, _('Waybills')],
+    ['Debt', nil, _('Debts')],
+    ['Guaranty', nil, _('Guaranties')],
+    ['-', nil, '-'],
+    ['Position', nil, _('Positions')],
+    ['Contract', nil, _('Contracts')],
     ['Payment', nil, _('Payments')],
-    ['-', nil, '-'],
     ['Property', nil, _('Property')],
-    ['Transfer', nil, _('Transfer')],
-    ['-', nil, '-'],
     ['Report', nil, _('Reports')],
     [nil, nil, _('_Region')],
     ['Resource', nil, _('Resources')],

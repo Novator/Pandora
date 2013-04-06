@@ -171,9 +171,9 @@
     <Key name.ru="Ключ|Ключи">
       <kind name.ru="Тип" />
       <owner name.ru="Владелец" />
-      <description name.ru="Описание" />
-      <secret name.ru="Секретный" />
-      <public name.ru="Публичный" />
+      <date name.ru="Дата" />
+      <expire name.ru="Истекает" />
+      <body name.ru="Тело" />
     </Key>
 
     <Sign name.ru="Подпись|Подписи">

@@ -187,14 +187,18 @@
     </Parameter>
 
     <Key parent="Hashed" name="Key">
-      <kind name="Kind" type="String" size="32" />
-      <owner name="Owner" type="String" size="32" hash="1:panhash(15)" />
+      <kind name="Kind" type="Byte" />
+      <owner name="Owner (or Parent)" type="String" size="32" hash="1:panhash(15)" />
+      <date name="Date" type="Date" />
+      <expire name="Expire" type="Date" />
       <body name="Body" type="Blob" hash="2:sha1(10)" />
     </Key>
 
     <Sign name="Sign">
       <objhash name="Object panhash" type="String" size="32" />
       <keyhash name="Key panhash" type="String" size="32" />
+      <format name="Format" type="Integer" />
+      <time name="Time" type="Time" />
       <sign name="Sign" type="Blob" />
     </Sign>
 
