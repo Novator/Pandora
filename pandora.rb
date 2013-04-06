@@ -466,25 +466,40 @@ module PandoraKernel
       if (tfd == nil) or (tfd == [])
         @selection = [['<no>'],['<base>']]
       else
+        sql_values = []
+        if filter.is_a? Hash
+          sql2 = ''
+          filter.each do |n,v|
+            if n != nil
+              sql2 = sql2 + ',' if sql2 != ''
+              sql2 = sql2 + n.to_s + '=?'
+              sql_values << v
+            end
+          end
+          filter = sql2
+        end
         sql = 'SELECT * from '+table_name
         if (filter != nil) and (filter > '')
-          sql = sql + ' where '+filter end
-        @selection = db.execute(sql)
+          sql = sql + ' where '+filter
+        end
+        p 'select  sql='+sql.inspect
+        @selection = db.execute(sql, sql_values)
       end
     end
-    def update_table(table_name, fldvalues, fldnames=nil, filter=nil)
+    def update_table(table_name, values, names=nil, filter=nil)
+      res = false
       connect
       sql = ''
-      values = []
-      if (fldvalues == nil) and (fldnames == nil) and (filter != nil)
+      sql_values = []
+      if (values == nil) and (names == nil) and (filter != nil)
         sql = 'DELETE FROM ' + table_name + ' where '+filter
-      elsif fldvalues.is_a? Array and fldnames.is_a? Array
+      elsif values.is_a? Array and names.is_a? Array
         tfd = db.table_info(table_name)
         tfd_name = tfd.collect { |x| x['name'] }
         tfd_type = tfd.collect { |x| x['type'] }
         if filter != nil
-          fldvalues.each_with_index do |v,i|
-            fname = fldnames[i]
+          values.each_with_index do |v,i|
+            fname = names[i]
             if fname != nil
               sql = sql + ',' if sql != ''
               #val = "'" + v + "'"
@@ -497,8 +512,8 @@ module PandoraKernel
               #  end
               #end
               #sql = sql + ' ' + fldnames[i] + '=' + val
-              values << v
-              sql = sql + ' ' + fname + '=?'
+              sql_values << v
+              sql = sql + ' ' + fname.to_s + '=?'
             end
           end
           sql = 'UPDATE ' + table_name + ' SET' + sql
@@ -507,28 +522,29 @@ module PandoraKernel
           end
         else
           sql2 = ''
-          fldvalues.each_with_index do |v,i|
-            fname = fldnames[i]
+          values.each_with_index do |v,i|
+            fname = names[i]
             if fname != nil
               sql = sql + ',' if sql != ''
               sql2 = sql2 + ',' if sql2 != ''
-              sql = sql + fname
+              sql = sql + fname.to_s
               sql2 = sql2 + '?'
-              values << v
+              sql_values << v
             end
           end
           sql = 'INSERT INTO ' + table_name + '(' + sql + ') VALUES(' + sql2 + ')'
         end
       end
       tfd = fields_table(table_name)
-      if (tfd == nil) or (tfd == [])
-        nil
-      else
-        p 'xxxx====xxxx'
-        p sql
-        p values
-        db.execute(sql, values)
+      if (tfd != nil) and (tfd != [])
+        p 'upd_tab: sql='+sql.inspect
+        p 'upd_tab: sql_values='+sql_values.inspect
+        res = db.execute(sql, sql_values)
+        p 'db.execute  res='+res.inspect
+        res = true
       end
+      p 'upd_tab: res='+res.inspect
+      res
     end
   end
 
@@ -556,6 +572,7 @@ module PandoraKernel
     end
     def get_adapter(panobj, table_ptr, recreate=false)
       #find db_ptr in db_list
+      adap = nil
       base_des = base_list[$base_index]
       if base_des[3] == nil
         adap = SQLiteDbSession.new
@@ -578,12 +595,16 @@ module PandoraKernel
       adap = get_adapter(panobj, table_ptr)
       adap.select_table(table_ptr[1], filter)
     end
-    def get_tab_update(panobj, table_ptr, fldvalues, fldnames, filter='')
-      recreate = ((fldvalues == nil) and (fldnames == nil) and (filter == nil))
+    def get_tab_update(panobj, table_ptr, values, names, filter='')
+      res = false
+      recreate = ((values == nil) and (names == nil) and (filter == nil))
       adap = get_adapter(panobj, table_ptr, recreate)
-      if not recreate
-        adap.update_table(table_ptr[1], fldvalues, fldnames, filter)
+      if recreate
+        res = adap != nil
+      else
+        res = adap.update_table(table_ptr[1], values, names, filter)
       end
+      res
     end
     def get_tab_fields(panobj, table_ptr)
       adap = get_adapter(panobj, table_ptr)
@@ -749,31 +770,53 @@ module PandoraKernel
     def repositories
       $repositories
     end
-
     def sname
       PandoraKernel.get_name_or_names(name)
     end
     def pname
       PandoraKernel.get_name_or_names(name, true)
     end
-    #def initialize
-    #  super
-    #end
-    def select(afilter='')
-      self.class.repositories.get_tab_select(self, self.class.tables[0], afilter)
+    attr_accessor :namesvalues
+    def select(afilter='', set_namesvalues=false)
+      res = self.class.repositories.get_tab_select(self, self.class.tables[0], afilter)
+      if set_namesvalues and res.is_a? Array
+        @namesvalues = {}
+        tab_fields.each_with_index do |n, i|
+          namesvalues[n] = res[0][i]
+        end
+      end
+      res
     end
-    def update(afldvalues, afldnames, afilter='')
-      self.class.repositories.get_tab_update(self, self.class.tables[0], afldvalues, afldnames, afilter)
+    def update(values, names=nil, filter='', set_namesvalues=false)
+      if values.is_a? Hash
+        names = values.keys
+        values = values.values
+        p '=====1'
+        p names
+        p '=====2'
+        p values
+        p '=====3'
+      end
+      res = self.class.repositories.get_tab_update(self, self.class.tables[0], values, names, filter)
+      if set_namesvalues and res
+        @namesvalues = {}
+        values.each_with_index do |v, i|
+          namesvalues[names[i]] = v
+        end
+      end
+      res
     end
     def tab_fields
-      self.class.repositories.get_tab_fields(self, self.class.tables[0])
+      if @last_tab_fields == nil
+        @last_tab_fields = self.class.repositories.get_tab_fields(self, self.class.tables[0])
+      end
+      @last_tab_fields
     end
-    def field_val(fld_name, sel_row=nil)
+    def field_val(fld_name, values)
       res = nil
-      if sel_row != nil
-        @last_tab_fields = tab_fields if @last_tab_fields == nil
-        i = @last_tab_fields.index(fld_name)
-        res = sel_row[i] if i != nil
+      if values.is_a? Array
+        i = tab_fields.index(fld_name)
+        res = values[i] if i != nil
       end
       res
     end
@@ -923,8 +966,7 @@ module PandoraKernel
         res = objhash
         res = PandoraKernel.bytes_to_hex(res)+':' if hexview
       end
-      pattern = panhash_pattern
-      pattern.each_with_index do |pat, ind|
+      panhash_pattern.each_with_index do |pat, ind|
         fname = pat[0]
         hfor  = pat[1]
         hlen  = pat[2]
@@ -934,6 +976,19 @@ module PandoraKernel
         else
           res += ' ' if res
           res += PandoraKernel.bytes_to_hex(calc_hash(hfor, hlen, fval))
+        end
+      end
+      res
+    end
+    def matter_fields
+      res = {}
+      if namesvalues.is_a? Hash
+        panhash_pattern.each do |pat|
+          fname = pat[0]
+          if fname
+            fval = namesvalues[fname]
+            res[fname] = fval
+          end
         end
       end
       res
@@ -2183,6 +2238,7 @@ module PandoraGUI
   # RU: Пакует поля ПанОбъекта в бинарный формат PSON
   def self.hash_to_pson(fldvalues)
     bytes = ''
+    bytes.force_encoding('UTF-8')
     fldvalues = fldvalues.sort_by {|k,v| k.to_s }
     fldvalues.each { |nam, val|
       nam = nam.to_s
@@ -2190,6 +2246,7 @@ module PandoraGUI
       nsize = 255 if nsize>255
       bytes << [nsize].pack('C') + nam[0, nsize]
       pson_elem = rubyobj_to_pson_elem(val)
+      pson_elem.force_encoding('UTF-8')
       bytes << pson_elem
     }
     bytes
@@ -2215,10 +2272,14 @@ module PandoraGUI
   # RU: Подписывает PSON ПанОбъекта и сохраняет запись подписи
   def self.sign_panobject(panobject)
     key = current_key
-    fldvalues = {:first_name=>'Ivan', :last_name=>'Inavov'}
-    p sign = make_sign(key, hash_to_pson(fldvalues))
-    values = {:kind=>'RSA', :body=>sign}
-    PandoraModel::Key.save(values)
+    namesvalues = panobject.namesvalues
+    matter_fields = panobject.matter_fields
+    matter_fields['time'] = Time.now
+    p 'sign: matter_fields='+matter_fields.inspect
+    p sign = make_sign(key, hash_to_pson(matter_fields))
+    values = {:objhash=>namesvalues['panhash'], :sign=>sign}
+    key_model = PandoraModel::Sign.new
+    key_model.update(values, nil, nil)
   end
 
   def self.unsign_panobject(panhash)
@@ -2281,7 +2342,9 @@ module PandoraGUI
       if path != nil and ! new_act
         iter = store.get_iter(path)
         id = iter[0].to_s
-        sel = panobject.select('id='+id)
+        sel = panobject.select('id='+id, false)
+        #p 'panobject.namesvalues='+panobject.namesvalues.inspect
+        #p 'panobject.matter_fields='+panobject.matter_fields.inspect
         panhash0 = panobject.panhash(sel[0])
       end
       #p sel
@@ -2413,14 +2476,24 @@ module PandoraGUI
           else
             id = 'id='+id
           end
-          res = panobject.update(fldvalues, fldnames, id)
-          p res
-          p dialog.support_btn.active?
-          unsign_panobject(panhash0)
-          if dialog.trust_btn.active?
-            sign_panobject(panobject)
+          res = panobject.update(fldvalues, fldnames, id, true)
+          if res
+            panhash = panobject.namesvalues['panhash']
+            if panhash
+              p 'pan='+panhash.inspect
+
+              sel = panobject.select({'panhash'=>panhash}, true)
+
+              p 'panobject.namesvalues='+panobject.namesvalues.inspect
+              p 'panobject.matter_fields='+panobject.matter_fields.inspect
+              p dialog.support_btn.active?
+              unsign_panobject(panhash0)
+              if dialog.trust_btn.active?
+                sign_panobject(panobject)
+              end
+              p dialog.public_btn.active?
+            end
           end
-          p dialog.public_btn.active?
         end
       end
     end

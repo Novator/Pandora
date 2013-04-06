@@ -2,12 +2,12 @@
   <World name.ru="Мир">
 
     <Person name.ru="Человек|Люди">
-      <firstname name.ru="Имя" />
-      <lastname name.ru="Фамилия" />
+      <first_name name.ru="Имя" />
+      <last_name name.ru="Фамилия" />
       <birth_day name.ru="Дата рождения" />
       <birth_place name.ru="Место рождения" />
-      <fathername name.ru="Имя отца" />
-      <mothername name.ru="Имя матери" />
+      <father_name name.ru="Имя отца" />
+      <mother_name name.ru="Имя матери" />
       <sex name.ru="Пол" />
       <exit_day name.ru="Дата ухода" />
     </Person>

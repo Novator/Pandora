@@ -3,12 +3,12 @@
   <World>
 
     <Person order="1">
-      <firstname pos="1" fsize="20" />
-      <lastname pos="+1" fsize="25" />
+      <first_name pos="1" fsize="20" />
+      <last_name pos="+1" fsize="25" />
       <birth_day pos="|+1" />
       <birth_place pos="+0.10up" />
-      <fathername pos="|up+0.3" />
-      <mothername pos="up+0.1" />
+      <father_name pos="|up+0.3" />
+      <mother_name pos="up+0.1" />
       <sex pos="|left" />
       <exit_day pos="left,hide" />
     </Person>
