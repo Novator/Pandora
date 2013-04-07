@@ -178,12 +178,11 @@
 
     <Parameter name="Parameter">
       <name name="Name" type="String" size="128" />
-      <type name="Type" type="Integer" />
+      <desc name="Description" type="String" size="128" />
       <value name="Value" type="Blob" />
-      <defvalue name="Default value" type="Blob" />
-      <minvalue name="Minimum value" type="Blob" />
-      <maxvalue name="Maximum value" type="Blob" />
-      <permission name="Permission" type="Integer" />
+      <type name="Type" type="Integer" />
+      <section name="Section" type="Integer" />
+      <setting name="Setting" type="Blob" />
     </Parameter>
 
     <Key parent="Hashed" name="Key">
@@ -257,4 +256,11 @@
 
   </Pandora>
 
+  <Defaults>
+    <section_common desc="Common" type="Integer" section="0" setting="0" />
+    <section_node desc="Node" type="Integer" section="0" setting="1" />
+    <base_id desc="Base ID" type="String" section="node" setting="[create_base_id]" />
+  </Defaults>
+
 </pandora-model>
+

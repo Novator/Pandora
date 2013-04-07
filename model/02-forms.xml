@@ -32,6 +32,15 @@
       <creator pos="255.1" />
     </HashedCreated>
 
+    <Parameter order="101">
+      <name pos="1" fsize="32" />
+      <type pos="+1" />
+      <section pos="+1" />
+      <desc pos="|+1" fsize="64" />
+      <value pos="|+1" fsize="64" />
+      <setting pos="|+1" fsize="64" />
+    </Parameter>
+
   </Pandora>
 
 </pandora-model>

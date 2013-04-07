@@ -131,6 +131,7 @@ end
 $host = 'localhost'
 $port = 5577
 $base_index = 0
+$pandora_parameters = []
 
 # Expand the arguments of command line
 # RU: Разобрать аргументы командной строки
@@ -779,7 +780,7 @@ module PandoraKernel
     attr_accessor :namesvalues
     def select(afilter='', set_namesvalues=false)
       res = self.class.repositories.get_tab_select(self, self.class.tables[0], afilter)
-      if set_namesvalues and res.is_a? Array
+      if set_namesvalues and res[0].is_a? Array
         @namesvalues = {}
         tab_fields.each_with_index do |n, i|
           namesvalues[n] = res[0][i]
@@ -822,7 +823,6 @@ module PandoraKernel
     end
     def field_des(fld_name)
       df = def_fields.detect{ |e| (e.is_a? Array) and (e[0].to_s == fld_name) or (e.to_s == fld_name) }
-      df
     end
     def field_title(fld_name)
       df = field_des(fld_name)
@@ -921,12 +921,14 @@ module PandoraKernel
       else
         res.collect! { |e| [e[1],e[2],e[3]] }
       end
+      p 'pan_pat='+res.inspect
       res
     end
     def calc_hash(hfor, hlen, fval)
       res = [0].pack('C')
       #fval = [fval].pack('C*') if fval.is_a? Fixnum
       if (fval != nil) and (fval != '')
+        hfor = 'integer' if fval.is_a? Integer
         case hfor
           when 'sha1', 'hash', 'panhash', ''
             res = Digest::SHA1.digest(fval)[0, hlen]
@@ -942,7 +944,7 @@ module PandoraKernel
             res = res[-hlen..-1]
           when 'byte', 'integer', 'word'
             #p 'fval='+fval.inspect
-            res = [fval].pack('C*')
+            res = [fval].pack('C*') if fval.is_a? Integer
             #p '--res='+res.inspect
             res = res[0, hlen]
             #p '==res='+res.inspect
@@ -966,11 +968,14 @@ module PandoraKernel
         res = objhash
         res = PandoraKernel.bytes_to_hex(res)+':' if hexview
       end
+      p 'values='+values.inspect
       panhash_pattern.each_with_index do |pat, ind|
         fname = pat[0]
         hfor  = pat[1]
         hlen  = pat[2]
         fval = field_val(fname, values)
+        p '[fval, fname, values]='+[fval, fname, values].inspect
+        p '[hfor, hlen, fval]='+[hfor, hlen, fval].inspect
         if not hexview
           res += calc_hash(hfor, hlen, fval)
         else
@@ -1002,6 +1007,12 @@ end
 # == RU: Логическая модель Пандора
 module PandoraModel
 
+  PF_Name    = 0
+  PF_Desc    = 1
+  PF_Type    = 2
+  PF_Section = 3
+  PF_Setting = 4
+
   # Pandora's object
   # RU: Объект Пандоры
   class Panobject < PandoraKernel::BasePanobject
@@ -1020,92 +1031,121 @@ module PandoraModel
       filename = File.basename(pathfilename)
       file = Object::File.open(pathfilename)
       xml_doc = REXML::Document.new(file)
-      xml_doc.elements.each('pandora-model/*/*') do |element|
-        panobj_id = element.name
-        new_panobj = true
-        flds = []
-        if PandoraModel.const_defined? panobj_id
-          panobject_class = PandoraModel.const_get(panobj_id)
-          panobj_name = panobject_class.name
-          panobj_tabl = panobject_class.tables
-          new_panobj = false
-          #p panobject_class
-        else
-          panobj_name = panobj_id
-          parent_class = element.attributes['parent']
-          if (parent_class==nil) or (not(PandoraModel.const_defined? parent_class))
-            parent_class = 'Panobject'
-          else
-            PandoraModel.const_get(parent_class).def_fields.each do |f|
-              flds << f
-            end
-          end
-          module_eval('class '+panobj_id+' < PandoraModel::'+parent_class+'; name = "'+panobj_name+'"; end')
-          panobject_class = PandoraModel.const_get(panobj_id)
-          panobject_class.def_fields = flds
-          #p panobject_class
-          panobject_class.ider = panobj_id
-          panobject_class.kind = 0
-          panobject_class.lang = 5
-          panobj_tabl = panobj_id
-          panobj_tabl = PandoraKernel::get_name_or_names(panobj_tabl, true)
-          panobj_tabl.downcase!
-          panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]]
-        end
-        panobj_kind = element.attributes['kind']
-        panobject_class.kind = panobj_kind.to_i if panobj_kind
-        flds = panobject_class.def_fields
-        #p flds
-        panobj_name_en = element.attributes['name']
-        panobj_name = panobj_name_en if (panobj_name==panobj_id) and (panobj_name_en != nil) and (panobj_name_en != '')
-        panobj_name_lang = element.attributes['name'+lang]
-        panobj_name = panobj_name_lang if (panobj_name_lang != nil) and (panobj_name_lang != '')
-        #puts panobj_id+'=['+panobj_name+']'
-        panobject_class.name = panobj_name
-
-        panobj_tabl = element.attributes['table']
-        panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]] if panobj_tabl != nil
-
-        element.elements.each('*') do |sub_elem|
-          seu = sub_elem.name.upcase
-          if seu==sub_elem.name
-            #p 'Функция не определена: ['+sub_elem.name+']'
-          else
-            i = 0
-            while (i<flds.size) and (flds[i][0] != sub_elem.name) do i+=1 end
-            if new_panobj or (i<flds.size)
-              if i<flds.size
-                fld_name = flds[i][1]
-              else
-                flds[i] = [sub_elem.name]
-                fld_name = sub_elem.name
-              end
-              fld_name_en = sub_elem.attributes['name']
-              fld_name = fld_name_en if (fld_name_en != nil) and (fld_name_en != '')
-              fld_name_lang = sub_elem.attributes['name'+lang]
-              fld_name = fld_name_lang if (fld_name_lang != nil) and (fld_name_lang != '')
-              flds[i][1] = fld_name
-              fld_type = sub_elem.attributes['type']
-              flds[i][2] = fld_type if (fld_type != nil) and (fld_type != '')
-              fld_size = sub_elem.attributes['size']
-              flds[i][3] = fld_size if (fld_size != nil) and (fld_size != '')
-              fld_pos = sub_elem.attributes['pos']
-              flds[i][4] = fld_pos if (fld_pos != nil) and (fld_pos != '')
-              fld_fsize = sub_elem.attributes['fsize']
-              flds[i][5] = fld_fsize if (fld_fsize != nil) and (fld_fsize != '')
-              fld_hash = sub_elem.attributes['hash']
-              flds[i][6] = fld_hash if (fld_hash != nil) and (fld_hash != '')
+      xml_doc.elements.each('pandora-model/*') do |section|
+        if section.name != 'Defaults'
+          section.elements.each('*') do |element|
+            panobj_id = element.name
+            new_panobj = true
+            flds = []
+            if PandoraModel.const_defined? panobj_id
+              panobject_class = PandoraModel.const_get(panobj_id)
+              panobj_name = panobject_class.name
+              panobj_tabl = panobject_class.tables
+              new_panobj = false
+              #p panobject_class
             else
-              puts _('Property was not defined, ignored')+' /'+filename+':'+panobj_id+'.'+sub_elem.name
+              panobj_name = panobj_id
+              parent_class = element.attributes['parent']
+              if (parent_class==nil) or (not(PandoraModel.const_defined? parent_class))
+                parent_class = 'Panobject'
+              else
+                PandoraModel.const_get(parent_class).def_fields.each do |f|
+                  flds << f
+                end
+              end
+              module_eval('class '+panobj_id+' < PandoraModel::'+parent_class+'; name = "'+panobj_name+'"; end')
+              panobject_class = PandoraModel.const_get(panobj_id)
+              panobject_class.def_fields = flds
+              #p panobject_class
+              panobject_class.ider = panobj_id
+              panobject_class.kind = 0
+              panobject_class.lang = 5
+              panobj_tabl = panobj_id
+              panobj_tabl = PandoraKernel::get_name_or_names(panobj_tabl, true)
+              panobj_tabl.downcase!
+              panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]]
             end
+            panobj_kind = element.attributes['kind']
+            panobject_class.kind = panobj_kind.to_i if panobj_kind
+            flds = panobject_class.def_fields
+            #p flds
+            panobj_name_en = element.attributes['name']
+            panobj_name = panobj_name_en if (panobj_name==panobj_id) and (panobj_name_en != nil) and (panobj_name_en != '')
+            panobj_name_lang = element.attributes['name'+lang]
+            panobj_name = panobj_name_lang if (panobj_name_lang != nil) and (panobj_name_lang != '')
+            #puts panobj_id+'=['+panobj_name+']'
+            panobject_class.name = panobj_name
+
+            panobj_tabl = element.attributes['table']
+            panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]] if panobj_tabl != nil
+
+            element.elements.each('*') do |sub_elem|
+              seu = sub_elem.name.upcase
+              if seu==sub_elem.name
+                #p 'Функция не определена: ['+sub_elem.name+']'
+              else
+                i = 0
+                while (i<flds.size) and (flds[i][0] != sub_elem.name) do i+=1 end
+                if new_panobj or (i<flds.size)
+                  if i<flds.size
+                    fld_name = flds[i][1]
+                  else
+                    flds[i] = [sub_elem.name]
+                    fld_name = sub_elem.name
+                  end
+                  fld_name_en = sub_elem.attributes['name']
+                  fld_name = fld_name_en if (fld_name_en != nil) and (fld_name_en != '')
+                  fld_name_lang = sub_elem.attributes['name'+lang]
+                  fld_name = fld_name_lang if (fld_name_lang != nil) and (fld_name_lang != '')
+                  flds[i][1] = fld_name
+                  fld_type = sub_elem.attributes['type']
+                  flds[i][2] = fld_type if (fld_type != nil) and (fld_type != '')
+                  fld_size = sub_elem.attributes['size']
+                  flds[i][3] = fld_size if (fld_size != nil) and (fld_size != '')
+                  fld_pos = sub_elem.attributes['pos']
+                  flds[i][4] = fld_pos if (fld_pos != nil) and (fld_pos != '')
+                  fld_fsize = sub_elem.attributes['fsize']
+                  flds[i][5] = fld_fsize if (fld_fsize != nil) and (fld_fsize != '')
+                  fld_hash = sub_elem.attributes['hash']
+                  flds[i][6] = fld_hash if (fld_hash != nil) and (fld_hash != '')
+                else
+                  puts _('Property was not defined, ignored')+' /'+filename+':'+panobj_id+'.'+sub_elem.name
+                end
+              end
+            end
+            #p flds
+            #p "========"
+            panobject_class.def_fields = flds
+          end
+        else
+          section.elements.each('*') do |element|
+            name = element.name
+            desc = element.attributes['desc']
+            desc ||= name
+            type = element.attributes['type']
+            section = element.attributes['section']
+            setting = element.attributes['setting']
+            row = nil
+            ind = $pandora_parameters.index{ |row| row[PF_Name]==name }
+            if ind
+              row = $pandora_parameters[ind]
+            else
+              row = []
+              row[PF_Name] = name
+              $pandora_parameters << row
+              ind = $pandora_parameters.size-1
+            end
+            row[PF_Desc] = desc if desc
+            row[PF_Type] = type if type
+            row[PF_Section] = section if section
+            row[PF_Setting] = setting if setting
+            $pandora_parameters[ind] = row
           end
         end
-        #p flds
-        #p "========"
-        panobject_class.def_fields = flds
       end
       file.close
     end
+    p $pandora_parameters
   end
 
 end
@@ -1114,6 +1154,7 @@ end
 # == Graphical user interface of Pandora
 # == RU: Графический интерфейс Пандора
 module PandoraGUI
+  include PandoraModel
 
   if not $gtk2_on
     puts "Gtk не установлена"
@@ -2076,9 +2117,102 @@ module PandoraGUI
     decrypted
   end
 
-  def self.get_param(name, category='Common', type='Integer', dev_values=[0,0,0])
+  def self.create_base_id
+    res = PandoraKernel.fill_zeros_from_left(PandoraKernel.bigint_to_bytes(Time.now.to_i), 4)
+    res = res[0,4]
+    res << PandoraKernel.fill_zeros_from_left(PandoraKernel.bigint_to_bytes(rand(0xFFFFFFFFFFFFFFFF)), 8)
+    res << PandoraKernel.fill_zeros_from_left(PandoraKernel.bigint_to_bytes(rand(0xFFFFFFFF)), 4)
+    res
+  end
+
+  PT_Int   = 0
+  PT_Str   = 1
+  PT_Bool  = 2
+  PT_Time  = 3
+  PT_Array = 4
+  PT_Hash  = 5
+  PT_Sym   = 6
+  PT_Unknown = 32
+
+  def self.string_to_pantype(type)
+    res = PT_Unknown
+    case type
+      when 'Integer'
+        res = PT_Int
+      when 'String'
+        res = PT_Str
+      when 'Boolean'
+        res = PT_Bool
+      when 'Time'
+        res = PT_Time
+      when 'Array'
+        res = PT_Array
+      when 'Hash'
+        res = PT_Hash
+      when 'Symbol'
+        res = PT_Sym
+    end
+    res
+  end
+
+  def self.create_default_param(type, setting)
     value = nil
+    if setting
+      sets = setting.split(',')
+      defval = sets[0]
+      if defval[0]=='['
+        i = defval.index(']')
+        i ||= defval.size
+        value = self.send(defval[1,i-1])
+      else
+        type = string_to_pantype(type) if type.is_a? String
+        case type
+          when PT_Int
+            value = defval.to_i
+          when PT_Bool
+            value = (defval.downcase=='true') or (defval=='1')
+          when PT_Time
+            value = Time.parse(defval)  #Time.strptime(defval, '%d.%m.%Y')
+          else
+            value = defval
+        end
+      end
+    end
     value
+  end
+
+  $param_model = nil
+
+  def self.get_param(name)
+    value = nil
+    $param_model ||= PandoraModel::Parameter.new
+    sel = $param_model.select({'name'=>name}, true)
+    if not sel[0]
+      ind = $pandora_parameters.index{ |row| row[PF_Name]==name }
+      if ind
+        p row = $pandora_parameters[ind]
+        type = row[PF_Type]
+        type = string_to_pantype(type) if type.is_a? String
+        section = row[PF_Section]
+        section = get_param('section_'+section) if section.is_a? String
+        section ||= row[PF_Section].to_i
+        values = { :name=>name, :desc=>row[PF_Desc],
+          :value=>create_default_param(type, row[PF_Setting]),
+          :type=>type, :section=>section, :setting=>row[PF_Setting] }
+        $param_model.update(values, nil, nil)
+        sel = $param_model.select({'name'=>name}, true)
+      end
+    end
+    if sel[0]
+      value = $param_model.namesvalues['value']
+    end
+    p 'get_param value='+value.inspect
+    value
+  end
+
+  def self.set_param(name, value, definition=nil)
+    res = false
+    res
   end
 
   class << self
@@ -2088,7 +2222,7 @@ module PandoraGUI
   def self.current_key(reinit=false)
     key = self.the_current_key
     if (not key) or reinit
-      last_auth_key = get_param('last_auth_key', 'Crypto', 'String')
+      last_auth_key = get_param('last_auth_key')
       keys = []
       if last_auth_key
         pub_key_panobj = PandoraModel::Key.find_by_panhash(last_auth_key)
@@ -2103,6 +2237,9 @@ module PandoraGUI
           keys = generate_key('RSA', 2048)
           keys[2] = 'RSA'
           keys[3] = '12345'
+
+          values = {:body=>keys[0]}
+          set_param('last_auth_key', Key.panhash(values))
         end
       end
       if keys != []
@@ -2112,15 +2249,6 @@ module PandoraGUI
     end
     key
   end
-
-  PT_Int   = 0
-  PT_Str   = 1
-  PT_Bool  = 2
-  PT_Time  = 3
-  PT_Array = 4
-  PT_Hash  = 5
-  PT_Sym   = 6
-  PT_Unknown = 32
 
   def self.encode_pan_type(basetype, int)
     count = 0
@@ -2352,18 +2480,21 @@ module PandoraGUI
       panobjecticon = get_panobject_icon(panobject)
 
       if action=='Delete'
-        dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
-          Gtk::MessageDialog::QUESTION,
-          Gtk::MessageDialog::BUTTONS_OK_CANCEL,
-          _('Record will be deleted. Sure?')+"\n["+sel[0][2,3].join(', ')+']')
-        dialog.title = _('Deletion')+': '+panobject.sname
-        dialog.default_response = Gtk::Dialog::RESPONSE_OK
-        dialog.icon = panobjecticon
-        if dialog.run == Gtk::Dialog::RESPONSE_OK
-          id = 'id='+id
-          res = panobject.update(nil, nil, id)
+        if sel[0] != nil
+          info = sel[0][2,3].join(', ').force_encoding('UTF-8')
+          dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
+            Gtk::MessageDialog::QUESTION,
+            Gtk::MessageDialog::BUTTONS_OK_CANCEL,
+            _('Record will be deleted. Sure?')+"\n["+info+']')
+          dialog.title = _('Deletion')+': '+panobject.sname
+          dialog.default_response = Gtk::Dialog::RESPONSE_OK
+          dialog.icon = panobjecticon
+          if dialog.run == Gtk::Dialog::RESPONSE_OK
+            id = 'id='+id
+            res = panobject.update(nil, nil, id)
+          end
+          dialog.destroy
         end
-        dialog.destroy
       else
         i = 0
         formfields = []
@@ -4202,9 +4333,10 @@ module PandoraGUI
         #p pson = rubyobj_to_pson_elem({'zzz'=>'bcd', 'ann'=>['789',123], :bbb=>'dsd'})
         #p elem = pson_elem_to_rubyobj(pson)
 
-        p pson = hash_to_pson({:first_name=>'Ivan', :last_name=>'Inavov', 'ddd'=>555})
-        p hash = pson_to_hash(pson)
+        #p pson = hash_to_pson({:first_name=>'Ivan', :last_name=>'Inavov', 'ddd'=>555})
+        #p hash = pson_to_hash(pson)
 
+        p get_param('base_id')
       else
         panobj_id = widget.name
         if PandoraModel.const_defined? panobj_id

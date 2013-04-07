@@ -160,12 +160,11 @@
 
     <Parameter name.ru="Параметр|Параметры">
       <name name.ru="Название" />
+      <desc name.ru="Описание" />
       <type name.ru="Тип" />
       <value name.ru="Значение" />
-      <defvalue name.ru="Значение" />
-      <minvalue name.ru="Значение" />
-      <maxvalue name.ru="Значение" />
-      <permission name.ru="Видимость" />
+      <section name.ru="Секция" />
+      <setting name.ru="Установки" />
     </Parameter>
 
     <Key name.ru="Ключ|Ключи">
