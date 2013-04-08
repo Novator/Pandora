@@ -921,7 +921,7 @@ module PandoraKernel
       else
         res.collect! { |e| [e[1],e[2],e[3]] }
       end
-      p 'pan_pat='+res.inspect
+      #p 'pan_pat='+res.inspect
       res
     end
     def calc_hash(hfor, hlen, fval)
@@ -971,11 +971,16 @@ module PandoraKernel
       p 'values='+values.inspect
       panhash_pattern.each_with_index do |pat, ind|
         fname = pat[0]
+        fval = nil
+        if values.is_a? Hash
+          fval = values[fname]
+        else
+          fval = field_val(fname, values)
+        end
         hfor  = pat[1]
         hlen  = pat[2]
-        fval = field_val(fname, values)
-        p '[fval, fname, values]='+[fval, fname, values].inspect
-        p '[hfor, hlen, fval]='+[hfor, hlen, fval].inspect
+        #p '[fval, fname, values]='+[fval, fname, values].inspect
+        #p '[hfor, hlen, fval]='+[hfor, hlen, fval].inspect
         if not hexview
           res += calc_hash(hfor, hlen, fval)
         else
@@ -1145,7 +1150,6 @@ module PandoraModel
       end
       file.close
     end
-    p $pandora_parameters
   end
 
 end
@@ -2464,13 +2468,14 @@ module PandoraGUI
     if path != nil or new_act
       panobject = tree_view.panobject
       store = tree_view.model
+      iter = nil
       sel = nil
       id = nil
       panhash0 = nil
       if path != nil and ! new_act
         iter = store.get_iter(path)
-        id = iter[0].to_s
-        sel = panobject.select('id='+id, false)
+        id = iter[0]
+        sel = panobject.select('id='+id.to_s, false)
         #p 'panobject.namesvalues='+panobject.namesvalues.inspect
         #p 'panobject.matter_fields='+panobject.matter_fields.inspect
         panhash0 = panobject.panhash(sel[0])
@@ -2480,7 +2485,7 @@ module PandoraGUI
       panobjecticon = get_panobject_icon(panobject)
 
       if action=='Delete'
-        if sel[0] != nil
+        if id and sel[0]
           info = sel[0][2,3].join(', ').force_encoding('UTF-8')
           dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
             Gtk::MessageDialog::QUESTION,
@@ -2490,8 +2495,13 @@ module PandoraGUI
           dialog.default_response = Gtk::Dialog::RESPONSE_OK
           dialog.icon = panobjecticon
           if dialog.run == Gtk::Dialog::RESPONSE_OK
-            id = 'id='+id
-            res = panobject.update(nil, nil, id)
+            res = panobject.update(nil, nil, 'id='+id.to_s)
+            tree_view.sel.delete_if {|row| row[0]==id }
+            store.remove(iter)
+            #iter.next!
+            p = path.indices[0]
+            p = tree_view.sel.size-1 if p>tree_view.sel.size-1
+            tree_view.set_cursor(Gtk::TreePath.new(p), column, false)
           end
           dialog.destroy
         end
@@ -2578,45 +2588,43 @@ module PandoraGUI
             field[13] = textview.buffer.text
           end
 
-          fldnames = []
-          fldvalues = []
-          if (panobject.is_a? PandoraModel::Hashed) and sel
-            fldnames << 'panhash'
-            fldvalues << panobject.panhash(sel[0])
-          end
-          if panobject.is_a? PandoraModel::HashedCreated
-            fldnames << 'creator'
-            fldvalues << '[authorized]'
-          end
+          flds_hash = {}
           dialog.fields.each_index do |index|
             field = dialog.fields[index]
-            if not fldnames.include?(field[0])
-              fldnames << field[0]
-              fldvalues << field[13]
-            end
+            flds_hash[field[0]] = field[13]
           end
           dialog.text_fields.each_index do |index|
             field = dialog.text_fields[index]
-            #if formfields[index][13] != field[13]
-              fldnames << field[0]
-              fldvalues << field[13]
-            #end
+            flds_hash[field[0]] = field[13]
           end
-          if new_act or (action=='Copy')
-            id = nil
-          else
-            id = 'id='+id
+          panhash = panobject.panhash(flds_hash)
+          flds_hash['panhash'] = panhash if panobject.is_a? PandoraModel::Hashed
+          flds_hash['creator'] = ['[authorized]']if panobject.is_a? PandoraModel::HashedCreated
+          filter = nil
+          if not new_act and (action!='Copy')
+            filter = 'id='+id.to_s
           end
-          res = panobject.update(fldvalues, fldnames, id, true)
+          res = panobject.update(flds_hash, nil, filter, true)
           if res
-            panhash = panobject.namesvalues['panhash']
-            if panhash
-              p 'pan='+panhash.inspect
-
-              sel = panobject.select({'panhash'=>panhash}, true)
-
+            sel = panobject.select({'panhash'=>panhash}, true)
+            if sel[0]
+              p 'panhash='+panhash.inspect
               p 'panobject.namesvalues='+panobject.namesvalues.inspect
-              p 'panobject.matter_fields='+panobject.matter_fields.inspect
+              #p 'panobject.matter_fields='+panobject.matter_fields.inspect
+
+              id = panobject.namesvalues['id']
+              ind = tree_view.sel.index {|row| row[0]==id }
+              if ind
+                tree_view.sel[ind] = sel[0]
+                iter[0] = id
+                store.row_changed(path, iter)
+              else
+                tree_view.sel << sel[0]
+                iter = store.append
+                iter[0] = id
+                tree_view.set_cursor(Gtk::TreePath.new(tree_view.sel.size-1), column, false)
+              end
+
               p dialog.support_btn.active?
               unsign_panobject(panhash0)
               if dialog.trust_btn.active?
@@ -2633,7 +2641,7 @@ module PandoraGUI
   # Tree of panobjects
   # RU: Дерево субъектов
   class SubjTreeView < Gtk::TreeView
-    attr_accessor :panobject
+    attr_accessor :panobject, :sel
   end
 
   # Tab box for notebook with image and close button
@@ -2718,6 +2726,7 @@ module PandoraGUI
     treeview = SubjTreeView.new(store)
     treeview.name = panobject.ider
     treeview.panobject = panobject
+    treeview.sel = sel
     flds = panobject.def_fields if flds == []
     flds.each_with_index do |v,i|
       v = v[0].to_s if v.is_a? Array
@@ -2726,6 +2735,8 @@ module PandoraGUI
       #renderer.editable = true
       #renderer.text = 'aaa'
       column = Gtk::TreeViewColumn.new(panobject.field_title(v), renderer )  #, {:text => i}
+      column.sort_column_id = i
+      panhash_col = i if (v=='panhash')
       column.resizable = true
       column.reorderable = true
       column.clickable = true
@@ -2733,9 +2744,13 @@ module PandoraGUI
       column.signal_connect('clicked') do |col|
         p 'sort clicked'
       end
-      column.set_cell_data_func(renderer) do |col, renderer, model, iter|
-        val = sel[iter.path.indices[0]][i]
-        val = PandoraKernel.bytes_to_hex(val[2,12]) if v=='panhash'
+      column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
+        col = tvc.sort_column_id
+        row = tvc.tree_view.sel[iter.path.indices[0]]
+        val = row[col] if row
+        val ||= 'nil'
+        #val = model.get_value(iter, col)
+        val = PandoraKernel.bytes_to_hex(val[2,12]) if (col==panhash_col) and val
         renderer.text = val.to_s
         renderer.foreground = 'navy' if v=='panhash'
       end
@@ -2794,6 +2809,8 @@ module PandoraGUI
       end
     end
 
+    treeview.set_cursor(Gtk::TreePath.new(treeview.sel.size-1), nil, false)
+    treeview.grab_focus
   end
 
   # Socket with defined outbound port
