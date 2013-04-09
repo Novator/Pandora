@@ -21,9 +21,6 @@
       <mother_name name="Mother name" type="String" size="35" hash="6:md5(2)" />
       <sex name="Sex" type="String" size="5" />
       <exit_day name="Exit day" type="Date" optional="yes" />
-      <CALCULATE FL="sha1(firstname){8}+sha1(lastname){12}" />
-      <FIELDS creator="FLDCAM" hash="sha1(:all)" />
-      <TODO records="Patch,Sign" />
     </Person>
 
     <Community parent="HashedCreated" name="Community|Communities" table="companies"  kind="2">
@@ -187,9 +184,9 @@
 
     <Key parent="Hashed" name="Key">
       <kind name="Kind" type="Byte" />
-      <owner name="Owner (or Parent)" type="String" size="32" hash="1:panhash(15)" />
-      <date name="Date" type="Date" />
-      <expire name="Expire" type="Date" />
+      <owner name="Owner (or Parent)" type="String" size="32" />
+      <date name="Date" type="Time" hash="1:integer" />
+      <expire name="Expire" type="Time" />
       <body name="Body" type="Blob" hash="2:sha1(10)" />
     </Key>
 
@@ -258,8 +255,13 @@
 
   <Defaults>
     <section_common desc="Common" type="Integer" section="0" setting="0" />
-    <section_node desc="Node" type="Integer" section="0" setting="1" />
+    <section_net desc="Network" type="Integer" section="0" setting="1" />
+    <section_crypto desc="Crypto" type="Integer" section="0" setting="2" />
     <base_id desc="Base ID" type="String" section="node" setting="[create_base_id]" />
+    <tcp_port desc="TCP port" type="Integer" section="net" setting="5577" />
+    <udp_port desc="UDP port" type="Integer" section="net" setting="5577" />
+    <local_host desc="Local host" type="String" section="net" setting="localhost" />
+    <last_auth_key desc="Last auth key" type="String" section="crypto" setting="" />
   </Defaults>
 
 </pandora-model>

@@ -459,7 +459,7 @@ module PandoraKernel
     def fields_table(table_name)
       connect
       tfd = db.table_info(table_name)
-      tfd.collect { |x| x['name'] }
+      tfd.collect { |x| [x['name'], x['type']] }
     end
     def select_table(table_name, filter='')
       connect
@@ -472,14 +472,14 @@ module PandoraKernel
           sql2 = ''
           filter.each do |n,v|
             if n != nil
-              sql2 = sql2 + ',' if sql2 != ''
+              sql2 = sql2 + ' AND ' if sql2 != ''
               sql2 = sql2 + n.to_s + '=?'
               sql_values << v
             end
           end
           filter = sql2
         end
-        sql = 'SELECT * from '+table_name
+        sql = 'SELECT * FROM '+table_name
         if (filter != nil) and (filter > '')
           sql = sql + ' where '+filter
         end
@@ -495,7 +495,7 @@ module PandoraKernel
       if (values == nil) and (names == nil) and (filter != nil)
         sql = 'DELETE FROM ' + table_name + ' where '+filter
       elsif values.is_a? Array and names.is_a? Array
-        tfd = db.table_info(table_name)
+        #p tfd = db.table_info(table_name)
         tfd_name = tfd.collect { |x| x['name'] }
         tfd_type = tfd.collect { |x| x['type'] }
         if filter != nil
@@ -503,22 +503,25 @@ module PandoraKernel
             fname = names[i]
             if fname != nil
               sql = sql + ',' if sql != ''
-              #val = "'" + v + "'"
-              #ind = tfd_name.index(fname)
-              #if ind
-              #  typ = tfd_type[ind]
-              #  if (typ=='TEXT') or (typ[0,7]=='VARCHAR')
-              #    val = '?'
-              #    values << v
-              #  end
-              #end
-              #sql = sql + ' ' + fldnames[i] + '=' + val
               sql_values << v
               sql = sql + ' ' + fname.to_s + '=?'
             end
           end
+
+          if filter.is_a? Hash
+            sql2 = ''
+            filter.each do |n,v|
+              if n != nil
+                sql2 = sql2 + ' AND ' if sql2 != ''
+                sql2 = sql2 + n.to_s + '=?'
+                sql_values << v
+              end
+            end
+            filter = sql2
+          end
+
           sql = 'UPDATE ' + table_name + ' SET' + sql
-          if (filter != nil) and (filter > '')
+          if filter and filter != ''
             sql = sql + ' where '+filter
           end
         else
@@ -541,7 +544,7 @@ module PandoraKernel
         p 'upd_tab: sql='+sql.inspect
         p 'upd_tab: sql_values='+sql_values.inspect
         res = db.execute(sql, sql_values)
-        p 'db.execute  res='+res.inspect
+        p 'upd_tab: db.execute.res='+res.inspect
         res = true
       end
       p 'upd_tab: res='+res.inspect
@@ -783,7 +786,7 @@ module PandoraKernel
       if set_namesvalues and res[0].is_a? Array
         @namesvalues = {}
         tab_fields.each_with_index do |n, i|
-          namesvalues[n] = res[0][i]
+          namesvalues[n[0]] = res[0][i]
         end
       end
       res
@@ -792,11 +795,8 @@ module PandoraKernel
       if values.is_a? Hash
         names = values.keys
         values = values.values
-        p '=====1'
-        p names
-        p '=====2'
-        p values
-        p '=====3'
+        p 'update names='+names.inspect
+        p 'update values='+values.inspect
       end
       res = self.class.repositories.get_tab_update(self, self.class.tables[0], values, names, filter)
       if set_namesvalues and res
@@ -816,7 +816,7 @@ module PandoraKernel
     def field_val(fld_name, values)
       res = nil
       if values.is_a? Array
-        i = tab_fields.index(fld_name)
+        i = tab_fields.index{ |tf| tf[0]==fld_name}
         res = values[i] if i != nil
       end
       res
@@ -968,7 +968,11 @@ module PandoraKernel
         res = objhash
         res = PandoraKernel.bytes_to_hex(res)+':' if hexview
       end
-      p 'values='+values.inspect
+      if values.is_a? Hash
+        values0 = values
+        values = {}
+        values0.each {|k,v| values[k.to_s] = v}
+      end
       panhash_pattern.each_with_index do |pat, ind|
         fname = pat[0]
         fval = nil
@@ -1913,16 +1917,24 @@ module PandoraGUI
 
   end
 
+  KT_Priv = 0
+  KT_Rsa  = 1
+  KT_Dsa  = 2
+  KT_Aes  = 10
+  KT_Des  = 11
+  KT_Bf   = 12
+
   RSA_exponent = 65537
 
   # Generate a key or key pair
   # RU: Генерирует ключ или ключевую пару
-  def self.generate_key(type='RSA', length=2048)
+  def self.generate_key(type=KT_Rsa, length=nil)
     key1 = nil
     key2 = nil
 
     case type
-      when 'RSA'
+      when KT_Rsa
+        length ||= 2048
         key = OpenSSL::PKey::RSA.generate(length, RSA_exponent)
 
         #p key1 = key.params['n']
@@ -1942,6 +1954,7 @@ module PandoraGUI
         #p 'pub_seq='+asn_seq2 = OpenSSL::ASN1.decode(key.public_key.to_der).inspect
       else #симметричный ключ
         #p OpenSSL::Cipher::ciphers
+        length ||= 512
         cipher = OpenSSL::Cipher.new(type+'-'+length.to_s+'-CBC')
         cipher.encrypt
         key1 = cipher.random_key
@@ -1961,7 +1974,7 @@ module PandoraGUI
       type = key_input[2]
       pass = key_input[3]
       case type
-        when 'RSA'
+        when KT_Rsa
           p '------'
           #p key.params
           n = PandoraKernel.bytes_to_bigint(key1)
@@ -2019,7 +2032,7 @@ module PandoraGUI
           # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
           key = OpenSSL::PKey::RSA.new(seq.to_der)
           p key.params
-        when 'DSA'
+        when KT_Dsa
           seq = OpenSSL::ASN1::Sequence([
             OpenSSL::ASN1::Integer(0),
             OpenSSL::ASN1::Integer(key.p),
@@ -2059,13 +2072,13 @@ module PandoraGUI
   # RU: Шифрует данные
   def self.encrypt(to_key, pure_data)
     encrypted = nil
-    type ||= 'RSA'
+    type ||= KT_Rsa
     case type
-      when 'RSA'
+      when KT_Rsa
         #???
         encrypted = to_key.public_encrypt(pure_data)
         #Base64.encode64(
-      when 'AES'
+      when KT_Aes
         cipher = OpenSSL::Cipher::AES.new(128, :CBC)
         cipher.encrypt
         key = cipher.random_key
@@ -2078,7 +2091,7 @@ module PandoraGUI
         #aes.key = key
         #aes.iv = iv if iv != nil
         #aes.update(data) + aes.final
-      when 'BT'
+      when KT_Bf
         cipher = OpenSSL::Cipher::Cipher.new('bf-cbc').send(mode)
         cipher.key = Digest::SHA256.digest(key)
         cipher.update(data) << cipher.final
@@ -2091,13 +2104,13 @@ module PandoraGUI
   # RU: Расшифровывает данные
   def self.decrypt(from_key, crypt_data)
     decrypted = nil
-    type ||= 'RSA'
+    type ||= KT_Rsa
     case type
-      when 'RSA'
+      when KT_Rsa
         #private_key = OpenSSL::PKey::RSA.new(File.read('my_private_key.pem'), 'password')
         decrypted = from_key.private_decrypt(crypt_data)
         #Base64.decode64(
-      when 'AES'
+      when KT_Aes
         decipher = OpenSSL::Cipher::AES.new(128, :CBC)
         decipher.decrypt
         decipher.key = key
@@ -2111,7 +2124,7 @@ module PandoraGUI
         #aes.iv = iv if iv != nil
         #aes.update(encrypted_data) + aes.final
 
-      when 'BT'
+      when KT_Bf
         cipher = OpenSSL::Cipher::Cipher.new('bf-cbc').send(mode)
         cipher.key = Digest::SHA256.digest(key)
         cipher.update(data) << cipher.final
@@ -2164,7 +2177,7 @@ module PandoraGUI
     if setting
       sets = setting.split(',')
       defval = sets[0]
-      if defval[0]=='['
+      if defval and defval[0]=='['
         i = defval.index(']')
         i ||= defval.size
         value = self.send(defval[1,i-1])
@@ -2172,13 +2185,22 @@ module PandoraGUI
         type = string_to_pantype(type) if type.is_a? String
         case type
           when PT_Int
-            value = defval.to_i
+            if defval
+              value = defval.to_i
+            else
+              value = 0
+            end
           when PT_Bool
-            value = (defval.downcase=='true') or (defval=='1')
+            value = defval and ((defval.downcase=='true') or (defval=='1'))
           when PT_Time
-            value = Time.parse(defval)  #Time.strptime(defval, '%d.%m.%Y')
+            if defval
+              value = Time.parse(defval)  #Time.strptime(defval, '%d.%m.%Y')
+            else
+              value = 0
+            end
           else
             value = defval
+            value ||= ''
         end
       end
     end
@@ -2187,8 +2209,9 @@ module PandoraGUI
 
   $param_model = nil
 
-  def self.get_param(name)
+  def self.get_param(name, get_id=false)
     value = nil
+    id = nil
     $param_model ||= PandoraModel::Parameter.new
     sel = $param_model.select({'name'=>name}, true)
     if not sel[0]
@@ -2209,13 +2232,22 @@ module PandoraGUI
     end
     if sel[0]
       value = $param_model.namesvalues['value']
+      id = $param_model.namesvalues['id'] if get_id
     end
+    value = [value, id] if get_id
     p 'get_param value='+value.inspect
     value
   end
 
   def self.set_param(name, value, definition=nil)
     res = false
+    old_value, id = get_param(name, true)
+    if value != old_value
+      p 'set_param============================================='
+      p values = {:value=>value}
+      p id
+      res = $param_model.update(values, nil, 'id='+id.to_s)
+    end
     res
   end
 
@@ -2223,27 +2255,57 @@ module PandoraGUI
     attr_accessor :the_current_key
   end
 
+  $key_model = nil
+
   def self.current_key(reinit=false)
     key = self.the_current_key
     if (not key) or reinit
       last_auth_key = get_param('last_auth_key')
       keys = []
-      if last_auth_key
-        pub_key_panobj = PandoraModel::Key.find_by_panhash(last_auth_key)
-        keys[0] = pub_key_panobj.values['body']
-        priv_key_panobj = PandoraModel::Key.find_by_panhash(last_auth_key)
-        keys[1] = priv_key_panobj.values['body']
-        keys[2] = 'RSA'
-        keys[3] = '12345'
-      else
+      $key_model ||= PandoraModel::Key.new
+      if last_auth_key and last_auth_key != ''
+        filter = {:kind=>KT_Rsa, :panhash=>last_auth_key}
+        sel = $key_model.select(filter, true)
+        if sel[0]
+          pub = $key_model.namesvalues['body']
+          filter = {:kind=>KT_Priv, :panhash=>last_auth_key}
+          sel = $key_model.select(filter, true)
+          if sel[0]
+            keys[0] = pub
+            keys[1] = $key_model.namesvalues['body']
+            keys[2] = KT_Rsa
+            keys[3] = '12345'
+          end
+        end
+      end
+      if keys == []
         dialog = AdvancedDialog.new(_('Password'))
         dialog.run do
-          keys = generate_key('RSA', 2048)
-          keys[2] = 'RSA'
+          keys = generate_key(KT_Rsa, 2048)
+          keys[2] = KT_Rsa
           keys[3] = '12345'
 
-          values = {:body=>keys[0]}
-          set_param('last_auth_key', Key.panhash(values))
+          owner = 'a1b2c3'
+
+          time = Time.now.to_i
+          expire = time+5*365*24*3600
+
+          values = {:kind=>KT_Rsa, :body=>keys[0], :date=>time, :expire=>expire, :owner=>owner}
+          panhash = $key_model.panhash(values)
+          values['panhash'] = panhash
+          p '========================'
+          p values
+          p res = $key_model.update(values, nil, nil)
+          if res
+            values[:kind] = KT_Priv
+            values[:body] = keys[1]
+            p res = $key_model.update(values, nil, nil)
+            if res
+              p 'last_auth_key='+panhash.inspect
+              p set_param('last_auth_key', panhash)
+            end
+          end
+          p '------------------------'
         end
       end
       if keys != []
@@ -2400,6 +2462,8 @@ module PandoraGUI
     hash
   end
 
+  $sign_model = nil
+
   # Sign PSON of PanObject and save sign record
   # RU: Подписывает PSON ПанОбъекта и сохраняет запись подписи
   def self.sign_panobject(panobject)
@@ -2410,8 +2474,8 @@ module PandoraGUI
     p 'sign: matter_fields='+matter_fields.inspect
     p sign = make_sign(key, hash_to_pson(matter_fields))
     values = {:objhash=>namesvalues['panhash'], :sign=>sign}
-    key_model = PandoraModel::Sign.new
-    key_model.update(values, nil, nil)
+    $sign_model ||= PandoraModel::Sign.new
+    $sign_model.update(values, nil, nil)
   end
 
   def self.unsign_panobject(panhash)
@@ -2605,8 +2669,8 @@ module PandoraGUI
             filter = 'id='+id.to_s
           end
           res = panobject.update(flds_hash, nil, filter, true)
-          if res
-            sel = panobject.select({'panhash'=>panhash}, true)
+          if res and filter
+            sel = panobject.select(filter, true)
             if sel[0]
               p 'panhash='+panhash.inspect
               p 'panobject.namesvalues='+panobject.namesvalues.inspect
@@ -2702,22 +2766,6 @@ module PandoraGUI
     end
     panobject = panobject_class.new
     sel = panobject.select
-    flds = panobject.tab_fields
-=begin
-      row.each_index do |i|
-        val = row[i].to_s
-        fld_def = panobject.field_des(flds[i])
-        # clean text fields
-        val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ') if fld_def.is_a? Array and fld_def[2]=='Text'
-        # truncate all fields
-        if $jcode_on
-          val = val[/.{0,#{34}}/m]
-        else
-          val = val[0,34]
-        end
-        iter.set_value(i, val.rstrip)
-      end
-=end
     store = Gtk::ListStore.new(Integer)
     sel.each_with_index do |row, i|
       iter = store.append
@@ -2727,15 +2775,23 @@ module PandoraGUI
     treeview.name = panobject.ider
     treeview.panobject = panobject
     treeview.sel = sel
-    flds = panobject.def_fields if flds == []
-    flds.each_with_index do |v,i|
+    flds = panobject.tab_fields
+    #flds = panobject.def_fields if flds == []
+    flds.each_with_index do |tf,i|
+      v = tf
       v = v[0].to_s if v.is_a? Array
       renderer = Gtk::CellRendererText.new
       #renderer.background = 'red'
       #renderer.editable = true
       #renderer.text = 'aaa'
       column = Gtk::TreeViewColumn.new(panobject.field_title(v), renderer )  #, {:text => i}
+
+      #p v
+      #p ind = panobject.def_fields.index_of {|f| f[0]==v }
+      #p fld = panobject.def_fields[ind]
       column.sort_column_id = i
+      #p column.ind = i
+      #p column.fld = fld
       panhash_col = i if (v=='panhash')
       column.resizable = true
       column.reorderable = true
@@ -2745,10 +2801,25 @@ module PandoraGUI
         p 'sort clicked'
       end
       column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
-        col = tvc.sort_column_id
+        col = column.sort_column_id
+        #p fld = panobject.def_fields[col]
+        tf = panobject.tab_fields[col]
         row = tvc.tree_view.sel[iter.path.indices[0]]
         val = row[col] if row
+        val = PandoraKernel.bytes_to_hex(val) if (val.is_a? String) and (tf[1]=='BLOB')
+        val = val[0,48] if val.is_a? String
         val ||= 'nil'
+
+        # clean text fields
+        #val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ') if fld_def.is_a? Array and fld_def[2]=='Text'
+        # truncate all fields
+        #if $jcode_on
+        #  val = val[/.{0,#{34}}/m]
+        #else
+        #  val = val[0,34]
+        #end
+        #iter.set_value(i, val.rstrip)
+
         #val = model.get_value(iter, col)
         val = PandoraKernel.bytes_to_hex(val[2,12]) if (col==panhash_col) and val
         renderer.text = val.to_s
@@ -3631,6 +3702,8 @@ module PandoraGUI
     p '====!! '+$listen_thread.inspect
     if $listen_thread == nil
       $listen_btn.label = _('Listening')
+      $port = get_param('tcp_port')
+      $host = get_param('local_host')
       $listen_thread = Thread.new do
         begin
           addr_str = $host.to_s+':'+$port.to_s
@@ -4334,12 +4407,12 @@ module PandoraGUI
         sign = make_sign(key, data)
         p '=====make_sign:'+sign.inspect
         p 'verify_sign='+verify_sign(key, data, sign).inspect
-        p 'verify_sign2='+verify_sign(key, data+'aa', sign).inspect
+        #p 'verify_sign2='+verify_sign(key, data+'aa', sign).inspect
 
-        encrypted = encrypt(key.public_key, data)
-        p '=====encrypted:'+encrypted.inspect
-        decrypted = decrypt(key, encrypted)
-        p '=====decrypted:'+decrypted.inspect
+        #encrypted = encrypt(key.public_key, data)
+        #p '=====encrypted:'+encrypted.inspect
+        #decrypted = decrypt(key, encrypted)
+        #p '=====decrypted:'+decrypted.inspect
       when 'Wizard'
         #typ, count = encode_pan_type(PT_Str, 0x1FF)
         #p decode_pan_type(typ)
