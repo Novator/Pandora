@@ -13,12 +13,12 @@
   <World name="World">
 
     <Person parent="Hashed" name="Person|People" table="persons" kind="1">
-      <first_name name="Name" type="String" size="30" hash="1:md5(4)" />
-      <last_name name="Family" type="String" size="35" hash="2:md5(8)" />
+      <first_name name="Name" type="String" size="30" hash="1:(4)" />
+      <last_name name="Family" type="String" size="35" hash="2:(8)" />
       <birth_day name="Birth day" type="Date" hash="3:date" />
       <birth_place name="Birth place" type="String" size="37" hash="4:panhash(4)" />
-      <father_name name="Father name" type="String" size="35" hash="5:md5(2)" />
-      <mother_name name="Mother name" type="String" size="35" hash="6:md5(2)" />
+      <father_name name="Father name" type="String" size="35" hash="5:(2)" />
+      <mother_name name="Mother name" type="String" size="35" hash="6:(2)" />
       <sex name="Sex" type="String" size="5" />
       <exit_day name="Exit day" type="Date" optional="yes" />
     </Person>
@@ -193,7 +193,7 @@
     <Sign name="Sign">
       <objhash name="Object panhash" type="String" size="32" />
       <keyhash name="Key panhash" type="String" size="32" />
-      <format name="Format" type="Integer" />
+      <format name="Format" type="Byte" />
       <time name="Time" type="Time" />
       <sign name="Sign" type="Blob" />
     </Sign>

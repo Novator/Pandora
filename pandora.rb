@@ -495,7 +495,7 @@ module PandoraKernel
       if (values == nil) and (names == nil) and (filter != nil)
         sql = 'DELETE FROM ' + table_name + ' where '+filter
       elsif values.is_a? Array and names.is_a? Array
-        #p tfd = db.table_info(table_name)
+        tfd = db.table_info(table_name)
         tfd_name = tfd.collect { |x| x['name'] }
         tfd_type = tfd.collect { |x| x['type'] }
         if filter != nil
@@ -810,6 +810,9 @@ module PandoraKernel
     def tab_fields
       if @last_tab_fields == nil
         @last_tab_fields = self.class.repositories.get_tab_fields(self, self.class.tables[0])
+        @last_tab_fields.each do |x|
+          x[2] = field_des(x[0])
+        end
       end
       @last_tab_fields
     end
@@ -939,7 +942,7 @@ module PandoraKernel
             # convert DMY to time from 1970 in days
             t = Time.mktime(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i).to_i / (24*60*60)
             # convert date to 0 year epoch
-            t += 1970*365
+            t += (1970-1900)*365
             res = [t].pack('N')
             res = res[-hlen..-1]
           when 'byte', 'integer', 'word'
@@ -1117,6 +1120,8 @@ module PandoraModel
                   flds[i][5] = fld_fsize if (fld_fsize != nil) and (fld_fsize != '')
                   fld_hash = sub_elem.attributes['hash']
                   flds[i][6] = fld_hash if (fld_hash != nil) and (fld_hash != '')
+                  fld_view = sub_elem.attributes['view']
+                  flds[i][7] = fld_view if (fld_view != nil) and (fld_view != '')
                 else
                   puts _('Property was not defined, ignored')+' /'+filename+':'+panobj_id+'.'+sub_elem.name
                 end
@@ -2255,11 +2260,20 @@ module PandoraGUI
     attr_accessor :the_current_key
   end
 
+  def self.reset_current_key
+    deactivate_key(self.the_current_key) if self.the_current_key
+    self.the_current_key = nil
+    $auth_btn.label = _('Not logged') if $auth_btn
+  end
+
   $key_model = nil
 
   def self.current_key(reinit=false)
     key = self.the_current_key
-    if (not key) or reinit
+    if key and reinit
+      reset_current_key
+      key = nil
+    elsif not key
       last_auth_key = get_param('last_auth_key')
       keys = []
       $key_model ||= PandoraModel::Key.new
@@ -2311,6 +2325,7 @@ module PandoraGUI
       if keys != []
         key = init_key(keys)
         self.the_current_key = key
+        $auth_btn.label = _('Logged') if $auth_btn
       end
     end
     key
@@ -2755,8 +2770,7 @@ module PandoraGUI
   # Showing panobject list
   # RU: Показ списка субъектов
   def self.show_panobject_list(panobject_class, widget=nil, sw=nil)
-    embedded = (sw != nil)
-    if embedded
+    if widget
       $notebook.children.each do |child|
         if child.name==panobject_class.ider
           $notebook.page = $notebook.children.index(child)
@@ -2769,7 +2783,7 @@ module PandoraGUI
     store = Gtk::ListStore.new(Integer)
     sel.each_with_index do |row, i|
       iter = store.append
-      iter[0] = row[0]
+      iter[0] = row[0].to_i
     end
     treeview = SubjTreeView.new(store)
     treeview.name = panobject.ider
@@ -2792,7 +2806,7 @@ module PandoraGUI
       column.sort_column_id = i
       #p column.ind = i
       #p column.fld = fld
-      panhash_col = i if (v=='panhash')
+      #panhash_col = i if (v=='panhash')
       column.resizable = true
       column.reorderable = true
       column.clickable = true
@@ -2803,27 +2817,48 @@ module PandoraGUI
       column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
         col = column.sort_column_id
         #p fld = panobject.def_fields[col]
-        tf = panobject.tab_fields[col]
-        row = tvc.tree_view.sel[iter.path.indices[0]]
+        row = treeview.sel[iter.path.indices[0]]
         val = row[col] if row
-        val = PandoraKernel.bytes_to_hex(val) if (val.is_a? String) and (tf[1]=='BLOB')
-        val = val[0,48] if val.is_a? String
-        val ||= 'nil'
+        if val
+          tf = panobject.tab_fields[col]
+          if val.is_a? String
+            if tf[2].is_a? Array
+              view = tf[2][7]
+              if view=='base64'
+                val = Base64.encode64(val)
+                renderer.foreground = 'brown'
+              elsif view=='phash'
+                val = PandoraKernel.bytes_to_hex(val[2,16])
+                renderer.foreground = 'blue'
+              elsif view=='panhash'
+                val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,16])
+                renderer.foreground = 'navy'
+              elsif view=='hex'
+                val = PandoraKernel.bytes_to_hex(val)
+                renderer.foreground = 'red'
+              elsif view=='text'
+                val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
+                renderer.foreground = 'green'
+                val = val.rstrip
+              end
+            end
+            if $jcode_on
+              val = val[/.{0,#{34}}/m]
+            else
+              val = val[0,34]
+            end
+          end
+        else
+          val = 'nil'
+        end
 
         # clean text fields
         #val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ') if fld_def.is_a? Array and fld_def[2]=='Text'
         # truncate all fields
-        #if $jcode_on
-        #  val = val[/.{0,#{34}}/m]
-        #else
-        #  val = val[0,34]
-        #end
         #iter.set_value(i, val.rstrip)
-
         #val = model.get_value(iter, col)
-        val = PandoraKernel.bytes_to_hex(val[2,12]) if (col==panhash_col) and val
+
         renderer.text = val.to_s
-        renderer.foreground = 'navy' if v=='panhash'
       end
     end
     treeview.signal_connect('row_activated') do |tree_view, path, column|
@@ -2836,7 +2871,8 @@ module PandoraGUI
     sw.add(treeview)
     sw.border_width = 0;
 
-    if not embedded
+    if widget
+
       if widget.is_a? Gtk::ImageMenuItem
         animage = widget.image
       elsif widget.is_a? Gtk::ToolButton
@@ -3694,6 +3730,8 @@ module PandoraGUI
     client
   end
 
+  $auth_btn   = nil
+  $listen_btn = nil
   $listen_thread = nil
 
   # Open server socket and begin listen
@@ -3701,7 +3739,7 @@ module PandoraGUI
   def self.start_or_stop_listen
     p '====!! '+$listen_thread.inspect
     if $listen_thread == nil
-      $listen_btn.label = _('Listening')
+      $listen_btn.label = _('Listening') if $listen_btn
       $port = get_param('tcp_port')
       $host = get_param('local_host')
       $listen_thread = Thread.new do
@@ -3786,7 +3824,7 @@ module PandoraGUI
         end
         server.close if server and not server.closed?
         log_message(LM_Info, 'Слушатель остановлен '+addr_str) if server
-        $listen_btn.label = _('Not listen')
+        $listen_btn.label = _('Not listen') if $listen_btn
         $listen_thread = nil
       end
     else
@@ -4394,6 +4432,7 @@ module PandoraGUI
         end
       when 'Authorize'
         key = current_key(true)
+        if key
 
         ##PandoraKernel.save_as_language($lang)
         #keys = generate_key('RSA', 2048)
@@ -4402,17 +4441,18 @@ module PandoraGUI
         #keys[3] = '12345'
         #p '=====generate_key:'+keys.inspect
         #key = init_key(keys)
-        p '=====curr_key:'+key.inspect
-        data = 'Test string!'
-        sign = make_sign(key, data)
-        p '=====make_sign:'+sign.inspect
-        p 'verify_sign='+verify_sign(key, data, sign).inspect
+          p '=====curr_key:'+key.inspect
+          data = 'Test string!'
+          sign = make_sign(key, data)
+          p '=====make_sign:'+sign.inspect
+          p 'verify_sign='+verify_sign(key, data, sign).inspect
         #p 'verify_sign2='+verify_sign(key, data+'aa', sign).inspect
 
         #encrypted = encrypt(key.public_key, data)
         #p '=====encrypted:'+encrypted.inspect
         #decrypted = decrypt(key, encrypted)
         #p '=====decrypted:'+decrypted.inspect
+        end
       when 'Wizard'
         #typ, count = encode_pan_type(PT_Str, 0x1FF)
         #p decode_pan_type(typ)
@@ -4616,9 +4656,9 @@ module PandoraGUI
 
     statusbar = Gtk::Statusbar.new
     PandoraGUI.set_statusbar_text(statusbar, _('Base directory: ')+$pandora_base_dir)
-    btn = Gtk::Button.new(_('Not logged'))
-    btn.relief = Gtk::RELIEF_NONE
-    statusbar.pack_start(btn, false, false, 2)
+    $auth_btn = Gtk::Button.new(_('Not logged'))
+    $auth_btn.relief = Gtk::RELIEF_NONE
+    statusbar.pack_start($auth_btn, false, false, 2)
     statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
     $listen_btn = Gtk::Button.new(_('Not listen'))
     $listen_btn.relief = Gtk::RELIEF_NONE

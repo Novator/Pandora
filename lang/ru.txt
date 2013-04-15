@@ -52,6 +52,7 @@ Listening=>Слушаю
 Online=>Онлайн
 Recreate the table=>Пересоздать таблицу
 Not logged=>Не авторизован
+Logged=>Авторизован
 Wizards=>Мастера
 _Pandora=>_Пандора
 Workers=>Сотрудники

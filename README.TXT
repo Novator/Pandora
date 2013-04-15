@@ -1,6 +1,4 @@
-#############################################
- The Pandora. P2P Social Network
-#############################################
+=== The Pandora. P2P Social Network
 
 Contents
 

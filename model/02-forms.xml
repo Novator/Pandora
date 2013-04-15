@@ -25,11 +25,11 @@
   <Pandora name="Pandora Node">
 
     <Hashed>
-      <panhash pos="|255" />
+      <panhash pos="|255" view="phash" />
     </Hashed>
 
     <HashedCreated>
-      <creator pos="255.1" />
+      <creator pos="255.1" view="hex" />
     </HashedCreated>
 
     <Parameter order="101">
@@ -40,6 +40,28 @@
       <value pos="|+1" fsize="64" />
       <setting pos="|+1" fsize="64" />
     </Parameter>
+
+    <Key>
+      <kind view="byte" />
+      <owner view="panhash" />
+      <date view="time" />
+      <expire view="time" />
+      <body view="base64" />
+    </Key>
+
+    <Sign>
+      <objhash view="panhash" />
+      <keyhash view="panhash" />
+      <format view="byte" />
+      <time view="date" />
+      <sign view="base64" />
+    </Sign>
+
+    <Article>
+      <text view="text" />
+      <hash view="hex" />
+      <author view="hex" />
+    </Article>
 
   </Pandora>
 
