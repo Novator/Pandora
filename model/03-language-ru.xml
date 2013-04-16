@@ -172,6 +172,7 @@
       <owner name.ru="Владелец" />
       <date name.ru="Дата" />
       <expire name.ru="Истекает" />
+      <cipher name.ru="Шифрован" />
       <body name.ru="Тело" />
     </Key>
 

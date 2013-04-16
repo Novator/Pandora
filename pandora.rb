@@ -13,6 +13,10 @@
 
 if RUBY_VERSION<'1.9'
   $KCODE='u'
+  if RUBY_VERSION<'1.8.7'
+    puts 'The Pandora needs Ruby 1.8.7 or higher (current '+RUBY_VERSION+')'
+    exit(10)
+  end
 else
   Encoding.default_external = 'UTF-8'
   Encoding.default_internal = 'UTF-8'
@@ -860,33 +864,40 @@ module PandoraKernel
       def_fields.each do |e|
         if (e.is_a? Array) and (e[6] != nil) and (e[6].to_s != '')
           hash = e[6]
+          #p 'hash='+hash.inspect
           ind = 0
           len = 0
           i = hash.index(':')
-          j = hash.index('(')
-          i ||= j
           if i
-            begin
-              ind = hash[0, i].to_i
-            rescue
-              ind = 0
-            end
+            ind = hash[0, i].to_i
+            hash = hash[i+1..-1]
           end
-          j ||=i
-          if j
-            len = hash[j+1..-1]
+          i = hash.index('(')
+          if i
+            len = hash[i+1..-1]
             len = len[0..-2] if len[-1]==')'
             len = len.to_i
-            if j>i
-              hash = hash[i+1, j-i-1]
-            else
-              hash = ''
-            end
+            hash = hash[0, i]
           end
+          #p '@@@[ind, hash, len]='+[ind, hash, len].inspect
           if (hash==nil) or (hash=='') or (len<=0)
             dlen, dhash = def_hash(e)
+            #p '[hash, len, dhash, dlen]='+[hash, len, dhash, dlen].inspect
             hash = dhash if (hash==nil) or (hash=='')
+            if len<=0
+              case hash
+                when 'byte'
+                  len = 1
+                when 'date'
+                  len = 3
+                when 'crc16', 'word'
+                  len = 2
+                when 'crc32', 'integer'
+                  len = 4
+              end
+            end
             len = dlen if len<=0
+            #p '=[hash, len]='+[hash, len].inspect
           end
           ind = last_ind + 1 if ind==0
           res << [ind, e[0], hash, len]
@@ -924,37 +935,45 @@ module PandoraKernel
       else
         res.collect! { |e| [e[1],e[2],e[3]] }
       end
-      #p 'pan_pat='+res.inspect
+      #p 'pan_pattern='+res.inspect
       res
     end
     def calc_hash(hfor, hlen, fval)
-      res = [0].pack('C')
+      res = nil
       #fval = [fval].pack('C*') if fval.is_a? Fixnum
       if (fval != nil) and (fval != '')
-        hfor = 'integer' if fval.is_a? Integer
+        hfor = 'integer' if (not hfor or hfor=='') and (fval.is_a? Integer)
+        hfor = 'hash' if ((hfor=='') or (hfor=='text')) and (fval.is_a? String) and (fval.size>20)
         case hfor
-          when 'sha1', 'hash', 'panhash', ''
-            res = Digest::SHA1.digest(fval)[0, hlen]
+          when 'sha1', 'hash'
+            res = Digest::SHA1.digest(fval)
           when 'md5'
-            res = Digest::MD5.digest(fval)[0, hlen]
+            res = Digest::MD5.digest(fval)
           when 'date'
             dmy = fval.split('.')   # D.M.Y
             # convert DMY to time from 1970 in days
-            t = Time.mktime(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i).to_i / (24*60*60)
+            res = Time.mktime(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i).to_i / (24*60*60)
             # convert date to 0 year epoch
-            t += (1970-1900)*365
-            res = [t].pack('N')
-            res = res[-hlen..-1]
-          when 'byte', 'integer', 'word'
-            #p 'fval='+fval.inspect
-            res = [fval].pack('C*') if fval.is_a? Integer
-            #p '--res='+res.inspect
-            res = res[0, hlen]
-            #p '==res='+res.inspect
-          else
-            p 'Unknown hash function: ['+hfor.to_s+']'
+            res += (1970-1900)*365
+            #res = [t].pack('N')
+          #when 'byte', 'integer', 'word'
+          when 'crc16'
+            res = Zlib.crc32(fval) #if fval.is_a? String
+            res = (res & 0xFFFF) ^ (res >> 16)
+          when 'crc32'
+            res = Zlib.crc32(fval) #if fval.is_a? String
         end
+        res ||= fval
+        if res.is_a? Integer
+          res = PandoraKernel.bigint_to_bytes(res)
+          res = PandoraKernel.fill_zeros_from_left(res, hlen)
+          #p res = res[-hlen..-1]  # trunc if big
+        elsif not res.is_a? String
+          res = res.to_s
+        end
+        res = res[0, hlen]
       end
+      res ||= [0].pack('C')
       while res.size<hlen
         res += [0].pack('C')
       end
@@ -1922,12 +1941,13 @@ module PandoraGUI
 
   end
 
-  KT_Priv = 0
+  KT_None = 0
   KT_Rsa  = 1
   KT_Dsa  = 2
   KT_Aes  = 10
   KT_Des  = 11
   KT_Bf   = 12
+  KT_Priv = 255
 
   RSA_exponent = 65537
 
@@ -2299,7 +2319,7 @@ module PandoraGUI
           keys[2] = KT_Rsa
           keys[3] = '12345'
 
-          owner = 'a1b2c3'
+          owner = PandoraKernel.bigint_to_bytes(0x2ec783aad34331de1d390fa8006fc8)
 
           time = Time.now.to_i
           expire = time+5*365*24*3600
@@ -2872,7 +2892,6 @@ module PandoraGUI
     sw.border_width = 0;
 
     if widget
-
       if widget.is_a? Gtk::ImageMenuItem
         animage = widget.image
       elsif widget.is_a? Gtk::ToolButton
@@ -2894,6 +2913,9 @@ module PandoraGUI
       page = $notebook.append_page(sw, label_box)
       sw.show_all
       $notebook.page = $notebook.n_pages-1
+
+      treeview.set_cursor(Gtk::TreePath.new(treeview.sel.size-1), nil, false)
+      treeview.grab_focus
     end
 
     menu = Gtk::Menu.new
@@ -2915,9 +2937,6 @@ module PandoraGUI
         menu.popup(nil, nil, event.button, event.time)
       end
     end
-
-    treeview.set_cursor(Gtk::TreePath.new(treeview.sel.size-1), nil, false)
-    treeview.grab_focus
   end
 
   # Socket with defined outbound port

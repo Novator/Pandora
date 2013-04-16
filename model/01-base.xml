@@ -13,12 +13,12 @@
   <World name="World">
 
     <Person parent="Hashed" name="Person|People" table="persons" kind="1">
-      <first_name name="Name" type="String" size="30" hash="1:(4)" />
-      <last_name name="Family" type="String" size="35" hash="2:(8)" />
-      <birth_day name="Birth day" type="Date" hash="3:date" />
+      <first_name name="Name" type="String" size="30" hash="1:hash(4)" />
+      <last_name name="Family" type="String" size="35" hash="2:hash(8)" />
+      <birth_day name="Birth day" type="Date" hash="3:date(3)" />
       <birth_place name="Birth place" type="String" size="37" hash="4:panhash(4)" />
-      <father_name name="Father name" type="String" size="35" hash="5:(2)" />
-      <mother_name name="Mother name" type="String" size="35" hash="6:(2)" />
+      <father_name name="Father name" type="String" size="35" hash="5:hash(2)" />
+      <mother_name name="Mother name" type="String" size="35" hash="6:hash(2)" />
       <sex name="Sex" type="String" size="5" />
       <exit_day name="Exit day" type="Date" optional="yes" />
     </Person>
@@ -96,9 +96,9 @@
     </Word>
 
     <Article name="Article" kind="14">
-      <name name="Name" type="String" size="512" hash="(4)" />
+      <name name="Name" type="String" size="512" hash="1:hash(4)" />
       <type name="Type" type="Word" />
-      <text name="Text" type="Text" hash="(16)" />
+      <text name="Text" type="Text" hash="2:hash(16)" />
       <hash name="SHA1" type="String" size="20" />
       <author name="Author" type="String" size="30" />
       <size name="Size" type="Integer" />
@@ -184,10 +184,11 @@
 
     <Key parent="Hashed" name="Key">
       <kind name="Kind" type="Byte" />
-      <owner name="Owner (or Parent)" type="String" size="32" />
-      <date name="Date" type="Time" hash="1:integer" />
+      <owner name="Owner (or Parent)" type="String" size="32" hash="1:panhash(15)" />
+      <date name="Date" type="Time" hash="2:integer(4)" />
       <expire name="Expire" type="Time" />
-      <body name="Body" type="Blob" hash="2:sha1(10)" />
+      <cipher name="Ciphered" type="Byte" />
+      <body name="Body" type="Blob" hash="3:crc32(4)" />
     </Key>
 
     <Sign name="Sign">
