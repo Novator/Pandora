@@ -158,6 +158,16 @@
   </Region>
   <Pandora name.ru="Узел Пандоры">
 
+    <Panobject name.ru="Объект Пандоры">
+      <panhash name.ru="Панхэш" />
+      <modified name.ru="Изменен" />
+    </Panobject>
+
+    <Created>
+      <creator name.ru="Создатель" />
+      <created name.ru="Создал" />
+    </Created>
+
     <Parameter name.ru="Параметр|Параметры">
       <name name.ru="Название" />
       <desc name.ru="Описание" />
@@ -177,13 +187,13 @@
     </Key>
 
     <Sign name.ru="Подпись|Подписи">
-      <keyhash name.ru="Панхэш ключа" />
-      <objhash name.ru="Панхэш объекта"/>
+      <key_hash name.ru="Панхэш ключа" />
+      <obj_hash name.ru="Панхэш объекта"/>
       <sign name.ru="Подпись" />
     </Sign>
 
     <Node name.ru="Узел|Узлы">
-      <origin name.ru="Ориджин" />
+      <base_id name.ru="ID базы" />
       <domain name.ru="Домен" />
       <addr name.ru="Адрес" />
       <tport name.ru="Порт TCP" />

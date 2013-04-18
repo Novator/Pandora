@@ -1,18 +1,20 @@
 <pandora-model name="Pandora base model">
   <Pandora name="Pandora Node">
-    <Hashed>
-      <panhash name="Panhash" name.ru="Панхэш" type="String" size="32" pos="|255" />
-    </Hashed>
+    <Panobject>
+      <panhash name="Panhash" name.ru="Панхэш" type="String" size="32" />
+      <modified name="Modified" type="Time" />
+    </Panobject>
 
-    <HashedCreated parent="Hashed">
+    <Created>
       <creator name="Creator" name.ru="Создатель" type="String" size="32" />
-    </HashedCreated>
+      <created name="Created" type="Time" />
+    </Created>
 
   </Pandora>
 
   <World name="World">
 
-    <Person parent="Hashed" name="Person|People" table="persons" kind="1">
+    <Person name="Person|People" table="persons" kind="1">
       <first_name name="Name" type="String" size="30" hash="1:hash(4)" />
       <last_name name="Family" type="String" size="35" hash="2:hash(8)" />
       <birth_day name="Birth day" type="Date" hash="3:date(3)" />
@@ -23,7 +25,7 @@
       <exit_day name="Exit day" type="Date" optional="yes" />
     </Person>
 
-    <Community parent="HashedCreated" name="Community|Communities" table="companies"  kind="2">
+    <Community parent="Created" name="Community|Communities" table="companies"  kind="2">
       <name name="Name" type="String" size="128" />
       <founder name="Founder" type="String" size="40" />
       <origin_place name="Origin place" type="String" size="37" />
@@ -182,19 +184,19 @@
       <setting name="Setting" type="Blob" />
     </Parameter>
 
-    <Key parent="Hashed" name="Key">
+    <Key name="Key">
       <kind name="Kind" type="Byte" />
       <owner name="Owner (or Parent)" type="String" size="32" hash="1:panhash(15)" />
       <date name="Date" type="Time" hash="2:integer(4)" />
       <expire name="Expire" type="Time" />
-      <cipher name="Ciphered" type="Byte" />
+      <cipher name="Ciphered" type="Word" />
       <body name="Body" type="Blob" hash="3:crc32(4)" />
     </Key>
 
     <Sign name="Sign">
-      <objhash name="Object panhash" type="String" size="32" />
-      <keyhash name="Key panhash" type="String" size="32" />
-      <format name="Format" type="Byte" />
+      <obj_hash name="Object panhash" type="String" size="32" />
+      <key_hash name="Key panhash" type="String" size="32" />
+      <pack_type name="Pack type" type="Byte" />
       <time name="Time" type="Time" />
       <sign name="Sign" type="Blob" />
     </Sign>
@@ -204,10 +206,10 @@
       <tport name="TCP port" type="Integer" />
       <uport name="UDP port" type="Integer" />
       <domain name="Domain" type="String" size="255" />
-      <origin name="Origin" type="String" size="32" />
+      <base_id name="Origin" type="String" size="32" />
       <city name="City" type="[City]" />
       <home name="Home" type="[Address]" />
-      <gps name="GPS" type="Integer" />
+      <coord name="Coord" type="Integer" />
       <state name="State" type="Integer" />
       <sended name="Sended" type="Integer" />
       <received name="Recieved" type="Integer" />
@@ -215,9 +217,11 @@
       <ban_time name="Time of ban" type="Date" />
       <one_ip_count name="Connection from one IP" type="Integer" />
       <session_key name="Panhash of last session key" type="String" size="32" />
-      <last_conn_date name="Time of last connection" type="Date" />
-      <try_upnp_date name="Time of last UPnP try" type="Date" />
-      <try_natpmp_date name="Time of last NAT-PMP try" type="Date" />
+      <last_conn_date name="Last connection" type="Date" />
+      <try_upnp_date name="Last UPnP try" type="Date" />
+      <try_natpmp_date name="Last NAT-PMP try" type="Date" />
+      <last_link_date name="Last received link" type="Date" />
+      <last_trust_date name="Last received trust" type="Date" />
     </Node>
 
     <Patch name="Patch">

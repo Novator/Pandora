@@ -24,13 +24,15 @@
 
   <Pandora name="Pandora Node">
 
-    <Hashed>
+    <Panobject>
       <panhash pos="|255" view="phash" />
-    </Hashed>
+      <modified pos="255.1" view="time" />
+    </Panobject>
 
-    <HashedCreated>
-      <creator pos="255.1" view="hex" />
-    </HashedCreated>
+    <Created>
+      <creator pos="255.2" view="phash" />
+      <created pos="255.3" view="time" />
+    </Created>
 
     <Parameter order="101">
       <name pos="1" fsize="32" />
@@ -50,9 +52,9 @@
     </Key>
 
     <Sign>
-      <objhash view="panhash" />
-      <keyhash view="panhash" />
-      <format view="byte" />
+      <obj_hash view="panhash" />
+      <key_hash view="panhash" />
+      <pack_type view="byte" />
       <time view="date" />
       <sign view="base64" />
     </Sign>
