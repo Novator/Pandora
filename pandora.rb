@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# encoding: utf-8
+# encoding: UTF-8
 
 # The Pandora. Free peer-to-peer information system
 # RU: Пандора. Свободная пиринговая информационная система
@@ -9,17 +9,29 @@
 # 2012 (c) Michael Galyuk
 # RU: 2012 (c) Михаил Галюк
 #
-# coding: utf-8
+# coding: UTF-8
 
 if RUBY_VERSION<'1.9'
-  $KCODE='u'
+  $KCODE='UTF-8'
   if RUBY_VERSION<'1.8.7'
     puts 'The Pandora needs Ruby 1.8.7 or higher (current '+RUBY_VERSION+')'
     exit(10)
   end
+  require 'iconv'
+  class AsciiString < String
+    def force_encoding(enc)
+      self
+    end
+  end
 else
+  class AsciiString < String
+    def initialize(*args)
+      super(*args)
+      force_encoding('ASCII-8BIT')
+    end
+  end
   Encoding.default_external = 'UTF-8'
-  Encoding.default_internal = 'UTF-8'
+  Encoding.default_internal = 'UTF-8' #BINARY ASCII-8BIT UTF-8
 end
 
 # Platform detection
@@ -496,6 +508,22 @@ module PandoraKernel
       connect
       sql = ''
       sql_values = []
+      sql_values2 = []
+
+      if filter.is_a? Hash
+        sql2 = ''
+        filter.each do |n,v|
+          if n != nil
+            sql2 = sql2 + ' AND ' if sql2 != ''
+            sql2 = sql2 + n.to_s + '=?'
+            #v.force_encoding('ASCII-8BIT')  and v.is_a? String
+            #v = AsciiString.new(v) if v.is_a? String
+            sql_values2 << v
+          end
+        end
+        filter = sql2
+      end
+
       if (values == nil) and (names == nil) and (filter != nil)
         sql = 'DELETE FROM ' + table_name + ' where '+filter
       elsif values.is_a? Array and names.is_a? Array
@@ -507,24 +535,15 @@ module PandoraKernel
             fname = names[i]
             if fname != nil
               sql = sql + ',' if sql != ''
+              v.is_a? String
+              #v.force_encoding('ASCII-8BIT')  and v.is_a? String
+              #v = AsciiString.new(v) if v.is_a? String
               sql_values << v
-              sql = sql + ' ' + fname.to_s + '=?'
+              sql = sql + fname.to_s + '=?'
             end
           end
 
-          if filter.is_a? Hash
-            sql2 = ''
-            filter.each do |n,v|
-              if n != nil
-                sql2 = sql2 + ' AND ' if sql2 != ''
-                sql2 = sql2 + n.to_s + '=?'
-                sql_values << v
-              end
-            end
-            filter = sql2
-          end
-
-          sql = 'UPDATE ' + table_name + ' SET' + sql
+          sql = 'UPDATE ' + table_name + ' SET ' + sql
           if filter and filter != ''
             sql = sql + ' where '+filter
           end
@@ -537,6 +556,8 @@ module PandoraKernel
               sql2 = sql2 + ',' if sql2 != ''
               sql = sql + fname.to_s
               sql2 = sql2 + '?'
+              #v.force_encoding('ASCII-8BIT')  and v.is_a? String
+              #v = AsciiString.new(v) if v.is_a? String
               sql_values << v
             end
           end
@@ -545,6 +566,7 @@ module PandoraKernel
       end
       tfd = fields_table(table_name)
       if (tfd != nil) and (tfd != [])
+        sql_values = sql_values+sql_values2
         p 'upd_tab: sql='+sql.inspect
         p 'upd_tab: sql_values='+sql_values.inspect
         res = db.execute(sql, sql_values)
@@ -643,7 +665,8 @@ module PandoraKernel
   # Convert string of bytes to hex string
   # RU: Преобрзует строку байт в 16-й формат
   def self.bytes_to_hex(bytes)
-    res = ''
+    res = AsciiString.new
+    #res.force_encoding('ASCII-8BIT')
     if bytes
       bytes.each_byte do |b|
         res << ('%02x' % b)
@@ -655,9 +678,11 @@ module PandoraKernel
   # Convert big integer to string of bytes
   # RU: Преобрзует большое целое в строку байт
   def self.bigint_to_bytes(bigint)
-    bytes = ''
+    bytes = AsciiString.new
+    #bytes = ''
+    #bytes.force_encoding('ASCII-8BIT')
     if bigint<=0xFF
-      bytes = [bigint].pack('C')
+      bytes << [bigint].pack('C')
     else
       #not_null = true
       #while not_null
@@ -671,7 +696,7 @@ module PandoraKernel
         bytes << hexstr[i*2,2].to_i(16).chr
       end
     end
-    bytes
+    bytes = AsciiString.new(bytes)
   end
 
   # Convert string of bytes to big integer
@@ -688,10 +713,12 @@ module PandoraKernel
   # Fill string by zeros from left to defined size
   # RU: Заполнить строку нулями слева до нужного размера
   def self.fill_zeros_from_left(data, size)
+    #data.force_encoding('ASCII-8BIT')
+    data = AsciiString.new(data)
     if data.size<size
-      data = [0].pack('C')*(size-data.size) + data
+      data << [0].pack('C')*(size-data.size) + data
     end
-    data
+    data = AsciiString.new(data)
   end
 
 
@@ -843,7 +870,9 @@ module PandoraKernel
     end
     def def_hash(e)
       len = 0
-      hash = ''
+      hash = AsciiString.new
+      #hash = ''
+      #hash.force_encoding('ASCII-8BIT')
       if (e.is_a? Array) and (e[2] != nil)
         case e[2].to_s
           when 'Date'
@@ -913,12 +942,14 @@ module PandoraKernel
         used_len = 0
         nil_count = 0
         def_fields.each do |e|
-          len, hash = def_hash(e)
-          res << [e[0], hash, len]
-          if len>0
-            used_len += len
-          else
-            nil_count += 1
+          if e[0] != 'panhash'
+            len, hash = def_hash(e)
+            res << [e[0], hash, len]
+            if len>0
+              used_len += len
+            else
+              nil_count += 1
+            end
           end
         end
         mid_len = 0
@@ -950,9 +981,15 @@ module PandoraKernel
         hfor = 'hash' if ((hfor=='') or (hfor=='text')) and (fval.is_a? String) and (fval.size>20)
         case hfor
           when 'sha1', 'hash'
-            res = Digest::SHA1.digest(fval)
+            res = AsciiString.new
+            #res = ''
+            #res.force_encoding('ASCII-8BIT')
+            res << Digest::SHA1.digest(fval)
           when 'md5'
-            res = Digest::MD5.digest(fval)
+            res = AsciiString.new
+            #res = ''
+            #res.force_encoding('ASCII-8BIT')
+            res << Digest::MD5.digest(fval)
           when 'date'
             dmy = fval.split('.')   # D.M.Y
             # convert DMY to time from 1970 in days
@@ -967,31 +1004,50 @@ module PandoraKernel
           when 'crc32'
             res = Zlib.crc32(fval) #if fval.is_a? String
         end
-        res ||= fval
+        if not res
+          if fval.is_a? String
+            res = AsciiString.new
+            #res = ''
+            #res.force_encoding('ASCII-8BIT')
+            res << fval
+          else
+            res = fval
+          end
+        end
         if res.is_a? Integer
           res = PandoraKernel.bigint_to_bytes(res)
           res = PandoraKernel.fill_zeros_from_left(res, hlen)
           #p res = res[-hlen..-1]  # trunc if big
-        elsif not res.is_a? String
-          res = res.to_s
+        elsif not fval.is_a? String
+          res = AsciiString.new(res.to_s)
+          #res << res.to_s
+          #res.force_encoding('ASCII-8BIT')
         end
-        res = res[0, hlen]
+        res = AsciiString.new(res[0, hlen])
       end
-      res ||= [0].pack('C')
+      if not res
+        res = AsciiString.new
+        #res = ''
+        #res.force_encoding('ASCII-8BIT')
+        res << [0].pack('C')
+      end
       while res.size<hlen
-        res += [0].pack('C')
+        res << [0].pack('C')
       end
       #p 'hash='+res.to_s
       #p 'hex_of_str='+hex_of_str(res)
-      res
+      #res.force_encoding('ASCII-8BIT')
+      res = AsciiString.new(res)
     end
     def objhash
       [kind, lang].pack('CC')
     end
     def panhash(values, prefix=true, hexview=false)
-      res = ''
+      res = AsciiString.new
+      #res = ''
+      #res.force_encoding('ASCII-8BIT')
       if prefix
-        res = objhash
+        res << objhash
         res = PandoraKernel.bytes_to_hex(res)+':' if hexview
       end
       if values.is_a? Hash
@@ -1012,13 +1068,14 @@ module PandoraKernel
         #p '[fval, fname, values]='+[fval, fname, values].inspect
         #p '[hfor, hlen, fval]='+[hfor, hlen, fval].inspect
         if not hexview
-          res += calc_hash(hfor, hlen, fval)
+          #res.force_encoding('ASCII-8BIT')
+          res << AsciiString.new(calc_hash(hfor, hlen, fval))
         else
-          res += ' ' if res
-          res += PandoraKernel.bytes_to_hex(calc_hash(hfor, hlen, fval))
+          res << ' ' if res
+          res << PandoraKernel.bytes_to_hex(calc_hash(hfor, hlen, fval))
         end
       end
-      res
+      res = AsciiString.new(res)
     end
     def matter_fields
       res = {}
@@ -1262,7 +1319,7 @@ module PandoraGUI
   # RU: Продвинутое окно диалога
   class AdvancedDialog < Gtk::Window
     attr_accessor :response, :window, :notebook, :vpaned, :viewport, :hbox, :enter_like_tab, :enter_like_ok, \
-      :panelbox, :okbutton, :cancelbutton
+      :panelbox, :okbutton, :cancelbutton, :def_widget
 
     def initialize(*args)
       super(*args)
@@ -1270,6 +1327,7 @@ module PandoraGUI
       @window = self
       @enter_like_tab = false
       @enter_like_ok = true
+      set_default_size(300, -1)
 
       window.transient_for = $window
       window.modal = true
@@ -1362,6 +1420,7 @@ module PandoraGUI
     def run
       res = false
       show_all
+      def_widget.grab_focus if def_widget
       while (not destroyed?) and (@response == 0) do
         Gtk.main_iteration
         #sleep 0.03
@@ -2013,9 +2072,9 @@ module PandoraGUI
 
   def self.pan_kh_to_openssl_hash(hash_len)
     res = nil
-    p 'hash_len='+hash_len.inspect
+    #p 'hash_len='+hash_len.inspect
     hash, klen = divide_type_and_klen(hash_len)
-    p '[hash, klen]='+[hash, klen].inspect
+    #p '[hash, klen]='+[hash, klen].inspect
     case hash
       when KH_Md5
         res = OpenSSL::Digest::MD5.new
@@ -2078,24 +2137,25 @@ module PandoraGUI
   KV_Type  = 3
   KV_Ciph  = 4
   KV_Pass  = 5
+  KV_Panhash = 6
 
   def self.sym_recrypt(data, encode=true, cipher_hash=nil, cipher_key=nil)
-    p 'sym_recrypt: [cipher_hash, cipher_key]='+[cipher_hash, cipher_key].inspect
+    #p 'sym_recrypt: [cipher_hash, cipher_key]='+[cipher_hash, cipher_key].inspect
     cipher_hash ||= encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
     if cipher_hash and (cipher_hash != 0) and cipher_key and data
       ctype, chash = decode_cipher_and_hash(cipher_hash)
       hash = pan_kh_to_openssl_hash(chash)
-      p 'hash='+hash.inspect
+      #p 'hash='+hash.inspect
       cipher_key = hash.digest(cipher_key) if hash
-      p 'cipher_key.hash='+cipher_key.inspect
+      #p 'cipher_key.hash='+cipher_key.inspect
       cipher_vec = []
       cipher_vec[KV_Key1] = cipher_key
       cipher_vec[KV_Type] = ctype
       cipher_vec = init_key(cipher_vec)
-      p '*******'+encode.inspect
-      p '---sym_recode data='+data.inspect
+      #p '*******'+encode.inspect
+      #p '---sym_recode data='+data.inspect
       data = recrypt(cipher_vec, data, encode)
-      p '+++sym_recode data='+data.inspect
+      #p '+++sym_recode data='+data.inspect
     end
     data
   end
@@ -2116,15 +2176,19 @@ module PandoraGUI
         bitlen = 2048 if bitlen <= 0
         key = OpenSSL::PKey::RSA.generate(bitlen, RSA_exponent)
 
+        #key1 = ''
+        #key1.force_encoding('ASCII-8BIT')
+        #key2 = ''
+        #key2.force_encoding('ASCII-8BIT')
+        key1 = AsciiString.new(PandoraKernel.bigint_to_bytes(key.params['n']))
+        key2 = AsciiString.new(PandoraKernel.bigint_to_bytes(key.params['p']))
         #p key1 = key.params['n']
         #key2 = key.params['p']
-        key1 = PandoraKernel.bigint_to_bytes(key.params['n'])
         #p PandoraKernel.bytes_to_bigin(key1)
         #p '************8'
-        key2 = PandoraKernel.bigint_to_bytes(key.params['p'])
 
         #puts key.to_text
-        p key.params
+        #p key.params
 
         #key_der = key.to_der
         #p key_der.size
@@ -2137,10 +2201,15 @@ module PandoraGUI
         key.encrypt
         key1 = cipher.random_key
         key2 = cipher.random_iv
-        p key1.size
-        p key2.size
+        #p key1.size
+        #p key2.size
     end
-    key2 = sym_recrypt(key2, true, cipher_hash, cipher_key)
+    if cipher_key and cipher_key==''
+      cipher_hash = 0
+      cipher_key = nil
+    else
+      key2 = sym_recrypt(key2, true, cipher_hash, cipher_key)
+    end
     [key, key1, key2, type_klen, cipher_hash, cipher_key]
   end
 
@@ -2158,10 +2227,10 @@ module PandoraGUI
       bitlen = klen_to_bitlen(klen)
       case type
         when KT_Rsa
-          p '------'
+          #p '------'
           #p key.params
           n = PandoraKernel.bytes_to_bigint(key1)
-          p 'n='+n.inspect
+          #p 'n='+n.inspect
           e = OpenSSL::BN.new(RSA_exponent.to_s)
           p0 = nil
           if key2
@@ -2218,7 +2287,7 @@ module PandoraGUI
 
             # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
             key = OpenSSL::PKey::RSA.new(seq.to_der)
-            p key.params
+            #p key.params
           end
         when KT_Dsa
           seq = OpenSSL::ASN1::Sequence([
@@ -2288,12 +2357,14 @@ module PandoraGUI
         key.key = key_vec[KV_Key1]
         iv = key.random_iv
       else
+        data = AsciiString.new(data)
+        #data.force_encoding('ASCII-8BIT')
         data = pson_elem_to_rubyobj(data)[0]
         #p 'decrypt: data='+data.inspect
         key.decrypt
         #p 'DDDDDDEEEEECR'
-        iv = data[1]
-        data = data[0]
+        iv = AsciiString.new(data[1])
+        data = AsciiString.new(data[0])
         key.key = key_vec[KV_Key1]
         key.iv = iv
       end
@@ -2411,7 +2482,7 @@ module PandoraGUI
     if not sel[0]
       ind = $pandora_parameters.index{ |row| row[PF_Name]==name }
       if ind
-        p row = $pandora_parameters[ind]
+        row = $pandora_parameters[ind]
         type = row[PF_Type]
         type = string_to_pantype(type) if type.is_a? String
         section = row[PF_Section]
@@ -2429,7 +2500,7 @@ module PandoraGUI
       id = $param_model.namesvalues['id'] if get_id
     end
     value = [value, id] if get_id
-    p 'get_param value='+value.inspect
+    #p 'get_param value='+value.inspect
     value
   end
 
@@ -2437,9 +2508,9 @@ module PandoraGUI
     res = false
     old_value, id = get_param(name, true)
     if value != old_value
-      p 'set_param============================================='
-      p values = {:value=>value}
-      p id
+      #p 'set_param============================================='
+      values = {:value=>value}
+      #p id
       res = $param_model.update(values, nil, 'id='+id.to_s)
     end
     res
@@ -2457,12 +2528,12 @@ module PandoraGUI
 
   $key_model = nil
 
-  def self.current_key(reinit=false)
+  def self.current_key(reinit=false, need_init=true)
     key = self.the_current_key
     if key and reinit
       reset_current_key
       key = nil
-    elsif not key
+    elsif not key and need_init
       try = true
       while try
         try = false
@@ -2472,8 +2543,9 @@ module PandoraGUI
         if last_auth_key and last_auth_key != ''
           filter = {:panhash=>last_auth_key}
           sel = $key_model.select(filter, true)
-          p 'sel='+sel.inspect
+          #p 'sel='+sel.inspect
           if sel.size>1
+
             kind0 = $key_model.field_val('kind', sel[0])
             kind1 = $key_model.field_val('kind', sel[1])
             body0 = $key_model.field_val('body', sel[0])
@@ -2494,7 +2566,7 @@ module PandoraGUI
 
             passwd = nil
             if cipher != 0
-              dialog = AdvancedDialog.new(_('Encode key'))
+              dialog = AdvancedDialog.new(_('Key init'))
 
               vbox = Gtk::VBox.new
               dialog.viewport.add(vbox)
@@ -2503,6 +2575,7 @@ module PandoraGUI
               vbox.pack_start(label, false, false, 2)
               entry = Gtk::Entry.new
               vbox.pack_start(entry, false, false, 2)
+              dialog.def_widget = entry
 
               try = true
               dialog.run do
@@ -2516,11 +2589,12 @@ module PandoraGUI
               key_vec[KV_Key2] = priv
               key_vec[KV_Type] = type
               key_vec[KV_Pass] = passwd
+              key_vec[KV_Panhash] = last_auth_key
             end
           end
         end
         if (key_vec == []) and not try
-          dialog = AdvancedDialog.new(_('Generate key'))
+          dialog = AdvancedDialog.new(_('Key generation'))
 
           vbox = Gtk::VBox.new
           dialog.viewport.add(vbox)
@@ -2529,16 +2603,17 @@ module PandoraGUI
           vbox.pack_start(label, false, false, 2)
           entry = Gtk::Entry.new
           vbox.pack_start(entry, false, false, 2)
+          dialog.def_widget = entry
 
           dialog.run do
             cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
             cipher_key = entry.text
-            p 'cipher_hash='+cipher_hash.to_s
+            #p 'cipher_hash='+cipher_hash.to_s
             type_klen = KT_Rsa | KL_bit2048
 
             key_vec = generate_key(type_klen, cipher_hash, cipher_key)
 
-            p 'key_vec='+key_vec.inspect
+            #p 'key_vec='+key_vec.inspect
 
             pub  = key_vec[KV_Key1]
             priv = key_vec[KV_Key2]
@@ -2546,43 +2621,50 @@ module PandoraGUI
             cipher_hash = key_vec[KV_Ciph]
             cipher_key = key_vec[KV_Pass]
 
-            owner = PandoraKernel.bigint_to_bytes(0x2ec783aad34331de1d390fa8006fc8)
+            creator = PandoraKernel.bigint_to_bytes(0x2ec783aad34331de1d390fa8006fc8)
 
-            time = Time.now.to_i
-            expire = time+5*365*24*3600
+            time_now = Time.now
 
-            values = {:kind=>type_klen, :body=>pub, :date=>time, :expire=>expire, :owner=>owner, \
-              :cipher=>0}
+            vals = time_now.to_a
+            y, m, d = [vals[5], vals[4], vals[3]]  #current day
+            expire = Time.local(y+5, m, d).to_i
+
+            time_now = time_now.to_i
+
+            values = {:kind=>type_klen, :creator=>creator, :created=>time_now, :expire=>expire, \
+              :cipher=>0, :body=>pub, :modified=>time_now}
             panhash = $key_model.panhash(values)
             values['panhash'] = panhash
-            p '========================'
-            p values
-            p res = $key_model.update(values, nil, nil)
+            key_vec[KV_Panhash] = panhash
+
+            #p '========================'
+            #p values
+            res = $key_model.update(values, nil, nil)
             if res
               values[:kind] = KT_Priv
               values[:body] = priv
               values[:cipher] = cipher_hash
-              p res = $key_model.update(values, nil, nil)
+              res = $key_model.update(values, nil, nil)
               if res
-                p 'last_auth_key='+panhash.inspect
-                p set_param('last_auth_key', panhash)
+                #p 'last_auth_key='+panhash.inspect
+                set_param('last_auth_key', panhash)
               end
             end
-            p '------------------------'
+            #p '------------------------'
           end
         end
         try = false
         if key_vec != []
           key = init_key(key_vec)
-          p 'key='+key.inspect
+          #p 'key='+key.inspect
           if key and key[KV_Obj]
             self.the_current_key = key
             $auth_btn.label = _('Logged') if $auth_btn
           elsif last_auth_key
             dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
-              Gtk::MessageDialog::WARNING, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
+              Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
               _('Bad password. Try again?')+"\nlast_auth_key=[" \
-              +PandoraKernel.bytes_to_hex(last_auth_key[0,16])+']')
+              +PandoraKernel.bytes_to_hex(last_auth_key[2,16])+']')
             dialog.title = _('Key init')
             dialog.default_response = Gtk::Dialog::RESPONSE_OK
             dialog.icon = $window.icon
@@ -2617,30 +2699,31 @@ module PandoraGUI
   def self.rubyobj_to_pson_elem(rubyobj)
     type = PT_Unknown
     count = 0
-    data = ''
+    #data = ''
+    #data.force_encoding('ASCII-8BIT')
+    data = AsciiString.new
     elem_size = nil
     case rubyobj
       when String
-        data = rubyobj
+        data << rubyobj
         elem_size = data.size
         type, count = encode_pan_type(PT_Str, elem_size)
       when Symbol
-        data = rubyobj.to_s
+        data << rubyobj.to_s
         elem_size = data.size
         type, count = encode_pan_type(PT_Sym, elem_size)
       when Integer
-        data = PandoraKernel.bigint_to_bytes(rubyobj)
+        data << PandoraKernel.bigint_to_bytes(rubyobj)
         type, count = encode_pan_type(PT_Int, rubyobj)
       when TrueClass, FalseClass
         if rubyobj
-          data = 1
+          data << [1].pack('C')
         else
-          data = 0
+          data << [0].pack('C')
         end
-        data = [data].pack('C')
         type = PT_Bool
       when Time
-        data = PandoraKernel.bigint_to_bytes(rubyobj.to_i)
+        data << PandoraKernel.bigint_to_bytes(rubyobj.to_i)
         type, count = encode_pan_type(PT_Time, rubyobj.to_i)
       when Array
         rubyobj.each do |a|
@@ -2658,16 +2741,20 @@ module PandoraGUI
       else
         puts 'Unknown elem type: ['+rubyobj.class.name+']'
     end
-    res = [type].pack('C')
+    #res = ''
+    #res.force_encoding('ASCII-8BIT')
+    res = AsciiString.new
+    res << [type].pack('C')
     if elem_size
       res << PandoraKernel.fill_zeros_from_left(PandoraKernel.bigint_to_bytes(elem_size), count+1) + data
     else
       res << PandoraKernel.fill_zeros_from_left(data, count+1)
     end
-    res
+    res = AsciiString.new(res)
   end
 
   def self.pson_elem_to_rubyobj(data)
+    data = AsciiString.new(data)
     val = nil
     len = 0
     if data.size>0
@@ -2707,22 +2794,32 @@ module PandoraGUI
     [val, len]
   end
 
+  def self.value_is_empty(val)
+    res = (val==nil) or (val.is_a? String and (val=='')) or (val.is_a? Integer and (val==0)) \
+      or (val.is_a? Array and (val==[])) or (val.is_a? Hash and (val=={})) \
+      or (val.is_a? Time and (val.to_i==0))
+    res
+  end
+
   # Pack PanObject fields to PSON binary format
   # RU: Пакует поля ПанОбъекта в бинарный формат PSON
-  def self.hash_to_pson(fldvalues)
-    bytes = ''
-    bytes.force_encoding('UTF-8')
-    fldvalues = fldvalues.sort_by {|k,v| k.to_s }
+  def self.hash_to_pson(fldvalues, pack_empty=false)
+    #bytes = ''
+    #bytes.force_encoding('ASCII-8BIT')
+    bytes = AsciiString.new
+    fldvalues = fldvalues.sort_by {|k,v| k.to_s } # sort by key
     fldvalues.each { |nam, val|
-      nam = nam.to_s
-      nsize = nam.size
-      nsize = 255 if nsize>255
-      bytes << [nsize].pack('C') + nam[0, nsize]
-      pson_elem = rubyobj_to_pson_elem(val)
-      pson_elem.force_encoding('UTF-8')
-      bytes << pson_elem
+      if pack_empty or not value_is_empty(val)
+        nam = nam.to_s
+        nsize = nam.size
+        nsize = 255 if nsize>255
+        bytes << [nsize].pack('C') + nam[0, nsize]
+        pson_elem = rubyobj_to_pson_elem(val)
+        #pson_elem.force_encoding('ASCII-8BIT')
+        bytes << pson_elem
+      end
     }
-    bytes
+    bytes = AsciiString.new(bytes)
   end
 
   def self.pson_to_hash(pson)
@@ -2741,25 +2838,80 @@ module PandoraGUI
     hash
   end
 
+  PT_Pson1   = 1
+
   $sign_model = nil
 
   # Sign PSON of PanObject and save sign record
   # RU: Подписывает PSON ПанОбъекта и сохраняет запись подписи
   def self.sign_panobject(panobject)
+    res = false
     key = current_key
-    namesvalues = panobject.namesvalues
-    matter_fields = panobject.matter_fields
-    matter_fields['time'] = Time.now
-    p 'sign: matter_fields='+matter_fields.inspect
-    p sign = make_sign(key, hash_to_pson(matter_fields))
-    values = {:objhash=>namesvalues['panhash'], :sign=>sign}
-    $sign_model ||= PandoraModel::Sign.new
-    $sign_model.update(values, nil, nil)
+    if key and key[KV_Obj]
+      namesvalues = panobject.namesvalues
+      matter_fields = panobject.matter_fields
+      #p 'sign: matter_fields='+matter_fields.inspect
+      sign = make_sign(key, hash_to_pson(matter_fields))
+
+      time_now = Time.now.to_i
+      obj_hash = namesvalues['panhash']
+      key_hash = key[KV_Panhash]
+
+      creator = PandoraKernel.bigint_to_bytes(0x2ec783aad34331de1d390fa8006fc8)
+
+      values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, :packed=>PT_Pson1, \
+        :creator=>creator, :created=>time_now, :sign=>sign}
+
+      $sign_model ||= PandoraModel::Sign.new
+      panhash = $sign_model.panhash(values)
+      #p '!!!!!!panhash='+PandoraKernel.bytes_to_hex(panhash).inspect
+
+      values['panhash'] = panhash
+
+      res = $sign_model.update(values, nil, nil)
+    end
+    res
   end
 
-  def self.unsign_panobject(panhash)
-    count = 0
-    count
+  def self.unsign_panobject(obj_hash, delete_all=false)
+    res = true
+    key_hash = nil
+    if not delete_all
+      key = current_key
+      key_hash = key[KV_Panhash] if key and key[KV_Obj]
+    end
+    if obj_hash and (delete_all or key_hash)
+      $sign_model ||= PandoraModel::Sign.new
+      filter = {:obj_hash=>obj_hash}
+      filter[:key_hash] = key_hash if key_hash
+      res = $sign_model.update(nil, nil, filter)
+    end
+    res
+  end
+
+  def self.panobject_is_signed(obj_hash)
+    res = 0
+    if obj_hash and obj_hash != ''
+      key_hash = nil
+      key = current_key(false, false)
+      res = -1
+      if key and key[KV_Obj]
+        key_hash = key[KV_Panhash]
+        res = 1 if key_hash and key_hash != ''
+      end
+      $sign_model ||= PandoraModel::Sign.new
+      filter = {:obj_hash=>obj_hash}
+      filter[:key_hash]=key_hash if res==1
+      p '=========filter========='
+      p filter
+      sel = $sign_model.select(filter)
+      if sel and sel.size>0
+        res = res * sel.size
+      else
+        res = 0
+      end
+    end
+    res
   end
 
   # View and edit record dialog
@@ -2790,18 +2942,20 @@ module PandoraGUI
     end
 
     def self.get_panobject_icon(panobj)
-      ind = -1
+      panobj_icon = nil
+      ind = nil
       $notebook.children.each do |child|
         if child.name==panobj.ider
           ind = $notebook.children.index(child)
           break
         end
       end
-      panobj_icon = nil
-      first_lab_widget = $notebook.get_tab_label($notebook.children[ind]).children[0] if ind>=0
-      if first_lab_widget.is_a? Gtk::Image
-        image = first_lab_widget
-        panobj_icon = $window.render_icon(image.stock, Gtk::IconSize::MENU)
+      if ind
+        first_lab_widget = $notebook.get_tab_label($notebook.children[ind]).children[0]
+        if first_lab_widget.is_a? Gtk::Image
+          image = first_lab_widget
+          panobj_icon = $window.render_icon(image.stock, Gtk::IconSize::MENU)
+        end
       end
       panobj_icon
     end
@@ -2815,6 +2969,7 @@ module PandoraGUI
       sel = nil
       id = nil
       panhash0 = nil
+      signed = 0
       if path != nil and ! new_act
         iter = store.get_iter(path)
         id = iter[0]
@@ -2822,6 +2977,8 @@ module PandoraGUI
         #p 'panobject.namesvalues='+panobject.namesvalues.inspect
         #p 'panobject.matter_fields='+panobject.matter_fields.inspect
         panhash0 = panobject.panhash(sel[0])
+
+        signed = panobject_is_signed(panhash0)
       end
       #p sel
 
@@ -2829,22 +2986,22 @@ module PandoraGUI
 
       if action=='Delete'
         if id and sel[0]
-          info = sel[0][2,3].join(', ').force_encoding('UTF-8')
+          info = PandoraKernel.bytes_to_hex(panhash0)[0, 34] #.force_encoding('ASCII-8BIT') ASCII-8BIT
           dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
             Gtk::MessageDialog::QUESTION,
             Gtk::MessageDialog::BUTTONS_OK_CANCEL,
             _('Record will be deleted. Sure?')+"\n["+info+']')
           dialog.title = _('Deletion')+': '+panobject.sname
           dialog.default_response = Gtk::Dialog::RESPONSE_OK
-          dialog.icon = panobjecticon
+          dialog.icon = panobjecticon if panobjecticon
           if dialog.run == Gtk::Dialog::RESPONSE_OK
             res = panobject.update(nil, nil, 'id='+id.to_s)
             tree_view.sel.delete_if {|row| row[0]==id }
             store.remove(iter)
             #iter.next!
-            p = path.indices[0]
-            p = tree_view.sel.size-1 if p>tree_view.sel.size-1
-            tree_view.set_cursor(Gtk::TreePath.new(p), column, false)
+            pt = path.indices[0]
+            pt = tree_view.sel.size-1 if pt>tree_view.sel.size-1
+            tree_view.set_cursor(Gtk::TreePath.new(pt), column, false)
           end
           dialog.destroy
         end
@@ -2899,11 +3056,25 @@ module PandoraGUI
 
           formfields << new_fld
         end
-        p formfields
+        #p formfields
         formfields.sort! {|a,b| a[3]<=>b[3] }
 
         dialog = FieldsDialog.new(panobject, formfields.clone, panobject.sname)
-        dialog.icon = panobjecticon
+        begin
+          dialog.icon = panobjecticon if panobjecticon
+        rescue
+        end
+
+        dialog.trust_btn.active = signed != 0
+        dialog.trust_btn.inconsistent = signed < 0
+        #trust_lab = dialog.trust_btn.children[0]
+        #trust_lab.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
+        dialog.trust_btn.signal_connect('clicked') do |widget|
+          if widget.inconsistent?
+            widget.inconsistent = false
+            widget.active = true
+          end
+        end
 
         PandoraGUI.set_statusbar_text(dialog.statusbar, panobject.panhash(sel[0], true, true)) if sel
 
@@ -2954,28 +3125,36 @@ module PandoraGUI
             flds_hash['created'] = time_now
           end
           res = panobject.update(flds_hash, nil, filter, true)
-          if res and filter
+          if res
+            filter ||= { :panhash => panhash, :modified => time_now }
             sel = panobject.select(filter, true)
             if sel[0]
-              p 'panhash='+panhash.inspect
-              p 'panobject.namesvalues='+panobject.namesvalues.inspect
+              #p 'panhash='+panhash.inspect
+              #p 'panobject.namesvalues='+panobject.namesvalues.inspect
               #p 'panobject.matter_fields='+panobject.matter_fields.inspect
 
               id = panobject.namesvalues['id']
-              ind = tree_view.sel.index {|row| row[0]==id }
+              id = id.to_i
+              p 'id='+id.inspect
+
+              #p 'id='+id.inspect
+              ind = tree_view.sel.index { |row| row[0]==id }
+              #p 'ind='+ind.inspect
               if ind
+                #p '---------CHANG'
                 tree_view.sel[ind] = sel[0]
                 iter[0] = id
                 store.row_changed(path, iter)
               else
+                #p '---------INSERTE'
                 tree_view.sel << sel[0]
                 iter = store.append
                 iter[0] = id
-                tree_view.set_cursor(Gtk::TreePath.new(tree_view.sel.size-1), column, false)
+                tree_view.set_cursor(Gtk::TreePath.new(tree_view.sel.size-1), nil, false)
               end
 
               p dialog.support_btn.active?
-              unsign_panobject(panhash0)
+              unsign_panobject(panhash0, true)
               if dialog.trust_btn.active?
                 sign_panobject(panobject)
               end
@@ -3037,6 +3216,32 @@ module PandoraGUI
 
   end
 
+  def self.time_to_str(val, time_now=nil)
+    time_now ||= Time.now
+    min_ago = (time_now.to_i - val.to_i) / 60
+    if min_ago < 0
+      val = val.strftime('%d.%m.%Y')
+    elsif min_ago == 0
+      val = _('just now')
+    elsif min_ago == 1
+      val = _('a min. ago')
+    else
+      vals = time_now.to_a
+      y, m, d = [vals[5], vals[4], vals[3]]  #current day
+      midnight = Time.local(y, m, d)
+
+      if (min_ago <= 90) and ((val >= midnight) or (min_ago <= 10))
+        val = min_ago.to_s + ' ' + _('min. ago')
+      elsif val >= midnight
+        val = _('today')+' '+val.strftime('%R')
+      elsif val.to_i >= (midnight.to_i-24*3600)  #last midnight
+        val = _('yester')+' '+val.strftime('%R')
+      else
+        val = val.strftime('%d.%m.%y %R')
+      end
+    end
+  end
+
   # Showing panobject list
   # RU: Показ списка субъектов
   def self.show_panobject_list(panobject_class, widget=nil, sw=nil)
@@ -3087,40 +3292,51 @@ module PandoraGUI
       column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
         col = column.sort_column_id
         #p fld = panobject.def_fields[col]
+        time_now = Time.now
         row = treeview.sel[iter.path.indices[0]]
         val = row[col] if row
         if val
           tf = panobject.tab_fields[col]
           if tf[2].is_a? Array
             view = tf[2][7]
-            if view=='base64'
-              val = Base64.encode64(val)
-              renderer.foreground = 'brown'
-            elsif view=='phash'
-              val = PandoraKernel.bytes_to_hex(val[2,16])
-              renderer.foreground = 'blue'
-            elsif view=='panhash'
-              val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,16])
-              renderer.foreground = 'navy'
-            elsif view=='hex'
-              val = PandoraKernel.bytes_to_hex(val)
-              renderer.foreground = 'red'
+            if view=='date'
+              if val.is_a? Integer
+                val = Time.at(val)
+                val = val.strftime('%d.%m.%y')
+                renderer.foreground = '#551111'
+              end
             elsif view=='time'
               if val.is_a? Integer
                 val = Time.at(val)
-                renderer.foreground = 'magenta'
+                val = time_to_str(val, time_now)
+                renderer.foreground = '#338833'
               end
-            elsif view=='text'
-              val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
-              renderer.foreground = 'green'
-              val = val.rstrip
+            else
+              if view=='base64'
+                val = Base64.encode64(val)
+                renderer.foreground = 'brown'
+              elsif view=='phash'
+                val = PandoraKernel.bytes_to_hex(val) #[2,16]
+                renderer.foreground = 'blue'
+              elsif view=='panhash'
+                val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,44])
+                renderer.foreground = 'navy'
+              elsif view=='hex'
+                val = PandoraKernel.bigint_to_bytes(val) if val.is_a? Integer
+                val = PandoraKernel.bytes_to_hex(val)
+                renderer.foreground = 'red'
+              elsif view=='text'
+                val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
+                renderer.foreground = '#226633'
+                val = val.rstrip
+              end
             end
           end
           val = val.to_s
           if $jcode_on
-            val = val[/.{0,#{34}}/m]
+            val = val[/.{0,#{45}}/m]
           else
-            val = val[0,34]
+            val = val[0,45]
           end
         else
           val = 'nil'

@@ -98,9 +98,9 @@
     </Word>
 
     <Article name="Article" kind="14">
-      <name name="Name" type="String" size="512" hash="1:hash(4)" />
+      <name name="Name" type="String" size="512" hash="1:hash(6)" />
       <type name="Type" type="Word" />
-      <text name="Text" type="Text" hash="2:hash(16)" />
+      <text name="Text" type="Text" hash="2:hash(14)" />
       <hash name="SHA1" type="String" size="20" />
       <author name="Author" type="String" size="30" />
       <size name="Size" type="Integer" />
@@ -175,7 +175,7 @@
   </Region>
   <Pandora>
 
-    <Parameter name="Parameter">
+    <Parameter name="Parameter" kind="220">
       <name name="Name" type="String" size="128" />
       <desc name="Description" type="String" size="128" />
       <value name="Value" type="Blob" />
@@ -184,24 +184,23 @@
       <setting name="Setting" type="Blob" />
     </Parameter>
 
-    <Key name="Key">
+    <Key name="Key" kind="221" parent="Created">
       <kind name="Kind" type="Byte" />
-      <owner name="Owner (or Parent)" type="String" size="32" hash="1:panhash(15)" />
-      <date name="Date" type="Time" hash="2:integer(4)" />
+      <creator hash="1:panhash(15)" />
+      <created hash="2:integer(4)" />
       <expire name="Expire" type="Time" />
       <cipher name="Ciphered" type="Word" />
       <body name="Body" type="Blob" hash="3:crc32(4)" />
     </Key>
 
-    <Sign name="Sign">
+    <Sign name="Sign" kind="222" parent="Created">
       <obj_hash name="Object panhash" type="String" size="32" />
       <key_hash name="Key panhash" type="String" size="32" />
-      <pack_type name="Pack type" type="Byte" />
-      <time name="Time" type="Time" />
+      <packed name="Packed" type="Byte" />
       <sign name="Sign" type="Blob" />
     </Sign>
 
-    <Node name="Node">
+    <Node name="Node" kind="223">
       <addr name="Address" type="String" size="20" />
       <tport name="TCP port" type="Integer" />
       <uport name="UDP port" type="Integer" />
@@ -224,7 +223,7 @@
       <last_trust_date name="Last received trust" type="Date" />
     </Node>
 
-    <Patch name="Patch">
+    <Patch name="Patch" kind="224">
       <kind name="Kind" type="Integer" />
       <origin name="Origin" type="String" size="32" />
       <creator name="Creator" type="String" size="64" />
@@ -234,7 +233,7 @@
       <delta name="Delta" type="Blob" />
     </Patch>
 
-    <Event name="Event">
+    <Event name="Event" kind="225">
       <time name="Time" type="Date" />
       <kind name="Kind" type="Integer" />
       <origin name="Origin" type="String" size="32" />
@@ -243,13 +242,13 @@
       <message name="Message" type="String" />
     </Event>
 
-    <Repository name="Repository">
+    <Repository name="Repository" kind="226">
       <name name="Name" type="String" size="128" />
       <kind name="Kind" type="String" size="32" />
       <place name="Place" type="Blob" />
     </Repository>
 
-    <Message name="Message">
+    <Message name="Message" kind="227">
       <room name="Room" />
       <state name="State" />
       <date name="Date" />

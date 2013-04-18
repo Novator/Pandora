@@ -44,18 +44,16 @@
     </Parameter>
 
     <Key>
-      <kind view="byte" />
-      <owner view="panhash" />
-      <date view="time" />
+      <kind view="hex" />
       <expire view="time" />
+      <cipher view="hex" />
       <body view="base64" />
     </Key>
 
     <Sign>
       <obj_hash view="panhash" />
       <key_hash view="panhash" />
-      <pack_type view="byte" />
-      <time view="date" />
+      <packed view="hex" />
       <sign view="base64" />
     </Sign>
 

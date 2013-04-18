@@ -179,8 +179,8 @@
 
     <Key name.ru="Ключ|Ключи">
       <kind name.ru="Тип" />
-      <owner name.ru="Владелец" />
-      <date name.ru="Дата" />
+      <creator name.ru="Создатель" />
+      <created name.ru="Создан" />
       <expire name.ru="Истекает" />
       <cipher name.ru="Шифрован" />
       <body name.ru="Тело" />
@@ -189,6 +189,7 @@
     <Sign name.ru="Подпись|Подписи">
       <key_hash name.ru="Панхэш ключа" />
       <obj_hash name.ru="Панхэш объекта"/>
+      <packed name.ru="Упакован" />
       <sign name.ru="Подпись" />
     </Sign>
 
