@@ -2134,7 +2134,7 @@ module PandoraGUI
   KV_Obj   = 0
   KV_Key1  = 1
   KV_Key2  = 2
-  KV_Type  = 3
+  KV_Kind  = 3
   KV_Ciph  = 4
   KV_Pass  = 5
   KV_Panhash = 6
@@ -2143,21 +2143,21 @@ module PandoraGUI
     #p 'sym_recrypt: [cipher_hash, cipher_key]='+[cipher_hash, cipher_key].inspect
     cipher_hash ||= encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
     if cipher_hash and (cipher_hash != 0) and cipher_key and data
-      ctype, chash = decode_cipher_and_hash(cipher_hash)
+      ckind, chash = decode_cipher_and_hash(cipher_hash)
       hash = pan_kh_to_openssl_hash(chash)
       #p 'hash='+hash.inspect
       cipher_key = hash.digest(cipher_key) if hash
       #p 'cipher_key.hash='+cipher_key.inspect
       cipher_vec = []
       cipher_vec[KV_Key1] = cipher_key
-      cipher_vec[KV_Type] = ctype
+      cipher_vec[KV_Kind] = ckind
       cipher_vec = init_key(cipher_vec)
       #p '*******'+encode.inspect
       #p '---sym_recode data='+data.inspect
       data = recrypt(cipher_vec, data, encode)
       #p '+++sym_recode data='+data.inspect
     end
-    data
+    AsciiString.new(data)
   end
 
   # Generate a key or key pair
@@ -2220,7 +2220,7 @@ module PandoraGUI
     if not key
       key1 = key_vec[KV_Key1]
       key2 = key_vec[KV_Key2]
-      type_klen = key_vec[KV_Type]
+      type_klen = key_vec[KV_Kind]
       cipher = key_vec[KV_Ciph]
       pass = key_vec[KV_Pass]
       type, klen = divide_type_and_klen(type_klen)
@@ -2544,22 +2544,24 @@ module PandoraGUI
           filter = {:panhash=>last_auth_key}
           sel = $key_model.select(filter, true)
           #p 'sel='+sel.inspect
-          if sel.size>1
+          if sel and sel.size>1
 
             kind0 = $key_model.field_val('kind', sel[0])
             kind1 = $key_model.field_val('kind', sel[1])
             body0 = $key_model.field_val('body', sel[0])
             body1 = $key_model.field_val('body', sel[1])
 
-            type, klen = divide_type_and_klen(kind0)
+            type0, klen0 = divide_type_and_klen(kind0)
             cipher = 0
-            if type==KT_Priv
+            if type0==KT_Priv
               priv = body0
               pub = body1
+              kind = kind1
               cipher = $key_model.field_val('cipher', sel[0])
             else
               priv = body1
               pub = body0
+              kind = kind0
               cipher = $key_model.field_val('cipher', sel[1])
             end
             cipher ||= 0
@@ -2587,7 +2589,7 @@ module PandoraGUI
             if not try
               key_vec[KV_Key1] = pub
               key_vec[KV_Key2] = priv
-              key_vec[KV_Type] = type
+              key_vec[KV_Kind] = kind
               key_vec[KV_Pass] = passwd
               key_vec[KV_Panhash] = last_auth_key
             end
@@ -2617,7 +2619,7 @@ module PandoraGUI
 
             pub  = key_vec[KV_Key1]
             priv = key_vec[KV_Key2]
-            type_klen = key_vec[KV_Type]
+            type_klen = key_vec[KV_Kind]
             cipher_hash = key_vec[KV_Ciph]
             cipher_key = key_vec[KV_Pass]
 
@@ -2875,11 +2877,9 @@ module PandoraGUI
 
   def self.unsign_panobject(obj_hash, delete_all=false)
     res = true
+    key = current_key(false, (not delete_all))
     key_hash = nil
-    if not delete_all
-      key = current_key
-      key_hash = key[KV_Panhash] if key and key[KV_Obj]
-    end
+    key_hash = key[KV_Panhash] if key and key[KV_Obj]
     if obj_hash and (delete_all or key_hash)
       $sign_model ||= PandoraModel::Sign.new
       filter = {:obj_hash=>obj_hash}
@@ -3691,7 +3691,7 @@ module PandoraGUI
     host, port, proto = decode_node(node)
     connection = $connections.find do |e|
       (e.is_a? Connection) and ((e.host_ip == host) or (e.host_name == host)) and (e.port == port) \
-      and (e.proto == proto)
+        and (e.proto == proto)
     end
     connection
   end
@@ -4452,7 +4452,7 @@ module PandoraGUI
     panobject = nil
     panobject = treeview.panobject if treeview.instance_variable_defined?('@panobject')
     node = nil
-    if panobject.ider=='Node'
+    if panobject and panobject.ider=='Node'
       path, column = treeview.cursor
       if path != nil
         store = treeview.model
@@ -4480,17 +4480,37 @@ module PandoraGUI
 
   # Start hunt
   # RU: Начать охоту
-  def self.hunt_nodes
+  def self.hunt_nodes(round_count=1)
     if $hunter_thread == nil
-      panobject = PandoraModel.const_get('Node')
-      p panobject
       $hunter_thread = Thread.new do
-        host = '127.0.0.1'
-        port = 5577
-        proto = 'tcp'
-        node = encode_node(host, port, proto)
-        connection = start_or_find_connection(node)
-        p connection
+        $hunt_btn.label = _('Hunting') if $hunt_btn
+        node_model = PandoraModel::Node.new
+        while round_count>0
+          sel = node_model.select('addr<>"" OR domain<>""', false)
+          if sel and sel.size>0
+            sel.each do |row|
+              addr   = node_model.field_val('addr', row)
+              domain = node_model.field_val('domain', row)
+              tport = node_model.field_val('tport', row)
+              tport = $port if (not tport) or (tport=='')
+              if domain != ''
+                node = encode_node(domain, tport, 'tcp')
+                p 'domain='+node.inspect
+                connection = start_or_find_connection(node)
+                p connection
+              elsif (addr != '') and (domain != addr)
+                node = encode_node(addr, tport, 'tcp')
+                p '>>>>>> addr='+node.inspect
+                connection = start_or_find_connection(node)
+                p connection
+              end
+            end
+          end
+          round_count -= 1
+          sleep 3 if round_count>0
+        end
+        $hunter_thread = nil
+        $hunt_btn.label = _('No hunt') if $hunt_btn
       end
     else
       $hunter_thread.exit
@@ -5156,10 +5176,17 @@ module PandoraGUI
 
     statusbar = Gtk::Statusbar.new
     PandoraGUI.set_statusbar_text(statusbar, _('Base directory: ')+$pandora_base_dir)
+
+    $hunt_btn = Gtk::Button.new(_('No hunt'))
+    $hunt_btn.relief = Gtk::RELIEF_NONE
+    statusbar.pack_start($hunt_btn, false, false, 2)
+    statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
+
     $auth_btn = Gtk::Button.new(_('Not logged'))
     $auth_btn.relief = Gtk::RELIEF_NONE
     statusbar.pack_start($auth_btn, false, false, 2)
     statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
+
     $listen_btn = Gtk::Button.new(_('Not listen'))
     $listen_btn.relief = Gtk::RELIEF_NONE
     statusbar.pack_start($listen_btn, false, false, 2)

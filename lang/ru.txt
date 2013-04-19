@@ -128,3 +128,5 @@ min. ago=>мин. назад
 a min. ago=>мин. назад
 today=>сегодня
 yester=>вчера
+No hunt=>Нет охоты
+Hunting=>Охота
