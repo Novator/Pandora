@@ -1,12 +1,12 @@
 <pandora-model name="Pandora base model">
   <Pandora name="Pandora Node">
     <Panobject>
-      <panhash name="Panhash" name.ru="Панхэш" type="String" size="32" />
+      <panhash name="Panhash" type="String" size="32" />
       <modified name="Modified" type="Time" />
     </Panobject>
 
     <Created>
-      <creator name="Creator" name.ru="Создатель" type="String" size="32" />
+      <creator name="Creator" type="String" size="32" />
       <created name="Created" type="Time" />
     </Created>
 
@@ -97,12 +97,11 @@
       <description name="Description" />
     </Word>
 
-    <Article name="Article" kind="14">
+    <Article name="Article" kind="14" parent="Created">
       <name name="Name" type="String" size="512" hash="1:hash(6)" />
       <type name="Type" type="Word" />
       <text name="Text" type="Text" hash="2:hash(14)" />
       <hash name="SHA1" type="String" size="20" />
-      <author name="Author" type="String" size="30" />
       <size name="Size" type="Integer" />
     </Article>
 
@@ -171,6 +170,14 @@
     <Law name="Low|Lows" parent="Article">
       <number name="Number" />
     </Law>
+
+    <Delegation parent="Created">
+      <delegate name="Delegate" type="String" size="32" />
+      <activity name="Activity" type="String" size="32" />
+      <creator hash="1:panhash(15)" />
+      <created hash="2:integer(4)" />
+      <expire name="Expire" type="Time" />
+    </Delegation>
 
   </Region>
   <Pandora>

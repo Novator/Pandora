@@ -130,3 +130,5 @@ today=>сегодня
 yester=>вчера
 No hunt=>Нет охоты
 Hunting=>Охота
+Delegations=>Делегирования
+Connections=>Соединения

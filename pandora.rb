@@ -141,6 +141,7 @@ lang = ENV['LANG']
 if (lang.is_a? String) and (lang.size>1)
   $lang = lang[0, 2].downcase
 end
+#$lang = 'en'
 
 # Default values of variables
 # RU: Значения переменных по умолчанию
@@ -993,7 +994,17 @@ module PandoraKernel
           when 'date'
             dmy = fval.split('.')   # D.M.Y
             # convert DMY to time from 1970 in days
-            res = Time.mktime(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i).to_i / (24*60*60)
+            p "date="+[dmy[2].to_i, dmy[1].to_i, dmy[0].to_i].inspect
+      p Time.now.to_a.inspect
+
+            vals = Time.now.to_a
+            y, m, d = [vals[5], vals[4], vals[3]]  #current day
+            p [y, m, d]
+            expire = Time.local(y+5, m, d)
+            p expire
+
+
+            res = Time.local(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i).to_i / (24*60*60)
             # convert date to 0 year epoch
             res += (1970-1900)*365
             #res = [t].pack('N')
@@ -1310,6 +1321,8 @@ module PandoraGUI
     $window.present
   end
 
+  $statusbar = nil
+
   def self.set_statusbar_text(statusbar, text)
     statusbar.pop(0)
     statusbar.push(0, text)
@@ -1529,7 +1542,7 @@ module PandoraGUI
       viewport.add(@vbox)
 
       @statusbar = Gtk::Statusbar.new
-      PandoraGUI.set_statusbar_text(statusbar, '')
+      PandoraGUI.set_statusbar_text($statusbar, '')
       statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
       listen_btn = Gtk::Button.new(_('Panhash'))
       listen_btn.relief = Gtk::RELIEF_NONE
@@ -2520,10 +2533,29 @@ module PandoraGUI
     attr_accessor :the_current_key
   end
 
+  SF_Auth   = 0
+  SF_Listen = 1
+  SF_Hunt   = 2
+  SF_Conn   = 3
+
+  $status_fields = []
+
+  def self.add_status_field(index, text)
+    $statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0) if ($status_fields != [])
+    btn = Gtk::Button.new(_(text))
+    btn.relief = Gtk::RELIEF_NONE
+    $statusbar.pack_start(btn, false, false, 0)
+    $status_fields[index] = btn
+  end
+
+  def self.set_status_field(index, text)
+    $status_fields[index].label = _(text) if $status_fields[index]
+  end
+
   def self.reset_current_key
     deactivate_key(self.the_current_key) if self.the_current_key
     self.the_current_key = nil
-    $auth_btn.label = _('Not logged') if $auth_btn
+    set_status_field(SF_Auth, 'Not logged')
   end
 
   $key_model = nil
@@ -2661,7 +2693,7 @@ module PandoraGUI
           #p 'key='+key.inspect
           if key and key[KV_Obj]
             self.the_current_key = key
-            $auth_btn.label = _('Logged') if $auth_btn
+            set_status_field(SF_Auth, 'Logged')
           elsif last_auth_key
             dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
               Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
@@ -2685,7 +2717,7 @@ module PandoraGUI
       int = int >> 8
       count +=1
     end
-    if count == 8
+    if count >= 8
       puts '[encode_pan_type] Too big int='+int.to_s
       count = 7
     end
@@ -2762,9 +2794,9 @@ module PandoraGUI
     if data.size>0
       len = 1
       type = data[0].ord
-      basetype, count = decode_pan_type(type)
-      if data.size>0
-        vlen = count+1
+      basetype, vlen = decode_pan_type(type)
+      if data.size>1
+        vlen += 1
         int = PandoraKernel.bytes_to_bigint(data[1, vlen])
         case basetype
           when PT_Int
@@ -3685,7 +3717,31 @@ module PandoraGUI
   ST_KeyAllowed   = 4
   ST_Signed       = 5
 
+  $hunter_count   = 0
+  $listener_count = 0
+  $fisher_count   = 0
+  def self.update_conn_status(conn, hunter, diff_count)
+    if hunter
+      $hunter_count += diff_count
+    else
+      $listener_count += diff_count
+    end
+    set_status_field(SF_Conn, $hunter_count.to_s+'/'+$listener_count.to_s+'/'+$fisher_count.to_s)
+  end
+
   $connections = []
+
+  def self.add_connection(conn)
+    if not $connections.include?(conn)
+      $connections << conn
+      update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, 1)
+    end
+  end
+
+  def self.del_connection(conn)
+    $connections.delete(conn)
+    update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, -1)
+  end
 
   def self.connection_of_node(node)
     host, port, proto = decode_node(node)
@@ -4193,7 +4249,7 @@ module PandoraGUI
       if (connection.conn_mode & CM_Persistent) == 0
         connection.send_thread = nil
         #Thread.critical = true
-        $connections.delete(connection)
+        del_connection(connection)
         #Thread.critical = false
       end
     else
@@ -4219,8 +4275,6 @@ module PandoraGUI
     client
   end
 
-  $auth_btn   = nil
-  $listen_btn = nil
   $listen_thread = nil
 
   # Open server socket and begin listen
@@ -4228,7 +4282,7 @@ module PandoraGUI
   def self.start_or_stop_listen
     p '====!! '+$listen_thread.inspect
     if $listen_thread == nil
-      $listen_btn.label = _('Listening') if $listen_btn
+      set_status_field(SF_Listen, 'Listening')
       $port = get_param('tcp_port')
       $host = get_param('local_host')
       $listen_thread = Thread.new do
@@ -4286,7 +4340,7 @@ module PandoraGUI
                   #p "serv: conn_mode: "+ conn_mode.inspect
                   connection = Connection.new(host_name, host_ip, port, proto, node, conn_mode, conn_state)
                   #Thread.critical = true
-                  $connections << connection
+                  add_connection(connection)
                   #Thread.critical = false
                   connection = connection_of_node(node)
                   if connection
@@ -4313,7 +4367,7 @@ module PandoraGUI
         end
         server.close if server and not server.closed?
         log_message(LM_Info, 'Слушатель остановлен '+addr_str) if server
-        $listen_btn.label = _('Not listen') if $listen_btn
+        set_status_field(SF_Listen, 'Not listen')
         $listen_thread = nil
       end
     else
@@ -4342,7 +4396,7 @@ module PandoraGUI
       else
         connection = Connection.new(host, host, port, proto, node, conn_mode, conn_state)
         #Thread.critical = true
-        $connections << connection
+        add_connection(connection)
         #Thread.critical = false
         connection = connection_of_node(node)
         #p "start_or_find_conn: !!!!! NEW CONNECTION="+ connection.to_s
@@ -4383,7 +4437,7 @@ module PandoraGUI
           p "END HUNTER CLIENT!!!!"
           if (connection.conn_mode & CM_Persistent) == 0
             #Thread.critical = true
-            $connections.delete(connection)
+            del_connection(connection)
             #Thread.critical = false
           end
           connection.send_thread = nil
@@ -4483,7 +4537,7 @@ module PandoraGUI
   def self.hunt_nodes(round_count=1)
     if $hunter_thread == nil
       $hunter_thread = Thread.new do
-        $hunt_btn.label = _('Hunting') if $hunt_btn
+        set_status_field(SF_Hunt, 'Hunting')
         node_model = PandoraModel::Node.new
         while round_count>0
           sel = node_model.select('addr<>"" OR domain<>""', false)
@@ -4510,7 +4564,7 @@ module PandoraGUI
           sleep 3 if round_count>0
         end
         $hunter_thread = nil
-        $hunt_btn.label = _('No hunt') if $hunt_btn
+        set_status_field(SF_Hunt, 'No hunt')
       end
     else
       $hunter_thread.exit
@@ -4880,7 +4934,7 @@ module PandoraGUI
         connection.conn_mode = connection.conn_mode & (~CM_Persistent)
         if connection.conn_state == CS_Disconnected
           #Thread.critical = true
-          $connections.delete(connection)
+          del_connection(connection)
           #Thread.critical = false
         end
       end
@@ -5044,17 +5098,18 @@ module PandoraGUI
     ['Property', nil, _('Property')],
     ['Report', nil, _('Reports')],
     [nil, nil, _('_Region')],
-    ['Resource', nil, _('Resources')],
-    ['-', nil, '-'],
-    ['Law', nil, _('Laws')],
     ['Project', nil, _('Projects')],
     ['Resolution', nil, _('Resolutions')],
+    ['Law', nil, _('Laws')],
     ['-', nil, '-'],
     ['Contribution', nil, _('Contributions')],
     ['Expenditure', nil, _('Expenditures')],
     ['-', nil, '-'],
     ['Offense', nil, _('Offenses')],
     ['Punishment', nil, _('Punishments')],
+    ['-', nil, '-'],
+    ['Resource', nil, _('Resources')],
+    ['Delegation', nil, _('Delegations')],
     [nil, nil, _('_Pandora')],
     ['Parameter', Gtk::Stock::PREFERENCES, _('Parameters')],
     ['-', nil, '-'],
@@ -5174,22 +5229,13 @@ module PandoraGUI
     $view.receives_default = true
     $view.border_width = 0
 
-    statusbar = Gtk::Statusbar.new
-    PandoraGUI.set_statusbar_text(statusbar, _('Base directory: ')+$pandora_base_dir)
+    $statusbar = Gtk::Statusbar.new
+    PandoraGUI.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
 
-    $hunt_btn = Gtk::Button.new(_('No hunt'))
-    $hunt_btn.relief = Gtk::RELIEF_NONE
-    statusbar.pack_start($hunt_btn, false, false, 2)
-    statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
-
-    $auth_btn = Gtk::Button.new(_('Not logged'))
-    $auth_btn.relief = Gtk::RELIEF_NONE
-    statusbar.pack_start($auth_btn, false, false, 2)
-    statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
-
-    $listen_btn = Gtk::Button.new(_('Not listen'))
-    $listen_btn.relief = Gtk::RELIEF_NONE
-    statusbar.pack_start($listen_btn, false, false, 2)
+    add_status_field(SF_Auth, 'Not logged')
+    add_status_field(SF_Listen, 'Not listen')
+    add_status_field(SF_Hunt, 'No hunt')
+    add_status_field(SF_Conn, '0/0/0')
 
     sw = Gtk::ScrolledWindow.new(nil, nil)
     sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
@@ -5212,7 +5258,7 @@ module PandoraGUI
     vbox.pack_start(menubar, false, false, 0)
     vbox.pack_start(toolbar, false, false, 0)
     vbox.pack_start(vpaned, true, true, 0)
-    vbox.pack_start(statusbar, false, false, 0)
+    vbox.pack_start($statusbar, false, false, 0)
 
     $window.add(vbox)
 

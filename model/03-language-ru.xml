@@ -1,4 +1,18 @@
 <pandora-model name.ru="Модель форм Пандоры">
+  <Pandora name.ru="Узел Пандоры">
+
+    <Panobject name.ru="Объект Пандоры">
+      <panhash name.ru="Панхэш" />
+      <modified name.ru="Изменен" />
+    </Panobject>
+
+    <Created>
+      <creator name.ru="Создатель" />
+      <created name.ru="Создал" />
+    </Created>
+
+  </Pandora>
+
   <World name.ru="Мир">
 
     <Person name.ru="Человек|Люди">
@@ -84,7 +98,6 @@
     <Article name.ru="Статья|Статьи">
       <name name.ru="Название" />
       <text name.ru="Текст" />
-      <author name.ru="Автор" />
     </Article>
 
     <Blob name.ru="Файл|Файлы">
@@ -155,18 +168,14 @@
       <number name.ru="Номер" />
     </Law>
 
+    <Delegation name.ru="Делегирование|Делегирования">
+      <delegate name.ru="Делегат" />
+      <activity name.ru="Деятельность" />
+      <expire name.ru="Истекает" />
+    </Delegation>
+
   </Region>
   <Pandora name.ru="Узел Пандоры">
-
-    <Panobject name.ru="Объект Пандоры">
-      <panhash name.ru="Панхэш" />
-      <modified name.ru="Изменен" />
-    </Panobject>
-
-    <Created>
-      <creator name.ru="Создатель" />
-      <created name.ru="Создал" />
-    </Created>
 
     <Parameter name.ru="Параметр|Параметры">
       <name name.ru="Название" />
@@ -179,8 +188,6 @@
 
     <Key name.ru="Ключ|Ключи">
       <kind name.ru="Тип" />
-      <creator name.ru="Создатель" />
-      <created name.ru="Создан" />
       <expire name.ru="Истекает" />
       <cipher name.ru="Шифрован" />
       <body name.ru="Тело" />

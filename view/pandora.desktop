@@ -1,8 +1,8 @@
 [Desktop Entry]
 Version=1.0
 Terminal=false
-Exec=/mnt/data/Personal/Ruby/pandora/pandora.sh
-Icon=/mnt/data/Personal/Ruby/pandora/view/pandora.ico
+Exec=/opt/pandora/pandora.sh
+Icon=/opt/pandora/view/pandora.ico
 Type=Application
 Categories=Network;
 StartupNotify=true

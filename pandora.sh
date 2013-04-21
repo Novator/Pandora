@@ -49,12 +49,12 @@ case "$PARAMS" in
     ;;
   init|install|--init|--install|-i)
     echo "Installing Ruby and necessary packages with apt-get.."
-    sudo apt-get -y install ruby1.8 ruby-sqlite3 ruby-gtk2 ruby-gstreamer \
-      gstreamer0.10-ffmpeg gstreamer0.10-x openssl
+    sudo apt-get -y install ruby ruby-sqlite3 ruby-gtk2 ruby-gstreamer \
+      gstreamer0.10-ffmpeg gstreamer0.10-x openssl libopenssl-ruby
     ;;
   gem-init|gem-install|--gem-init|--gem-install|-gi|--gem|gem)
     echo "Installing Ruby and necessary packages with apt-get and rubygem.."
-    sudo apt-get -y install ruby1.8 gstreamer0.10-ffmpeg gstreamer0.10-x openssl rubygems
+    sudo apt-get -y install ruby gstreamer0.10-ffmpeg gstreamer0.10-x openssl rubygems
     sudo gem install sqlite3 gtk2 gstreamer openssl
     ;;
   *)

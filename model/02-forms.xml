@@ -60,7 +60,6 @@
     <Article>
       <text view="text" />
       <hash view="hex" />
-      <author view="hex" />
     </Article>
 
   </Pandora>
