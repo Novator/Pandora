@@ -569,12 +569,12 @@ module PandoraKernel
       if (tfd != nil) and (tfd != [])
         sql_values = sql_values+sql_values2
         p 'upd_tab: sql='+sql.inspect
-        p 'upd_tab: sql_values='+sql_values.inspect
+        #p 'upd_tab: sql_values='+sql_values.inspect
         res = db.execute(sql, sql_values)
-        p 'upd_tab: db.execute.res='+res.inspect
+        #p 'upd_tab: db.execute.res='+res.inspect
         res = true
       end
-      p 'upd_tab: res='+res.inspect
+      #p 'upd_tab: res='+res.inspect
       res
     end
   end
@@ -722,15 +722,43 @@ module PandoraKernel
     data = AsciiString.new(data)
   end
 
+  # Property indexes of field definition array
+  # RU: Индексы свойств в массиве описания полей
+  FI_Id      = 0
+  FI_Name    = 1
+  FI_Type    = 2
+  FI_Size    = 3
+  FI_Pos     = 4
+  FI_FSize   = 5
+  FI_Hash    = 6
+  FI_View    = 7
+  FI_LName   = 8
+  FI_VFName  = 9
+  FI_Index   = 10
+  FI_LabOr   = 11
+  FI_NewRow  = 12
+  FI_VFSize  = 13
+  FI_Value   = 14
+  FI_Widget  = 15
+  FI_Label   = 16
+  FI_LabW    = 17
+  FI_LabH    = 18
+  FI_WidW    = 19
+  FI_WidH    = 20
+
 
   # Base Pandora's object
   # RU: Базовый объект Пандоры
   class BasePanobject
     class << self
+      #def initialize(*args)
+      #  super(*args)
       @ider = 'Base Panobject'
       @name = 'Базовый объект Пандоры'
       @tables = []
       @def_fields = []
+      @def_fields_expanded = false
+      #end
       def ider
         @ider
       end
@@ -752,6 +780,295 @@ module PandoraKernel
       def def_fields
         @def_fields
       end
+      def get_parent
+        res = superclass
+        res = nil if res == Object
+        res
+      end
+      def field_des(fld_name)
+        df = def_fields.detect{ |e| (e.is_a? Array) and (e[FI_Id].to_s == fld_name) or (e.to_s == fld_name) }
+      end
+      # The title of field in current language
+      # "fd" must be field id or field description
+      def field_title(fd)
+        res = nil
+        if fd.is_a? String
+          res = fd
+          fd = field_des(fd)
+        end
+        lang_exist = false
+        if fd.is_a? Array
+          res = fd[FI_LName]
+          lang_exist = (res and (res != ''))
+          res ||= fd[FI_Name]
+          res ||= fd[FI_Id]
+        end
+        res = _(res) if not lang_exist
+        res ||= ''
+        res
+      end
+      def set_if_nil(f, fi, pfd)
+        f[fi] ||= pfd[fi]
+      end
+      def decode_pos(pos='')
+        pos = '' if pos == nil
+        pos = pos.to_s
+        new_row = 1 if pos.include?('|')
+        ind = pos.scan(/[0-9\.\+]+/)
+        ind = ind[0] if ind != nil
+        lab_or = pos.scan(/[a-z]+/)
+        lab_or = lab_or[0] if lab_or != nil
+        lab_or = lab_or[0, 1] if lab_or != nil
+        if (lab_or==nil) or (lab_or=='u')
+          lab_or = :up
+        elsif (lab_or=='l')
+          lab_or = :left
+        elsif (lab_or=='d') or (lab_or=='b')
+          lab_or = :down
+        elsif (lab_or=='r')
+          lab_or = :right
+        else
+          lab_or = :up
+        end
+        [ind, lab_or, new_row]
+      end
+      def set_view_and_len(fd)
+        view = nil
+        len = nil
+        if (fd.is_a? Array) and (fd[FI_Type] != nil)
+          case fd[FI_Type].to_s
+            when 'Date'
+              view = 'date'
+              #len = 3
+            when 'Time'
+              view = 'time'
+              #len = 3
+            when 'Byte'
+              view = 'byte'
+              len = 1
+            when 'Word'
+              view = 'word'
+              len = 2
+            when 'Integer'
+              view = 'integer'
+              len = 4
+            when 'Blog'
+              if not fd[FI_Size] or fd[FI_Size].to_i>25
+                view = 'base64'
+              else
+                view = 'hex'
+              end
+              #len = 24
+            when 'Text'
+              view = 'text'
+              #len = 32
+            when 'PHash'
+              view = 'phash'
+              len = 32
+            when 'Panhash'
+              view = 'panhash'
+              len = 32
+          end
+        end
+        fd[FI_View] = view if view and (not fd[FI_View]) or (fd[FI_View]=='')
+        fd[FI_FSize] = len if len and (not fd[FI_FSize]) or (fd[FI_FSize]=='')
+        [view, len]
+      end
+      def expand_def_fields_to_parent
+        if not @def_fields_expanded
+          @def_fields_expanded = true
+          # get undefined parameters from parent
+          parent = get_parent
+          if parent
+            parent.expand_def_fields_to_parent
+            if parent.def_fields.is_a? Array
+              @def_fields.each do |f|
+                if f.is_a? Array
+                  pfd = parent.field_des(f[FI_Id])
+                  if pfd.is_a? Array
+                    set_if_nil(f, FI_LName, pfd)
+                    set_if_nil(f, FI_Pos, pfd)
+                    set_if_nil(f, FI_FSize, pfd)
+                    set_if_nil(f, FI_Hash, pfd)
+                    set_if_nil(f, FI_View, pfd)
+                  end
+                end
+              end
+            end
+          end
+          # calc indexes and form sizes, and sort def_fields
+          df = def_fields
+          if df.is_a? Array
+            i = 0
+            last_ind = 0.0
+            df.each do |field|
+              #p '===[field[FI_VFName], field[FI_View]]='+[field[FI_VFName], field[FI_View]].inspect
+              set_view_and_len(field)
+              fldsize = 0
+              if field[FI_Size]
+                fldsize = field[FI_Size].to_i
+              end
+              fldfsize = fldsize
+              if field[FI_FSize]
+                fldfsize = field[FI_FSize].to_i
+                fldfsize = fldsize if fldfsize > fldsize
+              else
+                fldfsize *= (0.67) if fldfsize>40
+                fldfsize = fldfsize.round
+              end
+              indd, lab_or, new_row = decode_pos(field[FI_Pos])
+              plus = (indd and (indd[0, 1]=='+'))
+              indd = indd[1..-1] if plus
+              if (indd != nil) and (indd.size>0)
+                indd = indd.to_f
+              else
+                indd = nil
+              end
+              ind = 0.0
+              if not indd
+                last_ind += 1.0
+                ind = last_ind
+              else
+                if plus
+                  last_ind += indd
+                  ind = last_ind
+                else
+                  ind = indd
+                  last_ind += indd if indd < 200  # matter fileds have index lower then 200
+                end
+              end
+              field[FI_Size] = fldsize
+              field[FI_VFName] = field_title(field)
+              field[FI_Index] = ind
+              field[FI_LabOr] = lab_or
+              field[FI_NewRow] = new_row
+              field[FI_VFSize] = fldfsize
+              #p '[field[FI_VFName], field[FI_View]]='+[field[FI_VFName], field[FI_View]].inspect
+            end
+            df.sort! {|a,b| a[FI_Index]<=>b[FI_Index] }
+          end
+          @def_fields = df
+        end
+      end
+      def def_hash(fd)
+        len = 0
+        hash = ''
+        if (fd.is_a? Array) and (fd[FI_Type] != nil)
+          case fd[FI_Type].to_s
+            when 'Date'
+              hash = 'date'
+              len = 3
+            when 'Byte'
+              hash = 'byte'
+              len = 1
+            when 'Word'
+              hash = 'word'
+              len = 2
+            when 'Integer'
+              hash = 'integer'
+              len = 4
+          end
+        end
+        [len, hash]
+      end
+      def panhash_pattern(auto_calc=true)
+        res = []
+        last_ind = 0
+        def_flds = def_fields
+        if def_flds
+          def_flds.each do |e|
+            if (e.is_a? Array) and (e[FI_Hash] != nil) and (e[FI_Hash].to_s != '')
+              hash = e[FI_Hash]
+              #p 'hash='+hash.inspect
+              ind = 0
+              len = 0
+              i = hash.index(':')
+              if i
+                ind = hash[0, i].to_i
+                hash = hash[i+1..-1]
+              end
+              i = hash.index('(')
+              if i
+                len = hash[i+1..-1]
+                len = len[0..-2] if len[-1]==')'
+                len = len.to_i
+                hash = hash[0, i]
+              end
+              #p '@@@[ind, hash, len]='+[ind, hash, len].inspect
+              if (hash==nil) or (hash=='') or (len<=0)
+                dlen, dhash = def_hash(e)
+                #p '[hash, len, dhash, dlen]='+[hash, len, dhash, dlen].inspect
+                hash = dhash if (hash==nil) or (hash=='')
+                if len<=0
+                  case hash
+                    when 'byte'
+                      len = 1
+                    when 'date'
+                      len = 3
+                    when 'crc16', 'word'
+                      len = 2
+                    when 'crc32', 'integer'
+                      len = 4
+                  end
+                end
+                len = dlen if len<=0
+                #p '=[hash, len]='+[hash, len].inspect
+              end
+              ind = last_ind + 1 if ind==0
+              res << [ind, e[FI_Id], hash, len]
+              last_ind = ind
+            end
+          end
+        end
+        #p 'res='+res.inspect
+        if res==[]
+          parent = get_parent
+          if parent
+            res = parent.panhash_pattern(false)
+          end
+        else
+          res.sort! { |a,b| a[0]<=>b[0] }  # sort formula by index
+          res.collect! { |e| [e[1],e[2],e[3]] }  # delete sort index
+        end
+        if auto_calc
+          if ((not res) or (res == [])) and (def_flds.is_a? Array)
+            # panhash formula is not defined
+            res = []
+            used_len = 0
+            nil_count = 0
+            last_nil = 0
+            def_flds.each do |e|
+              if e[FI_Id] != 'panhash'
+                len, hash = def_hash(e)
+                res << [e[FI_Id], hash, len]
+                if len>0
+                  used_len += len
+                else
+                  nil_count += 1
+                  last_nil = res.size-1
+                end
+              end
+            end
+            mid_len = 0
+            mid_len = (20-used_len)/nil_count if nil_count>0
+            if mid_len>0
+              tail = 20
+              res.each_with_index do |e,i|
+                if (e[2]<=0)
+                  if (i==last_nil)
+                    e[2]=tail
+                  else
+                    e[2]=mid_len
+                  end
+                end
+                tail -= e[2]
+              end
+            end
+          end
+        end
+        #p 'pan_pattern='+res.inspect
+        res
+      end
       def def_fields=(x)
         @def_fields = x
       end
@@ -770,6 +1087,10 @@ module PandoraKernel
       def BasePanobject.repositories
         $repositories
       end
+    end
+    def initialize(*args)
+      super(*args)
+      self.class.expand_def_fields_to_parent
     end
     def ider
       self.class.ider
@@ -811,10 +1132,10 @@ module PandoraKernel
       $repositories
     end
     def sname
-      PandoraKernel.get_name_or_names(name)
+      _(PandoraKernel.get_name_or_names(name))
     end
     def pname
-      PandoraKernel.get_name_or_names(name, true)
+      _(PandoraKernel.get_name_or_names(name, true))
     end
     attr_accessor :namesvalues
     def select(afilter='', set_namesvalues=false)
@@ -831,8 +1152,8 @@ module PandoraKernel
       if values.is_a? Hash
         names = values.keys
         values = values.values
-        p 'update names='+names.inspect
-        p 'update values='+values.inspect
+        #p 'update names='+names.inspect
+        #p 'update values='+values.inspect
       end
       res = self.class.repositories.get_tab_update(self, self.class.tables[0], values, names, filter)
       if set_namesvalues and res
@@ -861,117 +1182,46 @@ module PandoraKernel
       res
     end
     def field_des(fld_name)
-      df = def_fields.detect{ |e| (e.is_a? Array) and (e[0].to_s == fld_name) or (e.to_s == fld_name) }
+      self.class.field_des(fld_name)
     end
-    def field_title(fld_name)
-      df = field_des(fld_name)
-      df = df[1] if df.is_a? Array
-      df = fld_name if df == nil
-      df
-    end
-    def def_hash(e)
-      len = 0
-      hash = AsciiString.new
-      #hash = ''
-      #hash.force_encoding('ASCII-8BIT')
-      if (e.is_a? Array) and (e[2] != nil)
-        case e[2].to_s
-          when 'Date'
-            hash = 'date'
-            len = 3
-          when 'Byte'
-            hash = 'byte'
-            len = 1
-          when 'Word'
-            hash = 'word'
-            len = 2
-          when 'Integer'
-            hash = 'integer'
-            len = 4
-        end
-      end
-      [len, hash]
+    def field_title(fd)
+      self.class.field_title(fd)
     end
     def panhash_pattern
-      res = []
-      last_ind = 0
-      def_fields.each do |e|
-        if (e.is_a? Array) and (e[6] != nil) and (e[6].to_s != '')
-          hash = e[6]
-          #p 'hash='+hash.inspect
-          ind = 0
-          len = 0
-          i = hash.index(':')
-          if i
-            ind = hash[0, i].to_i
-            hash = hash[i+1..-1]
-          end
-          i = hash.index('(')
-          if i
-            len = hash[i+1..-1]
-            len = len[0..-2] if len[-1]==')'
-            len = len.to_i
-            hash = hash[0, i]
-          end
-          #p '@@@[ind, hash, len]='+[ind, hash, len].inspect
-          if (hash==nil) or (hash=='') or (len<=0)
-            dlen, dhash = def_hash(e)
-            #p '[hash, len, dhash, dlen]='+[hash, len, dhash, dlen].inspect
-            hash = dhash if (hash==nil) or (hash=='')
-            if len<=0
-              case hash
-                when 'byte'
-                  len = 1
-                when 'date'
-                  len = 3
-                when 'crc16', 'word'
-                  len = 2
-                when 'crc32', 'integer'
-                  len = 4
-              end
+      self.class.panhash_pattern
+    end
+    def panhash_pattern_to_s
+      res = ''
+      pp = panhash_pattern
+      if pp.is_a? Array
+        # just names on current language
+        ppn = pp.collect{|p| field_title(p[0]).gsub(' ', '.') }
+        # to receive restricted names
+        ppr = []
+        ppn.each_with_index do |n,i|
+          if n.is_a? String
+            s = 1
+            found = false
+            while (s<8) and (s<n.size) and not found
+              nr = n[0,s]
+              equaled = ppn.select { |f| f[0,s]==nr  }
+              found = equaled.count<=1
+              s += 1
             end
-            len = dlen if len<=0
-            #p '=[hash, len]='+[hash, len].inspect
+            nr = n if not found
+            ppr[i] = nr
+          else
+            ppr[i] = n.to_s
           end
-          ind = last_ind + 1 if ind==0
-          res << [ind, e[0], hash, len]
-          last_ind = ind
         end
+        siz = 2
+        pp.each_with_index do |hp,i|
+          res << ' ' if res != ''
+          res << ppr[i]+':'+hp[2].to_s
+          siz += hp[2].to_i
+        end
+        res = '2+ ' + res + ' =' + siz.to_s
       end
-      res.sort! { |a,b| a[0]<=>b[0] }
-      if res == []
-        used_len = 0
-        nil_count = 0
-        def_fields.each do |e|
-          if e[0] != 'panhash'
-            len, hash = def_hash(e)
-            res << [e[0], hash, len]
-            if len>0
-              used_len += len
-            else
-              nil_count += 1
-            end
-          end
-        end
-        mid_len = 0
-        mid_len = (20-used_len)/nil_count if nil_count>0
-        if mid_len>0
-          tail = 20
-          res.each_with_index do |e,i|
-            if e[2]<=0
-              if i==res.size-1
-                e[2]=tail
-              else
-                e[2]=mid_len
-              end
-            end
-            tail -= e[2]
-          end
-        end
-      else
-        res.collect! { |e| [e[1],e[2],e[3]] }
-      end
-      #p 'pan_pattern='+res.inspect
       res
     end
     def calc_hash(hfor, hlen, fval)
@@ -994,15 +1244,14 @@ module PandoraKernel
           when 'date'
             dmy = fval.split('.')   # D.M.Y
             # convert DMY to time from 1970 in days
-            p "date="+[dmy[2].to_i, dmy[1].to_i, dmy[0].to_i].inspect
-      p Time.now.to_a.inspect
+            #p "date="+[dmy[2].to_i, dmy[1].to_i, dmy[0].to_i].inspect
+            #p Time.now.to_a.inspect
 
-            vals = Time.now.to_a
-            y, m, d = [vals[5], vals[4], vals[3]]  #current day
-            p [y, m, d]
-            expire = Time.local(y+5, m, d)
-            p expire
-
+            #vals = Time.now.to_a
+            #y, m, d = [vals[5], vals[4], vals[3]]  #current day
+            #p [y, m, d]
+            #expire = Time.local(y+5, m, d)
+            #p expire
 
             res = Time.local(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i).to_i / (24*60*60)
             # convert date to 0 year epoch
@@ -1017,16 +1266,15 @@ module PandoraKernel
         end
         if not res
           if fval.is_a? String
-            res = AsciiString.new
+            res = AsciiString.new(fval)
             #res = ''
             #res.force_encoding('ASCII-8BIT')
-            res << fval
           else
             res = fval
           end
         end
         if res.is_a? Integer
-          res = PandoraKernel.bigint_to_bytes(res)
+          res = AsciiString.new(PandoraKernel.bigint_to_bytes(res))
           res = PandoraKernel.fill_zeros_from_left(res, hlen)
           #p res = res[-hlen..-1]  # trunc if big
         elsif not fval.is_a? String
@@ -1053,14 +1301,26 @@ module PandoraKernel
     def objhash
       [kind, lang].pack('CC')
     end
+    def show_panhash(val, prefix=true)
+      res = ''
+      if prefix
+        res = PandoraKernel.bytes_to_hex(val[0,2])+': '
+        val = val[2..-1]
+      end
+      res2 = PandoraKernel.bytes_to_hex(val)
+      i = 0
+      panhash_pattern.each do |pp|
+        if (i>0) and (i<res2.size)
+          res2 = res2[0, i] + ' ' + res2[i..-1]
+          i += 1
+        end
+        i += pp[2] * 2
+      end
+      res << res2
+    end
     def panhash(values, prefix=true, hexview=false)
       res = AsciiString.new
-      #res = ''
-      #res.force_encoding('ASCII-8BIT')
-      if prefix
-        res << objhash
-        res = PandoraKernel.bytes_to_hex(res)+':' if hexview
-      end
+      res << objhash if prefix
       if values.is_a? Hash
         values0 = values
         values = {}
@@ -1078,15 +1338,12 @@ module PandoraKernel
         hlen  = pat[2]
         #p '[fval, fname, values]='+[fval, fname, values].inspect
         #p '[hfor, hlen, fval]='+[hfor, hlen, fval].inspect
-        if not hexview
-          #res.force_encoding('ASCII-8BIT')
-          res << AsciiString.new(calc_hash(hfor, hlen, fval))
-        else
-          res << ' ' if res
-          res << PandoraKernel.bytes_to_hex(calc_hash(hfor, hlen, fval))
-        end
+        #res.force_encoding('ASCII-8BIT')
+        res << AsciiString.new(calc_hash(hfor, hlen, fval))
       end
       res = AsciiString.new(res)
+      res = show_panhash(res, prefix) if hexview
+      res
     end
     def matter_fields
       res = {}
@@ -1109,6 +1366,8 @@ end
 # == Pandora logic model
 # == RU: Логическая модель Пандора
 module PandoraModel
+
+  include PandoraKernel
 
   PF_Name    = 0
   PF_Desc    = 1
@@ -1136,6 +1395,7 @@ module PandoraModel
       xml_doc = REXML::Document.new(file)
       xml_doc.elements.each('pandora-model/*') do |section|
         if section.name != 'Defaults'
+          # Field definition
           section.elements.each('*') do |element|
             panobj_id = element.name
             #p 'panobj_id='+panobj_id.inspect
@@ -1145,27 +1405,32 @@ module PandoraModel
             panobject_class = PandoraModel.const_get(panobj_id) if PandoraModel.const_defined? panobj_id
             #p panobject_class
             if panobject_class and (panobject_class.def_fields != nil) and (panobject_class.def_fields != [])
+              # just extend existed class
               panobj_name = panobject_class.name
               panobj_tabl = panobject_class.tables
               new_panobj = false
               #p 'old='+panobject_class.inspect
             else
+              # create new class
               panobj_name = panobj_id
 
-              if not PandoraModel.const_defined? panobj_id
+              if not panobject_class #not PandoraModel.const_defined? panobj_id
                 parent_class = element.attributes['parent']
-                if (parent_class==nil) or (not (PandoraModel.const_defined? parent_class))
+                if (parent_class==nil) or (parent_class=='') or (not (PandoraModel.const_defined? parent_class))
+                  if parent_class != nil
+                    puts _('Parent is not defined, ignored')+' /'+filename+':'+panobj_id+'<'+parent_class
+                  end
                   parent_class = 'Panobject'
                 end
                 if PandoraModel.const_defined? parent_class
                   PandoraModel.const_get(parent_class).def_fields.each do |f|
-                    flds << f
+                    flds << f.dup
                   end
                 end
                 module_eval('class '+panobj_id+' < PandoraModel::'+parent_class+'; name = "'+panobj_name+'"; end')
+                panobject_class = PandoraModel.const_get(panobj_id)
               end
 
-              panobject_class = PandoraModel.const_get(panobj_id)
               #p 'new='+panobject_class.inspect
               panobject_class.def_fields = flds
               #p panobject_class
@@ -1180,6 +1445,7 @@ module PandoraModel
             panobj_kind = element.attributes['kind']
             panobject_class.kind = panobj_kind.to_i if panobj_kind
             flds = panobject_class.def_fields
+            flds ||= []
             #p 'flds='+flds.inspect
             panobj_name_en = element.attributes['name']
             panobj_name = panobj_name_en if (panobj_name==panobj_id) and (panobj_name_en != nil) and (panobj_name_en != '')
@@ -1191,38 +1457,50 @@ module PandoraModel
             panobj_tabl = element.attributes['table']
             panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]] if panobj_tabl != nil
 
+            # fill fields
             element.elements.each('*') do |sub_elem|
               seu = sub_elem.name.upcase
-              if seu==sub_elem.name
+              if seu==sub_elem.name  #elem name has BIG latters
+                # This is a function
                 #p 'Функция не определена: ['+sub_elem.name+']'
               else
+                # This is a field
                 i = 0
-                while (i<flds.size) and (flds[i][0] != sub_elem.name) do i+=1 end
-                if new_panobj or (i<flds.size)
-                  if i<flds.size
-                    fld_name = flds[i][1]
+                while (i<flds.size) and (flds[i][FI_Id] != sub_elem.name) do i+=1 end
+                fld_exists = (i<flds.size)
+                if new_panobj or fld_exists
+                  # new panobject or field exists already
+                  if fld_exists
+                    fld_name = flds[i][FI_Name]
                   else
-                    flds[i] = [sub_elem.name]
+                    flds[i] = []
+                    flds[i][FI_Id] = sub_elem.name
                     fld_name = sub_elem.name
                   end
-                  fld_name_en = sub_elem.attributes['name']
-                  fld_name = fld_name_en if (fld_name_en != nil) and (fld_name_en != '')
+                  fld_name = sub_elem.attributes['name']
+                  flds[i][FI_Name] = fld_name if (fld_name != nil) and (fld_name != '')
+                  #fld_name = fld_name_en if (fld_name_en != nil) and (fld_name_en != '')
                   fld_name_lang = sub_elem.attributes['name'+lang]
-                  fld_name = fld_name_lang if (fld_name_lang != nil) and (fld_name_lang != '')
-                  flds[i][1] = fld_name
+                  flds[i][FI_LName] = fld_name_lang if (fld_name_lang != nil) and (fld_name_lang != '')
+                  #fld_name = fld_name_lang if (fld_name_lang != nil) and (fld_name_lang != '')
+                  #flds[i][FI_Name] = fld_name
+
                   fld_type = sub_elem.attributes['type']
-                  flds[i][2] = fld_type if (fld_type != nil) and (fld_type != '')
+                  flds[i][FI_Type] = fld_type if (fld_type != nil) and (fld_type != '')
                   fld_size = sub_elem.attributes['size']
-                  flds[i][3] = fld_size if (fld_size != nil) and (fld_size != '')
+                  flds[i][FI_Size] = fld_size if (fld_size != nil) and (fld_size != '')
                   fld_pos = sub_elem.attributes['pos']
-                  flds[i][4] = fld_pos if (fld_pos != nil) and (fld_pos != '')
+                  flds[i][FI_Pos] = fld_pos if (fld_pos != nil) and (fld_pos != '')
                   fld_fsize = sub_elem.attributes['fsize']
-                  flds[i][5] = fld_fsize if (fld_fsize != nil) and (fld_fsize != '')
+                  flds[i][FI_FSize] = fld_fsize if (fld_fsize != nil) and (fld_fsize != '')
+
                   fld_hash = sub_elem.attributes['hash']
-                  flds[i][6] = fld_hash if (fld_hash != nil) and (fld_hash != '')
+                  flds[i][FI_Hash] = fld_hash if (fld_hash != nil) and (fld_hash != '')
+
                   fld_view = sub_elem.attributes['view']
-                  flds[i][7] = fld_view if (fld_view != nil) and (fld_view != '')
+                  flds[i][FI_View] = fld_view if (fld_view != nil) and (fld_view != '')
                 else
+                  # not new panobject, field doesn't exists
                   puts _('Property was not defined, ignored')+' /'+filename+':'+panobj_id+'.'+sub_elem.name
                 end
               end
@@ -1232,6 +1510,7 @@ module PandoraModel
             panobject_class.def_fields = flds
           end
         else
+          # Default param values
           section.elements.each('*') do |element|
             name = element.name
             desc = element.attributes['desc']
@@ -1267,6 +1546,7 @@ end
 # == Graphical user interface of Pandora
 # == RU: Графический интерфейс Пандора
 module PandoraGUI
+  include PandoraKernel
   include PandoraModel
 
   if not $gtk2_on
@@ -1474,6 +1754,8 @@ module PandoraGUI
   # Dialog with enter fields
   # RU: Диалог с полями ввода
   class FieldsDialog < AdvancedDialog
+    include PandoraKernel
+
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
       :support_btn, :trust_btn, :public_btn
 
@@ -1554,22 +1836,28 @@ module PandoraGUI
       #rbvbox = Gtk::VBox.new
 
       @support_btn = Gtk::CheckButton.new(_('support'), true)
-      #support_btn.signal_connect('toggled') do |widget, event|
-      #  p "support"
-      #end
+      support_btn.signal_connect('toggled') do |widget, event|
+        p "support"
+      end
       #rbvbox.pack_start(support_btn, false, false, 0)
       hbox.pack_start(support_btn, false, false, 0)
 
       @trust_btn = Gtk::CheckButton.new(_('trust'), true)
-      #trust_btn.signal_connect('toggled') do |widget, event|
-      #  p "trust"
-      #end
+      trust_btn.signal_connect('toggled') do |widget, event|
+        p "trust"
+      end
+      trust_btn.signal_connect('clicked') do |widget|
+        if not widget.destroyed? and widget.inconsistent?
+          widget.inconsistent = false
+          widget.active = true
+        end
+      end
       hbox.pack_start(trust_btn, false, false, 0)
 
       @public_btn = Gtk::CheckButton.new(_('public'), true)
-      #public_btn.signal_connect('toggled') do |widget, event|
-      #  p "public"
-      #end
+      public_btn.signal_connect('toggled') do |widget, event|
+        p "public"
+      end
       hbox.pack_start(public_btn, false, false, 0)
 
       #hbox.pack_start(rbvbox, false, false, 1.0)
@@ -1578,15 +1866,14 @@ module PandoraGUI
       bw,bh = hbox.size_request
       @btn_panel_height = bh
 
+      # devide text fields in separate list
       @text_fields = []
       i = @fields.size
-
       while i>0 do
         i -= 1
         field = @fields[i]
-        atext = field[1]
-        atype = field[14]
-        asize = field[15]
+        atext = field[FI_VFName]
+        atype = field[FI_Type]
         if atype=='Text'
           image = Gtk::Image.new(Gtk::Stock::DND, Gtk::IconSize::MENU)
           image.set_padding(2, 0)
@@ -1602,14 +1889,19 @@ module PandoraGUI
             end
           end
 
+          textsw = Gtk::ScrolledWindow.new(nil, nil)
+          textsw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+          textsw.add(textview)
+
           label_box = TabLabelBox.new(image, atext, nil, false, 0)
-          page = notebook.append_page(textview, label_box)
-          textview.buffer.text = field[13].to_s
-          field[9] = textview
+          page = notebook.append_page(textsw, label_box)
+
+          textview.buffer.text = field[FI_Value].to_s
+          field[FI_Widget] = textview
 
           txt_fld = field
           txt_fld << page
-          @text_fields << txt_fld
+          @text_fields << txt_fld  #15??
           #@enter_like_ok = false
 
           @fields.delete_at(i)
@@ -1642,20 +1934,19 @@ module PandoraGUI
       PandoraGUI.show_panobject_list(PandoraModel::Opinion, nil, sw)
 
 
-
       # create labels, remember them, calc middle char width
       texts_width = 0
       texts_chars = 0
       labels_width = 0
       max_label_height = 0
       @fields.each do |field|
-        atext = field[1]
+        atext = field[FI_VFName]
         label = Gtk::Label.new(atext)
         label.xalign = 0.0
         lw,lh = label.size_request
-        field[6] = label
-        field[7] = lw
-        field[8] = lh
+        field[FI_Label] = label
+        field[FI_LabW] = lw
+        field[FI_LabH] = lh
         texts_width += lw
         if $jcode_on
           texts_chars += atext.jlength
@@ -1670,7 +1961,7 @@ module PandoraGUI
 
       # max window size
       scr = Gdk::Screen.default
-      window_width, window_height = scr.width-50, scr.height-100
+      window_width, window_height = [scr.width-50, scr.height-100]
       form_width = window_width-36
       form_height = window_height-@btn_panel_height-55
 
@@ -1683,7 +1974,7 @@ module PandoraGUI
         fld_size = 10
         entry = Gtk::Entry.new
         begin
-          atype = field[14]
+          atype = field[FI_Type]
           def_size = 10
           case atype
             when 'Integer'
@@ -1693,8 +1984,8 @@ module PandoraGUI
             when 'Blob'
               def_size = 128
           end
-          fld_size = field[12].to_i if field[12] != nil
-          max_size = field[2].to_i
+          fld_size = field[FI_VFSize].to_i if field[FI_VFSize] != nil
+          max_size = field[FI_Size].to_i
           fld_size = def_size if fld_size<=0
           max_size = fld_size if fld_size>max_size
         rescue
@@ -1706,12 +1997,12 @@ module PandoraGUI
         ew = form_width if ew > form_width
         entry.width_request = ew
         ew,eh = entry.size_request
-        field[9] = entry
-        field[10] = ew
-        field[11] = eh
+        field[FI_Widget] = entry
+        field[FI_WidW] = ew
+        field[FI_WidH] = eh
         entries_width += ew
         max_entry_height = eh if max_entry_height < eh
-        entry.text = field[13].to_s
+        entry.text = field[FI_Value].to_s
       end
 
       field_matrix = []
@@ -1722,7 +2013,7 @@ module PandoraGUI
       orient = :up
       @fields.each_index do |index|
         field = @fields[index]
-        if (index==0) or (field[5]==1)
+        if (index==0) or (field[FI_NewRow]==1)
           row_index += 1
           field_matrix << row if row != []
           mw, mh = [mw, rw].max, mh+rh
@@ -1730,8 +2021,8 @@ module PandoraGUI
           rw, rh = 0, 0
         end
 
-        if ! [:up, :down, :left, :right].include?(field[4]) then field[4]=orient; end
-        orient = field[4]
+        if ! [:up, :down, :left, :right].include?(field[FI_LabOr]) then field[FI_LabOr]=orient; end
+        orient = field[FI_LabOr]
 
         field_size = calc_field_size(field)
         rw, rh = rw+field_size[0], [rh, field_size[1]+1].max
@@ -1750,11 +2041,11 @@ module PandoraGUI
     end
 
     def calc_field_size(field)
-      lw = field[7]
-      lh = field[8]
-      ew = field[10]
-      eh = field[11]
-      if (field[4]==:left) or (field[4]==:right)
+      lw = field[FI_LabW]
+      lh = field[FI_LabH]
+      ew = field[FI_WidW]
+      eh = field[FI_WidH]
+      if (field[FI_LabOr]==:left) or (field[FI_LabOr]==:right)
         [lw+ew, [lh,eh].max]
       else
         field_size = [[lw,ew].max, lh+eh]
@@ -1762,7 +2053,7 @@ module PandoraGUI
     end
 
     def calc_row_size(row)
-      rw, rh = 0, 0
+      rw, rh = [0, 0]
       row.each do |fld|
         fs = calc_field_size(fld)
         rw, rh = rw+fs[0], [rh, fs[1]].max
@@ -1792,16 +2083,16 @@ module PandoraGUI
         @vbox.child_visible = false
         @fields.each_index do |index|
           field = @fields[index]
-          label = field[6]
-          entry = field[9]
+          label = field[FI_Label]
+          entry = field[FI_Widget]
           #label.unparent
           #entry.unparent
           label = hacked_unparent(label)
           entry = hacked_unparent(entry)
-          field[6] = label
-          field[9] = entry
-          temp_fields[index][6] = label
-          temp_fields[index][9] = entry
+          field[FI_Label] = label
+          field[FI_Widget] = entry
+          temp_fields[index][FI_Label] = label
+          temp_fields[index][FI_Widget] = entry
         end
         @vbox.each do |child|
           child.destroy
@@ -1880,7 +2171,7 @@ module PandoraGUI
             orient = :up
             fields.each_index do |index|
               field = fields[index]
-              if (index==0) or (field[5]==1)
+              if (index==0) or (field[FI_NewRow]==1)
                 row_index += 1
                 field_matrix << row if row != []
                 mw, mh = [mw, rw].max, mh+rh
@@ -1894,8 +2185,8 @@ module PandoraGUI
                 rw, rh = 0, 0
               end
 
-              if ! [:up, :down, :left, :right].include?(field[4]) then field[4]=orient; end
-              orient = field[4]
+              if ! [:up, :down, :left, :right].include?(field[FI_LabOr]) then field[FI_LabOr]=orient; end
+              orient = field[FI_LabOr]
 
               field_size = calc_field_size(field)
               rw, rh = rw+field_size[0], [rh, field_size[1]].max
@@ -1906,8 +2197,8 @@ module PandoraGUI
                 while (col>0) and (rw>form_width)
                   col -= 1
                   fld = row[col]
-                  if [:left, :right].include?(fld[4])
-                    fld[4]=:up
+                  if [:left, :right].include?(fld[FI_LabOr])
+                    fld[FI_LabOr]=:up
                     rw, rh = calc_row_size(row)
                   end
                 end
@@ -1938,8 +2229,8 @@ module PandoraGUI
             orient = :up
             fields.each_index do |index|
               field = fields[index]
-              if ! [:up, :down, :left, :right].include?(field[4]) then field[4]=orient; end
-              orient = field[4]
+              if ! [:up, :down, :left, :right].include?(field[FI_LabOr]) then field[FI_LabOr]=orient; end
+              orient = field[FI_LabOr]
               field_size = calc_field_size(field)
 
               if (rw+field_size[0]>form_width)
@@ -1975,8 +2266,9 @@ module PandoraGUI
           row.each_index do |findex|
             field = row[findex]
             ofield = orow[findex]
-            if (field[4] != ofield[4]) or (field[7] != ofield[7]) or (field[8] != ofield[8]) \
-              or (field[10] != ofield[10]) or (field[11] != ofield[11])
+            if (field[FI_LabOr] != ofield[FI_LabOr]) or (field[FI_LabW] != ofield[FI_LabW]) \
+              or (field[FI_LabH] != ofield[FI_LabH]) \
+              or (field[FI_WidW] != ofield[FI_WidW]) or (field[FI_WidH] != ofield[FI_WidH]) \
             then
               matrix_is_changed = true
               break
@@ -1997,17 +2289,17 @@ module PandoraGUI
           row_hbox = Gtk::HBox.new
           row.each_index do |field_index|
             field = row[field_index]
-            label = field[6]
-            entry = field[9]
-            if (field[4]==nil) or (field[4]==:left)
+            label = field[FI_Label]
+            entry = field[FI_Widget]
+            if (field[FI_LabOr]==nil) or (field[FI_LabOr]==:left)
               row_hbox.pack_start(label, false, false, 2)
               row_hbox.pack_start(entry, false, false, 2)
-            elsif (field[4]==:right)
+            elsif (field[FI_LabOr]==:right)
               row_hbox.pack_start(entry, false, false, 2)
               row_hbox.pack_start(label, false, false, 2)
             else
               field_vbox = Gtk::VBox.new
-              if (field[4]==:down)
+              if (field[FI_LabOr]==:down)
                 field_vbox.pack_start(entry, false, false, 2)
                 field_vbox.pack_start(label, false, false, 2)
               else
@@ -2934,8 +3226,8 @@ module PandoraGUI
       $sign_model ||= PandoraModel::Sign.new
       filter = {:obj_hash=>obj_hash}
       filter[:key_hash]=key_hash if res==1
-      p '=========filter========='
-      p filter
+      #p '=========filter========='
+      #p filter
       sel = $sign_model.select(filter)
       if sel and sel.size>0
         res = res * sel.size
@@ -2949,29 +3241,6 @@ module PandoraGUI
   # View and edit record dialog
   # RU: Окно просмотра и правки записи
   def self.edit_panobject(tree_view, action)
-
-    def self.decode_pos(pos='')
-      pos = '' if pos == nil
-      pos = pos.to_s
-      new_row = 1 if pos.include?('|')
-      ind = pos.scan(/[0-9\.\+]+/)
-      ind = ind[0] if ind != nil
-      lab_or = pos.scan(/[a-z]+/)
-      lab_or = lab_or[0] if lab_or != nil
-      lab_or = lab_or[0, 1] if lab_or != nil
-      if (lab_or==nil) or (lab_or=='u')
-        lab_or = :up
-      elsif (lab_or=='l')
-        lab_or = :left
-      elsif (lab_or=='d') or (lab_or=='b')
-        lab_or = :down
-      elsif (lab_or=='r')
-        lab_or = :right
-      else
-        lab_or = :up
-      end
-      [ind, lab_or, new_row]
-    end
 
     def self.get_panobject_icon(panobj)
       panobj_icon = nil
@@ -3018,7 +3287,7 @@ module PandoraGUI
 
       if action=='Delete'
         if id and sel[0]
-          info = PandoraKernel.bytes_to_hex(panhash0)[0, 34] #.force_encoding('ASCII-8BIT') ASCII-8BIT
+          info = panobject.show_panhash(panhash0) #.force_encoding('ASCII-8BIT') ASCII-8BIT
           dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
             Gtk::MessageDialog::QUESTION,
             Gtk::MessageDialog::BUTTONS_OK_CANCEL,
@@ -3039,59 +3308,17 @@ module PandoraGUI
         end
       else
         i = 0
-        formfields = []
-        ind = 0.0
-
-        #p panobject.def_fields
-
-        panobject.def_fields.each do |field|
-          if field[3]
-            fldsize = field[3].to_i
-          else
-            fldsize = 0
-          end
-          if field[5]
-            fldfsize = field[5].to_i
-            fldfsize = fldsize if fldfsize > fldsize
-          else
-            fldfsize = fldsize
-            fldfsize *= 0.67 if fldfsize>40
-          end
-          indd, lab_or, new_row = decode_pos(field[4])
-          plus = (indd and (indd[0, 1]=='+'))
-          indd = indd[1..-1] if plus
-          indd = indd.to_f if (indd != nil) and (indd.size>0)
-          fldind = 0
-          if not indd
-            ind += 1.0
-          else
-            if plus
-              ind += indd
-            else
-              fldind = indd
-              ind = indd if indd != 255
-            end
-          end
-          fldind = ind if fldind==0
-          new_fld = [field[0], field[1], fldsize, fldind, lab_or, new_row]
-          new_fld[12] = fldfsize
+        formfields = panobject.def_fields.clone
+        formfields.each do |field|
           fldval = nil
-          fldval = panobject.field_val(field[0], sel[0]) if (sel != nil) and (sel[0] != nil)
-
-          fldval = PandoraKernel.bytes_to_hex(fldval) if field[0]=='panhash'
-
+          fldval = panobject.field_val(field[FI_Id], sel[0]) if (sel != nil) and (sel[0] != nil)
+          fldval = PandoraKernel.bytes_to_hex(fldval) if field[FI_Id]=='panhash'
           fldval = '' if fldval == nil
-          new_fld[13] = fldval
-
-          new_fld[14] = field[2]
-          new_fld[15] = field[3]
-
-          formfields << new_fld
+          field[FI_Value] = fldval
         end
         #p formfields
-        formfields.sort! {|a,b| a[3]<=>b[3] }
 
-        dialog = FieldsDialog.new(panobject, formfields.clone, panobject.sname)
+        dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
         begin
           dialog.icon = panobjecticon if panobjecticon
         rescue
@@ -3101,14 +3328,10 @@ module PandoraGUI
         dialog.trust_btn.inconsistent = signed < 0
         #trust_lab = dialog.trust_btn.children[0]
         #trust_lab.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
-        dialog.trust_btn.signal_connect('clicked') do |widget|
-          if widget.inconsistent?
-            widget.inconsistent = false
-            widget.active = true
-          end
-        end
 
-        PandoraGUI.set_statusbar_text(dialog.statusbar, panobject.panhash(sel[0], true, true)) if sel
+        st_text = '{' + panobject.panhash_pattern_to_s + '}'
+        st_text = panobject.panhash(sel[0], true, true) + ' ' + st_text if sel and sel.size>0
+        PandoraGUI.set_statusbar_text(dialog.statusbar, st_text)
 
         if panobject.class==PandoraModel::Key
           mi = Gtk::MenuItem.new("Действия")
@@ -3130,29 +3353,31 @@ module PandoraGUI
             filter = 'id='+id.to_s
           end
 
+          # take value from form
           dialog.fields.each do |field|
-            entry = field[9]
-            field[13] = entry.text
+            entry = field[FI_Widget]
+            field[FI_Value] = entry.text
           end
           dialog.text_fields.each do |field|
-            textview = field[9]
-            field[13] = textview.buffer.text
+            textview = field[FI_Widget]
+            field[FI_Value] = textview.buffer.text
           end
 
+          # fill hash of values
           flds_hash = {}
           dialog.fields.each_index do |index|
             field = dialog.fields[index]
-            flds_hash[field[0]] = field[13]
+            flds_hash[field[FI_Id]] = field[FI_Value]
           end
           dialog.text_fields.each_index do |index|
             field = dialog.text_fields[index]
-            flds_hash[field[0]] = field[13]
+            flds_hash[field[FI_Id]] = field[FI_Value]
           end
           panhash = panobject.panhash(flds_hash)
           flds_hash['panhash'] = panhash
           time_now = Time.now.to_i
           flds_hash['modified'] = time_now
-          if (panobject.is_a? PandoraModel::Created) and filter
+          if (panobject.is_a? PandoraModel::Created) and not filter
             flds_hash['creator'] = '[authorized]'
             flds_hash['created'] = time_now
           end
@@ -3167,7 +3392,7 @@ module PandoraGUI
 
               id = panobject.namesvalues['id']
               id = id.to_i
-              p 'id='+id.inspect
+              #p 'id='+id.inspect
 
               #p 'id='+id.inspect
               ind = tree_view.sel.index { |row| row[0]==id }
@@ -3202,6 +3427,10 @@ module PandoraGUI
   # RU: Дерево субъектов
   class SubjTreeView < Gtk::TreeView
     attr_accessor :panobject, :sel
+  end
+
+  class SubjTreeViewColumn < Gtk::TreeViewColumn
+    attr_accessor :tab_ind
   end
 
   # Tab box for notebook with image and close button
@@ -3296,91 +3525,98 @@ module PandoraGUI
     treeview.name = panobject.ider
     treeview.panobject = panobject
     treeview.sel = sel
-    flds = panobject.tab_fields
-    #flds = panobject.def_fields if flds == []
-    flds.each_with_index do |tf,i|
-      v = tf
-      v = v[0].to_s if v.is_a? Array
-      renderer = Gtk::CellRendererText.new
-      #renderer.background = 'red'
-      #renderer.editable = true
-      #renderer.text = 'aaa'
-      column = Gtk::TreeViewColumn.new(panobject.field_title(v), renderer )  #, {:text => i}
+    tab_flds = panobject.tab_fields
+    def_flds = panobject.def_fields
+    def_flds.each_with_index do |df,i|
+      id = df[FI_Id]
+      tab_ind = tab_flds.index{ |tf| tf[0] == id }
+      if tab_ind
+        renderer = Gtk::CellRendererText.new
+        #renderer.background = 'red'
+        #renderer.editable = true
+        #renderer.text = 'aaa'
 
-      #p v
-      #p ind = panobject.def_fields.index_of {|f| f[0]==v }
-      #p fld = panobject.def_fields[ind]
-      column.sort_column_id = i
-      #p column.ind = i
-      #p column.fld = fld
-      #panhash_col = i if (v=='panhash')
-      column.resizable = true
-      column.reorderable = true
-      column.clickable = true
-      treeview.append_column(column)
-      column.signal_connect('clicked') do |col|
-        p 'sort clicked'
-      end
-      column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
-        col = column.sort_column_id
-        #p fld = panobject.def_fields[col]
-        time_now = Time.now
-        row = treeview.sel[iter.path.indices[0]]
-        val = row[col] if row
-        if val
-          tf = panobject.tab_fields[col]
-          if tf[2].is_a? Array
-            view = tf[2][7]
-            if view=='date'
-              if val.is_a? Integer
-                val = Time.at(val)
-                val = val.strftime('%d.%m.%y')
-                renderer.foreground = '#551111'
-              end
-            elsif view=='time'
-              if val.is_a? Integer
-                val = Time.at(val)
-                val = time_to_str(val, time_now)
-                renderer.foreground = '#338833'
-              end
-            else
-              if view=='base64'
-                val = Base64.encode64(val)
-                renderer.foreground = 'brown'
-              elsif view=='phash'
-                val = PandoraKernel.bytes_to_hex(val) #[2,16]
-                renderer.foreground = 'blue'
-              elsif view=='panhash'
-                val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,44])
-                renderer.foreground = 'navy'
-              elsif view=='hex'
-                val = PandoraKernel.bigint_to_bytes(val) if val.is_a? Integer
-                val = PandoraKernel.bytes_to_hex(val)
-                renderer.foreground = 'red'
-              elsif view=='text'
-                val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
-                renderer.foreground = '#226633'
-                val = val.rstrip
+        title = df[FI_VFName]
+        title ||= v
+        column = SubjTreeViewColumn.new(title, renderer )  #, {:text => i}
+
+        #p v
+        #p ind = panobject.def_fields.index_of {|f| f[0]==v }
+        #p fld = panobject.def_fields[ind]
+
+        column.tab_ind = tab_ind
+        #column.sort_column_id = ind
+        #p column.ind = i
+        #p column.fld = fld
+        #panhash_col = i if (v=='panhash')
+        column.resizable = true
+        column.reorderable = true
+        column.clickable = true
+        treeview.append_column(column)
+        column.signal_connect('clicked') do |col|
+          p 'sort clicked'
+        end
+        column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
+          col = column.tab_ind
+          #p fld = panobject.def_fields[col]
+          time_now = Time.now
+          row = treeview.sel[iter.path.indices[0]]
+          val = row[col] if row
+          if val
+            tf = panobject.tab_fields[col]
+            if tf[2].is_a? Array
+              view = tf[2][7]
+              if view=='date'
+                if val.is_a? Integer
+                  val = Time.at(val)
+                  val = val.strftime('%d.%m.%y')
+                  renderer.foreground = '#551111'
+                end
+              elsif view=='time'
+                if val.is_a? Integer
+                  val = Time.at(val)
+                  val = time_to_str(val, time_now)
+                  renderer.foreground = '#338833'
+                end
+              else
+                if view=='base64'
+                  val = Base64.encode64(val)
+                  renderer.foreground = 'brown'
+                elsif view=='phash'
+                  val = PandoraKernel.bytes_to_hex(val) #[2,16]
+                  renderer.foreground = 'blue'
+                elsif view=='panhash'
+                  val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,44])
+                  renderer.foreground = 'navy'
+                elsif view=='hex'
+                  val = PandoraKernel.bigint_to_bytes(val) if val.is_a? Integer
+                  val = PandoraKernel.bytes_to_hex(val)
+                  renderer.foreground = 'red'
+                elsif view=='text'
+                  val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
+                  renderer.foreground = '#226633'
+                  val = val.rstrip
+                end
               end
             end
-          end
-          val = val.to_s
-          if $jcode_on
-            val = val[/.{0,#{45}}/m]
+            val = val.to_s
+            if $jcode_on
+              val = val[/.{0,#{45}}/m]
+            else
+              val = val[0,45]
+            end
           else
-            val = val[0,45]
+            val = 'nil'
           end
-        else
-          val = 'nil'
+
+          # clean text fields
+          #val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ') if fld_def.is_a? Array and fld_def[2]=='Text'
+          # truncate all fields
+          #iter.set_value(i, val.rstrip)
+          #val = model.get_value(iter, col)
+
+          renderer.text = val
         end
-
-        # clean text fields
-        #val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ') if fld_def.is_a? Array and fld_def[2]=='Text'
-        # truncate all fields
-        #iter.set_value(i, val.rstrip)
-        #val = model.get_value(iter, col)
-
-        renderer.text = val
       end
     end
     treeview.signal_connect('row_activated') do |tree_view, path, column|
@@ -5092,10 +5328,7 @@ module PandoraGUI
     ['Debt', nil, _('Debts')],
     ['Guaranty', nil, _('Guaranties')],
     ['-', nil, '-'],
-    ['Position', nil, _('Positions')],
     ['Contract', nil, _('Contracts')],
-    ['Payment', nil, _('Payments')],
-    ['Property', nil, _('Property')],
     ['Report', nil, _('Reports')],
     [nil, nil, _('_Region')],
     ['Project', nil, _('Projects')],

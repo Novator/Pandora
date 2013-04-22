@@ -28,9 +28,7 @@
 
     <Community name.ru="Сообщество|Сообщества">
       <name name.ru="Название" />
-      <founder name.ru="Основатель" />
       <origin_place name.ru="Место создания" />
-      <origin_date name.ru="Дата создания" />
     </Community>
 
     <Language name.ru="Язык|Языки">
@@ -70,7 +68,7 @@
     <Document name.ru="Документ|Документы">
       <type name.ru="Тип" />
       <code name.ru="Номер" />
-      <object name.ru="Объект" />
+      <target name.ru="Принадлежит" />
     </Document>
 
     <Currency name.ru="Валюта|Валюты">
@@ -80,10 +78,10 @@
       <issuer name.ru="Эммитент" />
     </Currency>
 
-    <Occupation name.ru="Деятельность|Увлечения">
+    <Activity name.ru="Деятельность|Увлечения">
       <name name.ru="Название" />
       <description name.ru="Описание" />
-    </Occupation>
+    </Activity>
 
     <Thing name.ru="Вещь|Вещи">
       <name name.ru="Название" />
@@ -98,6 +96,7 @@
     <Article name.ru="Статья|Статьи">
       <name name.ru="Название" />
       <text name.ru="Текст" />
+      <type name.ru="Тип" />
     </Article>
 
     <Blob name.ru="Файл|Файлы">
@@ -124,39 +123,21 @@
   </World>
   <Business name.ru="Дело">
 
-    <Property name.ru="Имущество" >
-      <articul name.ru="Артикул" />
-    </Property>
-
-    <Money name.ru="Деньги|Деньги">
-      <name name.ru="" />
-      <producers name.ru="" />
-    </Money>
-
     <Store name.ru="Склады">
       <name name.ru="" />
       <producers name.ru="" />
     </Store>
 
-    <Account name.ru="Счета|Счёт">
-      <name name.ru="Название" />
-    </Account>
+    <Order name.ru="Заказ|Заказы">
+      <ad name.ru="Объявление" />
+      <list name.ru="Список" />
+      <sum name.ru="Сумма" />
+    </Order>
 
-    <Contract name.ru="Договоры|Договор">
+    <Contract name.ru="Договор|Договоры">
       <number name.ru="Номер" />
       <city name.ru="Город" />
     </Contract>
-
-    <Worker name.ru="Сотрудники|Сотрудник">
-      <vacancy name.ru="Должность" />
-      <salary name.ru="Оклад" />
-    </Worker>
-
-    <Enterprise name.ru="Предприятия|Предприятие">
-    </Enterprise>
-
-    <Position name.ru="Должности|Должность">
-    </Position>
 
     <Product name.ru="Товар|Товары">
     </Product>

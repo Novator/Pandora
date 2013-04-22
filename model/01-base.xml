@@ -15,8 +15,8 @@
   <World name="World">
 
     <Person name="Person|People" table="persons" kind="1">
-      <first_name name="Name" type="String" size="30" hash="1:hash(4)" />
-      <last_name name="Family" type="String" size="35" hash="2:hash(8)" />
+      <first_name name="Name" type="String" size="30" hash="1:hash(3)" />
+      <last_name name="Family" type="String" size="35" hash="2:hash(6)" />
       <birth_day name="Birth day" type="Date" hash="3:date(3)" />
       <birth_place name="Birth place" type="String" size="37" hash="4:panhash(4)" />
       <father_name name="Father name" type="String" size="35" hash="5:hash(2)" />
@@ -25,11 +25,11 @@
       <exit_day name="Exit day" type="Date" optional="yes" />
     </Person>
 
-    <Community parent="Created" name="Community|Communities" table="companies"  kind="2">
-      <name name="Name" type="String" size="128" />
-      <founder name="Founder" type="String" size="40" />
-      <origin_place name="Origin place" type="String" size="37" />
-      <origin_date name="Origin date" type="Date" />
+    <Community parent="Created" name="Community|Communities" kind="2">
+      <name name="Name" type="String" size="128" hash="1:hash(4)" />
+      <origin_place name="Origin place" type="String" size="37" hash="2:panhash(4)" />
+      <creator hash="3:panhash(4)" />
+      <created hash="4:integer(4)" />
       <RELATIONS name="Состав" kind="Person" default="3" />
     </Community>
 
@@ -72,7 +72,7 @@
     <Document name="Document" kind="9">
       <type name="Type" />
       <code name="Number" />
-      <object name="Object" />
+      <target name="Target" />
     </Document>
 
     <Currency name="Currency|Currency" kind="10">
@@ -82,10 +82,10 @@
       <issuer name="Issuer" />
     </Currency>
 
-    <Occupation name="Occupation" kind="11">
+    <Activity name="Activity" kind="11">
       <name name="Name" />
       <description name="Description" />
-    </Occupation>
+    </Activity>
 
     <Thing name="Thing|Things" kind="12">
       <name name="Name" />
@@ -127,42 +127,49 @@
   </World>
   <Business name="Business">
 
-    <Property parent="Thing" name="Property" kind="18">
-      <articul name="Articul" />
-    </Property>
+    <Member parent="Person">
+    </Member>
 
-    <Money name="Money|Money" table="money">
-      <name name="Name" />
-      <producers name="Producers" />
-    </Money>
+    <Company parent="Community">
+    </Company>
 
-    <Store name="Store">
-      <name name="Name" />
-      <producers name="Producers" />
-    </Store>
+    <Storage parent="Address">
+    </Storage>
 
-    <Account name="Account">
-      <name name="Name" />
-    </Account>
+    <Product parent="Thing">
+    </Product>
 
-    <Contract name="Договоры|Договор" parent="Article">
+    <Service parent="Activity">
+    </Service>
+
+    <Ad parent="Article">
+    </Ad>
+
+    <Order parent="Created">
+      <ad name="Ad" type="String" size="32" />
+      <list name="List" type="Text" />
+      <sum name="Sum" type="Real" />
+    </Order>
+
+    <Deal parent="Created">
+    </Deal>
+
+    <Waybill parent="Created">
+    </Waybill>
+
+    <Debt parent="Created">
+    </Debt>
+
+    <Guaranty parent="Created">
+    </Guaranty>
+
+    <Contract parent="Article">
       <number name="Number" />
       <city name="City" />
     </Contract>
 
-    <Worker name="Worker" parent="Person">
-      <vacancy name="Vacancy" />
-      <salary name="Salary" />
-    </Worker>
-
-    <Enterprise parent="Community">
-    </Enterprise>
-
-    <Position parent="Occupation">
-    </Position>
-
-    <Product parent="Thing">
-    </Product>
+    <Report parent="Article">
+    </Report>
 
   </Business>
   <Region name="Region">

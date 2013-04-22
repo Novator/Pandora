@@ -14,10 +14,8 @@
     </Person>
 
     <Community order="2">
-      <name pos="1" />
-      <founder pos="|+1" />
-      <origin_place pos="+1" />
-      <origin_date pos="+1" />
+      <name pos="1" fsize="84" />
+      <origin_place pos="|+1" fsize="34" />
     </Community>
 
   </World>
@@ -25,13 +23,13 @@
   <Pandora name="Pandora Node">
 
     <Panobject>
-      <panhash pos="|255" view="phash" />
-      <modified pos="255.1" view="time" />
+      <panhash pos="|254,hide" view="phash" />
+      <modified pos="255" view="time" />
     </Panobject>
 
     <Created>
-      <creator pos="255.2" view="phash" />
-      <created pos="255.3" view="time" />
+      <creator pos="|252" view="phash" />
+      <created pos="253" view="time" />
     </Created>
 
     <Parameter order="101">
@@ -58,6 +56,8 @@
     </Sign>
 
     <Article>
+      <name pos="|" />
+      <type pos="|" />
       <text view="text" />
       <hash view="hex" />
     </Article>
