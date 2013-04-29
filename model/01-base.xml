@@ -1,12 +1,12 @@
 <pandora-model name="Pandora base model">
   <Pandora name="Pandora Node">
     <Panobject>
-      <panhash name="Panhash" type="String" size="32" />
+      <panhash name="Panhash" type="Panhash" />
       <modified name="Modified" type="Time" />
     </Panobject>
 
     <Created>
-      <creator name="Creator" type="String" size="32" />
+      <creator name="Creator" type="Panhash(Person)" />
       <created name="Created" type="Time" />
     </Created>
 
@@ -18,16 +18,16 @@
       <first_name name="Name" type="String" size="30" hash="1:hash(3)" />
       <last_name name="Family" type="String" size="35" hash="2:hash(6)" />
       <birth_day name="Birth day" type="Date" hash="3:date(3)" />
-      <birth_place name="Birth place" type="String" size="37" hash="4:panhash(4)" />
+      <birth_place name="Birth place" type="Panhash(City)" hash="4:panhash(4)" />
       <father_name name="Father name" type="String" size="35" hash="5:hash(2)" />
       <mother_name name="Mother name" type="String" size="35" hash="6:hash(2)" />
-      <sex name="Sex" type="String" size="5" />
+      <sex name="Sex" type="Combo(sex)" />
       <exit_day name="Exit day" type="Date" optional="yes" />
     </Person>
 
     <Community parent="Created" name="Community|Communities" kind="2">
       <name name="Name" type="String" size="128" hash="1:hash(4)" />
-      <origin_place name="Origin place" type="String" size="37" hash="2:panhash(4)" />
+      <origin_place name="Origin place" type="Panhash(City)" hash="2:panhash(4)" />
       <creator hash="3:panhash(4)" />
       <created hash="4:integer(4)" />
       <RELATIONS name="Состав" kind="Person" default="3" />
@@ -47,12 +47,13 @@
 
     <City name="City|Cities" kind="5">
       <name name="Name" />
-      <country name="Country" />
+      <country name="Country" type="Panhash(Country)" />
       <population name="Population" />
+      <coord name="Coordinates" type="Coord" hash="1:coord(4)" />
     </City>
 
     <Street name="Street|Streets" kind="6">
-      <city name="City" />
+      <city name="Panhash(City)" />
       <name name="Name" />
     </Street>
 
@@ -110,7 +111,7 @@
       <text name="Blob" />
     </Blob>
 
-    <Relation name="Relation" kind="16">
+    <Relation name="Relation" kind="16" lang="no">
       <first name="First object" size="50" />
       <second name="Second object" size="50" />
       <type name="Type" type="Byte" />
@@ -187,7 +188,7 @@
     </Delegation>
 
   </Region>
-  <Pandora>
+  <Pandora lang="no">
 
     <Parameter name="Parameter" kind="220">
       <name name="Name" type="String" size="128" />

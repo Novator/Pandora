@@ -755,6 +755,7 @@ module PandoraKernel
       #  super(*args)
       @ider = 'Base Panobject'
       @name = 'Базовый объект Пандоры'
+      #@lang = true
       @tables = []
       @def_fields = []
       @def_fields_expanded = false
@@ -771,12 +772,12 @@ module PandoraKernel
       def kind=(x)
         @kind = x
       end
-      def lang
-        @lang
-      end
-      def lang=(x)
-        @lang = x
-      end
+      #def lang
+      #  @lang
+      #end
+      #def lang=(x)
+      #  @lang = x
+      #end
       def def_fields
         @def_fields
       end
@@ -1104,12 +1105,12 @@ module PandoraKernel
     def kind=(x)
       self.class.kind = x
     end
-    def lang
-      self.class.lang
-    end
-    def lang=(x)
-      self.class.lang = x
-    end
+    #def lang
+    #  self.class.lang
+    #end
+    #def lang=(x)
+    #  self.class.lang = x
+    #end
     def def_fields
       self.class.def_fields
     end
@@ -1298,7 +1299,7 @@ module PandoraKernel
       #res.force_encoding('ASCII-8BIT')
       res = AsciiString.new(res)
     end
-    def objhash
+    def objhash(lang=0)
       [kind, lang].pack('CC')
     end
     def show_panhash(val, prefix=true)
@@ -1318,9 +1319,9 @@ module PandoraKernel
       end
       res << res2
     end
-    def panhash(values, prefix=true, hexview=false)
+    def panhash(values, lang=0, prefix=true, hexview=false)
       res = AsciiString.new
-      res << objhash if prefix
+      res << objhash(lang) if prefix
       if values.is_a? Hash
         values0 = values
         values = {}
@@ -1436,7 +1437,7 @@ module PandoraModel
               #p panobject_class
               panobject_class.ider = panobj_id
               panobject_class.kind = 0
-              panobject_class.lang = 5
+              #panobject_class.lang = 5
               panobj_tabl = panobj_id
               panobj_tabl = PandoraKernel::get_name_or_names(panobj_tabl, true)
               panobj_tabl.downcase!
@@ -1731,9 +1732,14 @@ module PandoraGUI
 
   # Add button to toolbar
   # RU: Добавить кнопку на панель инструментов
-  def self.add_tool_btn(toolbar, stock, title)
-    image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
-    btn = Gtk::ToolButton.new(image, _(title))
+  def self.add_tool_btn(toolbar, stock, title, toggle=false)
+    if toggle != nil
+      btn = Gtk::ToggleToolButton.new(stock)
+      btn.active = toggle
+    else
+      image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
+      btn = Gtk::ToolButton.new(image, _(title))
+    end
     new_api = false
     begin
       btn.tooltip_text = btn.label
@@ -1757,7 +1763,33 @@ module PandoraGUI
     include PandoraKernel
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
-      :support_btn, :trust_btn, :public_btn
+      :support_btn, :trust_btn, :public_btn, :lang_entry, :format, :view_buffer
+
+    def select_file
+      button = Gtk::FileChooserButton.new("Select a file", Gtk::FileChooser::ACTION_OPEN)
+      button.current_folder = "/etc"
+      #======
+      res = nil
+      fs = Gtk::FileSelection.new(_('Select a file'))
+      fs.ok_button.signal_connect('clicked') do
+        res = fs.filename
+      end
+      #fs.cancel_button.signal_connect("clicked") do
+      #  Gtk.main_quit
+      #end
+      fs.show_all
+      res
+    end
+
+    def add_menu_item(label, menu, text)
+      mi = Gtk::MenuItem.new(text)
+      menu.append(mi)
+      mi.signal_connect('activate') { |mi|
+        label.label = mi.label
+        @format = mi.label.to_s
+        p 'format changed to: '+format.to_s
+      }
+    end
 
     def initialize(apanobject, afields=[], *args)
       super(*args)
@@ -1776,6 +1808,28 @@ module PandoraGUI
       @toolbar2 = Gtk::Toolbar.new
       toolbar2.toolbar_style = Gtk::Toolbar::Style::ICONS
       panelbox.pack_start(toolbar2, false, false, 0)
+
+      @view_buffer = Gtk::TextBuffer.new
+
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::DND, 'Type', true) do
+        p 'change buffer'
+        p view_buffer
+      end
+
+      btn = Gtk::MenuToolButton.new(nil, 'auto')
+      menu = Gtk::Menu.new
+      btn.menu = menu
+      add_menu_item(btn, menu, 'auto')
+      add_menu_item(btn, menu, 'plain')
+      add_menu_item(btn, menu, 'org-mode')
+      add_menu_item(btn, menu, 'bbcode')
+      add_menu_item(btn, menu, 'wiki')
+      add_menu_item(btn, menu, 'html')
+      add_menu_item(btn, menu, 'ruby')
+      add_menu_item(btn, menu, 'python')
+      add_menu_item(btn, menu, 'xml')
+      menu.show_all
+      toolbar.add(btn)
 
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::BOLD, 'Bold') do
         p "bold"
@@ -1809,14 +1863,17 @@ module PandoraGUI
           toolbar.hide
           toolbar2.hide
           hbox.show
-        elsif notebook.get_nth_page(page_num).is_a? Gtk::TextView
-          toolbar2.hide
-          hbox.hide
-          toolbar.show
         else
-          toolbar.hide
-          hbox.hide
-          toolbar2.show
+          child = notebook.get_nth_page(page_num)
+          if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::TextView)
+            toolbar2.hide
+            hbox.hide
+            toolbar.show
+          else
+            toolbar.hide
+            hbox.hide
+           toolbar2.show
+          end
         end
       end
 
@@ -1859,6 +1916,13 @@ module PandoraGUI
         p "public"
       end
       hbox.pack_start(public_btn, false, false, 0)
+
+      @lang_entry = Gtk::ComboBoxEntry.new(true)
+      lang_entry.set_size_request(60, 15)
+      lang_entry.append_text('0')
+      lang_entry.append_text('1')
+      lang_entry.append_text('5')
+      hbox.pack_start(lang_entry, false, true, 5)
 
       #hbox.pack_start(rbvbox, false, false, 1.0)
       hbox.show_all
@@ -3271,13 +3335,17 @@ module PandoraGUI
       id = nil
       panhash0 = nil
       signed = 0
+      lang = 5
       if path != nil and ! new_act
         iter = store.get_iter(path)
         id = iter[0]
-        sel = panobject.select('id='+id.to_s, false)
+        sel = panobject.select('id='+id.to_s, true)
         #p 'panobject.namesvalues='+panobject.namesvalues.inspect
         #p 'panobject.matter_fields='+panobject.matter_fields.inspect
-        panhash0 = panobject.panhash(sel[0])
+        panhash0 = panobject.namesvalues['panhash']
+        lang = panhash0[1].ord if panhash0 and panhash0.size>1
+        lang ||= 0
+        panhash0 = panobject.panhash(sel[0], lang)
 
         signed = panobject_is_signed(panhash0)
       end
@@ -3326,11 +3394,12 @@ module PandoraGUI
 
         dialog.trust_btn.active = signed != 0
         dialog.trust_btn.inconsistent = signed < 0
+        #dialog.lang_entry.active_text = lang.to_s
         #trust_lab = dialog.trust_btn.children[0]
         #trust_lab.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
 
         st_text = '{' + panobject.panhash_pattern_to_s + '}'
-        st_text = panobject.panhash(sel[0], true, true) + ' ' + st_text if sel and sel.size>0
+        st_text = panobject.panhash(sel[0], lang, true, true) + ' ' + st_text if sel and sel.size>0
         PandoraGUI.set_statusbar_text(dialog.statusbar, st_text)
 
         if panobject.class==PandoraModel::Key
@@ -3373,7 +3442,14 @@ module PandoraGUI
             field = dialog.text_fields[index]
             flds_hash[field[FI_Id]] = field[FI_Value]
           end
-          panhash = panobject.panhash(flds_hash)
+          begin
+            lg = dialog.lang_entry.active_text
+            lang = lg.to_i if lg != ''
+          rescue
+            lang = 5
+          end
+
+          panhash = panobject.panhash(flds_hash, lang)
           flds_hash['panhash'] = panhash
           time_now = Time.now.to_i
           flds_hash['modified'] = time_now
@@ -5305,7 +5381,7 @@ module PandoraGUI
     ['Word', Gtk::Stock::SPELL_CHECK, _('Words')],
     ['Language', nil, _('Languages')],
     ['-', nil, '-'],
-    ['Article', nil, _('Articles')],
+    ['Article', Gtk::Stock::DND, _('Articles')],
     ['Blob', Gtk::Stock::HARDDISK, _('Files')], #Gtk::Stock::FILE
     ['-', nil, '-'],
     ['Address', nil, _('Addresses')],
