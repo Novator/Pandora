@@ -52,6 +52,35 @@ case "$PARAMS" in
     sudo apt-get -y install ruby ruby-sqlite3 ruby-gtk2 ruby-gstreamer \
       gstreamer0.10-ffmpeg gstreamer0.10-x openssl libopenssl-ruby
     ;;
+  full|full-init)
+    PANDORA_DIR="/opt/pandora"
+    # 1. Make Pandora application directory
+    sudo mkdir $PANDORA_DIR
+    # 2. Give rights to Pandora to all users
+    sudo chmod -R a+rw $PANDORA_DIR
+    # 3. Go to Pandora directory
+    cd $PANDORA_DIR
+    # 4. Download archive with last Pandora version
+    wget -t 0 -c -T 15 --retry-connrefused=on https://github.com/Novator/Pandora/archive/master.zip
+    # 5. Extract archive [to subdirectory "Pandora-master"]
+    unzip -o ./master.zip
+    # 6. Move files to application directory
+    mv -f ./Pandora-master/* ./
+    # 7. Delete empty "Pandora-master"
+    rm -R ./Pandora-master
+    # 8. Delete unnecessary archive
+    rm ./master.zip
+    # 9. Make main script executable
+    chmod a+x ./pandora.sh
+    # 10. Copy shortcut to Menu
+    sudo cp -f ./view/pandora.desktop /usr/share/applications/
+    # 11. Install additional packets (ruby, openssl, sqlite, gstreamer)
+    ./pandora.sh --init
+    # 12. Give rights to all users again
+    sudo chmod -R a+rw $PANDORA_DIR
+    # 13. Run Pandora
+    $RUBY ./pandora.rb $@
+    ;;
   gem-init|gem-install|--gem-init|--gem-install|-gi|--gem|gem)
     echo "Installing Ruby and necessary packages with apt-get and rubygem.."
     sudo apt-get -y install ruby gstreamer0.10-ffmpeg gstreamer0.10-x openssl rubygems
