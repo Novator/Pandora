@@ -1253,8 +1253,12 @@ module PandoraKernel
             #p [y, m, d]
             #expire = Time.local(y+5, m, d)
             #p expire
+            #p '-------'
+            #p [dmy[2].to_i, dmy[1].to_i, dmy[0].to_i]
 
-            res = Time.local(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i).to_i / (24*60*60)
+            res = Time.local(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i)
+            #p res
+            res = res.to_i / (24*60*60)
             # convert date to 0 year epoch
             res += (1970-1900)*365
             #res = [t].pack('N')
@@ -1593,10 +1597,10 @@ module PandoraGUI
       "- your own release you must distribute with another name and only licensed under GPL;\n"+
       "- if you do not understand the GPL or disagree with it, you have to uninstall the program.\n\n")+gpl_text
     dlg.website = 'http://github.com/Novator/Pandora'
-    if os_family=='unix'
+    #if os_family=='unix'
       dlg.program_name = dlg.name
       dlg.skip_taskbar_hint = true
-    end
+    #end
     dlg.run
     dlg.destroy
     $window.present
@@ -1732,7 +1736,8 @@ module PandoraGUI
 
   # Add button to toolbar
   # RU: Добавить кнопку на панель инструментов
-  def self.add_tool_btn(toolbar, stock, title, toggle=false)
+  def self.add_tool_btn(toolbar, stock, title, toggle=nil)
+    btn = nil
     if toggle != nil
       btn = Gtk::ToggleToolButton.new(stock)
       btn.active = toggle
@@ -1746,8 +1751,8 @@ module PandoraGUI
       new_api = true
     rescue Exception
     end
-    btn.signal_connect('clicked') do
-      yield if block_given?
+    btn.signal_connect('clicked') do |*args|
+      yield(*args) if block_given?
     end
 
     if new_api
@@ -1791,6 +1796,78 @@ module PandoraGUI
       }
     end
 
+    def set_view_buffer(format, view_buffer, raw_buffer)
+      view_buffer.text = raw_buffer.text
+    end
+
+    def set_raw_buffer(format, raw_buffer, view_buffer)
+      raw_buffer.text = view_buffer.text
+    end
+
+    def set_buffers(init=false)
+      child = notebook.get_nth_page(notebook.page)
+      if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::TextView)
+        tv = child.children[0]
+        if init or not @raw_buffer
+          @raw_buffer = tv.buffer
+        end
+        if @view_mode
+          tv.buffer = @view_buffer if tv.buffer != @view_buffer
+        elsif tv.buffer != @raw_buffer
+          tv.buffer = @raw_buffer
+        end
+
+        if @view_mode
+          set_view_buffer(format, @view_buffer, @raw_buffer)
+        else
+          set_raw_buffer(format, @raw_buffer, @view_buffer)
+        end
+      end
+    end
+
+    def set_tag(tag)
+      if tag
+        child = notebook.get_nth_page(notebook.page)
+        if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::TextView)
+          tv = child.children[0]
+          buffer = tv.buffer
+
+          if @view_buffer==buffer
+            bounds = buffer.selection_bounds
+            @view_buffer.apply_tag(tag, bounds[0], bounds[1])
+          else
+            bounds = buffer.selection_bounds
+            ltext = rtext = ''
+            case tag
+              when 'bold'
+                ltext = rtext = '*'
+              when 'italic'
+                ltext = rtext = '/'
+              when 'strike'
+                ltext = rtext = '-'
+              when 'undline'
+                ltext = rtext = '_'
+            end
+            lpos = bounds[0].offset
+            rpos = bounds[1].offset
+            if ltext != ''
+              @raw_buffer.insert(@raw_buffer.get_iter_at_offset(lpos), ltext)
+              lpos += ltext.length
+              rpos += ltext.length
+            end
+            if rtext != ''
+              @raw_buffer.insert(@raw_buffer.get_iter_at_offset(rpos), rtext)
+            end
+            p [lpos, rpos]
+            #buffer.selection_bounds = [bounds[0], rpos]
+            @raw_buffer.move_mark('selection_bound', @raw_buffer.get_iter_at_offset(lpos))
+            @raw_buffer.move_mark('insert', @raw_buffer.get_iter_at_offset(rpos))
+            #@raw_buffer.get_iter_at_offset(0)
+          end
+        end
+      end
+    end
+
     def initialize(apanobject, afields=[], *args)
       super(*args)
       @panobject = apanobject
@@ -1809,11 +1886,24 @@ module PandoraGUI
       toolbar2.toolbar_style = Gtk::Toolbar::Style::ICONS
       panelbox.pack_start(toolbar2, false, false, 0)
 
+      @raw_buffer = nil
+      @view_mode = true
       @view_buffer = Gtk::TextBuffer.new
+      @view_buffer.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
+      @view_buffer.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
+      @view_buffer.create_tag('strike', 'strikethrough' => true)
+      @view_buffer.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
+      @view_buffer.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
+      @view_buffer.create_tag('link', {'foreground' => 'blue', 'underline' => Pango::AttrUnderline::SINGLE})
+      @view_buffer.create_tag('linked', {'foreground' => 'navy', 'underline' => Pango::AttrUnderline::SINGLE})
+      @view_buffer.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
+      @view_buffer.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
+      @view_buffer.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
+      @view_buffer.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
 
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::DND, 'Type', true) do
-        p 'change buffer'
-        p view_buffer
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::DND, 'Type', true) do |btn|
+        @view_mode = btn.active?
+        set_buffers
       end
 
       btn = Gtk::MenuToolButton.new(nil, 'auto')
@@ -1832,23 +1922,39 @@ module PandoraGUI
       toolbar.add(btn)
 
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::BOLD, 'Bold') do
-        p "bold"
+        set_tag('bold')
       end
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::ITALIC, 'Italic')
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::STRIKETHROUGH, 'Strike')
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::UNDERLINE, 'Underline')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::ITALIC, 'Italic') do
+        set_tag('italic')
+      end
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::STRIKETHROUGH, 'Strike') do
+        set_tag('strike')
+      end
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::UNDERLINE, 'Underline') do
+        set_tag('undline')
+      end
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::UNDO, 'Undo')
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::REDO, 'Redo')
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::COPY, 'Copy')
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::CUT, 'Cut')
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::FIND, 'Find')
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_LEFT, 'Left')
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_RIGHT, 'Right')
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_CENTER, 'Center')
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_FILL, 'Fill')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_LEFT, 'Left') do
+        set_tag('left')
+      end
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_RIGHT, 'Right') do
+        set_tag('right')
+      end
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_CENTER, 'Center') do
+        set_tag('center')
+      end
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_FILL, 'Fill') do
+        set_tag('fill')
+      end
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::SAVE, 'Save')
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::OPEN, 'Open')
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link')
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link') do
+        set_tag('link')
+      end
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::HOME, 'Image')
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::OK, 'Ok') { @response=1 }
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::CANCEL, 'Cancel') { @response=2 }
@@ -1869,6 +1975,7 @@ module PandoraGUI
             toolbar2.hide
             hbox.hide
             toolbar.show
+            set_buffers(true)
           else
             toolbar.hide
             hbox.hide
@@ -2728,12 +2835,12 @@ module PandoraGUI
       else
         data = AsciiString.new(data)
         #data.force_encoding('ASCII-8BIT')
-        data = pson_elem_to_rubyobj(data)[0]
+        data = pson_elem_to_rubyobj(data)[0]   # pson to array
         #p 'decrypt: data='+data.inspect
         key.decrypt
         #p 'DDDDDDEEEEECR'
         iv = AsciiString.new(data[1])
-        data = AsciiString.new(data[0])
+        data = AsciiString.new(data[0])  # data from array
         key.key = key_vec[KV_Key1]
         key.iv = iv
       end
@@ -2996,6 +3103,7 @@ module PandoraGUI
           dialog.def_widget = entry
 
           dialog.run do
+            #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
             cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
             cipher_key = entry.text
             #p 'cipher_hash='+cipher_hash.to_s
@@ -4310,7 +4418,8 @@ module PandoraGUI
   def self.socket_recv(socket, maxsize)
     recieved = ''
     begin
-      recieved = socket.recv_nonblock(maxsize)
+      #recieved = socket.recv_nonblock(maxsize)
+      recieved = socket.recv(maxsize)
       recieved = nil if recieved==''  # socket is closed
     rescue Errno::EAGAIN       # no data to read
       recieved = ''
@@ -4950,6 +5059,9 @@ module PandoraGUI
     def init_media
       if not pipeline1
         #begin
+          p '-----'
+          p $gst_on
+          p Gst.constants
           @pipeline1 = Gst::Pipeline.new
           @pipeline2 = Gst::Pipeline.new
 
@@ -5330,17 +5442,19 @@ module PandoraGUI
         end
       when 'Wizard'
 
-        p pson = rubyobj_to_pson_elem(Time.now)
-        p elem = pson_elem_to_rubyobj(pson)
-        p pson = rubyobj_to_pson_elem(12345)
-        p elem = pson_elem_to_rubyobj(pson)
-        p pson = rubyobj_to_pson_elem(['aaa','bbb'])
-        p elem = pson_elem_to_rubyobj(pson)
-        p pson = rubyobj_to_pson_elem({'zzz'=>'bcd', 'ann'=>['789',123], :bbb=>'dsd'})
-        p elem = pson_elem_to_rubyobj(pson)
+        #p pson = rubyobj_to_pson_elem(Time.now)
+        #p elem = pson_elem_to_rubyobj(pson)
+        #p pson = rubyobj_to_pson_elem(12345)
+        #p elem = pson_elem_to_rubyobj(pson)
+        #p pson = rubyobj_to_pson_elem(['aaa','bbb'])
+        #p elem = pson_elem_to_rubyobj(pson)
+        #p pson = rubyobj_to_pson_elem({'zzz'=>'bcd', 'ann'=>['789',123], :bbb=>'dsd'})
+        #p elem = pson_elem_to_rubyobj(pson)
 
+        p OpenSSL::Cipher::ciphers
 
-        cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
+        cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
+        #cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
         p 'cipher_hash16='+cipher_hash.to_s(16)
         type_klen = KT_Rsa | KL_bit2048
         cipher_key = '123'
