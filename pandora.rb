@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# -*- coding: utf-8 -*-
 # encoding: UTF-8
 
 # The Pandora. Free peer-to-peer information system
@@ -1679,13 +1680,13 @@ module PandoraGUI
       window.signal_connect("destroy") { @response=2 }
 
       window.signal_connect('key_press_event') do |widget, event|
-        if (event.hardware_keycode==36) and enter_like_tab  # Enter works like Tab
+        if (event.keyval==Gdk::Keyval::GDK_Tab) and enter_like_tab  # Enter works like Tab
           event.hardware_keycode=23
           event.keyval=Gdk::Keyval::GDK_Tab
           window.signal_emit('key-press-event', event)
           true
-        elsif ((event.hardware_keycode==36) \
-          or ([Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval))) \
+        elsif
+          [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
           and (event.state.control_mask? or (enter_like_ok and (not (self.focus.is_a? Gtk::TextView))))
         then
           #p "=-=-=-"
@@ -1693,17 +1694,13 @@ module PandoraGUI
           #p self.focus.is_a? Gtk::TextView
           okbutton.activate
           true
-        elsif (event.hardware_keycode==9) or #Esc pressed
-          ((event.hardware_keycode==25) and event.state.control_mask?) or #Ctrl+W
-          (Gdk::Keyval::GDK_Escape==event.keyval) or
-          ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W].include?(event.keyval) and event.state.control_mask?)
+        elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+          ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
         then
           cancelbutton.activate
           false
-        elsif ((event.hardware_keycode==24) and event.state.control_mask?) or #Ctrl+Q
-          ((event.hardware_keycode==53) and event.state.mod1_mask?) or #Alt+X
-          ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q].include?(event.keyval) and event.state.control_mask?) or
-          ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X].include?(event.keyval) and event.state.mod1_mask?)
+        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
+          ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
         then
           $window.destroy
           @response=2
@@ -2052,8 +2049,7 @@ module PandoraGUI
           textview.wrap_mode = Gtk::TextTag::WRAP_WORD
 
           textview.signal_connect('key-press-event') do |widget, event|
-            if ((event.hardware_keycode==36) or \
-              [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)) \
+            if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
               and event.state.control_mask?
             then
               true
@@ -3410,6 +3406,33 @@ module PandoraGUI
     res
   end
 
+  def self.time_to_str(val, time_now=nil)
+    time_now ||= Time.now
+    min_ago = (time_now.to_i - val.to_i) / 60
+    if min_ago < 0
+      val = val.strftime('%d.%m.%Y')
+    elsif min_ago == 0
+      val = _('just now')
+    elsif min_ago == 1
+      val = _('a min. ago')
+    else
+      vals = time_now.to_a
+      y, m, d = [vals[5], vals[4], vals[3]]  #current day
+      midnight = Time.local(y, m, d)
+
+      if (min_ago <= 90) and ((val >= midnight) or (min_ago <= 10))
+        val = min_ago.to_s + ' ' + _('min. ago')
+      elsif val >= midnight
+        val = _('today')+' '+val.strftime('%R')
+      elsif val.to_i >= (midnight.to_i-24*3600)  #last midnight
+        val = _('yester')+' '+val.strftime('%R')
+      else
+        val = val.strftime('%d.%m.%y %R')
+      end
+    end
+    val
+  end
+
   # View and edit record dialog
   # RU: Окно просмотра и правки записи
   def self.edit_panobject(tree_view, action)
@@ -3485,12 +3508,62 @@ module PandoraGUI
       else
         i = 0
         formfields = panobject.def_fields.clone
+        tab_flds = panobject.tab_fields
+        #def_flds = panobject.def_fields
+        #def_flds.each_with_index do |df,i|
         formfields.each do |field|
-          fldval = nil
-          fldval = panobject.field_val(field[FI_Id], sel[0]) if (sel != nil) and (sel[0] != nil)
-          fldval = PandoraKernel.bytes_to_hex(fldval) if field[FI_Id]=='panhash'
-          fldval = '' if fldval == nil
-          field[FI_Value] = fldval
+          val = nil
+          id = field[FI_Id]
+          #fldval = PandoraKernel.bytes_to_hex(fldval) if field[FI_Id]=='panhash'
+          col = tab_flds.index{ |tf| tf[0] == id }
+          #fldval = panobject.field_val(id, sel[0]) if (sel != nil) and (sel[0] != nil)
+
+          foreground = 'black'
+          val = sel[0][col] if sel[0].is_a? Array
+          if val
+            tf = tab_flds[col]
+            if tf[2].is_a? Array
+              view = tf[2][7]
+              if view=='date'
+                if val.is_a? Integer
+                  val = Time.at(val)
+                  val = val.strftime('%d.%m.%y')
+                  foreground = '#551111'
+                end
+              elsif view=='time'
+                if val.is_a? Integer
+                  val = Time.at(val)
+                  val = val.strftime('%d.%m.%y %R')
+                  foreground = '#338833'
+                end
+              else
+                if view=='base64'
+                  val = Base64.encode64(val)
+                  foreground = 'brown'
+                elsif view=='phash'
+                  val = PandoraKernel.bytes_to_hex(val) #[2,16]
+                  foreground = 'blue'
+                elsif view=='panhash'
+                  val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,44])
+                  foreground = 'navy'
+                elsif view=='hex'
+                  val = PandoraKernel.bigint_to_bytes(val) if val.is_a? Integer
+                  val = PandoraKernel.bytes_to_hex(val)
+                  foreground = 'red'
+                elsif view=='text'
+                  #val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
+                  foreground = '#226633'
+                  #val = val.rstrip
+                end
+              end
+            end
+            val ||= ''
+            val = val.to_s
+          else
+            val = ''
+          end
+
+          field[FI_Value] = val
         end
         #p formfields
 
@@ -3661,32 +3734,6 @@ module PandoraGUI
 
   end
 
-  def self.time_to_str(val, time_now=nil)
-    time_now ||= Time.now
-    min_ago = (time_now.to_i - val.to_i) / 60
-    if min_ago < 0
-      val = val.strftime('%d.%m.%Y')
-    elsif min_ago == 0
-      val = _('just now')
-    elsif min_ago == 1
-      val = _('a min. ago')
-    else
-      vals = time_now.to_a
-      y, m, d = [vals[5], vals[4], vals[3]]  #current day
-      midnight = Time.local(y, m, d)
-
-      if (min_ago <= 90) and ((val >= midnight) or (min_ago <= 10))
-        val = min_ago.to_s + ' ' + _('min. ago')
-      elsif val >= midnight
-        val = _('today')+' '+val.strftime('%R')
-      elsif val.to_i >= (midnight.to_i-24*3600)  #last midnight
-        val = _('yester')+' '+val.strftime('%R')
-      else
-        val = val.strftime('%d.%m.%y %R')
-      end
-    end
-  end
-
   # Showing panobject list
   # RU: Показ списка субъектов
   def self.show_panobject_list(panobject_class, widget=nil, sw=nil)
@@ -3711,7 +3758,7 @@ module PandoraGUI
     treeview.sel = sel
     tab_flds = panobject.tab_fields
     def_flds = panobject.def_fields
-    def_flds.each_with_index do |df,i|
+    def_flds.each do |df|
       id = df[FI_Id]
       tab_ind = tab_flds.index{ |tf| tf[0] == id }
       if tab_ind
@@ -3741,7 +3788,7 @@ module PandoraGUI
           p 'sort clicked'
         end
         column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
-          col = column.tab_ind
+          col = tvc.tab_ind
           #p fld = panobject.def_fields[col]
           time_now = Time.now
           row = treeview.sel[iter.path.indices[0]]
@@ -3792,12 +3839,6 @@ module PandoraGUI
           else
             val = 'nil'
           end
-
-          # clean text fields
-          #val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ') if fld_def.is_a? Array and fld_def[2]=='Text'
-          # truncate all fields
-          #iter.set_value(i, val.rstrip)
-          #val = model.get_value(iter, col)
 
           renderer.text = val
         end
@@ -4018,6 +4059,7 @@ module PandoraGUI
   # RU: Отправляет команду и данные, если есть !!! ДОБАВИТЬ !!! send_number!, buflen, buf
   def self.send_comm_and_data(socket, index, cmd, code, data=nil)
     data ||=""
+    data = AsciiString.new(data)
     datasize = data.size
     if datasize <= MaxSegSize
       segsign = datasize
@@ -4029,17 +4071,17 @@ module PandoraGUI
     crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
     # Команда как минимум равна 1+1+1+2+1= 6 байт (CommSize)
     p 'SCAB: '+[index, cmd, code, segsign, crc8].inspect
-    comm = [index, cmd, code, segsign, crc8].pack('CCCnC')
+    comm = AsciiString.new([index, cmd, code, segsign, crc8].pack('CCCnC'))
     if index<255 then index += 1 else index = 0 end
-    buf = ''
+    buf = AsciiString.new
     if datasize>0
       if segsign == LONG_SEG_SIGN
         fullcrc32 = Zlib.crc32(data)
         # если пакетов много, то добавить еще 4+4+2= 10 байт
         comm << [datasize, fullcrc32, segsize].pack('NNn')
-        buf = data[0, segsize]
+        buf << data[0, segsize]
       else
-        buf = data
+        buf << data
       end
       segcrc32 = Zlib.crc32(buf)
       # в конце всегда CRC сегмента - 4 байта
@@ -5059,36 +5101,36 @@ module PandoraGUI
     def init_media
       if not pipeline1
         #begin
-          p '-----'
-          p $gst_on
-          p Gst.constants
-          @pipeline1 = Gst::Pipeline.new
-          @pipeline2 = Gst::Pipeline.new
+          Gst.init
 
+          @pipeline1 = Gst::Pipeline.new('pipeline1')
+          @pipeline2 = Gst::Pipeline.new('pipeline2')
+
+          #gst-launch dshowvideosrc ! ffmpegcolorspace ! directdrawsink
+          #webcam = Gst::ElementFactory.make('dshowvideosrc', 'webcam1')
           webcam = Gst::ElementFactory.make('v4l2src')
           webcam.decimate=3
 
-          capsfilter = Gst::ElementFactory.make('capsfilter')
+          capsfilter = Gst::ElementFactory.make('capsfilter', 'capsfilter1')
           capsfilter.caps = Gst::Caps.parse('video/x-raw-rgb,width=320,height=240')
 
-          ffmpegcolorspace1 = Gst::ElementFactory.make('ffmpegcolorspace')
+          ffmpegcolorspace1 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace1')
 
-          tee = Gst::ElementFactory.make('tee')
-          tee.name = 'tee1'
+          tee = Gst::ElementFactory.make('tee', 'tee1')
 
-          queue1 = Gst::ElementFactory.make('queue')
+          queue1 = Gst::ElementFactory.make('queue', 'queue1')
 
-          @xvimagesink = Gst::ElementFactory.make('xvimagesink');
+          @xvimagesink = Gst::ElementFactory.make('xvimagesink', 'xvimagesink1');
           xvimagesink.sync = true
 
           #queue2 = Gst::ElementFactory.make('queue')
 
-          vp8enc = Gst::ElementFactory.make('vp8enc')
+          vp8enc = Gst::ElementFactory.make('vp8enc', 'vp8enc1')
           vp8enc.max_latency=0.5
 
-          appsink = Gst::ElementFactory.make('appsink')
+          appsink = Gst::ElementFactory.make('appsink', 'appsink1')
 
-          appsrc = Gst::ElementFactory.make('appsrc')
+          appsrc = Gst::ElementFactory.make('appsrc', 'appsrc1')
           appsrc.caps = Gst::Caps.parse('caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
           p appsrc.max_bytes
           p appsrc.blocksize
@@ -5106,18 +5148,19 @@ module PandoraGUI
             end
           end
 
-          vp8dec = Gst::ElementFactory.make('vp8dec')
+          vp8dec = Gst::ElementFactory.make('vp8dec', 'vp8dec1')
 
-          ffmpegcolorspace2 = Gst::ElementFactory.make('ffmpegcolorspace')
+          ffmpegcolorspace2 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace2')
 
-          @ximagesink = Gst::ElementFactory.make('ximagesink');
+          @ximagesink = Gst::ElementFactory.make('ximagesink', 'ximagesink2');
           ximagesink.sync = false
 
           #pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, vp8enc, appsink)
           #webcam >> capsfilter >> ffmpegcolorspace1 >> vp8enc >> appsink
           #pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, tee, queue1, xvimagesink, queue2, vp8enc, appsink)
           pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, tee, vp8enc, appsink, queue1, xvimagesink)
-          webcam >> capsfilter >> ffmpegcolorspace1 >> tee >> vp8enc >> appsink
+          webcam >> capsfilter >> ffmpegcolorspace1 >> tee
+          tee >> vp8enc >> appsink
           tee >> queue1 >> xvimagesink
           #tee >> queue2 >> vp8enc >> appsink
 
@@ -5269,18 +5312,14 @@ module PandoraGUI
 
     # because of bug - doesnt work Enter at 'key-press-event'
     editbox.signal_connect('key-release-event') do |widget, event|
-      if (event.hardware_keycode==36) or \
-        [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
-      then
+      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
         widget.signal_emit('key-press-event', event)
         false
       end
     end
 
     editbox.signal_connect('key-press-event') do |widget, event|
-      if (event.hardware_keycode==36) or \
-        [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
-      then
+      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
         if editbox.buffer.text != ''
           mes = editbox.buffer.text
           editbox.buffer.text = ''
@@ -5295,9 +5334,7 @@ module PandoraGUI
           end
         end
         true
-      elsif (event.hardware_keycode==9) or #Esc pressed
-        (Gdk::Keyval::GDK_Escape==event.keyval)
-      then
+      elsif (Gdk::Keyval::GDK_Escape==event.keyval)
         editbox.buffer.text = ''
         false
       else
@@ -5694,10 +5731,8 @@ module PandoraGUI
     end
 
     $window.signal_connect('key-press-event') do |widget, event|
-      if ((event.hardware_keycode==24) and event.state.control_mask?) or #Ctrl+Q
-        ((event.hardware_keycode==53) and event.state.mod1_mask?) or #Alt+X
-        ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q].include?(event.keyval) and event.state.control_mask?) or
-        ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X].include?(event.keyval) and event.state.mod1_mask?)
+      if ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
+        ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
       then
         $window.destroy
       end
