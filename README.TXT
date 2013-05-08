@@ -59,7 +59,7 @@ Optional:
 
 4.1. Download full installation from here:
 
-  https://github.com/Novator/PandoraSetup/raw/master/pandora_setup.exe
+  http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe/download
 
 4.2. Run Pandora from menu:
 
