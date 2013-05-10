@@ -5,9 +5,11 @@ Contents
 
 1) overview
 2) system requirements
-3) installation in Linux
-4) installation in Windows
-5) recommendation to developers
+3) installation in Ubuntu/Debian
+4) installation in other Linux
+5) installation in Windows
+6) update to last version
+7) recommendation to developers
 
 
 1. OVERVIEW
@@ -30,55 +32,83 @@ Optional:
 - GStreamer media library
 
 
-3. INSTALLATION IN LINUX
+3. INSTALLATION IN UBUNTU/DEBIAN
 
-3.1. Create empty directory "Pandora", download archive and extract it:
+Download a package:
+
+  http://sourceforge.net/projects/pandora-net/files/pandora-net_0.1-1ubuntu_all.deb/download
+
+Install it:
+
+  sudo dpkg -i pandora-net_0.1-1ubuntu_all.deb
+
+
+4. INSTALLATION IN OTHER LINUX
+
+4.1. Create empty directory "Pandora", download archive and extract it:
 
   https://github.com/Novator/Pandora/archive/master.zip
 
-3.2. Make the script "pandora.sh" executable:
+4.2. Make the script "pandora.sh" executable:
 
   chmod +x ./pandora.sh
 
-3.3. Install additional packets.
+4.3. Install additional packets.
 
-3.3.1) in Ubuntu just do it:
+4.3.1) in Ubuntu just do it:
 
   sudo ./pandora.sh --init
 
-3.3.2) in other Linux install packets via your Packet Manager:
+4.3.2) in other Linux install packets via your Packet Manager:
 
   ruby ruby-sqlite3 ruby-gtk2 ruby-gstreamer gstreamer0.10-ffmpeg gstreamer0.10-x openssl
 
-3.4. Run Pandora by shell-file:
+4.4. Run Pandora by shell-file:
 
   ./pandora.sh
 
 
-4. INSTALLATION IN WINDOWS
+5. INSTALLATION IN WINDOWS
 
-4.1. Download full installation from here:
+5.1. Download full installation from here:
 
   http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe/download
 
-4.2. Run Pandora from menu:
+5.2. Run Pandora from menu:
 
   "Start" - "Programs" - "Pandora"
 
-4.3. Also you can run Pandora by bat-file:
+5.3. Also you can run Pandora by bat-file:
 
   .\pandora.bat
 
 
-5. RECOMMENDATION TO DEVELOPERS
+6. UPDATE TO LAST VERSION
+
+Download archive, extract:
+
+  https://github.com/Novator/Pandora/archive/master.zip
+
+And overwrite old files by new, default directory for Linux is:
+
+  /opt/pandora/
+
+For Windows:
+
+  C:\Program files\Pandora\
+
+
+7. RECOMMENDATION TO DEVELOPERS
 
 Use git if you want to change a code of Pandora and send patch.
 
-5.1. Install git in Ubuntu:
+5.1. Install git
+
+in Ubuntu:
 
   sudo apt-get install git
 
-5.2. Install git in Windows:
+in Windows:
 
   open with browser "http://code.google.com/p/msysgit/downloads/list"
   download and install last version "Git-N.N.N-previewYYYYMMDD.exe"
