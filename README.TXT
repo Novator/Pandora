@@ -62,6 +62,7 @@ Install it:
 4.3.2) in other Linux install packets via your Packet Manager:
 
   ruby ruby-sqlite3 ruby-gtk2 ruby-gstreamer gstreamer0.10-ffmpeg gstreamer0.10-x openssl
+  gstreamer0.10-plugins-good, gstreamer0.10-plugins-bad
 
 4.4. Run Pandora by shell-file:
 
@@ -95,7 +96,7 @@ And overwrite old files by new, default directory for Linux is:
 
 For Windows:
 
-  C:\Program files\Pandora\
+  C:\Program Files\Pandora\
 
 
 7. RECOMMENDATION TO DEVELOPERS
