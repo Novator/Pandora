@@ -40,7 +40,7 @@ Download a package:
 
 Install it:
 
-  sudo dpkg -i pandora-net_0.1-1ubuntu_all.deb
+  sudo dpkg -i pandora-net_0.1-1precise2_all.deb
 
 
 4. INSTALLATION IN OTHER LINUX
