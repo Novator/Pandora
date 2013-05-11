@@ -61,8 +61,8 @@ Install it:
 
 4.3.2) in other Linux install packets via your Packet Manager:
 
-  ruby ruby-sqlite3 ruby-gtk2 ruby-gstreamer gstreamer0.10-ffmpeg gstreamer0.10-x openssl
-  gstreamer0.10-plugins-good, gstreamer0.10-plugins-bad
+  ruby ruby-sqlite3 ruby-gtk2 ruby-gstreamer gstreamer0.10-ffmpeg gstreamer0.10-x
+  openssl gstreamer0.10-plugins-good, gstreamer0.10-plugins-bad
 
 4.4. Run Pandora by shell-file:
 
@@ -86,11 +86,11 @@ Install it:
 
 6. UPDATE TO LAST VERSION
 
-Download archive, extract:
+Download and extract archive:
 
   https://github.com/Novator/Pandora/archive/master.zip
 
-And overwrite old files by new, default directory for Linux is:
+Overwrite old files by new. The default directory for Linux is:
 
   /opt/pandora/
 
