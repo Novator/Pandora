@@ -217,25 +217,25 @@
 
     <Node name="Node" kind="223">
       <addr name="Address" type="String" size="20" />
-      <tport name="TCP port" type="Integer" />
-      <uport name="UDP port" type="Integer" />
+      <tport name="TCP port" type="Word" />
+      <uport name="UDP port" type="Word" />
       <domain name="Domain" type="String" size="255" />
       <base_id name="Origin" type="String" size="32" />
       <city name="City" type="[City]" />
       <home name="Home" type="[Address]" />
       <coord name="Coord" type="Integer" />
-      <state name="State" type="Integer" />
+      <state name="State" type="Word" />
       <sended name="Sended" type="Integer" />
       <received name="Recieved" type="Integer" />
       <bad_attempts name="Bad attempts" type="Integer" />
-      <ban_time name="Time of ban" type="Date" />
+      <ban_time name="Time of ban" type="Time" />
       <one_ip_count name="Connection from one IP" type="Integer" />
       <session_key name="Panhash of last session key" type="String" size="32" />
-      <last_conn_date name="Last connection" type="Date" />
-      <try_upnp_date name="Last UPnP try" type="Date" />
-      <try_natpmp_date name="Last NAT-PMP try" type="Date" />
-      <last_link_date name="Last received link" type="Date" />
-      <last_trust_date name="Last received trust" type="Date" />
+      <last_conn_time name="Last connection" type="Time" />
+      <try_upnp_time name="Last UPnP try" type="Time" />
+      <try_natpmp_time name="Last NAT-PMP try" type="Time" />
+      <last_link_time name="Last received link" type="Time" />
+      <last_trust_time name="Last received trust" type="Time" />
     </Node>
 
     <Patch name="Patch" kind="224">

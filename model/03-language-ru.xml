@@ -196,9 +196,9 @@
       <ban_time name.ru="Время бана" />
       <one_ip_count name.ru="Соединений с одного IP" />
       <session_key name.ru="Последняя отмычка" />
-      <last_conn_date name.ru="Время последнего соединения" />
-      <try_upnp_date name.ru="Время последней попытки UPnP" />
-      <try_natpmp_date name.ru="Время последней попытки NAT-PMP" />
+      <last_conn_time name.ru="Время последнего соединения" />
+      <try_upnp_time name.ru="Время последней попытки UPnP" />
+      <try_natpmp_time name.ru="Время последней попытки NAT-PMP" />
     </Node>
 
     <Patch name.ru="Изменение|Изменения">

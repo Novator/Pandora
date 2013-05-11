@@ -747,20 +747,22 @@ module PandoraKernel
   FI_WidW    = 19
   FI_WidH    = 20
 
+  $max_hash_len = 20
 
   # Base Pandora's object
   # RU: Базовый объект Пандоры
   class BasePanobject
     class << self
-      #def initialize(*args)
-      #  super(*args)
-      @ider = 'Base Panobject'
-      @name = 'Базовый объект Пандоры'
-      #@lang = true
-      @tables = []
-      @def_fields = []
-      @def_fields_expanded = false
-      #end
+      def initialize(*args)
+        super(*args)
+        @ider = 'Base Panobject'
+        @name = 'Базовый объект Пандоры'
+        #@lang = true
+        @tables = []
+        @def_fields = []
+        @def_fields_expanded = false
+        @panhash_pattern = nil
+      end
       def ider
         @ider
       end
@@ -957,18 +959,22 @@ module PandoraKernel
         hash = ''
         if (fd.is_a? Array) and (fd[FI_Type] != nil)
           case fd[FI_Type].to_s
-            when 'Date'
-              hash = 'date'
-              len = 3
+            when 'Integer', 'Time'
+              hash = 'integer'
+              len = 4
             when 'Byte'
               hash = 'byte'
               len = 1
             when 'Word'
               hash = 'word'
               len = 2
-            when 'Integer'
-              hash = 'integer'
-              len = 4
+            when 'Date'
+              hash = 'date'
+              len = 3
+            else
+              hash = 'hash'
+              len = fd[FI_Size]
+              len = 4 if (not len.is_a? Integer) or (len>4)
           end
         end
         [len, hash]
@@ -1009,7 +1015,7 @@ module PandoraKernel
                       len = 3
                     when 'crc16', 'word'
                       len = 2
-                    when 'crc32', 'integer'
+                    when 'crc32', 'integer', 'time'
                       len = 4
                   end
                 end
@@ -1039,7 +1045,10 @@ module PandoraKernel
             used_len = 0
             nil_count = 0
             last_nil = 0
-            def_flds.each do |e|
+            max_i = def_flds.count
+            i = 0
+            while (i<max_i) and (used_len<$max_hash_len)
+              e = def_flds[i]
               if e[FI_Id] != 'panhash'
                 len, hash = def_hash(e)
                 res << [e[FI_Id], hash, len]
@@ -1050,22 +1059,34 @@ module PandoraKernel
                   last_nil = res.size-1
                 end
               end
+              i += 1
             end
-            mid_len = 0
-            mid_len = (20-used_len)/nil_count if nil_count>0
-            if mid_len>0
-              tail = 20
-              res.each_with_index do |e,i|
-                if (e[2]<=0)
-                  if (i==last_nil)
-                    e[2]=tail
-                  else
-                    e[2]=mid_len
+            if used_len<$max_hash_len
+              mid_len = 0
+              mid_len = ($max_hash_len-used_len)/nil_count if nil_count>0
+              if mid_len>0
+                tail = 20
+                res.each_with_index do |e,i|
+                  if (e[2]<=0)
+                    if (i==last_nil)
+                      e[2]=tail
+                     used_len += tail
+                    else
+                      e[2]=mid_len
+                      used_len += mid_len
+                    end
                   end
+                  tail -= e[2]
                 end
-                tail -= e[2]
               end
             end
+            res.delete_if {|e| (not e[2].is_a? Integer) or (e[2]==0) }
+            i = res.count-1
+            while (i>0) and (used_len > $max_hash_len)
+              used_len -= res[i][2]
+              i -= 1
+            end
+            res = res[0, i+1]
           end
         end
         #p 'pan_pattern='+res.inspect
@@ -1190,7 +1211,10 @@ module PandoraKernel
       self.class.field_title(fd)
     end
     def panhash_pattern
-      self.class.panhash_pattern
+      if not @panhash_pattern
+        @panhash_pattern = self.class.panhash_pattern
+      end
+      @panhash_pattern
     end
     def panhash_pattern_to_s
       res = ''
@@ -1210,7 +1234,7 @@ module PandoraKernel
               found = equaled.count<=1
               s += 1
             end
-            nr = n if not found
+            nr = n[0, 8] if not found
             ppr[i] = nr
           else
             ppr[i] = n.to_s
@@ -1663,21 +1687,21 @@ module PandoraGUI
 
       @okbutton = Gtk::Button.new(Gtk::Stock::OK)
       okbutton.width_request = 110
-      okbutton.signal_connect('clicked') { @response=1 }
+      okbutton.signal_connect('clicked') { |*args| @response=1 }
       bbox.pack_start(okbutton, false, false, 0)
 
       @cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
       cancelbutton.width_request = 110
-      cancelbutton.signal_connect('clicked') { @response=2 }
+      cancelbutton.signal_connect('clicked') { |*args| @response=2 }
       bbox.pack_start(cancelbutton, false, false, 0)
 
       hbox.pack_start(bbox, true, false, 1.0)
 
-      window.signal_connect("delete-event") {
+      window.signal_connect("delete-event") { |*args|
         @response=2
         false
       }
-      window.signal_connect("destroy") { @response=2 }
+      window.signal_connect("destroy") { |*args| @response=2 }
 
       window.signal_connect('key_press_event') do |widget, event|
         if (event.keyval==Gdk::Keyval::GDK_Tab) and enter_like_tab  # Enter works like Tab
@@ -1766,22 +1790,6 @@ module PandoraGUI
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
       :support_btn, :trust_btn, :public_btn, :lang_entry, :format, :view_buffer
-
-    def select_file
-      button = Gtk::FileChooserButton.new("Select a file", Gtk::FileChooser::ACTION_OPEN)
-      button.current_folder = "/etc"
-      #======
-      res = nil
-      fs = Gtk::FileSelection.new(_('Select a file'))
-      fs.ok_button.signal_connect('clicked') do
-        res = fs.filename
-      end
-      #fs.cancel_button.signal_connect("clicked") do
-      #  Gtk.main_quit
-      #end
-      fs.show_all
-      res
-    end
 
     def add_menu_item(label, menu, text)
       mi = Gtk::MenuItem.new(text)
@@ -1918,16 +1926,16 @@ module PandoraGUI
       menu.show_all
       toolbar.add(btn)
 
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::BOLD, 'Bold') do
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::BOLD, 'Bold') do |*args|
         set_tag('bold')
       end
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::ITALIC, 'Italic') do
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::ITALIC, 'Italic') do |*args|
         set_tag('italic')
       end
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::STRIKETHROUGH, 'Strike') do
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::STRIKETHROUGH, 'Strike') do |*args|
         set_tag('strike')
       end
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::UNDERLINE, 'Underline') do
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::UNDERLINE, 'Underline') do |*args|
         set_tag('undline')
       end
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::UNDO, 'Undo')
@@ -1935,31 +1943,31 @@ module PandoraGUI
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::COPY, 'Copy')
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::CUT, 'Cut')
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::FIND, 'Find')
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_LEFT, 'Left') do
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_LEFT, 'Left') do |*args|
         set_tag('left')
       end
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_RIGHT, 'Right') do
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_RIGHT, 'Right') do |*args|
         set_tag('right')
       end
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_CENTER, 'Center') do
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_CENTER, 'Center') do |*args|
         set_tag('center')
       end
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_FILL, 'Fill') do
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_FILL, 'Fill') do |*args|
         set_tag('fill')
       end
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::SAVE, 'Save')
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::OPEN, 'Open')
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link') do
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link') do |*args|
         set_tag('link')
       end
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::HOME, 'Image')
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::OK, 'Ok') { @response=1 }
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::CANCEL, 'Cancel') { @response=2 }
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::OK, 'Ok') { |*args| @response=1 }
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=2 }
 
       PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::ADD, 'Add')
       PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::DELETE, 'Delete')
-      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::OK, 'Ok') { @response=1 }
-      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::CANCEL, 'Cancel') { @response=2 }
+      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::OK, 'Ok') { |*args| @response=1 }
+      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=2 }
 
       notebook.signal_connect('switch-page') do |widget, page, page_num|
         if page_num==0
@@ -1997,16 +2005,13 @@ module PandoraGUI
       #rbvbox = Gtk::VBox.new
 
       @support_btn = Gtk::CheckButton.new(_('support'), true)
-      support_btn.signal_connect('toggled') do |widget, event|
-        p "support"
-      end
+      #support_btn.signal_connect('toggled') do |widget|
+      #  p "support"
+      #end
       #rbvbox.pack_start(support_btn, false, false, 0)
       hbox.pack_start(support_btn, false, false, 0)
 
       @trust_btn = Gtk::CheckButton.new(_('trust'), true)
-      trust_btn.signal_connect('toggled') do |widget, event|
-        p "trust"
-      end
       trust_btn.signal_connect('clicked') do |widget|
         if not widget.destroyed? and widget.inconsistent?
           widget.inconsistent = false
@@ -2016,9 +2021,9 @@ module PandoraGUI
       hbox.pack_start(trust_btn, false, false, 0)
 
       @public_btn = Gtk::CheckButton.new(_('public'), true)
-      public_btn.signal_connect('toggled') do |widget, event|
-        p "public"
-      end
+      #public_btn.signal_connect('toggled') do |widget|
+      #  p "public"
+      #end
       hbox.pack_start(public_btn, false, false, 0)
 
       @lang_entry = Gtk::ComboBoxEntry.new(true)
@@ -3450,7 +3455,7 @@ module PandoraGUI
         first_lab_widget = $notebook.get_tab_label($notebook.children[ind]).children[0]
         if first_lab_widget.is_a? Gtk::Image
           image = first_lab_widget
-          panobj_icon = $window.render_icon(image.stock, Gtk::IconSize::MENU)
+          panobj_icon = $window.render_icon(image.stock, Gtk::IconSize::MENU).dup
         end
       end
       panobj_icon
@@ -3513,65 +3518,61 @@ module PandoraGUI
         #def_flds.each_with_index do |df,i|
         formfields.each do |field|
           val = nil
-          id = field[FI_Id]
+          fid = field[FI_Id]
           #fldval = PandoraKernel.bytes_to_hex(fldval) if field[FI_Id]=='panhash'
-          col = tab_flds.index{ |tf| tf[0] == id }
+          col = tab_flds.index{ |tf| tf[0] == fid }
           #fldval = panobject.field_val(id, sel[0]) if (sel != nil) and (sel[0] != nil)
 
           foreground = 'black'
-          val = sel[0][col] if sel[0].is_a? Array
-          if val
-            tf = tab_flds[col]
-            if tf[2].is_a? Array
-              view = tf[2][7]
-              if view=='date'
-                if val.is_a? Integer
-                  val = Time.at(val)
-                  val = val.strftime('%d.%m.%y')
-                  foreground = '#551111'
-                end
-              elsif view=='time'
-                if val.is_a? Integer
-                  val = Time.at(val)
-                  val = val.strftime('%d.%m.%y %R')
-                  foreground = '#338833'
-                end
-              else
-                if view=='base64'
-                  val = Base64.encode64(val)
-                  foreground = 'brown'
-                elsif view=='phash'
-                  val = PandoraKernel.bytes_to_hex(val) #[2,16]
-                  foreground = 'blue'
-                elsif view=='panhash'
-                  val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,44])
-                  foreground = 'navy'
-                elsif view=='hex'
-                  val = PandoraKernel.bigint_to_bytes(val) if val.is_a? Integer
-                  val = PandoraKernel.bytes_to_hex(val)
-                  foreground = 'red'
-                elsif view=='text'
-                  #val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
-                  foreground = '#226633'
-                  #val = val.rstrip
-                end
+          val = sel[0][col] if col and sel and sel[0].is_a? Array
+          type = field[FI_Type]
+          view = field[FI_View]
+          if val and view
+            if view=='date'
+              if val.is_a? Integer
+                val = Time.at(val)
+                val = val.strftime('%d.%m.%y')
+                foreground = '#551111'
               end
+            elsif view=='time'
+              if val.is_a? Integer
+                val = Time.at(val)
+                val = val.strftime('%d.%m.%y %R')
+                foreground = '#338833'
+              end
+            elsif view=='base64'
+              if type=='text'
+                val = Base64.encode64(val)
+                foreground = 'brown'
+              else
+                val = Base64.strict_encode64(val)
+                foreground = 'brown'
+              end
+            elsif view=='phash'
+              val = PandoraKernel.bytes_to_hex(val) #[2,16]
+              foreground = 'blue'
+            elsif view=='panhash'
+              val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,44])
+              foreground = 'navy'
+            elsif view=='hex'
+              val = PandoraKernel.bigint_to_bytes(val) if val.is_a? Integer
+              val = PandoraKernel.bytes_to_hex(val)
+              foreground = 'red'
+            elsif view=='text'
+              #val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
+              foreground = '#226633'
+              #val = val.rstrip
             end
-            val ||= ''
-            val = val.to_s
-          else
-            val = ''
           end
+          val ||= ''
+          val = val.to_s
 
           field[FI_Value] = val
         end
         #p formfields
 
         dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
-        begin
-          dialog.icon = panobjecticon if panobjecticon
-        rescue
-        end
+        dialog.icon = panobjecticon if panobjecticon
 
         dialog.trust_btn.active = signed != 0
         dialog.trust_btn.inconsistent = signed < 0
@@ -3714,7 +3715,7 @@ module PandoraGUI
         btn.modify_style(style)
         wim,him = Gtk::IconSize.lookup(Gtk::IconSize::MENU)
         btn.set_size_request(wim+2,him+2)
-        btn.signal_connect('clicked') do
+        btn.signal_connect('clicked') do |*args|
           yield if block_given?
           $notebook.remove_page($notebook.children.index(bodywin))
           label_box.destroy if not label_box.destroyed?
@@ -3811,7 +3812,7 @@ module PandoraGUI
                 end
               else
                 if view=='base64'
-                  val = Base64.encode64(val)
+                  val = Base64.strict_encode64(val)
                   renderer.foreground = 'brown'
                 elsif view=='phash'
                   val = PandoraKernel.bytes_to_hex(val) #[2,16]
@@ -5180,7 +5181,7 @@ module PandoraGUI
             end
             true
           end
-          area.signal_connect('expose-event') do
+          area.signal_connect('expose-event') do |*args|
             ximagesink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
           end
 
@@ -5193,7 +5194,7 @@ module PandoraGUI
             end
             true
           end
-          area2.signal_connect('expose-event') do
+          area2.signal_connect('expose-event') do |*args|
             xvimagesink.xwindow_id = area2.window.xid if not area2.destroyed? and (area2.window != nil)
           end
 
@@ -5247,7 +5248,7 @@ module PandoraGUI
     bbox.spacing = 5
 
     online_button = Gtk::CheckButton.new(_('Online'), true)
-    online_button.signal_connect('toggled') do |widget, event|
+    online_button.signal_connect('toggled') do |widget|
       if widget.active?
         p "connect!!!"
         connection = connection_of_node(node)
@@ -5266,13 +5267,13 @@ module PandoraGUI
     bbox.pack_start(online_button, false, false, 0)
 
     snd_button = Gtk::CheckButton.new(_('Sound'), true)
-    snd_button.signal_connect('toggled') do |widget, event|
+    snd_button.signal_connect('toggled') do |widget|
       p 'Sound: '+widget.active?.to_s
     end
     bbox.pack_start(snd_button, false, false, 0)
 
     vid_button = Gtk::CheckButton.new(_('Video'), true)
-    vid_button.signal_connect('toggled') do |widget, event|
+    vid_button.signal_connect('toggled') do |widget|
       send_mes_to_node('video:'+widget.active?.to_s+':', node)
       if widget.active?
         sw.init_media
@@ -5376,7 +5377,7 @@ module PandoraGUI
       end
     end
 
-    area.signal_connect('destroy') do
+    area.signal_connect('destroy') do |*args|
       sw.stop_pipeline
     end
 
@@ -5634,7 +5635,7 @@ module PandoraGUI
             new_api = true
           rescue Exception
           end
-          btn.signal_connect('clicked') { child.activate }
+          btn.signal_connect('clicked') { |*args| child.activate }
           if new_api
             toolbar.add(btn)
           else
@@ -5725,7 +5726,7 @@ module PandoraGUI
     $window.set_default_size(640, 420)
     $window.maximize
     $window.show_all
-    $window.signal_connect('destroy') do
+    $window.signal_connect('destroy') do |*args|
       #sw.stop_pipeline
       Gtk.main_quit
     end
@@ -5762,7 +5763,7 @@ module PandoraGUI
             end
             @statusicon.title = $window.title
             @statusicon.tooltip = $window.title
-            @statusicon.signal_connect('activate') do
+            @statusicon.signal_connect('activate') do |*args|
               #$window.skip_taskbar_hint = false
               $window.deiconify
               $window.show_all

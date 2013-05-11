@@ -18,6 +18,13 @@
       <origin_place pos="|+1" fsize="34" />
     </Community>
 
+    <Article>
+      <name pos="|" />
+      <type pos="|" />
+      <text view="base64" />
+      <hash view="hex" />
+    </Article>
+
   </World>
 
   <Pandora name="Pandora Node">
@@ -54,13 +61,6 @@
       <packed view="hex" />
       <sign view="base64" />
     </Sign>
-
-    <Article>
-      <name pos="|" />
-      <type pos="|" />
-      <text view="text" />
-      <hash view="hex" />
-    </Article>
 
   </Pandora>
 
