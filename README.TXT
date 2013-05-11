@@ -36,7 +36,7 @@ Optional:
 
 Download a package:
 
-  http://sourceforge.net/projects/pandora-net/files/pandora-net_0.1-1ubuntu_all.deb/download
+  http://sourceforge.net/projects/pandora-net/files/pandora-net_0.1-1precise2_all.deb/download
 
 Install it:
 
