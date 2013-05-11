@@ -103,7 +103,7 @@ For Windows:
 
 Use git if you want to change a code of Pandora and send patch.
 
-5.1. Install git
+7.1. Install git
 
 in Ubuntu:
 
@@ -114,7 +114,7 @@ in Windows:
   open with browser "http://code.google.com/p/msysgit/downloads/list"
   download and install last version "Git-N.N.N-previewYYYYMMDD.exe"
 
-5.3. Create empty directory "Pandora.dev", stay there, download Pandora with command:
+7.2. Create empty directory "Pandora.dev", stay there, download Pandora with command:
 
   git clone --depth=1 https://github.com/Novator/Pandora.git
 
