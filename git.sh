@@ -46,8 +46,8 @@ git push -u origin master
 ## Rename file or directory
 #git mv ruby.exe rubyfull.exe
 
-## Getting repository to local directory
-#git clone https://github.com/Novator/Pandora.git
+## Getting repository to local without history
+#git clone --depth=1 https://github.com/Novator/Pandora.git
 
 ## Getting changes from repository to local (with or without merge)
 #git pull
@@ -56,8 +56,8 @@ git push -u origin master
 ## Merge pull from another brunch
 #git pull https://github.com/rc5hack/Pandora master
 
-##Delete history of commits
-##(you need to modify "pick" to "s" in all lines besides first)
+##See number of commits, merge commits and update repository
+##(set number of commits after "HEAD~", modify "pick" to "s" in all lines besides first)
 #git reflog
 #git rebase -i HEAD~4
 #git push -f
