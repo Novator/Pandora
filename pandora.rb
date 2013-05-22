@@ -85,6 +85,7 @@ require 'socket'
 require 'digest'
 require 'base64'
 require 'net/http'
+require 'net/https'
 begin
   require 'jcode'
   $jcode_on = true
@@ -3048,7 +3049,7 @@ module PandoraGUI
   # RU: Проверить обновления и скачать их
   def self.start_updating(all_step=true)
 
-    upd_list = ['model/01-base.xml', 'model/02-form.xml', 'pandora.sh', 'model/03-language-ru.xml', \
+    upd_list = ['model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'model/03-language-ru.xml', \
       'lang/ru.txt', 'pandora.bat']
 
     def self.update_file(http, path, pfn)
@@ -3084,21 +3085,27 @@ module PandoraGUI
           main_uri = URI('https://raw.github.com/Novator/Pandora/master/pandora.rb')
           arch_uri = URI('https://codeload.github.com/Novator/Pandora/zip/master')
 
+          time = 0
           http = nil
           if File.stat(main_script).writable?
             begin
+              #p '-----------'
+              #p [main_uri.host, main_uri.port, main_uri.path]
               http = Net::HTTP.new(main_uri.host, main_uri.port)
               http.use_ssl = true
-              http.open_timeout = 60
+              http.open_timeout = 60*5
               response = http.request_head(main_uri.path)
               if (response.content_length == curr_size)
                 http = nil
                 set_status_field(SF_Update, 'Updated')
                 PandoraGUI.set_param('last_updated', Time.now)
+              else
+                time = Time.now.to_i
               end
-            rescue
+            rescue => err
               http = nil
               set_status_field(SF_Update, 'Connection error')
+              log_message(LM_Warning, 'Connection error 1: '+err.inspect)
             end
           else
             set_status_field(SF_Update, 'Read only')
@@ -3107,13 +3114,16 @@ module PandoraGUI
             set_status_field(SF_Update, 'Need update')
             Thread.stop #if not Thread.current[:all_step]
 
-            begin
-              http = Net::HTTP.new(main_uri.host, main_uri.port)
-              http.use_ssl = true
-              http.open_timeout = 60
-            rescue
-              http = nil
-              set_status_field(SF_Update, 'Connection error')
+            if Time.now.to_i >= time + 60*5
+              begin
+                http = Net::HTTP.new(main_uri.host, main_uri.port)
+                http.use_ssl = true
+                http.open_timeout = 60*5
+              rescue => err
+                http = nil
+                set_status_field(SF_Update, 'Connection error')
+                log_message(LM_Warning, 'Connection error 2: '+err.inspect)
+              end
             end
 
             if http
@@ -3123,7 +3133,12 @@ module PandoraGUI
                 fn_sys = fn
                 fn_sys.gsub!('/', "\\") if os_family=='windows'
                 pfn = File.join($pandora_root_dir, fn_sys)
-                update_file(http, '/Novator/Pandora/master/'+fn, pfn) if File.stat(pfn).writable?
+                if File.exist?(pfn) and File.stat(pfn).writable?
+                  downloaded = downloaded and update_file(http, '/Novator/Pandora/master/'+fn, pfn)
+                else
+                  downloaded = false
+                  log_message(LM_Warning, 'Not exist or read only: '+pfn)
+                end
               end
               if downloaded
                 PandoraGUI.set_param('last_updated', Time.now)
