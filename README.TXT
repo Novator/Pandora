@@ -45,32 +45,18 @@ Install it:
 
 4. INSTALLATION IN OTHER LINUX
 
-4.1. Create empty directory "Pandora", download archive and extract it:
+4.1. Download Pandora shell file, make executable and run with "--full-init":
 
-  sudo mkdir /opt/pandora
-  sudo chmod a+rw /opt/pandora
-  cd /opt/pandora
-  wget https://github.com/Novator/Pandora/archive/master.zip
-  unzip -o ./master.zip
-  mv -f ./Pandora-master/* ./
-  rm -R ./Pandora-master
+  wget https://raw.github.com/Novator/Pandora/master/pandora.rb
+  chmod +x ./pandora.sh
+  ./pandora.sh --full-init
 
-4.2. Install additional packets.
-
-4.2.1) in Ubuntu just do it:
-
-  sudo ./pandora.sh --init
-
-4.2.2) in other Linux install packets via your Packet Manager:
+4.2. Install packets with Packet Manager if they didn't installed automatically:
 
   ruby, ruby-sqlite3, ruby-gtk2, ruby-gstreamer, openssl, gstreamer0.10-x,
   gstreamer0.10-ffmpeg, gstreamer0.10-plugins-good, gstreamer0.10-plugins-bad
 
-4.3. Inject application shortcut:
-
-  sudo cp -f ./view/pandora.desktop /usr/share/applications
-
-4.4. Run Pandora from menu "Start-Network-Pandora" or use shell:
+4.3. Run Pandora from menu "Start-Network-Pandora" or use shell:
 
   ./pandora.sh
 
