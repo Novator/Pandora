@@ -52,7 +52,7 @@ case "$PARAMS" in
     sudo apt-get -y install ruby ruby-sqlite3 ruby-gtk2 ruby-gstreamer \
       gstreamer0.10-ffmpeg gstreamer0.10-x openssl libopenssl-ruby
     ;;
-  full|full-init)
+  full|full-init|--full|--full-init|-fi)
     PANDORA_DIR="/opt/pandora"
     # 1. Make Pandora application directory
     sudo mkdir $PANDORA_DIR
