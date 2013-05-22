@@ -27,7 +27,11 @@ if RUBY_VERSION<'1.9'
 else
   class AsciiString < String
     def initialize(*args)
-      super(*args)
+      if args
+        super(*args)
+      else
+        super
+      end
       force_encoding('ASCII-8BIT')
     end
   end
@@ -80,6 +84,7 @@ require 'zlib'
 require 'socket'
 require 'digest'
 require 'base64'
+require 'net/http'
 begin
   require 'jcode'
   $jcode_on = true
@@ -409,6 +414,17 @@ module PandoraKernel
     end
   end
 
+  def self.ruby_val_to_sqlite_val(v)
+    if v.is_a? Time
+      v = v.to_i
+    elsif v.is_a? TrueClass
+      v = 1
+    elsif v.is_a? FalseClass
+      v = 0
+    end
+    v
+  end
+
   # Table definitions of SQLite from fields definitions
   # RU: Описание таблицы SQLite из описания полей
   def self.panobj_fld_to_sqlite_tab(panobj_fld)
@@ -537,9 +553,10 @@ module PandoraKernel
             fname = names[i]
             if fname != nil
               sql = sql + ',' if sql != ''
-              v.is_a? String
+              #v.is_a? String
               #v.force_encoding('ASCII-8BIT')  and v.is_a? String
               #v = AsciiString.new(v) if v.is_a? String
+              v = PandoraKernel.ruby_val_to_sqlite_val(v)
               sql_values << v
               sql = sql + fname.to_s + '=?'
             end
@@ -560,6 +577,7 @@ module PandoraKernel
               sql2 = sql2 + '?'
               #v.force_encoding('ASCII-8BIT')  and v.is_a? String
               #v = AsciiString.new(v) if v.is_a? String
+              v = PandoraKernel.ruby_val_to_sqlite_val(v)
               sql_values << v
             end
           end
@@ -569,8 +587,8 @@ module PandoraKernel
       tfd = fields_table(table_name)
       if (tfd != nil) and (tfd != [])
         sql_values = sql_values+sql_values2
-        p 'upd_tab: sql='+sql.inspect
-        #p 'upd_tab: sql_values='+sql_values.inspect
+        p '1upd_tab: sql='+sql.inspect
+        p '2upd_tab: sql_values='+sql_values.inspect
         res = db.execute(sql, sql_values)
         #p 'upd_tab: db.execute.res='+res.inspect
         res = true
@@ -1993,7 +2011,7 @@ module PandoraGUI
       viewport.add(@vbox)
 
       @statusbar = Gtk::Statusbar.new
-      PandoraGUI.set_statusbar_text($statusbar, '')
+      PandoraGUI.set_statusbar_text(statusbar, '')
       statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
       listen_btn = Gtk::Button.new(_('Panhash'))
       listen_btn.relief = Gtk::RELIEF_NONE
@@ -2933,7 +2951,7 @@ module PandoraGUI
               value = 0
             end
           when PT_Bool
-            value = defval and ((defval.downcase=='true') or (defval=='1'))
+            value = (defval and ((defval.downcase=='true') or (defval=='1')))
           when PT_Time
             if defval
               value = Time.parse(defval)  #Time.strptime(defval, '%d.%m.%Y')
@@ -2997,10 +3015,11 @@ module PandoraGUI
     attr_accessor :the_current_key
   end
 
-  SF_Auth   = 0
-  SF_Listen = 1
-  SF_Hunt   = 2
-  SF_Conn   = 3
+  SF_Update = 0
+  SF_Auth   = 1
+  SF_Listen = 2
+  SF_Hunt   = 3
+  SF_Conn   = 4
 
   $status_fields = []
 
@@ -3008,6 +3027,11 @@ module PandoraGUI
     $statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0) if ($status_fields != [])
     btn = Gtk::Button.new(_(text))
     btn.relief = Gtk::RELIEF_NONE
+    if block_given?
+      btn.signal_connect('clicked') do |*args|
+        yield(*args)
+      end
+    end
     $statusbar.pack_start(btn, false, false, 0)
     $status_fields[index] = btn
   end
@@ -3015,6 +3039,120 @@ module PandoraGUI
   def self.set_status_field(index, text)
     $status_fields[index].label = _(text) if $status_fields[index]
   end
+
+
+  $update_interval = 30
+  $download_thread = nil
+
+  # Check updated files and download them
+  # RU: Проверить обновления и скачать их
+  def self.start_updating(all_step=true)
+
+    upd_list = ['model/01-base.xml', 'model/02-form.xml', 'pandora.sh', 'model/03-language-ru.xml', \
+      'lang/ru.txt', 'pandora.bat']
+
+    def self.update_file(http, path, pfn)
+      res = false
+      begin
+        response = http.request_get(path)
+        File.open(pfn, 'wb+') do |file|
+          file.write(response.body)
+          res = true
+        end
+      rescue => err
+        puts 'Update error: '+err.inspect
+      end
+      res
+    end
+
+    if $download_thread and $download_thread.alive?
+      $download_thread[:all_step] = all_step
+      $download_thread.run if $download_thread.stop?
+    else
+      $download_thread = Thread.new do
+        Thread.current[:all_step] = all_step
+        downloaded = false
+
+        set_status_field(SF_Update, 'Need check')
+        sleep($update_interval) if not Thread.current[:all_step]
+
+        set_status_field(SF_Update, 'Checking')
+        main_script = File.join($pandora_root_dir, 'pandora.rb')
+        curr_size = File.size?(main_script)
+        if curr_size
+          arch_name = File.join($pandora_root_dir, 'master.zip')
+          main_uri = URI('https://raw.github.com/Novator/Pandora/master/pandora.rb')
+          arch_uri = URI('https://codeload.github.com/Novator/Pandora/zip/master')
+
+          http = nil
+          if File.stat(main_script).writable?
+            begin
+              http = Net::HTTP.new(main_uri.host, main_uri.port)
+              http.use_ssl = true
+              http.open_timeout = 60
+              response = http.request_head(main_uri.path)
+              if (response.content_length == curr_size)
+                http = nil
+                set_status_field(SF_Update, 'Updated')
+                PandoraGUI.set_param('last_updated', Time.now)
+              end
+            rescue
+              http = nil
+              set_status_field(SF_Update, 'Connection error')
+            end
+          else
+            set_status_field(SF_Update, 'Read only')
+          end
+          if http
+            set_status_field(SF_Update, 'Need update')
+            Thread.stop #if not Thread.current[:all_step]
+
+            begin
+              http = Net::HTTP.new(main_uri.host, main_uri.port)
+              http.use_ssl = true
+              http.open_timeout = 60
+            rescue
+              http = nil
+              set_status_field(SF_Update, 'Connection error')
+            end
+
+            if http
+              set_status_field(SF_Update, 'Updating')
+              downloaded = update_file(http, main_uri.path, main_script)
+              upd_list.each do |fn|
+                fn_sys = fn
+                fn_sys.gsub!('/', "\\") if os_family=='windows'
+                pfn = File.join($pandora_root_dir, fn_sys)
+                update_file(http, '/Novator/Pandora/master/'+fn, pfn) if File.stat(pfn).writable?
+              end
+              if downloaded
+                PandoraGUI.set_param('last_updated', Time.now)
+                set_status_field(SF_Update, 'Need reboot')
+                Thread.stop
+                Gtk.main_quit
+              else
+                set_status_field(SF_Update, 'Updating error')
+              end
+            end
+          end
+        end
+        #if downloaded
+        #  dialog = Gtk::MessageDialog.new(nil, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
+        #    Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL,
+        #    _('Updates were downloaded. Restart Pandora to get effect?'))
+        #  dialog.title = _('Update')
+        #  dialog.default_response = Gtk::Dialog::RESPONSE_OK
+        #  dialog.icon = $window.icon
+        #  if dialog.run == Gtk::Dialog::RESPONSE_OK
+        #    Gtk.main_quit
+        #  end
+        #  dialog.destroy
+        #end
+        $download_thread = nil
+      end
+    end
+  end
+
 
   def self.reset_current_key
     deactivate_key(self.the_current_key) if self.the_current_key
@@ -5411,8 +5549,13 @@ module PandoraGUI
 
   # Menu event handler
   # RU: Обработчик события меню
-  def self.do_menu_act(widget)
-    case widget.name
+  def self.do_menu_act(command)
+    widget = nil
+    if not command.is_a? String
+      widget = command
+      command = widget.name
+    end
+    case command
       when 'Quit'
         $window.destroy
       when 'About'
@@ -5428,7 +5571,7 @@ module PandoraGUI
         if $notebook.page >= 0
           sw = $notebook.get_nth_page($notebook.page)
           treeview = sw.children[0]
-          edit_panobject(treeview, widget.name) if treeview.is_a? PandoraGUI::SubjTreeView
+          edit_panobject(treeview, command) if treeview.is_a? PandoraGUI::SubjTreeView
         end
       when 'Clone'
         if $notebook.page >= 0
@@ -5506,12 +5649,12 @@ module PandoraGUI
 
         #p get_param('base_id')
       else
-        panobj_id = widget.name
+        panobj_id = command
         if PandoraModel.const_defined? panobj_id
           panobject_class = PandoraModel.const_get(panobj_id)
           show_panobject_list(panobject_class, widget)
         else
-          log_message(LM_Warning, _('Menu handler is not defined yet')+' ['+panobj_id+']')
+          log_message(LM_Warning, _('Menu handler is not defined yet')+' "'+panobj_id+'"')
         end
     end
   end
@@ -5529,7 +5672,6 @@ module PandoraGUI
     ['Street', nil, _('Streets')],
     ['Thing', nil, _('Things')],
     ['Activity', nil, _('Activities')],
-    ['Currency', nil, _('Currency')],
     ['Word', Gtk::Stock::SPELL_CHECK, _('Words')],
     ['Language', nil, _('Languages')],
     ['-', nil, '-'],
@@ -5548,6 +5690,7 @@ module PandoraGUI
     ['Storage', nil, _('Storages')],
     ['Product', nil, _('Products')],
     ['Service', nil, _('Services')],
+    ['Currency', nil, _('Currency')],
     ['-', nil, '-'],
     ['Ad', nil, _('Ads')],
     ['Order', nil, _('Orders')],
@@ -5693,10 +5836,21 @@ module PandoraGUI
     $statusbar = Gtk::Statusbar.new
     PandoraGUI.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
 
-    add_status_field(SF_Auth, 'Not logged')
-    add_status_field(SF_Listen, 'Not listen')
-    add_status_field(SF_Hunt, 'No hunt')
-    add_status_field(SF_Conn, '0/0/0')
+    add_status_field(SF_Update, 'Not checked') do
+      start_updating(true)
+    end
+    add_status_field(SF_Auth, 'Not logged') do
+      do_menu_act('Authorize')
+    end
+    add_status_field(SF_Listen, 'Not listen') do
+      do_menu_act('Listen')
+    end
+    add_status_field(SF_Hunt, 'No hunt') do
+      do_menu_act('Hunt')
+    end
+    add_status_field(SF_Conn, '0/0/0') do
+      do_menu_act('Nodes')
+    end
 
     sw = Gtk::ScrolledWindow.new(nil, nil)
     sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
@@ -5735,7 +5889,8 @@ module PandoraGUI
       if ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
         ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
       then
-        $window.destroy
+        #$window.destroy
+        Gtk.main_quit
       end
       false
     end
@@ -5776,13 +5931,22 @@ module PandoraGUI
       end
     end
 
+    check_update = PandoraGUI.get_param('check_update')
+    if (check_update==1) or (check_update==true)
+      check_interval = PandoraGUI.get_param('check_interval')
+      check_interval ||= 7
+      check_interval = 7 if check_interval==0
+      last_updated = PandoraGUI.get_param('last_updated')
+      start_updating if Time.now.to_i> last_updated.to_i + check_interval*24*3600
+    end
+
     Gtk.main
   end
 
 end
 
 
-# ==============================================================================
+# ====MAIN=======================================================================
 
 # Some module settings
 # RU: Некоторые настройки модулей
@@ -5794,5 +5958,5 @@ Thread.abort_on_exception = true
 #$lang = 'en'
 PandoraKernel.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
+PandoraModel.load_model_from_xml($lang)
 PandoraGUI.show_main_window
-

@@ -273,13 +273,21 @@
   </Pandora>
 
   <Defaults>
-    <section_common desc="Common" type="Integer" section="0" setting="0" />
-    <section_net desc="Network" type="Integer" section="0" setting="1" />
-    <section_crypto desc="Crypto" type="Integer" section="0" setting="2" />
-    <base_id desc="Base ID" type="String" section="node" setting="[create_base_id]" />
+    <section_common desc="Common" type="Integer" section="0" setting="1" />
+    <section_update desc="Network" type="Integer" section="0" setting="2" />
+    <section_net desc="Network" type="Integer" section="0" setting="3" />
+    <section_crypto desc="Crypto" type="Integer" section="0" setting="4" />
+
+    <base_id desc="Base ID" type="String" section="common" setting="[create_base_id]" />
+
+    <check_update desc="Check update" type="Boolean" section="update" setting="true" />
+    <check_interval desc="Сheck interval (days)" type="Integer" section="update" setting="5" />
+    <last_updated desc="Last update time" type="Time" section="update" setting="01.01.2012" />
+
     <tcp_port desc="TCP port" type="Integer" section="net" setting="5577" />
     <udp_port desc="UDP port" type="Integer" section="net" setting="5577" />
     <local_host desc="Local host" type="String" section="net" setting="localhost" />
+
     <last_auth_key desc="Last auth key" type="String" section="crypto" setting="" />
   </Defaults>
 
