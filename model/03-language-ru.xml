@@ -71,13 +71,6 @@
       <target name.ru="Принадлежит" />
     </Document>
 
-    <Currency name.ru="Валюта|Валюты">
-      <name name.ru="Название" />
-      <code name.ru="Код" />
-      <country name.ru="Страна" />
-      <issuer name.ru="Эммитент" />
-    </Currency>
-
     <Activity name.ru="Деятельность|Увлечения">
       <name name.ru="Название" />
       <description name.ru="Описание" />
@@ -141,6 +134,13 @@
 
     <Product name.ru="Товар|Товары">
     </Product>
+
+    <Currency name.ru="Валюта|Валюты">
+      <name name.ru="Название" />
+      <code name.ru="Код" />
+      <country name.ru="Страна" />
+      <issuer name.ru="Эммитент" />
+    </Currency>
 
   </Business>
   <Region name.ru="Регион">

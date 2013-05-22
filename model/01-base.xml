@@ -76,13 +76,6 @@
       <target name="Target" />
     </Document>
 
-    <Currency name="Currency|Currency" kind="10">
-      <name name="Name" />
-      <code name="Code" />
-      <country name="Country" />
-      <issuer name="Issuer" />
-    </Currency>
-
     <Activity name="Activity" kind="11">
       <name name="Name" />
       <description name="Description" />
@@ -168,6 +161,13 @@
       <number name="Number" />
       <city name="City" />
     </Contract>
+
+    <Currency name="Currency|Currency" kind="10">
+      <name name="Name" />
+      <code name="Code" />
+      <country name="Country" />
+      <issuer name="Issuer" />
+    </Currency>
 
     <Report parent="Article">
     </Report>
