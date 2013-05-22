@@ -54,12 +54,12 @@ end
 
 # Paths and files  ('join' gets '/' for Linux and '\' for Windows)
 # RU: Пути и файлы ('join' дает '/' для Линукса и '\' для Винды)
-if os_family != 'windows'
-  $pandora_root_dir = Dir.pwd                                       # Current Pandora directory
+#if os_family != 'windows'
+$pandora_root_dir = Dir.pwd                                       # Current Pandora directory
 #  $pandora_root_dir = File.expand_path(File.dirname(__FILE__))     # Script directory
-else
-  $pandora_root_dir = '.'     # It prevents a bug with cyrillic paths in Win XP
-end
+#else
+#  $pandora_root_dir = '.'     # It prevents a bug with cyrillic paths in Win XP
+#end
 $pandora_base_dir = File.join($pandora_root_dir, 'base')            # Default database directory
 $pandora_view_dir = File.join($pandora_root_dir, 'view')            # Media files directory
 $pandora_model_dir = File.join($pandora_root_dir, 'model')          # Model description directory
@@ -3055,6 +3055,7 @@ module PandoraGUI
     def self.update_file(http, path, pfn)
       res = false
       begin
+        #p [path, pfn]
         response = http.request_get(path)
         File.open(pfn, 'wb+') do |file|
           file.write(response.body)
@@ -3083,7 +3084,7 @@ module PandoraGUI
         if curr_size
           arch_name = File.join($pandora_root_dir, 'master.zip')
           main_uri = URI('https://raw.github.com/Novator/Pandora/master/pandora.rb')
-          arch_uri = URI('https://codeload.github.com/Novator/Pandora/zip/master')
+          #arch_uri = URI('https://codeload.github.com/Novator/Pandora/zip/master')
 
           time = 0
           http = nil
@@ -3093,6 +3094,7 @@ module PandoraGUI
               #p [main_uri.host, main_uri.port, main_uri.path]
               http = Net::HTTP.new(main_uri.host, main_uri.port)
               http.use_ssl = true
+              http.verify_mode = OpenSSL::SSL::VERIFY_NONE
               http.open_timeout = 60*5
               response = http.request_head(main_uri.path)
               if (response.content_length == curr_size)
@@ -3118,6 +3120,7 @@ module PandoraGUI
               begin
                 http = Net::HTTP.new(main_uri.host, main_uri.port)
                 http.use_ssl = true
+                http.verify_mode = OpenSSL::SSL::VERIFY_NONE
                 http.open_timeout = 60*5
               rescue => err
                 http = nil
@@ -3130,9 +3133,7 @@ module PandoraGUI
               set_status_field(SF_Update, 'Updating')
               downloaded = update_file(http, main_uri.path, main_script)
               upd_list.each do |fn|
-                fn_sys = fn
-                fn_sys.gsub!('/', "\\") if os_family=='windows'
-                pfn = File.join($pandora_root_dir, fn_sys)
+                pfn = File.join($pandora_root_dir, fn)
                 if File.exist?(pfn) and File.stat(pfn).writable?
                   downloaded = downloaded and update_file(http, '/Novator/Pandora/master/'+fn, pfn)
                 else
@@ -3151,18 +3152,6 @@ module PandoraGUI
             end
           end
         end
-        #if downloaded
-        #  dialog = Gtk::MessageDialog.new(nil, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
-        #    Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL,
-        #    _('Updates were downloaded. Restart Pandora to get effect?'))
-        #  dialog.title = _('Update')
-        #  dialog.default_response = Gtk::Dialog::RESPONSE_OK
-        #  dialog.icon = $window.icon
-        #  if dialog.run == Gtk::Dialog::RESPONSE_OK
-        #    Gtk.main_quit
-        #  end
-        #  dialog.destroy
-        #end
         $download_thread = nil
       end
     end
@@ -5972,6 +5961,5 @@ Thread.abort_on_exception = true
 # == RU: Запуск Пандоры!
 #$lang = 'en'
 PandoraKernel.load_language($lang)
-PandoraModel.load_model_from_xml($lang)
 PandoraModel.load_model_from_xml($lang)
 PandoraGUI.show_main_window
