@@ -78,12 +78,16 @@ Install it:
 
 6. UPDATE TO LAST VERSION
 
-Pandora is updating itself automatically, but you may update it manually.
-6.1. Download and extract archive:
+Pandora is updating itself automatically, but partly.
+6.1. For full update just do it in Linux:
+
+  ./pandora.sh --full-init
+
+6.2. Or download and extract archive:
 
   https://github.com/Novator/Pandora/archive/master.zip
 
-6.2. Overwrite old files by new. The default directory for Linux is:
+6.3. Overwrite old files by new. The default directory for Linux is:
 
   /opt/pandora/
 
@@ -94,7 +98,7 @@ For Windows:
 
 7. RECOMMENDATION TO DEVELOPERS
 
-Use git if you want to change a code of Pandora and send patch.
+Use git if you want to change a code of Pandora and send a patch.
 
 7.1. Install git
 
