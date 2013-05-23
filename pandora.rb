@@ -1758,7 +1758,10 @@ module PandoraGUI
     def run
       res = false
       show_all
-      def_widget.grab_focus if def_widget
+      if @def_widget
+        focus = @def_widget
+        @def_widget.grab_focus
+      end
       while (not destroyed?) and (@response == 0) do
         Gtk.main_iteration
         #sleep 0.03
@@ -2160,10 +2163,12 @@ module PandoraGUI
       # create entries, set their widths/maxlen, remember them
       entries_width = 0
       max_entry_height = 0
+      @def_widget = nil
       @fields.each do |field|
         max_size = 0
         fld_size = 10
         entry = Gtk::Entry.new
+        @def_widget ||= entry
         begin
           atype = field[FI_Type]
           def_size = 10
@@ -2252,45 +2257,6 @@ module PandoraGUI
       [rw, rh]
     end
 
-    # recreate a widget instead of unparent, because unparent has a bug
-    def hacked_unparent(widget)
-      if widget.is_a? Gtk::Label
-        new_widget = Gtk::Label.new(widget.text)
-        new_widget.xalign = 0.0
-      else
-        new_widget = Gtk::Entry.new
-        new_widget.max_length = widget.max_length
-        new_widget.width_request = widget.width_request
-        new_widget.text = widget.text
-      end
-      widget.destroy
-      new_widget
-    end
-
-    # hide fields and delete sub-containers
-    def clear_vbox(temp_fields)
-      if @vbox.children.size>0
-        @vbox.hide_all
-        @vbox.child_visible = false
-        @fields.each_index do |index|
-          field = @fields[index]
-          label = field[FI_Label]
-          entry = field[FI_Widget]
-          #label.unparent
-          #entry.unparent
-          label = hacked_unparent(label)
-          entry = hacked_unparent(entry)
-          field[FI_Label] = label
-          field[FI_Widget] = entry
-          temp_fields[index][FI_Label] = label
-          temp_fields[index][FI_Widget] = entry
-        end
-        @vbox.each do |child|
-          child.destroy
-        end
-      end
-    end
-
     def on_resize_window(window, event)
       if (@window_width == event.width) and (@window_height == event.height)
         return
@@ -2360,8 +2326,7 @@ module PandoraGUI
             row_index = -1
             rw, rh = 0, 0
             orient = :up
-            fields.each_index do |index|
-              field = fields[index]
+            fields.each_with_index do |field, index|
               if (index==0) or (field[FI_NewRow]==1)
                 row_index += 1
                 field_matrix << row if row != []
@@ -2408,19 +2373,18 @@ module PandoraGUI
             end
             found = (step==1)
           when 2
-            p "222"
             found = true
           when 3
-            p "333"
             found = true
           when 5  #need to rebuild rows by width
             row = []
             row_index = -1
             rw, rh = 0, 0
             orient = :up
-            fields.each_index do |index|
-              field = fields[index]
-              if ! [:up, :down, :left, :right].include?(field[FI_LabOr]) then field[FI_LabOr]=orient; end
+            fields.each_with_index do |field, index|
+              if ! [:up, :down, :left, :right].include?(field[FI_LabOr])
+                field[FI_LabOr] = orient
+              end
               orient = field[FI_LabOr]
               field_size = calc_field_size(field)
 
@@ -2428,7 +2392,7 @@ module PandoraGUI
                 row_index += 1
                 field_matrix << row if row != []
                 mw, mh = [mw, rw].max, mh+rh
-                p [mh, form_height]
+                #p [mh, form_height]
                 row = []
                 rw, rh = 0, 0
               end
@@ -2473,7 +2437,24 @@ module PandoraGUI
       if matrix_is_changed
         #p "----+++++redraw"
         @old_field_matrix = field_matrix
-        clear_vbox(fields)
+
+        @def_widget = focus if focus
+
+        # delete sub-containers
+        if @vbox.children.size>0
+          @vbox.hide_all
+          @vbox.child_visible = false
+          @fields.each_index do |index|
+            field = @fields[index]
+            label = field[FI_Label]
+            entry = field[FI_Widget]
+            label.parent.remove(label)
+            entry.parent.remove(entry)
+          end
+          @vbox.each do |child|
+            child.destroy
+          end
+        end
 
         # show field matrix on form
         field_matrix.each do |row|
@@ -2504,6 +2485,10 @@ module PandoraGUI
         end
         @vbox.child_visible = true
         @vbox.show_all
+        if @def_widget
+          focus = @def_widget
+          @def_widget.grab_focus
+        end
       end
     end
 
@@ -5150,7 +5135,10 @@ module PandoraGUI
   # Start hunt
   # RU: Начать охоту
   def self.hunt_nodes(round_count=1)
-    if $hunter_thread == nil
+    if $hunter_thread
+      $hunter_thread.exit
+      $hunter_thread = nil
+    else
       $hunter_thread = Thread.new do
         set_status_field(SF_Hunt, 'Hunting')
         node_model = PandoraModel::Node.new
@@ -5162,17 +5150,12 @@ module PandoraGUI
               domain = node_model.field_val('domain', row)
               tport = node_model.field_val('tport', row)
               tport = $port if (not tport) or (tport=='')
-              if domain != ''
-                node = encode_node(domain, tport, 'tcp')
-                p 'domain='+node.inspect
-                connection = start_or_find_connection(node)
-                p connection
-              elsif (addr != '') and (domain != addr)
-                node = encode_node(addr, tport, 'tcp')
-                p '>>>>>> addr='+node.inspect
-                connection = start_or_find_connection(node)
-                p connection
-              end
+              domain = addr if ((domain == '') or not domain)
+
+              node = encode_node(domain, tport, 'tcp')
+              p '==hunt node: '+node.inspect
+              connection = start_or_find_connection(node)
+              p 'connection='+connection.inspect
             end
           end
           round_count -= 1
@@ -5181,9 +5164,6 @@ module PandoraGUI
         $hunter_thread = nil
         set_status_field(SF_Hunt, 'No hunt')
       end
-    else
-      $hunter_thread.exit
-      $hunter_thread = nil
     end
   end
 
@@ -5953,8 +5933,8 @@ module PandoraGUI
       interval = Time.now.to_i - last_updated.to_i
       if interval < 1*24*3600
         set_status_field(SF_Update, 'Updated', false)
-      else
-        start_updating if interval > check_interval*24*3600
+      elsif interval > check_interval*24*3600
+        start_updating
       end
     end
 
