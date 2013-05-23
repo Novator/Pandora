@@ -71,18 +71,19 @@ Install it:
 
   "Start" - "Programs" - "Pandora"
 
-5.3. Also you can run Pandora by bat-file:
+5.3. Also you can run Pandora with bat-file:
 
   .\pandora.bat
 
 
 6. UPDATE TO LAST VERSION
 
-Download and extract archive:
+Pandora is updating itself automatically, but you may update it manually.
+6.1. Download and extract archive:
 
   https://github.com/Novator/Pandora/archive/master.zip
 
-Overwrite old files by new. The default directory for Linux is:
+6.2. Overwrite old files by new. The default directory for Linux is:
 
   /opt/pandora/
 
