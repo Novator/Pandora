@@ -3037,10 +3037,19 @@ module PandoraGUI
     $status_fields[index] = btn
   end
 
-  def self.set_status_field(index, text)
-    $status_fields[index].label = _(text) if $status_fields[index]
+  def self.set_status_field(index, text, enabled=nil)
+    btn = $status_fields[index]
+    if btn
+      btn.label = _(text) if $status_fields[index]
+      if enabled != nil
+        btn.sensitive = enabled
+      end
+    end
   end
 
+  def self.get_status_field(index)
+    $status_fields[index]
+  end
 
   $update_interval = 30
   $download_thread = nil
@@ -3099,7 +3108,7 @@ module PandoraGUI
               response = http.request_head(main_uri.path)
               if (response.content_length == curr_size)
                 http = nil
-                set_status_field(SF_Update, 'Updated')
+                set_status_field(SF_Update, 'Updated', false)
                 PandoraGUI.set_param('last_updated', Time.now)
               else
                 time = Time.now.to_i
@@ -5941,7 +5950,12 @@ module PandoraGUI
       check_interval ||= 7
       check_interval = 7 if check_interval==0
       last_updated = PandoraGUI.get_param('last_updated')
-      start_updating if Time.now.to_i> last_updated.to_i + check_interval*24*3600
+      interval = Time.now.to_i - last_updated.to_i
+      if interval < 1*24*3600
+        set_status_field(SF_Update, 'Updated', false)
+      else
+        start_updating if interval > check_interval*24*3600
+      end
     end
 
     Gtk.main
