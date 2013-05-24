@@ -10,6 +10,7 @@ Contents
 5) installation in Windows
 6) update to last version
 7) recommendation to developers
+8) your help and my help
 
 
 1. OVERVIEW
@@ -78,16 +79,18 @@ Install it:
 
 6. UPDATE TO LAST VERSION
 
-Pandora is updating itself automatically, but partly.
-6.1. For full update just do it in Linux:
+Pandora updates itself automatically, but partly (only main working files).
+Full update, including documentation and language files, requires manual acts.
+
+6.1. For semi-automatic update run shell in Linux:
 
   ./pandora.sh --full-init
 
-6.2. Or download and extract archive:
+6.2. For manual update download and extract archive:
 
   https://github.com/Novator/Pandora/archive/master.zip
 
-6.3. Overwrite old files by new. The default directory for Linux is:
+6.3. Overwrite old files. The default directory for Linux is:
 
   /opt/pandora/
 
@@ -98,23 +101,56 @@ For Windows:
 
 7. RECOMMENDATION TO DEVELOPERS
 
-Use git if you want to change a code of Pandora and send a patch.
+7.1. See current technical tasks at file:
 
-7.1. Install git
+  https://github.com/Novator/Pandora/blob/master/doc/todo.ru.txt
 
-in Ubuntu:
+7.2. Registrate on GitHub:
+
+  https://github.com/
+
+For example, your login is "yournick".
+
+7.3. Push "Fork" button on left and top at Pandora github page:
+
+https://github.com/Novator/Pandora/fork
+
+7.4. Install git in Ubuntu:
 
   sudo apt-get install git
 
-in Windows:
+in Windows download and install last version "Git-N.N.N-previewYYYYMMDD.exe":
 
-  open with browser "http://code.google.com/p/msysgit/downloads/list"
-  download and install last version "Git-N.N.N-previewYYYYMMDD.exe"
+  http://code.google.com/p/msysgit/downloads/list
 
-7.2. Create empty directory "Pandora.dev", stay there, download Pandora with command:
+7.5. Download Pandora to your hard disk via git command:
 
-  git clone --depth=1 https://github.com/Novator/Pandora.git
+  git clone --depth=1 https://github.com/yournick/Pandora.git
 
-Now you can change the code and make patches.
-See more useful git commands in the file "git.sh".
+7.6. Correct a code with any text editor, for example Geany:
+
+  http://www.geany.org/Download/Releases
+
+7.7. Update your github repository:
+
+  git push
+
+(see more useful git commands in the file "git.sh")
+
+7.8. Push "Pull Request" at your Pandora github page:
+
+  https://github.com/yournick/Pandora/pull/new/master
+
+
+8. YOUR HELP AND MY HELP
+
+You can help to Pandora project like a programmer, journalist or donator:
+
+  http://robux.biz/pandora.html
+
+Anybody can ask me a help:
+
+  http://facebook.com/robux
+  http://vk.com/robux
+  Michael Galyuk
 
