@@ -113,19 +113,21 @@ For example, your login is "yournick".
 
 7.3. Push "Fork" button on left and top at Pandora github page:
 
-https://github.com/Novator/Pandora/fork
+  https://github.com/Novator/Pandora/fork
 
 7.4. Install git in Ubuntu:
 
   sudo apt-get install git
 
-in Windows download and install last version "Git-N.N.N-previewYYYYMMDD.exe":
+in Windows install last "Git-N.N.N-previewYYYYMMDD.exe" from:
 
   http://code.google.com/p/msysgit/downloads/list
 
 7.5. Download Pandora to your hard disk via git command:
 
   git clone --depth=1 https://github.com/yournick/Pandora.git
+
+Warning: change "yournick" to your nick at Github!
 
 7.6. Correct a code with any text editor, for example Geany:
 
