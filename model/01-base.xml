@@ -1,11 +1,11 @@
 <pandora-model name="Pandora base model">
   <Pandora name="Pandora Node">
-    <Panobject>
+    <Panobject real="false">
       <panhash name="Panhash" type="Panhash" />
       <modified name="Modified" type="Time" />
     </Panobject>
 
-    <Created>
+    <Created real="false">
       <creator name="Creator" type="Panhash(Person)" />
       <created name="Created" type="Time" />
     </Created>
@@ -25,7 +25,7 @@
       <exit_day name="Exit day" type="Date" optional="yes" />
     </Person>
 
-    <Community parent="Created" name="Community|Communities" kind="2">
+    <Community parent="Created" name="Community|Communities" kind="2" table="communities">
       <name name="Name" type="String" size="128" hash="1:hash(4)" />
       <origin_place name="Origin place" type="Panhash(City)" hash="2:panhash(4)" />
       <creator hash="3:panhash(4)" />
@@ -121,10 +121,10 @@
   </World>
   <Business name="Business">
 
-    <Member parent="Person">
+    <Member parent="Person" table="persons" >
     </Member>
 
-    <Company parent="Community">
+    <Company parent="Community"  table="communities">
     </Company>
 
     <Storage parent="Address">
@@ -175,6 +175,12 @@
   </Business>
   <Region name="Region">
 
+    <Citizen parent="Member" table="persons">
+    </Citizen>
+
+    <Union parent="Company" table="communities">
+    </Union>
+
     <Law name="Low|Lows" parent="Article">
       <number name="Number" />
     </Law>
@@ -191,11 +197,11 @@
   <Pandora lang="no">
 
     <Parameter name="Parameter" kind="220">
-      <name name="Name" type="String" size="128" />
+      <name name="Name" type="String" size="96" hash="1:hash(18)" />
       <desc name="Description" type="String" size="128" />
       <value name="Value" type="Blob" />
-      <type name="Type" type="Integer" />
-      <section name="Section" type="Integer" />
+      <type name="Type" type="Byte" />
+      <section name="Section" type="Word" hash="2:word(2)" />
       <setting name="Setting" type="Blob" />
     </Parameter>
 
@@ -215,27 +221,29 @@
       <sign name="Sign" type="Blob" />
     </Sign>
 
-    <Node name="Node" kind="223">
+    <Node name="Node" kind="223" parent="Created">
+      <domain name="Domain" type="String" size="255" />
       <addr name="Address" type="String" size="20" />
       <tport name="TCP port" type="Word" />
       <uport name="UDP port" type="Word" />
-      <domain name="Domain" type="String" size="255" />
       <base_id name="Origin" type="String" size="32" />
       <city name="City" type="[City]" />
       <home name="Home" type="[Address]" />
       <coord name="Coord" type="Integer" />
       <state name="State" type="Word" />
-      <sended name="Sended" type="Integer" />
-      <received name="Recieved" type="Integer" />
+      <sended name="Sended B" type="Integer" />
+      <received name="Recieved B" type="Integer" />
+      <speed name="Speed B/s" type="Integer" />
       <bad_attempts name="Bad attempts" type="Integer" />
       <ban_time name="Time of ban" type="Time" />
+      <addr_from name="Address from" type="String" size="20" />
       <one_ip_count name="Connection from one IP" type="Integer" />
-      <session_key name="Panhash of last session key" type="String" size="32" />
-      <last_conn_time name="Last connection" type="Time" />
-      <try_upnp_time name="Last UPnP try" type="Time" />
-      <try_natpmp_time name="Last NAT-PMP try" type="Time" />
-      <last_link_time name="Last received link" type="Time" />
-      <last_trust_time name="Last received trust" type="Time" />
+      <session_key name="Session key" type="String" size="32" />
+      <conn_time name="Connection time" type="Time" />
+      <try_upnp_time name="UPnP try time" type="Time" />
+      <try_natpmp_time name="NAT-PMP try time" type="Time" />
+      <!-- last_link_time name="Last received link" type="Time" />
+      <last_trust_time name="Last received trust" type="Time" /-->
     </Node>
 
     <Patch name="Patch" kind="224">
@@ -263,32 +271,41 @@
       <place name="Place" type="Blob" />
     </Repository>
 
-    <Message name="Message" kind="227">
-      <room name="Room" />
-      <state name="State" />
-      <date name="Date" />
-      <text name="Text" />
+    <Message name="Message" kind="227" parent="Created">
+      <creator hash="1:panhash(16)" />
+      <created hash="2:integer(4)" />
+      <destination name="Destination" type="String" size="32" />
+      <state name="State" type="Word" />
+      <text name="Text" type="Text" />
     </Message>
+
+    <Fisher name="Fisher" kind="228" parent="Created">
+      <catch name="Catch" type="String" size="32" />
+      <expire name="Expire" type="Time" />
+      <state name="State" type="Word" />
+    </Fisher>
 
   </Pandora>
 
   <Defaults>
-    <section_common desc="Common" type="Integer" section="0" setting="1" />
-    <section_update desc="Network" type="Integer" section="0" setting="2" />
-    <section_net desc="Network" type="Integer" section="0" setting="3" />
-    <section_crypto desc="Crypto" type="Integer" section="0" setting="4" />
+    <section_common desc="Common" type="Word" section="0" setting="1" />
+    <section_update desc="Update" type="Word" section="0" setting="2" />
+    <section_net desc="Network" type="Word" section="0" setting="3" />
+    <section_crypto desc="Crypto" type="Word" section="0" setting="4" />
 
-    <base_id desc="Base ID" type="String" section="common" setting="[create_base_id]" />
+    <base_id desc="Base ID" type="String" section="common" setting="[create_base_id],hex" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
-    <check_interval desc="Сheck interval (days)" type="Integer" section="update" setting="5" />
-    <last_updated desc="Last update time" type="Time" section="update" setting="01.01.2012" />
+    <check_interval desc="Сheck interval (days)" type="Integer" section="update" setting="2" />
+    <update_period desc="Update interval (days)" type="Integer" section="update" setting="7" />
+    <last_check desc="Last check time" type="Time" section="update" setting="01.01.2012" />
+    <last_update desc="Last update time" type="Time" section="update" setting="01.01.2012" />
 
     <tcp_port desc="TCP port" type="Integer" section="net" setting="5577" />
     <udp_port desc="UDP port" type="Integer" section="net" setting="5577" />
     <local_host desc="Local host" type="String" section="net" setting="localhost" />
 
-    <last_auth_key desc="Last auth key" type="String" section="crypto" setting="" />
+    <last_auth_key desc="Last auth key" type="Bigint" section="crypto" setting=",hex" />
   </Defaults>
 
 </pandora-model>

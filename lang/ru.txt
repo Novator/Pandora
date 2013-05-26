@@ -97,6 +97,7 @@ Offenses=>Нарушения
 Words=>Слова
 States=>Страны
 Nodes=>Узлы
+Fishers=>Рыбаки
 _Region=>_Регион
 Keys=>Ключи
 support=>храню
@@ -143,3 +144,6 @@ Need update=>Нужно обновить
 Updating=>Обновление
 Need reboot=>Нужно перезагрузить
 Updating error=>Ошибка обновления
+Citizens=>Граждане
+Unions=>Объединения
+

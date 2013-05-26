@@ -39,7 +39,7 @@
       <created pos="253" view="time" />
     </Created>
 
-    <Parameter order="101">
+    <Parameter order="101" sort="section, name">
       <name pos="1" fsize="32" />
       <type pos="+1" />
       <section pos="+1" />

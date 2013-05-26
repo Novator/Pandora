@@ -7,4 +7,5 @@ Type=Application
 Categories=Network;
 StartupNotify=true
 Name=Pandora
-Comment=Pandora is a p2p social network
+GenericName=P2P social network Pandora
+Comment=Video and voice chat, private and public record exchange

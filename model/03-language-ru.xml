@@ -145,6 +145,12 @@
   </Business>
   <Region name.ru="Регион">
 
+    <Citizen name.ru="Гражданин|Граждане">
+    </Citizen>
+
+    <Union name.ru="Объединение|Объединения">
+    </Union>
+
     <Law name.ru="Закон|Законы">
       <number name.ru="Номер" />
     </Law>
@@ -189,16 +195,19 @@
       <uport name.ru="Порт UDP" />
       <city name.ru="Город" />
       <home name.ru="Дом" />
+      <coord name.ru="Коорд" />
       <state name.ru="Состояние" />
       <sended name.ru="Отправлено" />
       <received name.ru="Принято" />
-      <bad_attempts name.ru="Число ошибочных попыток" />
+      <speed name.ru="Скорость Б/с" />
+      <bad_attempts name.ru="Ошибочных попыток" />
       <ban_time name.ru="Время бана" />
+      <addr_from name.ru="Адрес откуда" />
       <one_ip_count name.ru="Соединений с одного IP" />
-      <session_key name.ru="Последняя отмычка" />
-      <last_conn_time name.ru="Время последнего соединения" />
-      <try_upnp_time name.ru="Время последней попытки UPnP" />
-      <try_natpmp_time name.ru="Время последней попытки NAT-PMP" />
+      <session_key name.ru="Сеансовый ключ" />
+      <conn_time name.ru="Время соединения" />
+      <try_upnp_time name.ru="Время попытки UPnP" />
+      <try_natpmp_time name.ru="Время попытки NAT-PMP" />
     </Node>
 
     <Patch name.ru="Изменение|Изменения">
@@ -227,11 +236,16 @@
     </Repository>
 
     <Message name.ru="Сообщение|Сообщения">
-      <room name.ru="Комната" />
+      <destination name.ru="Получатель" />
       <state name.ru="Состояние" />
-      <date name.ru="Дата" />
       <text name.ru="Текст" />
     </Message>
+
+    <Fisher name.ru="Рыбак|Рыбаки">
+      <catch name.ru="Добыча" />
+      <expire name.ru="Истекает" />
+      <state name.ru="Статус" />
+    </Fisher>
 
   </Pandora>
 
