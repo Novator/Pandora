@@ -127,7 +127,7 @@ in Windows install last "Git-N.N.N-previewYYYYMMDD.exe" from:
 
   git clone --depth=1 https://github.com/yournick/Pandora.git
 
-Warning: change "yournick" to your nick at Github!
+Warning: change "yournick" to your nick!
 
 7.6. Correct a code with any text editor, for example Geany:
 
@@ -146,7 +146,7 @@ Warning: change "yournick" to your nick at Github!
 
 8. YOUR HELP AND MY HELP
 
-You can help to Pandora project like a programmer, journalist or donator:
+You can help to Pandora project like a programmer, translator, writer or donator:
 
   http://robux.biz/pandora.html
 

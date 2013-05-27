@@ -33,27 +33,27 @@
 
     <Language name.ru="Язык|Языки">
       <code name.ru="Код" />
+      <pancode name.ru="Панкод" />
       <name name.ru="Название" />
     </Language>
 
     <Country name.ru="Страна|Страны">
       <code name.ru="Код" />
       <name name.ru="Название" />
-      <area name.ru="Площадь" />
     </Country>
 
     <City name.ru="Город|Города">
       <name name.ru="Название" />
       <country name.ru="Страна" />
-      <population name.ru="Население" />
+      <coord name.ru="Координата" />
     </City>
 
     <Street name.ru="Улица|Улицы">
-      <city name.ru="Город" />
       <name name.ru="Название" />
+      <city name.ru="Город" />
     </Street>
 
-    <Address name.ru="Страна|Страны">
+    <Address name.ru="Адрес|Адреса">
       <street name.ru="Улица" />
       <building name.ru="Дом" />
       <appartment name.ru="Квартира" />

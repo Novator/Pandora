@@ -3112,6 +3112,7 @@ module PandoraGUI
         File.open(pfn, 'wb+') do |file|
           file.write(response.body)
           res = true
+          log_message(LM_Info, _('File is updated')+': '+pfn)
         end
       rescue => err
         puts 'Update error: '+err.inspect
@@ -3160,7 +3161,7 @@ module PandoraGUI
             rescue => err
               http = nil
               set_status_field(SF_Update, 'Connection error')
-              log_message(LM_Warning, 'Connection error 1: '+err.inspect)
+              log_message(LM_Warning, _('Connection error')+' 1: '+err.inspect)
             end
           else
             set_status_field(SF_Update, 'Read only')
@@ -3178,7 +3179,7 @@ module PandoraGUI
               rescue => err
                 http = nil
                 set_status_field(SF_Update, 'Connection error')
-                log_message(LM_Warning, 'Connection error 2: '+err.inspect)
+                log_message(LM_Warning, _('Connection error')+' 2: '+err.inspect)
               end
             end
 
@@ -3191,7 +3192,7 @@ module PandoraGUI
                   downloaded = downloaded and update_file(http, '/Novator/Pandora/master/'+fn, pfn)
                 else
                   downloaded = false
-                  log_message(LM_Warning, 'Not exist or read only: '+pfn)
+                  log_message(LM_Warning, _('Not exist or read only')+': '+pfn)
                 end
               end
               if downloaded
@@ -4925,93 +4926,96 @@ module PandoraGUI
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen
     if $listen_thread == nil
-      set_status_field(SF_Listen, 'Listening')
-      $port = get_param('tcp_port')
-      $host = get_param('local_host')
-      $listen_thread = Thread.new do
-        begin
-          addr_str = $host.to_s+':'+$port.to_s
-          server = TCPServer.open($host, $port)
-          addr_str = server.addr[3].to_s+(':')+server.addr[1].to_s
-          log_message(LM_Info, 'Слушаю порт '+addr_str)
-        rescue
-          server = nil
-          log_message(LM_Warning, 'Не могу открыть порт '+addr_str)
-        end
-        Thread.current[:listen_server_socket] = server
-        Thread.current[:need_to_listen] = server != nil
-        while Thread.current[:need_to_listen] and (server != nil) and not server.closed?
-          # Создать поток при подключении клиента
-          client = get_listener_client_or_nil(server)
-          while Thread.current[:need_to_listen] and not server.closed? and not client
-            sleep 0.03
-            #Thread.pass
-            #Gtk.main_iteration
-            client = get_listener_client_or_nil(server)
+      key = current_key(false)
+      if key
+        set_status_field(SF_Listen, 'Listening')
+        $port = get_param('tcp_port')
+        $host = get_param('local_host')
+        $listen_thread = Thread.new do
+          begin
+            addr_str = $host.to_s+':'+$port.to_s
+            server = TCPServer.open($host, $port)
+            addr_str = server.addr[3].to_s+(':')+server.addr[1].to_s
+            log_message(LM_Info, 'Слушаю порт '+addr_str)
+          rescue
+            server = nil
+            log_message(LM_Warning, 'Не могу открыть порт '+addr_str)
           end
+          Thread.current[:listen_server_socket] = server
+          Thread.current[:need_to_listen] = server != nil
+          while Thread.current[:need_to_listen] and (server != nil) and not server.closed?
+            # Создать поток при подключении клиента
+            client = get_listener_client_or_nil(server)
+            while Thread.current[:need_to_listen] and not server.closed? and not client
+              sleep 0.03
+              #Thread.pass
+              #Gtk.main_iteration
+              client = get_listener_client_or_nil(server)
+            end
 
-          if Thread.current[:need_to_listen] and not server.closed? and client
-            Thread.new(client) do |socket|
-              log_message(LM_Info, "Подключился клиент: "+socket.peeraddr.to_s)
+            if Thread.current[:need_to_listen] and not server.closed? and client
+              Thread.new(client) do |socket|
+                log_message(LM_Info, "Подключился клиент: "+socket.peeraddr.to_s)
 
-              #local_address
-              host_ip = socket.peeraddr[2]
+                #local_address
+                host_ip = socket.peeraddr[2]
 
-              if ip_is_not_banned(host_ip)
-                host_name = socket.peeraddr[3]
-                port = socket.peeraddr[1]
-                #port = socket.addr[1] if host_ip==socket.addr[2] # hack for short circuit!!!
-                proto = "tcp"
-                node = encode_node(host_ip, port, proto)
-                p "LISTEN: node: "+node.inspect
+                if ip_is_not_banned(host_ip)
+                  host_name = socket.peeraddr[3]
+                  port = socket.peeraddr[1]
+                  #port = socket.addr[1] if host_ip==socket.addr[2] # hack for short circuit!!!
+                  proto = "tcp"
+                  node = encode_node(host_ip, port, proto)
+                  p "LISTEN: node: "+node.inspect
 
-                connection = connection_of_node(node)
-                if connection
-                  log_message(LM_Info, "Замкнутая петля: "+socket.to_s)
-                  while connection and (connection.conn_state==CS_Connected) and not socket.closed?
-                    begin
-                      buf = socket.recv(MaxPackSize) if not socket.closed?
-                    rescue
-                      buf = ''
-                    end
-                    socket.write(buf) if (not socket.closed? and buf and (buf.size>0))
-                    connection = connection_of_node(node)
-                  end
-                else
-                  conn_state = CS_Connected
-                  conn_mode = 0
-                  #p "serv: conn_mode: "+ conn_mode.inspect
-                  connection = Connection.new(host_name, host_ip, port, proto, node, conn_mode, conn_state)
-                  #Thread.critical = true
-                  add_connection(connection)
-                  #Thread.critical = false
                   connection = connection_of_node(node)
                   if connection
-                    connection.send_thread = Thread.current
-                    connection.socket = socket
-                    #connection.post_init
-                    connection.stage = ST_IpAllowed
-                    #p "server: connection="+ connection.inspect
-                    #p "server: $connections"+ $connections.inspect
-                    #p 'LIS_SOCKET: '+socket.methods.inspect
-                    start_exchange_cicle(node)
-                    p "END LISTEN SOKET CLIENT!!!"
+                    log_message(LM_Info, "Замкнутая петля: "+socket.to_s)
+                    while connection and (connection.conn_state==CS_Connected) and not socket.closed?
+                      begin
+                        buf = socket.recv(MaxPackSize) if not socket.closed?
+                      rescue
+                        buf = ''
+                      end
+                      socket.write(buf) if (not socket.closed? and buf and (buf.size>0))
+                      connection = connection_of_node(node)
+                    end
                   else
-                    p "Не удалось добавить подключенного в список!!!"
+                    conn_state = CS_Connected
+                    conn_mode = 0
+                    #p "serv: conn_mode: "+ conn_mode.inspect
+                    connection = Connection.new(host_name, host_ip, port, proto, node, conn_mode, conn_state)
+                    #Thread.critical = true
+                    add_connection(connection)
+                    #Thread.critical = false
+                    connection = connection_of_node(node)
+                    if connection
+                      connection.send_thread = Thread.current
+                      connection.socket = socket
+                      #connection.post_init
+                      connection.stage = ST_IpAllowed
+                      #p "server: connection="+ connection.inspect
+                      #p "server: $connections"+ $connections.inspect
+                      #p 'LIS_SOCKET: '+socket.methods.inspect
+                      start_exchange_cicle(node)
+                      p "END LISTEN SOKET CLIENT!!!"
+                    else
+                      p "Не удалось добавить подключенного в список!!!"
+                    end
                   end
+                else
+                  log_message(LM_Info, "IP забанен: "+host_ip.to_s)
                 end
-              else
-                log_message(LM_Info, "IP забанен: "+host_ip.to_s)
+                socket.close if not socket.closed?
+                log_message(LM_Info, "Отключился клиент: "+socket.to_s)
               end
-              socket.close if not socket.closed?
-              log_message(LM_Info, "Отключился клиент: "+socket.to_s)
             end
           end
+          server.close if server and not server.closed?
+          log_message(LM_Info, 'Слушатель остановлен '+addr_str) if server
+          set_status_field(SF_Listen, 'Not listen')
+          $listen_thread = nil
         end
-        server.close if server and not server.closed?
-        log_message(LM_Info, 'Слушатель остановлен '+addr_str) if server
-        set_status_field(SF_Listen, 'Not listen')
-        $listen_thread = nil
       end
     else
       p server = $listen_thread[:listen_server_socket]
@@ -5103,16 +5107,13 @@ module PandoraGUI
   def self.stop_connection(node, wait_disconnect=true)
     connection = connection_of_node(node)
     if connection and (connection.conn_state != CS_Disconnected)
-      p "stop_connection: 1"
       connection.conn_state = CS_Stoping
-      p "stop_connection: 2"
       while wait_disconnect and connection and (connection.conn_state != CS_Disconnected)
         sleep 0.05
         #Thread.pass
         #Gtk.main_iteration
         connection = connection_of_node(node)
       end
-      p "stop_connection: 3"
       connection = connection_of_node(node)
     end
     connection and (connection.conn_state != CS_Disconnected) and wait_disconnect

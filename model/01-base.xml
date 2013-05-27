@@ -1,11 +1,13 @@
 <pandora-model name="Pandora base model">
+
   <Pandora name="Pandora Node">
-    <Panobject real="false">
+
+    <Panobject abstract="true">
       <panhash name="Panhash" type="Panhash" />
       <modified name="Modified" type="Time" />
     </Panobject>
 
-    <Created real="false">
+    <Created abstract="true">
       <creator name="Creator" type="Panhash(Person)" />
       <created name="Created" type="Time" />
     </Created>
@@ -34,47 +36,37 @@
     </Community>
 
     <Language name="Language|Languages"  kind="3">
-      <number name="№" type="Word" />
       <code name="Code" type="String" size="2" />
-      <name name="Name" type="String" />
+      <pancode name="Pancode" type="Word" />
+      <name name="Name" type="String" size="64" />
     </Language>
 
     <Country name="Country|Countries" kind="4">
-      <code name="Code" />
-      <name name="Name" />
-      <area name="Area" />
+      <code name="Code" type="String" size="2" />
+      <name name="Name" type="String" size="128" />
     </Country>
 
     <City name="City|Cities" kind="5">
-      <name name="Name" />
+      <name name="Name" type="String" size="96" />
       <country name="Country" type="Panhash(Country)" />
-      <population name="Population" />
       <coord name="Coordinates" type="Coord" hash="1:coord(4)" />
     </City>
 
     <Street name="Street|Streets" kind="6">
-      <city name="Panhash(City)" />
-      <name name="Name" />
+      <name name="Name" type="String" size="128" />
+      <city name="City" type="Panhash(City)" />
     </Street>
 
     <Address name="Address|Addresses" kind="7">
-      <city name="City" />
-      <street name="Street" />
-      <building name="Building" />
-      <appartment name="Appartment" />
+      <street name="Street" type="Panhash(Street)" />
+      <building name="Building"  type="String" size="16" />
+      <appartment name="Appartment"  type="String" size="16" />
     </Address>
 
     <Contact name="Contact|Contacts" kind="8">
-      <type name="Type" />
-      <value name="Value" />
-      <owner_list name="Owner list" />
+      <type name="Type" type="String" size="16" />
+      <value name="Value" type="String" size="96" />
     </Contact>
-
-    <Document name="Document" kind="9">
-      <type name="Type" />
-      <code name="Number" />
-      <target name="Target" />
-    </Document>
 
     <Activity name="Activity" kind="11">
       <name name="Name" />
@@ -127,7 +119,7 @@
     <Company parent="Community"  table="communities">
     </Company>
 
-    <Storage parent="Address">
+    <Storage parent="Address" kind="75">
     </Storage>
 
     <Product parent="Thing">
@@ -181,7 +173,7 @@
     <Union parent="Company" table="communities">
     </Union>
 
-    <Law name="Low|Lows" parent="Article">
+    <Law name="Low|Lows" parent="Article" kind="150">
       <number name="Number" />
     </Law>
 
@@ -192,6 +184,11 @@
       <created hash="2:integer(4)" />
       <expire name="Expire" type="Time" />
     </Delegation>
+
+    <Document name="Document">
+      <type name="Type" type="String" size="16" />
+      <code name="Number" type="String" size="128" />
+    </Document>
 
   </Region>
   <Pandora lang="no">
