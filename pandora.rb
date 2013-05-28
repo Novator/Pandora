@@ -249,6 +249,7 @@ def log_message(level, mes)
   mes = level_to_str(level).to_s+mes
   if $view
     $view.buffer.insert($view.buffer.end_iter, mes+"\n")
+    $view.move_viewport(Gtk::SCROLL_ENDS, 1)
   else
     puts mes
   end
@@ -4120,6 +4121,42 @@ module PandoraGUI
     end
   end
 
+  $hunter_count   = 0
+  $listener_count = 0
+  $fisher_count   = 0
+  def self.update_conn_status(conn, hunter, diff_count)
+    if hunter
+      $hunter_count += diff_count
+    else
+      $listener_count += diff_count
+    end
+    set_status_field(SF_Conn, $hunter_count.to_s+'/'+$listener_count.to_s+'/'+$fisher_count.to_s)
+  end
+
+  $connections = []
+
+  def self.add_connection(conn)
+    if not $connections.include?(conn)
+      $connections << conn
+      update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, 1)
+    end
+  end
+
+  def self.del_connection(conn)
+    if $connections.delete(conn)
+      update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, -1)
+    end
+  end
+
+  def self.connection_of_node(node)
+    host, port, proto = decode_node(node)
+    connection = $connections.find do |e|
+      (e.is_a? Connection) and ((e.host_ip == host) or (e.host_name == host)) and (e.port == port) \
+        and (e.proto == proto)
+    end
+    connection
+  end
+
   # Network exchange comands
   # RU: Команды сетевого обмена
   EC_Media     = 0     # Медиа данные
@@ -4161,124 +4198,6 @@ module PandoraGUI
   MaxSegSize  = 1200
   CommSize = 6
   CommExtSize = 10
-
-  def self.unpack_comm(comm)
-    errcode = 0
-    if comm.size == CommSize
-      index, cmd, code, segsign, crc8 = comm.unpack('CCCnC')
-      crc8f = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
-      if crc8 != crc8f
-        errcode = 1
-      end
-    else
-      errcode = 2
-    end
-    [index, cmd, code, segsign, errcode]
-  end
-
-  def self.unpack_comm_ext(comm)
-    if comm.size == CommExtSize
-      datasize, fullcrc32, segsize = comm.unpack('NNn')
-    else
-      log_message(LM_Error, 'Ошибочная длина расширения команды')
-    end
-    [datasize, fullcrc32, segsize]
-  end
-
-  LONG_SEG_SIGN   = 0xFFFF
-
-  # RU: Отправляет команду и данные, если есть !!! ДОБАВИТЬ !!! send_number!, buflen, buf
-  def self.send_comm_and_data(socket, index, cmd, code, data=nil)
-    res = nil
-    data ||=""
-    data = AsciiString.new(data)
-    datasize = data.size
-    if datasize <= MaxSegSize
-      segsign = datasize
-      segsize = datasize
-    else
-      segsign = LONG_SEG_SIGN
-      segsize = MaxSegSize
-    end
-    crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
-    # Команда как минимум равна 1+1+1+2+1= 6 байт (CommSize)
-    p 'SCAB: '+[index, cmd, code, segsign, crc8].inspect
-    comm = AsciiString.new([index, cmd, code, segsign, crc8].pack('CCCnC'))
-    if index<255 then index += 1 else index = 0 end
-    buf = AsciiString.new
-    if datasize>0
-      if segsign == LONG_SEG_SIGN
-        fullcrc32 = Zlib.crc32(data)
-        # если пакетов много, то добавить еще 4+4+2= 10 байт
-        comm << [datasize, fullcrc32, segsize].pack('NNn')
-        buf << data[0, segsize]
-      else
-        buf << data
-      end
-      segcrc32 = Zlib.crc32(buf)
-      # в конце всегда CRC сегмента - 4 байта
-      buf << [segcrc32].pack('N')
-    end
-    buf = comm + buf
-    p "!SEND: ("+buf+')'
-
-    # tos_sip    cs3   0x60  0x18
-    # tos_video  af41  0x88  0x22
-    # tos_xxx    cs5   0xA0  0x28
-    # tos_audio  ef    0xB8  0x2E
-    #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
-    begin
-      if socket.closed?
-        sended = -1
-      else
-        sended = socket.write(buf)
-      end
-    rescue Errno::ECONNRESET
-      sended = -1
-    end
-    #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
-    p "SEND_MAIN: ("+buf+')'
-
-    if sended == buf.size
-      res = index
-    elsif sended != -1
-      log_message(LM_Error, 'Не все данные отправлены '+sended.to_s)
-    end
-    segindex = 0
-    i = segsize
-    while res and ((datasize-i)>0)
-      segsize = datasize-i
-      segsize = MaxSegSize if segsize>MaxSegSize
-      if segindex<0xFFFFFFFF then segindex += 1 else segindex = 0 end
-      comm = [index, segindex, segsize].pack('CNn')
-      if index<255 then index += 1 else index = 0 end
-      buf = data[i, segsize]
-      buf << [Zlib.crc32(buf)].pack('N')
-      buf = comm + buf
-      begin
-        if socket.closed?
-          sended = -1
-        else
-          sended = socket.write(buf)
-        end
-      rescue Errno::ECONNRESET
-        sended = -1
-      end
-      if sended == buf.size
-        res = index
-        p "SEND_ADD: ("+buf+')'
-      elsif sended != -1
-        res = nil
-        log_message(LM_Error, 'Не все данные отправлены2 '+sended.to_s)
-      end
-      i += segsize
-    end
-    res
-  end
-
-  def self.add_to_pack_and_send(connection, cmd, code, data=nil, last=false)
-    p "add_to_pack_and_send  "
-  end
 
   ECC_Init0_Hello       = 0
   ECC_Init1_KeyPhrase   = 1
@@ -4334,42 +4253,6 @@ module PandoraGUI
   ST_KeyAllowed   = 4
   ST_Signed       = 5
 
-  $hunter_count   = 0
-  $listener_count = 0
-  $fisher_count   = 0
-  def self.update_conn_status(conn, hunter, diff_count)
-    if hunter
-      $hunter_count += diff_count
-    else
-      $listener_count += diff_count
-    end
-    set_status_field(SF_Conn, $hunter_count.to_s+'/'+$listener_count.to_s+'/'+$fisher_count.to_s)
-  end
-
-  $connections = []
-
-  def self.add_connection(conn)
-    if not $connections.include?(conn)
-      $connections << conn
-      update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, 1)
-    end
-  end
-
-  def self.del_connection(conn)
-    if $connections.delete(conn)
-      update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, -1)
-    end
-  end
-
-  def self.connection_of_node(node)
-    host, port, proto = decode_node(node)
-    connection = $connections.find do |e|
-      (e.is_a? Connection) and ((e.host_ip == host) or (e.host_name == host)) and (e.port == port) \
-        and (e.proto == proto)
-    end
-    connection
-  end
-
   class Connection
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
       :send_thread, :read_thread, :socket, :read_state, :send_state, :read_mes, :read_media, \
@@ -4399,6 +4282,120 @@ module PandoraGUI
       @send_mes       = [-1, -1, []]
       @send_media     = [-1, -1, []]
       @send_req       = [-1, -1, []]
+    end
+
+    def unpack_comm(comm)
+      errcode = 0
+      if comm.size == CommSize
+        index, cmd, code, segsign, crc8 = comm.unpack('CCCnC')
+        crc8f = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
+        if crc8 != crc8f
+          errcode = 1
+        end
+      else
+        errcode = 2
+      end
+      [index, cmd, code, segsign, errcode]
+    end
+
+    def unpack_comm_ext(comm)
+      if comm.size == CommExtSize
+        datasize, fullcrc32, segsize = comm.unpack('NNn')
+      else
+        log_message(LM_Error, 'Ошибочная длина расширения команды')
+      end
+      [datasize, fullcrc32, segsize]
+    end
+
+    LONG_SEG_SIGN   = 0xFFFF
+
+    # RU: Отправляет команду и данные, если есть !!! ДОБАВИТЬ !!! send_number!, buflen, buf
+    def send_comm_and_data(index, cmd, code, data=nil)
+      res = nil
+      data ||=""
+      data = AsciiString.new(data)
+      datasize = data.size
+      if datasize <= MaxSegSize
+        segsign = datasize
+        segsize = datasize
+      else
+        segsign = LONG_SEG_SIGN
+        segsize = MaxSegSize
+      end
+      crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
+      # Команда как минимум равна 1+1+1+2+1= 6 байт (CommSize)
+      p 'SCAB: '+[index, cmd, code, segsign, crc8].inspect
+      comm = AsciiString.new([index, cmd, code, segsign, crc8].pack('CCCnC'))
+      if index<255 then index += 1 else index = 0 end
+      buf = AsciiString.new
+      if datasize>0
+        if segsign == LONG_SEG_SIGN
+          fullcrc32 = Zlib.crc32(data)
+          # если пакетов много, то добавить еще 4+4+2= 10 байт
+          comm << [datasize, fullcrc32, segsize].pack('NNn')
+          buf << data[0, segsize]
+        else
+          buf << data
+        end
+        segcrc32 = Zlib.crc32(buf)
+        # в конце всегда CRC сегмента - 4 байта
+        buf << [segcrc32].pack('N')
+      end
+      buf = comm + buf
+      p "!SEND: ("+buf+')'
+
+      # tos_sip    cs3   0x60  0x18
+      # tos_video  af41  0x88  0x22
+      # tos_xxx    cs5   0xA0  0x28
+      # tos_audio  ef    0xB8  0x2E
+      #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
+      begin
+        if socket and not socket.closed?
+          sended = socket.write(buf)
+        else
+          sended = -1
+        end
+      rescue #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
+        sended = -1
+      end
+      #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
+      p "SEND_MAIN: ("+buf+')'
+
+      if sended == buf.size
+        res = index
+      elsif sended != -1
+        log_message(LM_Error, 'Не все данные отправлены '+sended.to_s)
+      end
+      segindex = 0
+      i = segsize
+      while res and ((datasize-i)>0)
+        segsize = datasize-i
+        segsize = MaxSegSize if segsize>MaxSegSize
+        if segindex<0xFFFFFFFF then segindex += 1 else segindex = 0 end
+        comm = [index, segindex, segsize].pack('CNn')
+        if index<255 then index += 1 else index = 0 end
+        buf = data[i, segsize]
+        buf << [Zlib.crc32(buf)].pack('N')
+        buf = comm + buf
+        begin
+          if socket and not socket.closed?
+            sended = socket.write(buf)
+          else
+            sended = -1
+          end
+        rescue #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
+          sended = -1
+        end
+        if sended == buf.size
+          res = index
+          p "SEND_ADD: ("+buf+')'
+        elsif sended != -1
+          res = nil
+          log_message(LM_Error, 'Не все данные отправлены2 '+sended.to_s)
+        end
+        i += segsize
+      end
+      res
     end
 
     # Accept received segment
@@ -4459,6 +4456,7 @@ module PandoraGUI
               talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "blue")
               talkview.buffer.insert(talkview.buffer.end_iter, 'Dude:', "blue_bold")
               talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
+              talkview.move_viewport(Gtk::SCROLL_ENDS, 1)
             else
               log_message(LM_Error, 'Пришло сообщение, но окно чата не найдено!')
             end
@@ -4608,7 +4606,7 @@ module PandoraGUI
       end
       #sendpack << sindex+1
       #if last_seg
-        sindex = PandoraGUI.send_comm_and_data(socket, @sindex, scmd, scode, sbuf)
+        sindex = send_comm_and_data(@sindex, scmd, scode, sbuf)
         res = @sindex
         #sendpackqueue << sendpack
         #sendpack = []
@@ -4624,11 +4622,11 @@ module PandoraGUI
     recieved = ''
     begin
       #recieved = socket.recv_nonblock(maxsize)
-      recieved = socket.recv(maxsize)
+      recieved = socket.recv(maxsize) if (socket and (not socket.closed?))
       recieved = nil if recieved==''  # socket is closed
     rescue Errno::EAGAIN       # no data to read
       recieved = ''
-    rescue Errno::ECONNRESET, Errno::EBADF   # other socket is closed
+    rescue Errno::ECONNRESET, Errno::EBADF, Errno::ENOTSOCK   # other socket is closed
       recieved = nil
     end
     recieved
@@ -4734,10 +4732,10 @@ module PandoraGUI
               case readmode
                 when RM_Comm
                   comm = rbuf[0, processedlen]
-                  rindex, rcmd, rcode, rsegsign, errcode = unpack_comm(comm)
+                  rindex, rcmd, rcode, rsegsign, errcode = connection.unpack_comm(comm)
                   if errcode == 0
                     p log_mes+' RM_Comm: '+[rindex, rcmd, rcode, rsegsign].inspect
-                    if rsegsign == LONG_SEG_SIGN
+                    if rsegsign == Connection::LONG_SEG_SIGN
                       nextreadmode = RM_CommExt
                       waitlen = CommExtSize
                     elsif rsegsign > 0
@@ -4809,7 +4807,7 @@ module PandoraGUI
               if scmd != EC_Data
                 sbuf='' if scmd == EC_Bye
                 p log_mes+'SEnd_FUll: '+scmd.to_s+"/"+scode.to_s+"+("+sbuf+')'
-                sindex = send_comm_and_data(connection.socket, sindex, scmd, scode, sbuf)
+                sindex = connection.send_comm_and_data(sindex, scmd, scode, sbuf)
                 #sleep 2
                 last_scmd = scmd
                 sbuf = ''
@@ -4846,6 +4844,9 @@ module PandoraGUI
 
         # пакетирование сообщений
 
+    #p log_mes+'connection.send_state='+connection.send_state.inspect
+    #sleep 2
+
         processed = 0
         while ((((connection.send_state & CSF_Message)>0) or ((connection.send_state & CSF_Messaging)>0)) \
         and (processed<$mes_block_count) and (connection.conn_state != CS_Disconnected))
@@ -4855,7 +4856,7 @@ module PandoraGUI
 
           $model_send['Message'] ||= PandoraModel::Message.new
           message_model = $model_send['Message']
-          sel = message_model.select({'destination'=>connection.node, 'state'=>0}, false, 'id, text')
+          sel = message_model.select('destination="'+connection.node.to_s+'" AND state=0', false, 'id, text')
           if sel and (sel.size>0)
             id = sel[0][0]
             text = sel[0][1]
@@ -5502,6 +5503,7 @@ module PandoraGUI
             talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "red")
             talkview.buffer.insert(talkview.buffer.end_iter, 'You:', "red_bold")
             talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
+            talkview.move_viewport(Gtk::SCROLL_ENDS, 1)
             editbox.buffer.text = ''
           end
         end
