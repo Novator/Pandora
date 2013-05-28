@@ -3892,16 +3892,17 @@ module PandoraGUI
   class TabLabelBox < Gtk::HBox
     attr_accessor :label
 
-    def initialize(image, title, bodywin, *args)
+    def initialize(image, title, show_closebtn, *args)
       super(*args)
       label_box = self
 
       label_box.pack_start(image, false, false, 0) if image != nil
 
       @label = Gtk::Label.new(title)
+
       label_box.pack_start(label, false, false, 0)
 
-      if bodywin
+      if show_closebtn
         btn = Gtk::Button.new
         btn.relief = Gtk::RELIEF_NONE
         btn.focus_on_click = false
@@ -4267,9 +4268,6 @@ module PandoraGUI
       @node          = node
       @conn_mode     = aconn_mode
       @conn_state    = aconn_state
-      post_init
-    end
-    def post_init
       @sindex         = 0
       @rindex         = 0
       @reads_state    = 0
@@ -4441,10 +4439,10 @@ module PandoraGUI
           end
         when EC_Message, EC_Channel
           if not dialog
-            panhash = PandoraGUI.encode_node(host_ip, port, proto)
-            @dialog = PandoraGUI.show_talk_dialog(panhash)
+            node = PandoraGUI.encode_node(host_ip, port, proto)
+            panhash = PandoraKernel.bigint_to_bytes(0x2ec783d34331de1d396fc8000000000000000000)
+            @dialog = PandoraGUI.show_talk_dialog([panhash], node)
             Thread.pass
-            p 'dialog ==='+dialog.inspect
           end
           if rcmd==EC_Message
             mes = rdata
@@ -4457,6 +4455,7 @@ module PandoraGUI
               talkview.buffer.insert(talkview.buffer.end_iter, 'Dude:', "blue_bold")
               talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
               talkview.move_viewport(Gtk::SCROLL_ENDS, 1)
+              dialog.update_state(true)
             else
               log_message(LM_Error, 'Пришло сообщение, но окно чата не найдено!')
             end
@@ -4624,10 +4623,12 @@ module PandoraGUI
       #recieved = socket.recv_nonblock(maxsize)
       recieved = socket.recv(maxsize) if (socket and (not socket.closed?))
       recieved = nil if recieved==''  # socket is closed
-    rescue Errno::EAGAIN       # no data to read
+    rescue
       recieved = ''
-    rescue Errno::ECONNRESET, Errno::EBADF, Errno::ENOTSOCK   # other socket is closed
-      recieved = nil
+    #rescue Errno::EAGAIN       # no data to read
+    #  recieved = ''
+    #rescue #Errno::ECONNRESET, Errno::EBADF, Errno::ENOTSOCK   # other socket is closed
+    #  recieved = nil
     end
     recieved
   end
@@ -4818,6 +4819,7 @@ module PandoraGUI
             if connection.conn_state == CS_Stoping
               connection.conn_state = CS_StopRead
             end
+            Thread.pass
           end
           p log_mes+"Цикл ЧТЕНИЯ конец!"
           #connection.socket.close if not connection.socket.closed?
@@ -4843,9 +4845,6 @@ module PandoraGUI
         # обработка принятых запросов, их удаление
 
         # пакетирование сообщений
-
-    #p log_mes+'connection.send_state='+connection.send_state.inspect
-    #sleep 2
 
         processed = 0
         while ((((connection.send_state & CSF_Message)>0) or ((connection.send_state & CSF_Messaging)>0)) \
@@ -4956,7 +4955,7 @@ module PandoraGUI
 
             if Thread.current[:need_to_listen] and not server.closed? and client
               Thread.new(client) do |socket|
-                log_message(LM_Info, "Подключился клиент: "+socket.peeraddr.to_s)
+                log_message(LM_Info, "Подключился клиент: "+socket.peeraddr.inspect)
 
                 #local_address
                 host_ip = socket.peeraddr[2]
@@ -5034,6 +5033,9 @@ module PandoraGUI
     if connection
       connection.send_state = (connection.send_state | send_state_add)
       connection.dialog ||= dialog
+      if connection.dialog and connection.dialog.online_button
+        connection.dialog.online_button.active = (connection.socket and (not connection.socket.closed?))
+      end
     else
       conn_state = CS_Disconnected
       conn_mode = CM_Hunter
@@ -5228,9 +5230,27 @@ module PandoraGUI
     res
   end
 
+  # Talk dialog
+  # RU: Диалог разговора
   class TalkScrolledWindow < Gtk::ScrolledWindow
-    attr_accessor :active_nodes, :online_button, :snd_button, :vid_button, :talkview, :editbox, \
+    attr_accessor :room_id, :connectionset, :online_button, :snd_button, :vid_button, :talkview, :editbox, \
       :area, :pipeline1, :pipeline2, :connection, :area2, :ximagesink, :xvimagesink
+
+    def update_state(received=true)
+      curpage = nil
+      if $notebook.page >= 0
+        curpage = $notebook.get_nth_page($notebook.page)
+      end
+      color = $window.modifier_style.fg(Gtk::STATE_NORMAL)
+      if received and (curpage != self)
+        color = Gdk::Color.parse('red')
+      end
+      tab_widget = $notebook.get_tab_label(self)
+      if tab_widget
+        #tab_widget.label.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse(color))
+        tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
+      end
+    end
 
     # Play media stream
     # RU: Запустить медиа поток
@@ -5355,32 +5375,47 @@ module PandoraGUI
         #end
       end
     end
-
   end
 
-  # Searching a node by current record in treeview
-  # RU: Поиск узла по текущей записи в таблице
-  def self.compose_query_tree(panhash)
-    nodes = nil
-    persons = nil
-    keys = nil
-    if panhash
-      node = encode_node($host, $port, 'tcp')
-      nodes = [node]
-    end
-    [nodes, persons, keys]
+  # Get person panhash by any panhash
+  # RU: Получить панхэш персоны по произвольному панхэшу
+  def self.person_by_panhash(panhash)
+    # need to analyse a record
+    res = panhash #PandoraKernel.bigint_to_bytes(0x2ec783aad34331de1d390fa8006fc8)
   end
 
-  # Searching a node by current record in treeview
-  # RU: Поиск узла по текущей записи в таблице
-  def self.hunt_by_query(query, active_nodes=nil)
-    nodes, persons, keys = query
-    active_nodes ||= []
-    p active_nodes
-    nodes.each do |node|
-      active_nodes << node if not active_nodes.include? node
+  # Extend lists of persons, nodes and keys by relations
+  # RU: Расширить списки персон, узлов и ключей пройдясь по связям
+  def self.extend_connectionset(connectionset)
+    added = 0
+    # need to copmose by relations
+    added
+  end
+
+  # Start a thread which is searching additional nodes and keys
+  # RU: Запуск потока, которые ищет дополнительные узлы и ключи
+  def self.start_extending_connectionset_by_hunt(connection_set)
+    started = true
+    if (connection_set[1]==nil) or (connection_set[1]==[])
+      connection_set[1] ||= []
+      port = 5577
+      #port = 5578 if $port==5577
+      node = encode_node('127.0.0.1', port, 'tcp')
+      connection_set[1] = [node]
     end
-    active_nodes
+    started
+  end
+
+  def self.consctruct_room_id(persons)
+    sha1 = Digest::SHA1.new
+    persons.each do |panhash|
+      sha1.update(panhash)
+    end
+    res = sha1.digest
+  end
+
+  def self.consctruct_room_title(persons)
+    res = PandoraKernel.bytes_to_hex(persons[0])[0,16]
   end
 
   CL_Online = 0
@@ -5388,22 +5423,43 @@ module PandoraGUI
 
   # Show conversation dialog
   # RU: Показать диалог общения
-  def self.show_talk_dialog(panhash)
+  def self.show_talk_dialog(persons, known_node=nil)
+    p 'show_talk_dialog  [persons, known_node]='+[persons, known_node].inspect
+    nodes = []
+    keys = []
+    nodes << known_node if known_node and (not nodes.include? known_node)
+    if not persons.is_a? Array
+      persons = [person_by_panhash(persons)]
+    end
+    connectionset = [persons, nodes, keys]
+    if connectionset[1].size==0
+      extend_connectionset(connectionset)
+    end
+    if connectionset[1].size==0
+      start_extending_connectionset_by_hunt(connectionset)
+    end
+    connectionset.each do |list|
+      list.sort!
+    end
 
-    query = compose_query_tree(panhash)
-    active_nodes = hunt_by_query(query)
-    title = active_nodes.inspect
-    node = active_nodes[0]
+    p 'connectionset='+connectionset.inspect
+
+    room_id = consctruct_room_id(connectionset[0])
 
     $notebook.children.each do |child|
-      if (child.is_a? TalkScrolledWindow) and (child.active_nodes[0]==node)
+      if (child.is_a? TalkScrolledWindow) and (child.room_id==room_id)
         $notebook.page = $notebook.children.index(child)
+        child.room_id = room_id
+        child.connectionset = connectionset
         return child
       end
     end
 
+    title = consctruct_room_title(connectionset[0])
+
     sw = TalkScrolledWindow.new(nil, nil)
-    sw.active_nodes = active_nodes
+    sw.room_id = room_id
+    sw.connectionset = connectionset
 
     sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
     #sw.name = title
@@ -5431,13 +5487,19 @@ module PandoraGUI
     bbox.spacing = 5
 
     online_button = Gtk::CheckButton.new(_('Online'), true)
-    online_button.signal_connect('toggled') do |widget|
+    online_button.signal_connect('clicked') do |widget|
       if widget.active?
-        find_or_start_connection(node)
+        sw.connectionset[1].each do |node|
+          find_or_start_connection(node, 0, sw)
+        end
       else
-        stop_connection(node, false)
+        sw.connectionset[1].each do |node|
+          stop_connection(node, false)
+        end
       end
     end
+    online_button.active = (known_node != nil)
+
     bbox.pack_start(online_button, false, false, 0)
 
     snd_button = Gtk::CheckButton.new(_('Sound'), true)
@@ -5497,7 +5559,13 @@ module PandoraGUI
       if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
         if editbox.buffer.text != ''
           mes = editbox.buffer.text
-          if add_and_send_mes(mes, node, sw)
+          sended = false
+          sw.connectionset[1].each do |node|
+            if add_and_send_mes(mes, node, sw)
+              sended = true
+            end
+          end
+          if sended
             t = Time.now
             talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
             talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "red")
@@ -5534,7 +5602,7 @@ module PandoraGUI
     #list_sw.visible = false
 
     list_store = Gtk::ListStore.new(TrueClass, String)
-    active_nodes.each do |node|
+    sw.connectionset[1].each do |node|
       user_iter = list_store.append
       user_iter[1] = node.inspect
     end
@@ -5640,16 +5708,18 @@ module PandoraGUI
       sw.stop_pipeline
       area.destroy
 
-      connection = connection_of_node(node)
-      if connection
-        connection.dialog = nil
-        #connection.conn_mode = connection.conn_mode & (~CM_Persistent)
-        stop_connection(node, false)
-        #if connection.conn_state == CS_Disconnected
-          #Thread.critical = true
-        #  del_connection(connection)
-          #Thread.critical = false
-        #end
+      sw.connectionset[1].each do |node|
+        connection = connection_of_node(node)
+        if connection
+          connection.dialog = nil
+          #connection.conn_mode = connection.conn_mode & (~CM_Persistent)
+          stop_connection(node, false)
+          #if connection.conn_state == CS_Disconnected
+            #Thread.critical = true
+          #  del_connection(connection)
+            #Thread.critical = false
+          #end
+        end
       end
     end
 
@@ -5932,7 +6002,10 @@ module PandoraGUI
     $notebook.signal_connect('switch-page') do |widget, page, page_num|
       sw = $notebook.get_nth_page(page_num)
       #treeview = sw.children[0]
-      sw.stop_pipeline if sw.is_a? PandoraGUI::TalkScrolledWindow
+      #sw.stop_pipeline if sw.is_a? PandoraGUI::TalkScrolledWindow
+      if sw.is_a? PandoraGUI::TalkScrolledWindow
+        sw.update_state(false)
+      end
     end
 
     $view = Gtk::TextView.new

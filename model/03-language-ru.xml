@@ -62,13 +62,11 @@
     <Contact name.ru="Контакт|Контакты">
       <type name.ru="Тип" />
       <value name.ru="Значение" />
-      <owner_list name.ru="Владельцы" />
     </Contact>
 
     <Document name.ru="Документ|Документы">
       <type name.ru="Тип" />
       <code name.ru="Номер" />
-      <target name.ru="Принадлежит" />
     </Document>
 
     <Activity name.ru="Деятельность|Увлечения">
