@@ -276,11 +276,12 @@
       <text name="Text" type="Text" />
     </Message>
 
-    <Fisher name="Fisher" kind="228" parent="Created">
+    <Fishhook name="Fishhook|Fishhooks" kind="228" parent="Created">
+      <creator name="Fisher" />
       <catch name="Catch" type="String" size="32" />
       <expire name="Expire" type="Time" />
       <state name="State" type="Word" />
-    </Fisher>
+    </Fishhook>
 
   </Pandora>
 

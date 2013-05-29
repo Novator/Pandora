@@ -10,7 +10,7 @@ Contents
 5) installation in Windows
 6) update to last version
 7) recommendation to developers
-8) your help and my help
+8) getting help
 
 
 1. OVERVIEW
@@ -144,13 +144,13 @@ Warning: change "yournick" to your nick!
   https://github.com/yournick/Pandora/pull/new/master
 
 
-8. YOUR HELP AND MY HELP
+8. GETTING HELP
 
-You can help to Pandora project like a programmer, translator, writer or donator:
+Help to Pandora project like a programmer, translator, journalist or donator:
 
   http://robux.biz/pandora.html
 
-Anybody can ask me a help:
+Ask a help from author:
 
   http://facebook.com/robux
   http://vk.com/robux

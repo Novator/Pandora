@@ -450,7 +450,7 @@ module PandoraKernel
     end
     def create_table(table_name)
     end
-    def select_table(table_name, afilter=nil, fields=nil, sort=nil)
+    def select_table(table_name, afilter=nil, fields=nil, sort=nil, limit=nil)
     end
   end
 
@@ -498,7 +498,7 @@ module PandoraKernel
       tfd = db.table_info(table_name)
       tfd.collect { |x| [x['name'], x['type']] }
     end
-    def select_table(table_name, filter=nil, fields=nil, sort=nil)
+    def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil)
       connect
       tfd = fields_table(table_name)
       if (tfd == nil) or (tfd == [])
@@ -523,6 +523,9 @@ module PandoraKernel
         end
         if sort and (sort > '')
           sql = sql + ' ORDER BY '+sort
+        end
+        if limit
+          sql = sql + ' LIMIT '+limit.to_s
         end
         #p 'select  sql='+sql.inspect
         @selection = db.execute(sql, sql_values)
@@ -608,24 +611,13 @@ module PandoraKernel
   # Repository manager
   # RU: Менеджер хранилищ
   class RepositoryManager
-    @@repo_list = ['http://robux.biz/pandora_repo.xml', 'http://perm.ru/pandora_repo.xml']
-    attr_accessor :base_list, :table_list
-    def repo_list
-      @@repo_list
-    end
+    attr_accessor :base_list
     def initialize
       super
       @base_list = # динамический список баз
-        # rep_id, db_type, conn_param, rep_ptr
         [['robux', 'sqlite3,', $pandora_sqlite_db, nil],
          ['robux', 'sqlite3,', $pandora_sqlite_db2, nil],
-         ['robux', 'mysql', ['localhost', 'iron', 'cxziop', 'oscomm'], nil],
-         ['perm',  'mysql', ['pandora.perm.ru', 'user', 'pass', 'pandora'], nil]]
-      @table_list = # динамический список таблиц - нужен??
-        # rep_id, tab_name, tab_def
-        [['robux', 'persons', '(id INTEGER PRIMARY KEY AUTOINCREMENT, firstname VARCHAR(50), lastname TEXT, height REAL)'],
-         ['robux', 'companies', nil],
-         ['robux', 'laws', nil]]
+         ['robux', 'mysql', ['robux.biz', 'user', 'pass', 'oscomm'], nil]]
     end
     def get_adapter(panobj, table_ptr, recreate=false)
       #find db_ptr in db_list
@@ -648,9 +640,9 @@ module PandoraKernel
       end
       adap
     end
-    def get_tab_select(panobj, table_ptr, filter=nil, fields=nil, sort=nil)
+    def get_tab_select(panobj, table_ptr, filter=nil, fields=nil, sort=nil, limit=nil)
       adap = get_adapter(panobj, table_ptr)
-      adap.select_table(table_ptr[1], filter, fields, sort)
+      adap.select_table(table_ptr[1], filter, fields, sort, limit)
     end
     def get_tab_update(panobj, table_ptr, values, names, filter='')
       res = false
@@ -774,13 +766,17 @@ module PandoraKernel
 
   $max_hash_len = 20
 
+  def self.kind_from_panhash(panhash)
+    kind = panhash[0].ord
+  end
+
   # Base Pandora's object
   # RU: Базовый объект Пандоры
   class BasePanobject
     class << self
       def initialize(*args)
         super(*args)
-        @ider = 'Base Panobject'
+        @ider = 'BasePanobject'
         @name = 'Базовый объект Пандоры'
         #@lang = true
         @tables = []
@@ -1198,8 +1194,8 @@ module PandoraKernel
       _(PandoraKernel.get_name_or_names(name, true))
     end
     attr_accessor :namesvalues
-    def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil)
-      res = self.class.repositories.get_tab_select(self, self.class.tables[0], afilter, fields, sort)
+    def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil, limit=nil)
+      res = self.class.repositories.get_tab_select(self, self.class.tables[0], afilter, fields, sort, limit)
       if set_namesvalues and res[0].is_a? Array
         @namesvalues = {}
         tab_fields.each_with_index do |td, i|
@@ -1462,6 +1458,8 @@ module PandoraModel
     name = "Объект Пандоры"
   end
 
+  $panobject_list = []
+
   # Compose pandora model definition from XML file
   # RU: Сформировать описание модели по XML-файлу
   def self.load_model_from_xml(lang='ru')
@@ -1493,7 +1491,6 @@ module PandoraModel
             else
               # create new class
               panobj_name = panobj_id
-
               if not panobject_class #not PandoraModel.const_defined? panobj_id
                 parent_class = element.attributes['parent']
                 if (parent_class==nil) or (parent_class=='') or (not (PandoraModel.const_defined? parent_class))
@@ -1507,15 +1504,18 @@ module PandoraModel
                     flds << f.dup
                   end
                 end
-                module_eval('class '+panobj_id+' < PandoraModel::'+parent_class+'; name = "'+panobj_name+'"; end')
+                init_code = 'class '+panobj_id+' < PandoraModel::'+parent_class+'; name = "'+panobj_name+'"; end'
+                module_eval(init_code)
                 panobject_class = PandoraModel.const_get(panobj_id)
+                $panobject_list << panobject_class if not $panobject_list.include? panobject_class
               end
 
               #p 'new='+panobject_class.inspect
               panobject_class.def_fields = flds
-              #p panobject_class
               panobject_class.ider = panobj_id
-              panobject_class.kind = 0
+              kind = panobject_class.superclass.kind #if panobject_class.superclass <= BasePanobject
+              kind ||= 0
+              panobject_class.kind = kind
               #panobject_class.lang = 5
               panobj_tabl = panobj_id
               panobj_tabl = PandoraKernel::get_name_or_names(panobj_tabl, true)
@@ -1620,6 +1620,19 @@ module PandoraModel
       end
       file.close
     end
+  end
+
+  def self.panobjectclass_by_kind(kind)
+    res = nil
+    if kind>0
+      $panobject_list.each do |panobject_class|
+        if panobject_class.kind==kind
+          res = panobject_class
+          break
+        end
+      end
+    end
+    res
   end
 
 end
@@ -3116,7 +3129,7 @@ module PandoraGUI
           log_message(LM_Info, _('File is updated')+': '+pfn)
         end
       rescue => err
-        puts 'Update error: '+err.inspect
+        puts 'Update error: '+err.message
       end
       res
     end
@@ -3162,7 +3175,8 @@ module PandoraGUI
             rescue => err
               http = nil
               set_status_field(SF_Update, 'Connection error')
-              log_message(LM_Warning, _('Connection error')+' 1: '+err.inspect)
+              log_message(LM_Warning, _('Connection error')+' 1')
+              puts err.message
             end
           else
             set_status_field(SF_Update, 'Read only')
@@ -3180,7 +3194,8 @@ module PandoraGUI
               rescue => err
                 http = nil
                 set_status_field(SF_Update, 'Connection error')
-                log_message(LM_Warning, _('Connection error')+' 2: '+err.inspect)
+                log_message(LM_Warning, _('Connection error')+' 2')
+                puts err.message
               end
             end
 
@@ -3892,7 +3907,7 @@ module PandoraGUI
   class TabLabelBox < Gtk::HBox
     attr_accessor :label
 
-    def initialize(image, title, show_closebtn, *args)
+    def initialize(image, title, child=nil, *args)
       super(*args)
       label_box = self
 
@@ -3902,7 +3917,7 @@ module PandoraGUI
 
       label_box.pack_start(label, false, false, 0)
 
-      if show_closebtn
+      if child
         btn = Gtk::Button.new
         btn.relief = Gtk::RELIEF_NONE
         btn.focus_on_click = false
@@ -3914,9 +3929,9 @@ module PandoraGUI
         btn.set_size_request(wim+2,him+2)
         btn.signal_connect('clicked') do |*args|
           yield if block_given?
-          $notebook.remove_page($notebook.children.index(bodywin))
+          $notebook.remove_page($notebook.children.index(child))
           label_box.destroy if not label_box.destroyed?
-          bodywin.destroy if not bodywin.destroyed?
+          child.destroy if not child.destroyed?
         end
         close_image = Gtk::Image.new(Gtk::Stock::CLOSE, Gtk::IconSize::MENU)
         btn.add(close_image)
@@ -4097,7 +4112,9 @@ module PandoraGUI
       sw.show_all
       $notebook.page = $notebook.n_pages-1
 
-      treeview.set_cursor(Gtk::TreePath.new(treeview.sel.size-1), nil, false)
+      if treeview.sel.size>0
+        treeview.set_cursor(Gtk::TreePath.new(treeview.sel.size-1), nil, false)
+      end
       treeview.grab_focus
     end
 
@@ -4247,20 +4264,75 @@ module PandoraGUI
 
   # Stage of exchange
   # RU: Стадия обмена
-  ST_Connected    = 0
+  ST_Begin        = 0
   ST_IpAllowed    = 1
   ST_Protocoled   = 2
   ST_Hashed       = 3
   ST_KeyAllowed   = 4
   ST_Signed       = 5
 
+  QI_ProcInd    = 0
+  QI_LastInd    = 1
+  QI_DataBuf    = 2
+
   class Connection
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
       :send_thread, :read_thread, :socket, :read_state, :send_state, :read_mes, :read_media, \
-      :read_req, :send_mes, :send_media, :send_req, :sindex, :rindex, :sendpack, :sendpackqueue
+      :read_req, :send_mes, :send_media, :send_req, :sindex, :rindex, :read_queue, :send_queue
+
+    def init_empty_queue
+      res = Array.new
+      res[QI_ProcInd] = -1
+      res[QI_LastInd] = -1
+      res[QI_DataBuf] = Array.new
+      res
+    end
+
+    MaxQueue = 20
+
+    # Add block to queue for send
+    # RU: Добавление блока в очередь на отправку
+    def add_block_to_queue(queue, block, max=MaxQueue)
+      res = false
+      if block
+        ind = queue[QI_LastInd]
+        if ind<max
+          ind += 1
+        else
+          ind = 0
+        end
+        if queue[QI_ProcInd] != ind
+          queue[QI_LastInd] = ind
+          queue[QI_DataBuf][ind] = block
+          res = true
+        end
+      else
+        puts 'add_block_to_queue: Block cannot be nil'
+      end
+      res
+    end
+
+    def queue_is_empty?(queue)
+      res = (queue[QI_ProcInd] == queue[QI_LastInd])
+    end
+
+    def get_block_from_queue(queue, max=MaxQueue)
+      block = nil
+      if queue[QI_ProcInd] != queue[QI_LastInd]
+        if queue[QI_ProcInd]<max
+          queue[QI_ProcInd] += 1
+        else
+          queue[QI_ProcInd] = 0
+        end
+        ind = queue[QI_ProcInd]
+        block = queue[QI_DataBuf][ind]
+      end
+      block
+    end
+
     def initialize(ahost_name, ahost_ip, aport, aproto, node, aconn_mode=0, aconn_state=CS_Disconnected)
       super()
-      @stage         = ST_Connected
+      @stage         = ST_Begin
       @host_name     = ahost_name
       @host_ip       = ahost_ip
       @port          = aport
@@ -4268,18 +4340,18 @@ module PandoraGUI
       @node          = node
       @conn_mode     = aconn_mode
       @conn_state    = aconn_state
+      @read_state     = 0
+      @send_state     = CSF_Message
       @sindex         = 0
       @rindex         = 0
-      @reads_state    = 0
-      @send_state     = 0
-      @sendpack       = []
-      @sendpackqueue  = []
-      @read_mes       = [-1, -1, []]
-      @read_media     = [-1, -1, []]
-      @read_req       = [-1, -1, []]
-      @send_mes       = [-1, -1, []]
-      @send_media     = [-1, -1, []]
-      @send_req       = [-1, -1, []]
+      @read_mes       = init_empty_queue
+      @read_media     = init_empty_queue
+      @read_req       = init_empty_queue
+      @send_mes       = init_empty_queue
+      @send_media     = init_empty_queue
+      @send_req       = init_empty_queue
+      @read_queue     = init_empty_queue
+      @send_queue     = init_empty_queue
     end
 
     def unpack_comm(comm)
@@ -4399,7 +4471,7 @@ module PandoraGUI
     # Accept received segment
     # RU: Принять полученный сегмент
     def accept_segment(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
-      case rcmd  # КЛИЕНТ!!! (актив)
+      case rcmd
         when EC_Init
           case rcode
             when ECC_Init0_Hello
@@ -4438,10 +4510,12 @@ module PandoraGUI
               sbuf=''
           end
         when EC_Message, EC_Channel
+          curpage = nil
           if not dialog
             node = PandoraGUI.encode_node(host_ip, port, proto)
             panhash = PandoraKernel.bigint_to_bytes(0x2ec783d34331de1d396fc8000000000000000000)
             @dialog = PandoraGUI.show_talk_dialog([panhash], node)
+            curpage = dialog
             Thread.pass
           end
           if rcmd==EC_Message
@@ -4451,11 +4525,11 @@ module PandoraGUI
             if talkview
               t = Time.now
               talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
-              talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "blue")
-              talkview.buffer.insert(talkview.buffer.end_iter, 'Dude:', "blue_bold")
+              talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
+              talkview.buffer.insert(talkview.buffer.end_iter, 'Dude:', 'dude_bold')
               talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
               talkview.move_viewport(Gtk::SCROLL_ENDS, 1)
-              dialog.update_state(true)
+              dialog.update_state(true, curpage)
             else
               log_message(LM_Error, 'Пришло сообщение, но окно чата не найдено!')
             end
@@ -4539,7 +4613,7 @@ module PandoraGUI
           pkind = rcode
           phashid = rdata
           scmd=EC_More
-          scode=0 #-не надо, 1-патч, 2-запись, 3-миниатюру
+          scode=0 #0-не надо, 1-патч, 2-запись, 3-миниатюру
           sbuf=''
         when EC_Patch
           p "!patch!"
@@ -4574,14 +4648,14 @@ module PandoraGUI
 
     # Add segment (chunk, grain, phrase) to pack and send when it's time
     # RU: Добавляет сегмент в пакет и отправляет если пора
-    def send_segment(ex_comm, last_seg=true, param=nil)
+    def add_send_segment(ex_comm, last_seg=true, param=nil)
       res = nil
       scode = 0
       scmd = ex_comm
       sbuf = nil
       case ex_comm
         when EC_Init
-          sbuf = 'pandora,0.1,5577,0,aa99ffee00'
+          sbuf = 'pandora,0.1,:5577,0,aa99ffee00'
           scode = ECC_Init0_Hello
         when EC_Message
           #mes = send_mes[2][buf_ind] #mes
@@ -4603,13 +4677,11 @@ module PandoraGUI
           scmd = EC_Bye
           scode = ECC_Bye_Exit
       end
-      #sendpack << sindex+1
-      #if last_seg
-        sindex = send_comm_and_data(@sindex, scmd, scode, sbuf)
-        res = @sindex
-        #sendpackqueue << sendpack
-        #sendpack = []
-      #end
+      res = add_block_to_queue(@send_queue, [scmd, scode, sbuf])
+      if not res
+        puts 'add_send_segment: add_block_to_queue error'
+        @conn_state == CS_Stoping
+      end
       res
     end
 
@@ -4635,7 +4707,7 @@ module PandoraGUI
 
   # Number of messages per cicle
   # RU: Число сообщений за цикл
-  $mes_block_count = 2
+  $mes_block_count = 5
   # Number of media blocks per cicle
   # RU: Число медиа блоков за цикл
   $media_block_count = 10
@@ -4645,16 +4717,11 @@ module PandoraGUI
 
   $model_send = {}
 
-  # Maximal size of queue
-  # RU: Максимальный размер очереди
-  MaxQueue = 4
-
   # Connection state flags
   # RU: Флаги состояния соединения
   CSF_Message     = 1
   CSF_Messaging   = 2
   CSF_Media       = 4
-  CSF_Quit        = 8
 
   # Start two exchange cicle of socket: read and send
   # RU: Запускает два цикла обмена сокета: чтение и отправка
@@ -4687,13 +4754,11 @@ module PandoraGUI
         log_mes = 'LIS: '
       end
 
-      scmd = EC_More
-      sbuf = ''
       # Send cicle
       # RU: Цикл отправки
 
       if hunter
-        connection.send_segment(EC_Init, true)
+        connection.add_send_segment(EC_Init, true)
       end
 
       # Read cicle
@@ -4714,7 +4779,6 @@ module PandoraGUI
           nextreadmode = RM_Comm
           waitlen = CommSize
           last_scmd = scmd
-
 
           p log_mes+"Цикл ЧТЕНИЯ начало"
           # Цикл обработки команд и блоков данных
@@ -4807,15 +4871,16 @@ module PandoraGUI
 
               if scmd != EC_Data
                 sbuf='' if scmd == EC_Bye
-                p log_mes+'SEnd_FUll: '+scmd.to_s+"/"+scode.to_s+"+("+sbuf+')'
-                sindex = connection.send_comm_and_data(sindex, scmd, scode, sbuf)
-                #sleep 2
+                res = connection.add_block_to_queue(connection.send_queue, [scmd, scode, sbuf])
+                if not res
+                  puts 'read cicle answer: add_block_to_queue error'
+                  connection.conn_state == CS_Stoping
+                end
                 last_scmd = scmd
                 sbuf = ''
               end
               readmode = nextreadmode
             end
-            #p "WTF?conn_state="+connection.conn_state.to_s
             if connection.conn_state == CS_Stoping
               connection.conn_state = CS_StopRead
             end
@@ -4830,14 +4895,27 @@ module PandoraGUI
 
       p log_mes+"ФАЗА ОЖИДАНИЯ"
 
-      while (connection.conn_state != CS_Disconnected) and (connection.stage<ST_Protocoled)
-        Thread.pass
-      end
+      #while (connection.conn_state != CS_Disconnected) and (connection.stage<ST_Protocoled)
+      #  Thread.pass
+      #end
+
+      $model_send['Message'] ||= PandoraModel::Message.new
+      message_model = $model_send['Message']
 
       p log_mes+'ЦИКЛ ОТПРАВКИ начало'
       p log_mes+"exch: cicles"
       p log_mes+"exch: connection="+connection.inspect
-      while (connection.conn_state != CS_Disconnected) and (connection.conn_state != CS_Stoping)
+      while connection.conn_state != CS_Disconnected
+        # отправка сформированных сегментов и их удаление
+        if (connection.conn_state != CS_Disconnected)
+          send_segment = connection.get_block_from_queue(connection.send_queue)
+          while (connection.conn_state != CS_Disconnected) and send_segment
+            scmd, scode, sbuf = send_segment
+            connection.sindex = connection.send_comm_and_data(connection.sindex, scmd, scode, sbuf)
+            send_segment = connection.get_block_from_queue(connection.send_queue)
+          end
+        end
+
         # обработка принятых сообщений, их удаление
 
         # разгрузка принятых буферов в gstreamer
@@ -4845,28 +4923,38 @@ module PandoraGUI
         # обработка принятых запросов, их удаление
 
         # пакетирование сообщений
-
-        processed = 0
-        while ((((connection.send_state & CSF_Message)>0) or ((connection.send_state & CSF_Messaging)>0)) \
-        and (processed<$mes_block_count) and (connection.conn_state != CS_Disconnected))
-          processed += 1
-
-          connection.send_state = (connection.send_state & (~CSF_Message))
-
-          $model_send['Message'] ||= PandoraModel::Message.new
-          message_model = $model_send['Message']
-          sel = message_model.select('destination="'+connection.node.to_s+'" AND state=0', false, 'id, text')
+        if (connection.conn_state != CS_Disconnected) and (connection.stage>=ST_Protocoled) \
+        and (((connection.send_state & CSF_Message)>0) or ((connection.send_state & CSF_Messaging)>0))
+          connection.send_state = connection.send_state & (~CSF_Message)
+          sel = message_model.select('destination="'+connection.node.to_s+'" AND state=0', \
+            false, 'id, text', 'created', $mes_block_count)
           if sel and (sel.size>0)
-            id = sel[0][0]
-            text = sel[0][1]
             connection.send_state = connection.send_state | CSF_Messaging
-            if connection.send_segment(EC_Message, true, text)
-              res = message_model.update({:state=>1}, nil, 'id='+id.to_s)
-              if not res
-                log_message(LM_Error, 'Ошибка обновления сообщения text='+text)
+            processed = 0
+            i = 0
+            while sel and (i<sel.size) and (processed<$mes_block_count) \
+            and (connection.conn_state != CS_Disconnected)
+              processed += 1
+              id = sel[i][0]
+              text = sel[i][1]
+              if connection.add_send_segment(EC_Message, true, text)
+                res = message_model.update({:state=>1}, nil, 'id='+id.to_s)
+                if not res
+                  log_message(LM_Error, 'Ошибка обновления сообщения text='+text)
+                end
+              else
+                log_message(LM_Error, 'Ошибка отправки сообщения text='+text)
               end
-            else
-              log_message(LM_Error, 'Ошибка отправки сообщения text='+text)
+              i += 1
+              if (i>=sel.size) and (processed<$mes_block_count) and (connection.conn_state != CS_Disconnected)
+                sel = message_model.select('destination="'+connection.node.to_s+'" AND state=0', \
+                  false, 'id, text', 'created', $mes_block_count)
+                if sel and (sel.size>0)
+                  i = 0
+                else
+                  connection.send_state = (connection.send_state & (~CSF_Messaging))
+                end
+              end
             end
           else
             connection.send_state = (connection.send_state & (~CSF_Messaging))
@@ -4874,15 +4962,14 @@ module PandoraGUI
         end
 
         # пакетирование буферов
+        #while (connection.send_state & (CSF_Message | CSF_Messaging) == 0)
 
         if connection.socket.closed?
           connection.conn_state = CS_Disconnected
+        elsif connection.conn_state == CS_Stoping
+          connection.add_send_segment(EC_Bye, true)
         end
         Thread.pass
-      end
-
-      if not connection.socket.closed?
-        connection.send_segment(EC_Bye, true)
       end
 
       p log_mes+"Цикл ОТПРАВКИ конец!!!"
@@ -5181,20 +5268,6 @@ module PandoraGUI
     end
   end
 
-  # Add block to queue for send
-  # Добавление блока в очередь на отправку
-  def self.add_block_to_queue(block, queue)
-    p "add_block_to_queue: queue[]: "+queue.inspect
-    p "add_block_to_queue: block[]: "+block.inspect
-    if queue[1]<MaxQueue
-      queue[1] += 1
-    else
-      queue[1] = 0
-    end
-    queue[2][queue[1]] = block
-    p "add_block_to_queue: finish! queue[]: "+queue.inspect
-  end
-
   def self.find_node_by_destination(destination)
     destination
   end
@@ -5230,25 +5303,45 @@ module PandoraGUI
     res
   end
 
+  $you_color = 'red'
+  $dude_color = 'blue'
+  $read_time = 1.5
+  $last_lage = nil
+
   # Talk dialog
   # RU: Диалог разговора
   class TalkScrolledWindow < Gtk::ScrolledWindow
-    attr_accessor :room_id, :connectionset, :online_button, :snd_button, :vid_button, :talkview, :editbox, \
-      :area, :pipeline1, :pipeline2, :connection, :area2, :ximagesink, :xvimagesink
+    attr_accessor :room_id, :connset, :online_button, :snd_button, :vid_button, :talkview, :editbox, \
+      :area, :pipeline1, :pipeline2, :connection, :area2, :ximagesink, :xvimagesink, :read_thread
 
-    def update_state(received=true)
-      curpage = nil
-      if $notebook.page >= 0
-        curpage = $notebook.get_nth_page($notebook.page)
-      end
-      color = $window.modifier_style.fg(Gtk::STATE_NORMAL)
-      if received and (curpage != self)
-        color = Gdk::Color.parse('red')
-      end
+    # Update tab color when received new data
+    # RU: Обновляет цвет закладки при получении новых данных
+    def update_state(received=true, curpage=nil)
       tab_widget = $notebook.get_tab_label(self)
       if tab_widget
-        #tab_widget.label.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse(color))
-        tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
+        curpage ||= $notebook.get_nth_page($notebook.page)
+        if $last_lage and ($last_lage.is_a? TalkScrolledWindow) \
+        and $last_lage.read_thread and (curpage != $last_lage)
+          $last_lage.read_thread.exit
+          $last_lage.read_thread = nil
+        end
+        if received #and (curpage != self)
+          color = Gdk::Color.parse($dude_color)
+          tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
+          tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
+        end
+        if curpage == self
+          color = $window.modifier_style.fg(Gtk::STATE_NORMAL)
+          curcolor = tab_widget.label.modifier_style.fg(Gtk::STATE_ACTIVE)
+          if (color != curcolor)
+            self.read_thread = Thread.new do
+              sleep($read_time)
+              tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
+              tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
+              self.read_thread = nil
+            end
+          end
+        end
       end
     end
 
@@ -5377,16 +5470,45 @@ module PandoraGUI
     end
   end
 
+  CSI_Persons = 0
+  CSI_Nodes   = 1
+  CSI_Keys    = 2
+
   # Get person panhash by any panhash
   # RU: Получить панхэш персоны по произвольному панхэшу
-  def self.person_by_panhash(panhash)
-    # need to analyse a record
-    res = panhash #PandoraKernel.bigint_to_bytes(0x2ec783aad34331de1d390fa8006fc8)
+  def self.extend_connset_by_panhash(connset, panhash)
+    res = 0
+    kind = PandoraKernel.kind_from_panhash(panhash)
+    panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+    if panobjectclass
+      if panobjectclass <= PandoraModel::Person
+        connset[CSI_Persons] << panhash
+        res += 1
+      elsif panobjectclass <= PandoraModel::Node
+        connset[CSI_Nodes] << panhash
+        res += 1
+      else
+        ider = panobjectclass.ider
+        $model_send[ider] ||= panobjectclass.new
+        if panobjectclass <= PandoraModel::Created
+          filter = {:creator=>panhash}
+          sel = $model_send[ider].select(filter, false, 'creator')
+          if sel and sel.size>0
+            sel.each do |row|
+              creator = row[0]
+              connset[CSI_Persons] << creator if not connset[CSI_Persons].include? creator
+            end
+          end
+        end
+      end
+    end
+    #panhash #PandoraKernel.bigint_to_bytes(0x2ec783aad34331de1d390fa8006fc8)
+    res
   end
 
   # Extend lists of persons, nodes and keys by relations
   # RU: Расширить списки персон, узлов и ключей пройдясь по связям
-  def self.extend_connectionset(connectionset)
+  def self.extend_connset_by_relations(connset)
     added = 0
     # need to copmose by relations
     added
@@ -5394,14 +5516,13 @@ module PandoraGUI
 
   # Start a thread which is searching additional nodes and keys
   # RU: Запуск потока, которые ищет дополнительные узлы и ключи
-  def self.start_extending_connectionset_by_hunt(connection_set)
+  def self.start_extending_connset_by_hunt(connset)
     started = true
-    if (connection_set[1]==nil) or (connection_set[1]==[])
-      connection_set[1] ||= []
+    # heen hunt with poll of nodes
+    if connset[CSI_Nodes]==[]
       port = 5577
-      #port = 5578 if $port==5577
       node = encode_node('127.0.0.1', port, 'tcp')
-      connection_set[1] = [node]
+      connset[CSI_Nodes] << node
     end
     started
   end
@@ -5424,42 +5545,42 @@ module PandoraGUI
   # Show conversation dialog
   # RU: Показать диалог общения
   def self.show_talk_dialog(persons, known_node=nil)
-    p 'show_talk_dialog  [persons, known_node]='+[persons, known_node].inspect
-    nodes = []
-    keys = []
-    nodes << known_node if known_node and (not nodes.include? known_node)
-    if not persons.is_a? Array
-      persons = [person_by_panhash(persons)]
+    p '[persons, known_node]='+[persons, known_node].inspect
+    connset = [[], [], []]
+    connset[CSI_Nodes] << known_node if known_node
+    if persons.is_a? Array
+      connset[CSI_Persons] = persons
+    else
+      extend_connset_by_panhash(connset, persons)
     end
-    connectionset = [persons, nodes, keys]
-    if connectionset[1].size==0
-      extend_connectionset(connectionset)
+    if connset[CSI_Nodes].size==0
+      extend_connset_by_relations(connset)
     end
-    if connectionset[1].size==0
-      start_extending_connectionset_by_hunt(connectionset)
+    if connset[CSI_Nodes].size==0
+      start_extending_connset_by_hunt(connset)
     end
-    connectionset.each do |list|
+    connset.each do |list|
       list.sort!
     end
 
-    p 'connectionset='+connectionset.inspect
+    p 'connset='+connset.inspect
 
-    room_id = consctruct_room_id(connectionset[0])
+    room_id = consctruct_room_id(connset[CSI_Persons])
 
     $notebook.children.each do |child|
       if (child.is_a? TalkScrolledWindow) and (child.room_id==room_id)
         $notebook.page = $notebook.children.index(child)
         child.room_id = room_id
-        child.connectionset = connectionset
+        child.connset = connset
         return child
       end
     end
 
-    title = consctruct_room_title(connectionset[0])
+    title = consctruct_room_title(connset[CSI_Persons])
 
     sw = TalkScrolledWindow.new(nil, nil)
     sw.room_id = room_id
-    sw.connectionset = connectionset
+    sw.connset = connset
 
     sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
     #sw.name = title
@@ -5489,11 +5610,11 @@ module PandoraGUI
     online_button = Gtk::CheckButton.new(_('Online'), true)
     online_button.signal_connect('clicked') do |widget|
       if widget.active?
-        sw.connectionset[1].each do |node|
+        sw.connset[CSI_Nodes].each do |node|
           find_or_start_connection(node, 0, sw)
         end
       else
-        sw.connectionset[1].each do |node|
+        sw.connset[CSI_Nodes].each do |node|
           stop_connection(node, false)
         end
       end
@@ -5536,10 +5657,10 @@ module PandoraGUI
     #view.cursor_visible = false
     #view.editable = false
 
-    talkview.buffer.create_tag("red", "foreground" => "red")
-    talkview.buffer.create_tag("blue", "foreground" => "blue")
-    talkview.buffer.create_tag("red_bold", "foreground" => "red", 'weight' => Pango::FontDescription::WEIGHT_BOLD)
-    talkview.buffer.create_tag("blue_bold", "foreground" => "blue",  'weight' => Pango::FontDescription::WEIGHT_BOLD)
+    talkview.buffer.create_tag('you', 'foreground' => $you_color)
+    talkview.buffer.create_tag('dude', 'foreground' => $dude_color)
+    talkview.buffer.create_tag('you_bold', 'foreground' => $you_color, 'weight' => Pango::FontDescription::WEIGHT_BOLD)
+    talkview.buffer.create_tag('dude_bold', 'foreground' => $dude_color,  'weight' => Pango::FontDescription::WEIGHT_BOLD)
 
     editbox = Gtk::TextView.new
     editbox.wrap_mode = Gtk::TextTag::WRAP_WORD
@@ -5560,7 +5681,7 @@ module PandoraGUI
         if editbox.buffer.text != ''
           mes = editbox.buffer.text
           sended = false
-          sw.connectionset[1].each do |node|
+          sw.connset[CSI_Nodes].each do |node|
             if add_and_send_mes(mes, node, sw)
               sended = true
             end
@@ -5568,8 +5689,8 @@ module PandoraGUI
           if sended
             t = Time.now
             talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
-            talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', "red")
-            talkview.buffer.insert(talkview.buffer.end_iter, 'You:', "red_bold")
+            talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'you')
+            talkview.buffer.insert(talkview.buffer.end_iter, 'You:', 'you_bold')
             talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
             talkview.move_viewport(Gtk::SCROLL_ENDS, 1)
             editbox.buffer.text = ''
@@ -5602,9 +5723,9 @@ module PandoraGUI
     #list_sw.visible = false
 
     list_store = Gtk::ListStore.new(TrueClass, String)
-    sw.connectionset[1].each do |node|
+    sw.connset[CSI_Nodes].each do |node|
       user_iter = list_store.append
-      user_iter[1] = node.inspect
+      user_iter[CL_Name] = node.inspect
     end
 
     # create tree view
@@ -5666,7 +5787,7 @@ module PandoraGUI
     area2.add_events(Gdk::Event::BUTTON_PRESS_MASK)
     area2.signal_connect('button-press-event') do |widget, event|
       if hpaned3.position <= 1
-        list_sw.width_request = 120 if list_sw.width_request <= 1
+        list_sw.width_request = 150 if list_sw.width_request <= 1
         hpaned3.position = list_sw.width_request
       else
         list_sw.width_request = list_sw.allocation.width
@@ -5708,7 +5829,7 @@ module PandoraGUI
       sw.stop_pipeline
       area.destroy
 
-      sw.connectionset[1].each do |node|
+      sw.connset[CSI_Nodes].each do |node|
         connection = connection_of_node(node)
         if connection
           connection.dialog = nil
@@ -5901,7 +6022,7 @@ module PandoraGUI
     ['Message', nil, _('Messages')],
     ['Patch', nil, _('Patches')],
     ['Event', nil, _('Events')],
-    ['Fisher', nil, _('Fishers')],
+    ['Fishhook', nil, _('Fishhooks')],
     ['-', nil, '-'],
     ['Authorize', Gtk::Stock::DIALOG_AUTHENTICATION, _('Authorize')],
     ['Listen', Gtk::Stock::CONNECT, _('Listen')],
@@ -6000,12 +6121,15 @@ module PandoraGUI
     $notebook = Gtk::Notebook.new
 
     $notebook.signal_connect('switch-page') do |widget, page, page_num|
-      sw = $notebook.get_nth_page(page_num)
-      #treeview = sw.children[0]
-      #sw.stop_pipeline if sw.is_a? PandoraGUI::TalkScrolledWindow
-      if sw.is_a? PandoraGUI::TalkScrolledWindow
-        sw.update_state(false)
+    #$notebook.signal_connect('change-current-page') do |widget, page_num|
+      cur_page = $notebook.get_nth_page(page_num)
+      if $last_lage and (cur_page != $last_lage) and ($last_lage.is_a? PandoraGUI::TalkScrolledWindow)
+        $last_lage.stop_pipeline
       end
+      if cur_page.is_a? PandoraGUI::TalkScrolledWindow
+        cur_page.update_state(false, cur_page)
+      end
+      $last_lage = cur_page
     end
 
     $view = Gtk::TextView.new

@@ -239,11 +239,12 @@
       <text name.ru="Текст" />
     </Message>
 
-    <Fisher name.ru="Рыбак|Рыбаки">
+    <Fishhook name.ru="Рыбалка|Рыбалки">
+      <creator name.ru="Рыбак" />
       <catch name.ru="Добыча" />
       <expire name.ru="Истекает" />
       <state name.ru="Статус" />
-    </Fisher>
+    </Fishhook>
 
   </Pandora>
 
