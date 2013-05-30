@@ -249,7 +249,8 @@ def log_message(level, mes)
   mes = level_to_str(level).to_s+mes
   if $view
     $view.buffer.insert($view.buffer.end_iter, mes+"\n")
-    $view.move_viewport(Gtk::SCROLL_ENDS, 1)
+    #$view.move_viewport(Gtk::SCROLL_ENDS, 1)
+    $view.parent.vadjustment.value = $view.parent.vadjustment.upper
   else
     puts mes
   end
@@ -1805,7 +1806,7 @@ module PandoraGUI
       res = false
       show_all
       if @def_widget
-        focus = @def_widget
+        #focus = @def_widget
         @def_widget.grab_focus
       end
       while (not destroyed?) and (@response == 0) do
@@ -2532,7 +2533,7 @@ module PandoraGUI
         @vbox.child_visible = true
         @vbox.show_all
         if @def_widget
-          focus = @def_widget
+          #focus = @def_widget
           @def_widget.grab_focus
         end
       end
@@ -4177,7 +4178,7 @@ module PandoraGUI
 
   # Network exchange comands
   # RU: Команды сетевого обмена
-  EC_Media     = 0     # Медиа данные
+  EC_Media     = 15     # Медиа данные
   EC_Init      = 1     # Инициализация диалога (версия протокола, сжатие, авторизация, шифрование)
   EC_Message   = 2     # Мгновенное текстовое сообщение
   EC_Channel   = 3     # Запрос открытия медиа-канала
@@ -4190,10 +4191,10 @@ module PandoraGUI
   EC_Fishing   = 10    # Управление рыбалкой
   EC_Pipe      = 11    # Данные канала двух рыбаков
   EC_Sync      = 12    # Последняя команда в серии, или индикация "живости"
-  EC_Wait      = 253   # Временно недоступен
-  EC_More      = 254   # Давай дальше
-  EC_Bye       = 255   # Рассоединение
-  EC_Data      = 256   # Ждем данные
+  EC_Wait      = 250   # Временно недоступен
+  EC_More      = 251   # Давай дальше
+  EC_Bye       = 252   # Рассоединение
+  EC_Data      = 253   # Ждем данные
   #EC_Notice    = 5
   #EC_Pack      = 7
 
@@ -4210,6 +4211,105 @@ module PandoraGUI
   # RU: Преобразует xml-команду в код
   def self.text_to_cmd(text)
     TExchangeCommands_invert[text.downcase]
+  end
+
+  QI_ReadInd    = 0
+  QI_WriteInd   = 1
+  QI_QueueInd   = 2
+
+  # Init empty queue. Poly read is possible
+  # RU: Создание пустой очереди. Возможно множественное чтение
+  def self.init_empty_queue(poly_read=false)
+    res = Array.new
+    if poly_read
+      res[QI_ReadInd] = Array.new  # will be array of read pointers
+    else
+      res[QI_ReadInd] = -1
+    end
+    res[QI_WriteInd] = -1
+    res[QI_QueueInd] = Array.new
+    res
+  end
+
+  MaxQueue = 20
+
+  # Add block to queue
+  # RU: Добавить блок в очередь
+  def self.add_block_to_queue(queue, block, max=MaxQueue)
+    res = false
+    if block
+      ind = queue[QI_WriteInd]
+      if ind<max
+        ind += 1
+      else
+        ind = 0
+      end
+      queue[QI_WriteInd] = ind
+      queue[QI_QueueInd][ind] = block
+      res = true
+    else
+      puts 'add_block_to_queue: Block cannot be nil'
+    end
+    res
+  end
+
+  # Get block from queue (set "ptrind" like 0,1,2..)
+  # RU: Взять блок из очереди (задавай "ptrind" как 0,1,2..)
+  def self.get_block_from_queue(queue, max=MaxQueue, ptrind=nil)
+    block = nil
+    pointers = nil
+    ind = queue[QI_ReadInd]
+    if ptrind
+      pointers = ind
+      ind = pointers[ptrind]
+      ind ||= -1
+    end
+    if ind != queue[QI_WriteInd]
+      if ind<max
+        ind += 1
+      else
+        ind = 0
+      end
+      block = queue[QI_QueueInd][ind]
+      if ptrind
+        pointers[ptrind] = ind
+      else
+        queue[QI_ReadInd] = ind
+      end
+    end
+    block
+  end
+
+  $media_buf_size = 255
+  $send_media_queue    = nil
+  $send_media_rooms = nil
+
+  def self.set_send_ptrind_by_room(room_id)
+    $send_media_rooms ||= {}
+    ptr = nil
+    if room_id != nil
+      ptr = $send_media_rooms[room_id]
+      if ptr
+        ptr[0] = true
+        ptr = ptr[1]
+      else
+        ptr = $send_media_rooms.size
+        $send_media_rooms[room_id] = [true, ptr]
+      end
+    end
+    ptr
+  end
+
+  def self.nil_send_ptrind_by_room(room_id)
+    $send_media_rooms ||= {}
+    if room_id != nil
+      ptr = $send_media_rooms[room_id]
+      if ptr
+        ptr[0] = false
+      end
+    end
+    res = $send_media_rooms.select{|k,v| v[0]}
+    res.size
   end
 
   MaxPackSize = 1500
@@ -4271,64 +4371,16 @@ module PandoraGUI
   ST_KeyAllowed   = 4
   ST_Signed       = 5
 
-  QI_ProcInd    = 0
-  QI_LastInd    = 1
-  QI_DataBuf    = 2
+  # Connection state flags
+  # RU: Флаги состояния соединения
+  CSF_Message     = 1
+  CSF_Messaging   = 2
+  CSF_Media       = 4
 
   class Connection
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
-      :send_thread, :read_thread, :socket, :read_state, :send_state, :read_mes, :read_media, \
+      :send_thread, :read_thread, :socket, :read_state, :send_state, :read_mes, :read_media, :model_send, \
       :read_req, :send_mes, :send_media, :send_req, :sindex, :rindex, :read_queue, :send_queue
-
-    def init_empty_queue
-      res = Array.new
-      res[QI_ProcInd] = -1
-      res[QI_LastInd] = -1
-      res[QI_DataBuf] = Array.new
-      res
-    end
-
-    MaxQueue = 20
-
-    # Add block to queue for send
-    # RU: Добавление блока в очередь на отправку
-    def add_block_to_queue(queue, block, max=MaxQueue)
-      res = false
-      if block
-        ind = queue[QI_LastInd]
-        if ind<max
-          ind += 1
-        else
-          ind = 0
-        end
-        if queue[QI_ProcInd] != ind
-          queue[QI_LastInd] = ind
-          queue[QI_DataBuf][ind] = block
-          res = true
-        end
-      else
-        puts 'add_block_to_queue: Block cannot be nil'
-      end
-      res
-    end
-
-    def queue_is_empty?(queue)
-      res = (queue[QI_ProcInd] == queue[QI_LastInd])
-    end
-
-    def get_block_from_queue(queue, max=MaxQueue)
-      block = nil
-      if queue[QI_ProcInd] != queue[QI_LastInd]
-        if queue[QI_ProcInd]<max
-          queue[QI_ProcInd] += 1
-        else
-          queue[QI_ProcInd] = 0
-        end
-        ind = queue[QI_ProcInd]
-        block = queue[QI_DataBuf][ind]
-      end
-      block
-    end
 
     def initialize(ahost_name, ahost_ip, aport, aproto, node, aconn_mode=0, aconn_state=CS_Disconnected)
       super()
@@ -4344,14 +4396,18 @@ module PandoraGUI
       @send_state     = CSF_Message
       @sindex         = 0
       @rindex         = 0
-      @read_mes       = init_empty_queue
-      @read_media     = init_empty_queue
-      @read_req       = init_empty_queue
-      @send_mes       = init_empty_queue
-      @send_media     = init_empty_queue
-      @send_req       = init_empty_queue
-      @read_queue     = init_empty_queue
-      @send_queue     = init_empty_queue
+      @read_mes       = PandoraGUI.init_empty_queue
+      @read_media     = PandoraGUI.init_empty_queue
+      @read_req       = PandoraGUI.init_empty_queue
+      @send_mes       = PandoraGUI.init_empty_queue
+      @send_media     = PandoraGUI.init_empty_queue
+      @send_req       = PandoraGUI.init_empty_queue
+      @read_queue     = PandoraGUI.init_empty_queue
+      @send_queue     = PandoraGUI.init_empty_queue
+      @model_send     = {}
+      #Thread.critical = true
+      PandoraGUI.add_connection(self)
+      #Thread.critical = false
     end
 
     def unpack_comm(comm)
@@ -4394,7 +4450,7 @@ module PandoraGUI
       end
       crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
       # Команда как минимум равна 1+1+1+2+1= 6 байт (CommSize)
-      p 'SCAB: '+[index, cmd, code, segsign, crc8].inspect
+      #p 'SCAB: '+[index, cmd, code, segsign, crc8].inspect
       comm = AsciiString.new([index, cmd, code, segsign, crc8].pack('CCCnC'))
       if index<255 then index += 1 else index = 0 end
       buf = AsciiString.new
@@ -4412,7 +4468,7 @@ module PandoraGUI
         buf << [segcrc32].pack('N')
       end
       buf = comm + buf
-      p "!SEND: ("+buf+')'
+      #p "!SEND: ("+buf+')'
 
       # tos_sip    cs3   0x60  0x18
       # tos_video  af41  0x88  0x22
@@ -4429,7 +4485,7 @@ module PandoraGUI
         sended = -1
       end
       #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
-      p "SEND_MAIN: ("+buf+')'
+      #p "SEND_MAIN: ("+buf+')'
 
       if sended == buf.size
         res = index
@@ -4458,7 +4514,7 @@ module PandoraGUI
         end
         if sended == buf.size
           res = index
-          p "SEND_ADD: ("+buf+')'
+          #p "SEND_ADD: ("+buf+')'
         elsif sended != -1
           res = nil
           log_message(LM_Error, 'Не все данные отправлены2 '+sended.to_s)
@@ -4472,6 +4528,22 @@ module PandoraGUI
     # RU: Принять полученный сегмент
     def accept_segment(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
       case rcmd
+        when EC_Media
+          if not dialog
+            node = PandoraGUI.encode_node(host_ip, port, proto)
+            panhash = PandoraKernel.bigint_to_bytes(0x2ec783d34331de1d396fc8000000000000000000)
+            @dialog = PandoraGUI.show_talk_dialog([panhash], node)
+            #curpage = dialog
+            Thread.pass
+          end
+          if dialog
+            dialog.init_video_receiver(true)
+            if rdata and dialog.recv_media_queue
+              #p '!!!!! rdata='+rdata.size.to_s
+              dialog.init_video_receiver(true) if not dialog.recv_media_pipeline
+              PandoraGUI.add_block_to_queue(dialog.recv_media_queue, rdata, $media_buf_size)
+            end
+          end
         when EC_Init
           case rcode
             when ECC_Init0_Hello
@@ -4510,12 +4582,12 @@ module PandoraGUI
               sbuf=''
           end
         when EC_Message, EC_Channel
-          curpage = nil
+          #curpage = nil
           if not dialog
             node = PandoraGUI.encode_node(host_ip, port, proto)
             panhash = PandoraKernel.bigint_to_bytes(0x2ec783d34331de1d396fc8000000000000000000)
             @dialog = PandoraGUI.show_talk_dialog([panhash], node)
-            curpage = dialog
+            #curpage = dialog
             Thread.pass
           end
           if rcmd==EC_Message
@@ -4528,8 +4600,8 @@ module PandoraGUI
               talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
               talkview.buffer.insert(talkview.buffer.end_iter, 'Dude:', 'dude_bold')
               talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
-              talkview.move_viewport(Gtk::SCROLL_ENDS, 1)
-              dialog.update_state(true, curpage)
+              talkview.parent.vadjustment.value = talkview.parent.vadjustment.upper
+              dialog.update_state(true)
             else
               log_message(LM_Error, 'Пришло сообщение, но окно чата не найдено!')
             end
@@ -4673,11 +4745,13 @@ module PandoraGUI
           #  sbuf = mes
           #end
           sbuf = param
+        when EC_Media
+          sbuf = param
         else
           scmd = EC_Bye
           scode = ECC_Bye_Exit
       end
-      res = add_block_to_queue(@send_queue, [scmd, scode, sbuf])
+      res = PandoraGUI.add_block_to_queue(@send_queue, [scmd, scode, sbuf])
       if not res
         puts 'add_send_segment: add_block_to_queue error'
         @conn_state == CS_Stoping
@@ -4685,87 +4759,56 @@ module PandoraGUI
       res
     end
 
-  end
-
-  # Read next data from socket, or return nil if socket is closed
-  # RU: Прочитать следующие данные из сокета, или вернуть nil, если сокет закрылся
-  def self.socket_recv(socket, maxsize)
-    recieved = ''
-    begin
-      #recieved = socket.recv_nonblock(maxsize)
-      recieved = socket.recv(maxsize) if (socket and (not socket.closed?))
-      recieved = nil if recieved==''  # socket is closed
-    rescue
+    # Read next data from socket, or return nil if socket is closed
+    # RU: Прочитать следующие данные из сокета, или вернуть nil, если сокет закрылся
+    def socket_recv(maxsize)
       recieved = ''
-    #rescue Errno::EAGAIN       # no data to read
-    #  recieved = ''
-    #rescue #Errno::ECONNRESET, Errno::EBADF, Errno::ENOTSOCK   # other socket is closed
-    #  recieved = nil
+      begin
+        #recieved = socket.recv_nonblock(maxsize)
+        recieved = socket.recv(maxsize) if (socket and (not socket.closed?))
+        recieved = nil if recieved==''  # socket is closed
+      rescue
+        recieved = ''
+      #rescue Errno::EAGAIN       # no data to read
+      #  recieved = ''
+      #rescue #Errno::ECONNRESET, Errno::EBADF, Errno::ENOTSOCK   # other socket is closed
+      #  recieved = nil
+      end
+      recieved
     end
-    recieved
-  end
 
-  # Number of messages per cicle
-  # RU: Число сообщений за цикл
-  $mes_block_count = 5
-  # Number of media blocks per cicle
-  # RU: Число медиа блоков за цикл
-  $media_block_count = 10
-  # Number of requests per cicle
-  # RU: Число запросов за цикл
-  $req_block_count = 1
+    # Number of messages per cicle
+    # RU: Число сообщений за цикл
+    $mes_block_count = 5
+    # Number of media blocks per cicle
+    # RU: Число медиа блоков за цикл
+    $media_block_count = 10
+    # Number of requests per cicle
+    # RU: Число запросов за цикл
+    $req_block_count = 1
 
-  $model_send = {}
+    # Start two exchange cicle of socket: read and send
+    # RU: Запускает два цикла обмена сокета: чтение и отправка
+    def start_exchange_cicle(a_send_thread)
+      #Thread.critical = true
+      #PandoraGUI.add_connection(self)
+      #Thread.critical = false
 
-  # Connection state flags
-  # RU: Флаги состояния соединения
-  CSF_Message     = 1
-  CSF_Messaging   = 2
-  CSF_Media       = 4
+      @send_thread = a_send_thread
 
-  # Start two exchange cicle of socket: read and send
-  # RU: Запускает два цикла обмена сокета: чтение и отправка
-  def self.start_exchange_cicle(node)
-    socket = nil
-    connection = connection_of_node(node)
-    if connection
-
-      #p "CICLE connection="+connection.inspect
-
-      send_thread  =  connection.send_thread
-      socket       =  connection.socket
-
-      #p "CICLE socket="+socket.inspect
-
-      read_mes     =  connection.read_mes
-      read_media   =  connection.read_media
-      read_req     =  connection.read_req
-      send_mes     =  connection.send_mes
-      send_media   =  connection.send_media
-      send_req     =  connection.send_req
-
-      #p "exch: !read_mes: "+read_mes.inspect
-      #p "exch: !send_mes: "+send_mes.inspect
-
-      hunter = (connection.conn_mode & CM_Hunter)>0
-      if hunter
+      # Sending thread
+      if (conn_mode & CM_Hunter)>0
         log_mes = 'HUN: '
+        add_send_segment(EC_Init, true)
       else
         log_mes = 'LIS: '
       end
 
-      # Send cicle
-      # RU: Цикл отправки
-
-      if hunter
-        connection.add_send_segment(EC_Init, true)
-      end
-
       # Read cicle
       # RU: Цикл приёма
-      if (connection.read_thread == nil)
-        connection.read_thread = Thread.new do
-          connection.read_thread = Thread.current
+      if not read_thread
+        read_thread = Thread.new do
+          read_thread = Thread.current
 
           scmd = EC_More
           sbuf = ''
@@ -4782,14 +4825,14 @@ module PandoraGUI
 
           p log_mes+"Цикл ЧТЕНИЯ начало"
           # Цикл обработки команд и блоков данных
-          while (connection.conn_state != CS_Disconnected) and (connection.conn_state != CS_StopRead) \
-          and (not connection.socket.closed?) and (recieved = socket_recv(connection.socket, MaxPackSize))
-            #p log_mes+"recieved=["+recieved+']  '+connection.socket.closed?.to_s+'  sok='+connection.socket.inspect
+          while (conn_state != CS_Disconnected) and (conn_state != CS_StopRead) \
+          and (not socket.closed?) and (recieved = socket_recv(MaxPackSize))
+            #p log_mes+"recieved=["+recieved+']  '+socket.closed?.to_s+'  sok='+socket.inspect
             rbuf += recieved
             processedlen = 0
-            while (connection.conn_state != CS_Disconnected) and (connection.conn_state != CS_StopRead) \
-            and (connection.conn_state != CS_Stoping) and (not connection.socket.closed?) and (rbuf.size>=waitlen)
-              p log_mes+'begin=['+rbuf+']  L='+rbuf.size.to_s+'  WL='+waitlen.to_s
+            while (conn_state != CS_Disconnected) and (conn_state != CS_StopRead) \
+            and (conn_state != CS_Stoping) and (not socket.closed?) and (rbuf.size>=waitlen)
+              #p log_mes+'begin=['+rbuf+']  L='+rbuf.size.to_s+'  WL='+waitlen.to_s
               processedlen = waitlen
               nextreadmode = readmode
 
@@ -4797,7 +4840,7 @@ module PandoraGUI
               case readmode
                 when RM_Comm
                   comm = rbuf[0, processedlen]
-                  rindex, rcmd, rcode, rsegsign, errcode = connection.unpack_comm(comm)
+                  rindex, rcmd, rcode, rsegsign, errcode = unpack_comm(comm)
                   if errcode == 0
                     p log_mes+' RM_Comm: '+[rindex, rcmd, rcode, rsegsign].inspect
                     if rsegsign == Connection::LONG_SEG_SIGN
@@ -4831,13 +4874,13 @@ module PandoraGUI
                   nextreadmode = RM_SegmentN
                   waitlen = rsegsize+4   #+CRC32
                 when RM_SegmentS, RM_Segment1, RM_SegmentN
-                  p log_mes+' RM_SegLenX['+readmode.to_s+']  rbuf=['+rbuf+']'
+                  #p log_mes+' RM_SegLenX['+readmode.to_s+']  rbuf=['+rbuf+']'
                   if (readmode==RM_Segment1) or (readmode==RM_SegmentN)
                     nextreadmode = RM_SegLenN
                     waitlen = 7    #index + segindex + rseglen (1+4+2)
                   end
                   rseg = rbuf[0, processedlen-4]
-                  p log_mes+'rseg=['+rseg+']'
+                  #p log_mes+'rseg=['+rseg+']'
                   rsegcrc32 = rbuf[processedlen-4, 4].unpack('N')[0]
                   fsegcrc32 = Zlib.crc32(rseg)
                   if fsegcrc32 == rsegcrc32
@@ -4846,7 +4889,7 @@ module PandoraGUI
                     log_message(LM_Error, 'CRC полученного сегмента некорректен')
                     scmd=EC_Bye; scode=ECC_Bye_BadCRC
                   end
-                  p log_mes+'RM_SegmentX: data['+rdata+']'+rdata.size.to_s+'/'+rdatasize.to_s
+                  #p log_mes+'RM_SegmentX: data['+rdata+']'+rdata.size.to_s+'/'+rdatasize.to_s
                   if rdata.size == rdatasize
                     nextreadmode = RM_Comm
                     waitlen = CommSize
@@ -4860,84 +4903,105 @@ module PandoraGUI
               scmd = EC_Data if (scmd != EC_Bye) and (scmd != EC_Wait)
               # Обработаем поступившие команды и блоки данных
               if (scmd != EC_Bye) and (scmd != EC_Wait) and (nextreadmode == RM_Comm)
-                p log_mes+'accept_request Before='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
+                #p log_mes+'accept_request Before='+[rcmd, rcode, rdata.size, scmd, scode, sbuf, last_scmd].inspect
 
                 rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = \
-                  connection.accept_segment(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
+                  accept_segment(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
 
                 rdata = ''
-                p log_mes+'accept_request After='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
+                #p log_mes+'accept_request After='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
               end
 
               if scmd != EC_Data
                 sbuf='' if scmd == EC_Bye
-                res = connection.add_block_to_queue(connection.send_queue, [scmd, scode, sbuf])
+                res = PandoraGUI.add_block_to_queue(send_queue, [scmd, scode, sbuf])
                 if not res
                   puts 'read cicle answer: add_block_to_queue error'
-                  connection.conn_state == CS_Stoping
+                  conn_state == CS_Stoping
                 end
                 last_scmd = scmd
                 sbuf = ''
               end
               readmode = nextreadmode
             end
-            if connection.conn_state == CS_Stoping
-              connection.conn_state = CS_StopRead
+            if conn_state == CS_Stoping
+              @conn_state = CS_StopRead
             end
             Thread.pass
           end
           p log_mes+"Цикл ЧТЕНИЯ конец!"
-          #connection.socket.close if not connection.socket.closed?
-          connection.conn_state = CS_Disconnected
-          connection.read_thread = nil
+          #socket.close if not socket.closed?
+          @conn_state = CS_Disconnected
+          read_thread = nil
         end
       end
 
-      p log_mes+"ФАЗА ОЖИДАНИЯ"
+      #p log_mes+"ФАЗА ОЖИДАНИЯ"
 
-      #while (connection.conn_state != CS_Disconnected) and (connection.stage<ST_Protocoled)
+      #while (conn_state != CS_Disconnected) and (stage<ST_Protocoled)
       #  Thread.pass
       #end
 
-      $model_send['Message'] ||= PandoraModel::Message.new
-      message_model = $model_send['Message']
+      model_send['Message'] ||= PandoraModel::Message.new
+      message_model = model_send['Message']
 
-      p log_mes+'ЦИКЛ ОТПРАВКИ начало'
-      p log_mes+"exch: cicles"
-      p log_mes+"exch: connection="+connection.inspect
-      while connection.conn_state != CS_Disconnected
+      p log_mes+'ЦИКЛ ОТПРАВКИ начало: connection='+self.inspect
+      while conn_state != CS_Disconnected
         # отправка сформированных сегментов и их удаление
-        if (connection.conn_state != CS_Disconnected)
-          send_segment = connection.get_block_from_queue(connection.send_queue)
-          while (connection.conn_state != CS_Disconnected) and send_segment
+        if (conn_state != CS_Disconnected)
+          send_segment = PandoraGUI.get_block_from_queue(send_queue)
+          while (conn_state != CS_Disconnected) and send_segment
+            #p log_mes+' send_segment='+send_segment.inspect
             scmd, scode, sbuf = send_segment
-            connection.sindex = connection.send_comm_and_data(connection.sindex, scmd, scode, sbuf)
-            send_segment = connection.get_block_from_queue(connection.send_queue)
+            @sindex = send_comm_and_data(sindex, scmd, scode, sbuf)
+            if (scmd==EC_Bye)
+              p log_mes+'SEND BYE!!!!!!!!!!!!!!!'
+              send_segment = nil
+              socket.close if not socket.closed?
+            else
+              send_segment = PandoraGUI.get_block_from_queue(send_queue)
+            end
           end
         end
 
         # обработка принятых сообщений, их удаление
 
         # разгрузка принятых буферов в gstreamer
+        processed = 0
+        while (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Protocoled) \
+        and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
+        and dialog and (not dialog.destroyed?) and dialog.recv_media_queue
+          processed += 1
+          recv_media_chunk = PandoraGUI.get_block_from_queue(dialog.recv_media_queue, $media_buf_size)
+          if recv_media_chunk
+            buf = Gst::Buffer.new
+            buf.data = recv_media_chunk
+            buf.timestamp = Time.now.to_i * Gst::NSECOND
+            dialog.appsrc.push_buffer(buf)
+            recv_media_chunk = PandoraGUI.get_block_from_queue(dialog.recv_media_queue, $media_buf_size)
+          end
+        end
 
         # обработка принятых запросов, их удаление
 
         # пакетирование сообщений
-        if (connection.conn_state != CS_Disconnected) and (connection.stage>=ST_Protocoled) \
-        and (((connection.send_state & CSF_Message)>0) or ((connection.send_state & CSF_Messaging)>0))
-          connection.send_state = connection.send_state & (~CSF_Message)
-          sel = message_model.select('destination="'+connection.node.to_s+'" AND state=0', \
+        processed = 0
+        #p log_mes+'----------send_state1='+send_state.inspect
+        #sleep 1
+        if (conn_state != CS_Disconnected) and (stage>=ST_Protocoled) \
+        and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
+          @send_state = (send_state & (~CSF_Message))
+          sel = message_model.select('destination="'+node.to_s+'" AND state=0', \
             false, 'id, text', 'created', $mes_block_count)
           if sel and (sel.size>0)
-            connection.send_state = connection.send_state | CSF_Messaging
-            processed = 0
+            @send_state = (send_state | CSF_Messaging)
             i = 0
             while sel and (i<sel.size) and (processed<$mes_block_count) \
-            and (connection.conn_state != CS_Disconnected)
+            and (conn_state != CS_Disconnected)
               processed += 1
               id = sel[i][0]
               text = sel[i][1]
-              if connection.add_send_segment(EC_Message, true, text)
+              if add_send_segment(EC_Message, true, text)
                 res = message_model.update({:state=>1}, nil, 'id='+id.to_s)
                 if not res
                   log_message(LM_Error, 'Ошибка обновления сообщения text='+text)
@@ -4946,47 +5010,63 @@ module PandoraGUI
                 log_message(LM_Error, 'Ошибка отправки сообщения text='+text)
               end
               i += 1
-              if (i>=sel.size) and (processed<$mes_block_count) and (connection.conn_state != CS_Disconnected)
-                sel = message_model.select('destination="'+connection.node.to_s+'" AND state=0', \
+              if (i>=sel.size) and (processed<$mes_block_count) and (conn_state != CS_Disconnected)
+                sel = message_model.select('destination="'+node.to_s+'" AND state=0', \
                   false, 'id, text', 'created', $mes_block_count)
                 if sel and (sel.size>0)
                   i = 0
                 else
-                  connection.send_state = (connection.send_state & (~CSF_Messaging))
+                  @send_state = (send_state & (~CSF_Messaging))
                 end
               end
             end
           else
-            connection.send_state = (connection.send_state & (~CSF_Messaging))
+            @send_state = (send_state & (~CSF_Messaging))
           end
         end
 
         # пакетирование буферов
-        #while (connection.send_state & (CSF_Message | CSF_Messaging) == 0)
+        if ((send_state & CSF_Media)>0) and $send_media_queue and $send_media_rooms \
+        and (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Protocoled) \
+        and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id
+          pointer_ind = PandoraGUI.set_send_ptrind_by_room(dialog.room_id)
+          processed = 0
+          while ((send_state & CSF_Media)>0) and (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) \
+          and ((send_state & CSF_Message) == 0) and (processed<$media_block_count)
+            processed += 1
+            send_media_chunk = PandoraGUI.get_block_from_queue($send_media_queue, $media_buf_size, pointer_ind)
+            if send_media_chunk
+              p log_mes+'send_media_chunk='+send_media_chunk.size.to_s
+              if not add_send_segment(EC_Media, true, send_media_chunk)
+                log_message(LM_Error, 'Ошибка отправки буфера data.size='+send_media_chunk.size.to_s)
+              end
+            end
+          end
+        end
 
-        if connection.socket.closed?
-          connection.conn_state = CS_Disconnected
-        elsif connection.conn_state == CS_Stoping
-          connection.add_send_segment(EC_Bye, true)
+        if socket.closed?
+          @conn_state = CS_Disconnected
+        elsif conn_state == CS_Stoping
+          add_send_segment(EC_Bye, true)
         end
         Thread.pass
       end
 
       p log_mes+"Цикл ОТПРАВКИ конец!!!"
 
-      connection.socket.close if not connection.socket.closed?
-      connection.conn_state = CS_Disconnected
-      connection.socket = nil
+      #Thread.critical = true
+      PandoraGUI.del_connection(self)
+      #Thread.critical = false
+      socket.close if not socket.closed?
+      @conn_state = CS_Disconnected
+      socket = nil
+      send_thread = nil
 
-      #if (connection.conn_mode & CM_Persistent) == 0
-        connection.send_thread = nil
-        #Thread.critical = true
-        del_connection(connection)
-        #Thread.critical = false
-      #end
-    else
-      puts _('exch: Node is not found in connection list')+' ['+node.to_s+']'
+      if dialog and (not dialog.destroyed?) and (not dialog.online_button.destroyed?)
+        dialog.online_button.active = false
+      end
     end
+
   end
 
   # Check ip is not banned
@@ -5072,23 +5152,15 @@ module PandoraGUI
                     conn_mode = 0
                     #p "serv: conn_mode: "+ conn_mode.inspect
                     connection = Connection.new(host_name, host_ip, port, proto, node, conn_mode, conn_state)
-                    #Thread.critical = true
-                    add_connection(connection)
-                    #Thread.critical = false
-                    connection = connection_of_node(node)
-                    if connection
-                      connection.send_thread = Thread.current
-                      connection.socket = socket
-                      #connection.post_init
-                      connection.stage = ST_IpAllowed
-                      #p "server: connection="+ connection.inspect
-                      #p "server: $connections"+ $connections.inspect
-                      #p 'LIS_SOCKET: '+socket.methods.inspect
-                      start_exchange_cicle(node)
-                      p "END LISTEN SOKET CLIENT!!!"
-                    else
-                      p "Не удалось добавить подключенного в список!!!"
-                    end
+                    connection.socket = socket
+                    #connection.post_init
+                    connection.stage = ST_IpAllowed
+                    #p "server: connection="+ connection.inspect
+                    #p "server: $connections"+ $connections.inspect
+                    #p 'LIS_SOCKET: '+socket.methods.inspect
+                    connection.start_exchange_cicle(Thread.current)
+                    del_connection(connection)
+                    p "END LISTEN SOKET CLIENT!!!"
                   end
                 else
                   log_message(LM_Info, "IP забанен: "+host_ip.to_s)
@@ -5124,70 +5196,62 @@ module PandoraGUI
         connection.dialog.online_button.active = (connection.socket and (not connection.socket.closed?))
       end
     else
-      conn_state = CS_Disconnected
-      conn_mode = CM_Hunter
       host, port, proto = decode_node(node)
-      connection = Connection.new(host, host, port, proto, node, conn_mode, conn_state)
-      #Thread.critical = true
-      add_connection(connection)
-      #Thread.critical = false
-      connection = connection_of_node(node)
-      if connection
+      connection = Connection.new(host, host, port, proto, node, CM_Hunter, CS_Disconnected)
+      Thread.new(connection) do |connection|
         connection.conn_state  = CS_Connecting
         p 'find1: connection.send_state='+connection.send_state.inspect
         connection.send_state = (connection.send_state | send_state_add)
         p 'find2: connection.send_state='+connection.send_state.inspect
         connection.dialog = dialog
-        connection.send_thread = Thread.new do
-          connection.send_thread = Thread.current
-          #p "start_or_find_conn: THREAD connection="+ connection.inspect
-          #p "start_or_find_conn: THREAD $connections"+ $connections.inspect
-          host, port, proto = decode_node(node)
-          conn_state = CS_Disconnected
-          begin
-            socket = TCPSocket.open(host, port)
-            conn_state = CS_Connected
-            connection.host_ip = socket.addr[2]
-          rescue #IO::WaitReadable, Errno::EINTR
-            socket = nil
-            #p "!!Conn Err!!"
-            log_message(LM_Warning, "Не удается подключиться к: "+host+':'+port.to_s)
-          end
-          connection.conn_state = conn_state
-          if socket
-            connection.socket = socket
-            #connection.post_init
-            connection.node = encode_node(connection.host_ip, connection.port, connection.proto)
-            connection.dialog.online_button.active = true if connection.dialog
-            #p "start_or_find_conn1: connection="+ connection.inspect
-            #p "start_or_find_conn1: $connections"+ $connections.inspect
-            # Вызвать активный цикл собработкой данных
-            log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
-            start_exchange_cicle(node)
-            socket.close if not socket.closed?
-            log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
-          end
-          connection.socket = nil
-          connection.dialog.online_button.active = false if connection.dialog
-          p "END HUNTER CLIENT!!!!"
-          #if (connection.conn_mode & CM_Persistent) == 0
-            #Thread.critical = true
-            del_connection(connection)
-            #Thread.critical = false
-          #end
-          connection.send_thread = nil
+        p "start_or_find_conn: THREAD connection="+ connection.inspect
+        #p "start_or_find_conn: THREAD $connections"+ $connections.inspect
+        host, port, proto = decode_node(node)
+        conn_state = CS_Disconnected
+        begin
+          socket = TCPSocket.open(host, port)
+          conn_state = CS_Connected
+          connection.host_ip = socket.addr[2]
+        rescue #IO::WaitReadable, Errno::EINTR
+          socket = nil
+          #p "!!Conn Err!!"
+          log_message(LM_Warning, "Не удается подключиться к: "+host+':'+port.to_s)
         end
-        #while wait_connection and connection and (connection.conn_state==CS_Connecting)
-        #  sleep 0.05
-          #Thread.pass
-          #Gtk.main_iteration
-        #  connection = connection_of_node(node)
-        #end
-        #p "start_or_find_con: THE end! CONNECTION="+ connection.to_s
-        #p "start_or_find_con: THE end! wait_connection="+wait_connection.to_s
-        #p "start_or_find_con: THE end! conn_state="+conn_state.to_s
-        connection = connection_of_node(node)
+        connection.socket = socket
+        if connection.dialog and connection.dialog.online_button
+          connection.dialog.online_button.active = (connection.socket and (not connection.socket.closed?))
+        end
+        connection.conn_state = conn_state
+        if socket
+          #connection.post_init
+          connection.node = encode_node(connection.host_ip, connection.port, connection.proto)
+          #connection.dialog.online_button.active = true if connection.dialog
+          #p "start_or_find_conn1: connection="+ connection.inspect
+          #p "start_or_find_conn1: $connections"+ $connections.inspect
+          # Вызвать активный цикл собработкой данных
+          log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
+          connection.start_exchange_cicle(Thread.current)
+          socket.close if not socket.closed?
+          log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
+        end
+        #connection.socket = nil
+        #connection.dialog.online_button.active = false if connection.dialog
+        p "END HUNTER CLIENT!!!!"
+        #Thread.critical = true
+        del_connection(connection)
+        #Thread.critical = false
+        #connection.send_thread = nil
       end
+      #while wait_connection and connection and (connection.conn_state==CS_Connecting)
+      #  sleep 0.05
+        #Thread.pass
+        #Gtk.main_iteration
+      #  connection = connection_of_node(node)
+      #end
+      #p "start_or_find_con: THE end! CONNECTION="+ connection.to_s
+      #p "start_or_find_con: THE end! wait_connection="+wait_connection.to_s
+      #p "start_or_find_con: THE end! conn_state="+conn_state.to_s
+      connection = connection_of_node(node)
     end
     connection
   end
@@ -5195,8 +5259,10 @@ module PandoraGUI
   # Stop connection with a node
   # RU: Останавливает соединение с заданным узлом
   def self.stop_connection(node, wait_disconnect=true)
+    p 'stop_connection node='+node.inspect
     connection = connection_of_node(node)
     if connection and (connection.conn_state != CS_Disconnected)
+      #p 'stop_connection node='+connection.inspect
       connection.conn_state = CS_Stoping
       while wait_disconnect and connection and (connection.conn_state != CS_Disconnected)
         sleep 0.05
@@ -5303,172 +5369,7 @@ module PandoraGUI
     res
   end
 
-  $you_color = 'red'
-  $dude_color = 'blue'
-  $read_time = 1.5
-  $last_lage = nil
-
-  # Talk dialog
-  # RU: Диалог разговора
-  class TalkScrolledWindow < Gtk::ScrolledWindow
-    attr_accessor :room_id, :connset, :online_button, :snd_button, :vid_button, :talkview, :editbox, \
-      :area, :pipeline1, :pipeline2, :connection, :area2, :ximagesink, :xvimagesink, :read_thread
-
-    # Update tab color when received new data
-    # RU: Обновляет цвет закладки при получении новых данных
-    def update_state(received=true, curpage=nil)
-      tab_widget = $notebook.get_tab_label(self)
-      if tab_widget
-        curpage ||= $notebook.get_nth_page($notebook.page)
-        if $last_lage and ($last_lage.is_a? TalkScrolledWindow) \
-        and $last_lage.read_thread and (curpage != $last_lage)
-          $last_lage.read_thread.exit
-          $last_lage.read_thread = nil
-        end
-        if received #and (curpage != self)
-          color = Gdk::Color.parse($dude_color)
-          tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
-          tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
-        end
-        if curpage == self
-          color = $window.modifier_style.fg(Gtk::STATE_NORMAL)
-          curcolor = tab_widget.label.modifier_style.fg(Gtk::STATE_ACTIVE)
-          if (color != curcolor)
-            self.read_thread = Thread.new do
-              sleep($read_time)
-              tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
-              tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
-              self.read_thread = nil
-            end
-          end
-        end
-      end
-    end
-
-    # Play media stream
-    # RU: Запустить медиа поток
-    def play_pipeline
-      pipeline1.play if pipeline1
-      pipeline2.play if pipeline2
-    end
-
-    # Stop media stream
-    # RU: Остановить медиа поток
-    def stop_pipeline
-      pipeline2.stop if pipeline2
-      pipeline1.stop if pipeline1
-      ximagesink.xwindow_id = 0 if ximagesink
-      xvimagesink.xwindow_id = 0 if xvimagesink
-      area2.hide
-      area2.show
-    end
-
-    def init_media
-      if not pipeline1
-        #begin
-          Gst.init
-
-          @pipeline1 = Gst::Pipeline.new('pipeline1')
-          @pipeline2 = Gst::Pipeline.new('pipeline2')
-
-          #gst-launch dshowvideosrc ! ffmpegcolorspace ! directdrawsink
-          #webcam = Gst::ElementFactory.make('dshowvideosrc', 'webcam1')
-          webcam = Gst::ElementFactory.make('v4l2src')
-          webcam.decimate=3
-
-          capsfilter = Gst::ElementFactory.make('capsfilter', 'capsfilter1')
-          capsfilter.caps = Gst::Caps.parse('video/x-raw-rgb,width=320,height=240')
-
-          ffmpegcolorspace1 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace1')
-
-          tee = Gst::ElementFactory.make('tee', 'tee1')
-
-          queue1 = Gst::ElementFactory.make('queue', 'queue1')
-
-          @xvimagesink = Gst::ElementFactory.make('xvimagesink', 'xvimagesink1');
-          xvimagesink.sync = true
-
-          #queue2 = Gst::ElementFactory.make('queue')
-
-          vp8enc = Gst::ElementFactory.make('vp8enc', 'vp8enc1')
-          vp8enc.max_latency=0.5
-
-          appsink = Gst::ElementFactory.make('appsink', 'appsink1')
-
-          appsrc = Gst::ElementFactory.make('appsrc', 'appsrc1')
-          appsrc.caps = Gst::Caps.parse('caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
-          p appsrc.max_bytes
-          p appsrc.blocksize
-          appsrc.signal_connect('need-data') do |src, length|
-            buf1 = appsink.pull_buffer
-            if buf1 != nil
-              buf2 = Gst::Buffer.new
-              buf2.data = String.new(buf1.data)
-              buf2.timestamp = Time.now.to_i * Gst::NSECOND
-
-              #buf2.caps = Gst::Caps.parse('caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
-              #p buf2.size
-              src.push_buffer(buf2)
-              #src.signal_emit('enough-data')
-            end
-          end
-
-          vp8dec = Gst::ElementFactory.make('vp8dec', 'vp8dec1')
-
-          ffmpegcolorspace2 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace2')
-
-          @ximagesink = Gst::ElementFactory.make('ximagesink', 'ximagesink2');
-          ximagesink.sync = false
-
-          #pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, vp8enc, appsink)
-          #webcam >> capsfilter >> ffmpegcolorspace1 >> vp8enc >> appsink
-          #pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, tee, queue1, xvimagesink, queue2, vp8enc, appsink)
-          pipeline1.add(webcam, capsfilter, ffmpegcolorspace1, tee, vp8enc, appsink, queue1, xvimagesink)
-          webcam >> capsfilter >> ffmpegcolorspace1 >> tee
-          tee >> vp8enc >> appsink
-          tee >> queue1 >> xvimagesink
-          #tee >> queue2 >> vp8enc >> appsink
-
-          #tee_src_pad = tee.get_request_pad("src%d")
-          #ghost_pad = Gst::GhostPad.new('src', tee_src_pad)
-          #queue2.add_pad(ghost_pad)
-
-          pipeline2.add(appsrc, vp8dec, ffmpegcolorspace2, ximagesink)
-          appsrc >> vp8dec >> ffmpegcolorspace2 >> ximagesink
-
-          ximagesink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
-          pipeline2.bus.add_watch do |bus, message|
-            if ((message != nil) and (message.structure != nil) and (message.structure.name != nil) \
-              and (message.structure.name == 'prepare-xwindow-id'))
-            then
-              message.src.set_xwindow_id(area.window.xid) if not area.destroyed? and (area.window != nil)
-            end
-            true
-          end
-          area.signal_connect('expose-event') do |*args|
-            ximagesink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
-          end
-
-          xvimagesink.xwindow_id = area2.window.xid if not area2.destroyed? and (area2.window != nil)
-          pipeline1.bus.add_watch do |bus, message|
-            if ((message != nil) and (message.structure != nil) and (message.structure.name != nil) \
-              and (message.structure.name == 'prepare-xwindow-id'))
-            then
-              message.src.set_xwindow_id(area2.window.xid) if not area2.destroyed? and (area2.window != nil)
-            end
-            true
-          end
-          area2.signal_connect('expose-event') do |*args|
-            xvimagesink.xwindow_id = area2.window.xid if not area2.destroyed? and (area2.window != nil)
-          end
-
-        #rescue
-        #  log_message(LM_Warning, _('Multimedia init exception'))
-        #  vid_button.active = false
-        #end
-      end
-    end
-  end
+  $model_gui = {}
 
   CSI_Persons = 0
   CSI_Nodes   = 1
@@ -5489,10 +5390,10 @@ module PandoraGUI
         res += 1
       else
         ider = panobjectclass.ider
-        $model_send[ider] ||= panobjectclass.new
+        $model_gui[ider] ||= panobjectclass.new
         if panobjectclass <= PandoraModel::Created
           filter = {:creator=>panhash}
-          sel = $model_send[ider].select(filter, false, 'creator')
+          sel = $model_gui[ider].select(filter, false, 'creator')
           if sel and sel.size>0
             sel.each do |row|
               creator = row[0]
@@ -5539,13 +5440,494 @@ module PandoraGUI
     res = PandoraKernel.bytes_to_hex(persons[0])[0,16]
   end
 
-  CL_Online = 0
-  CL_Name   = 1
+  $you_color = 'blue'
+  $dude_color = 'red'
+  $tab_color = 'blue'
+  $read_time = 1.5
+  $last_page = nil
+
+  # Talk dialog
+  # RU: Диалог разговора
+  class TalkScrolledWindow < Gtk::ScrolledWindow
+    attr_accessor :room_id, :connset, :online_button, :snd_button, :vid_button, :talkview, \
+      :editbox, :area, :recv_media_pipeline, :appsrc, :connection, :area2, :ximagesink, \
+      :read_thread, :recv_media_queue
+
+    include PandoraGUI
+
+    CL_Online = 0
+    CL_Name   = 1
+
+    # Show conversation dialog
+    # RU: Показать диалог общения
+    def initialize(persons, known_node, a_room_id, a_connset, title)
+      super(nil, nil)
+
+      @room_id = a_room_id
+      @connset = a_connset
+
+      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      #sw.name = title
+      #sw.add(treeview)
+      border_width = 0;
+
+      image = Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU)
+      image.set_padding(2, 0)
+
+      hpaned = Gtk::HPaned.new
+      add_with_viewport(hpaned)
+
+      vpaned1 = Gtk::VPaned.new
+      vpaned2 = Gtk::VPaned.new
+
+      @area = Gtk::DrawingArea.new
+      area.set_size_request(320, 240)
+      area.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
+
+      hbox = Gtk::HBox.new
+
+      bbox = Gtk::HBox.new
+      bbox.border_width = 5
+      bbox.spacing = 5
+
+      @online_button = Gtk::CheckButton.new(_('Online'), true)
+      online_button.signal_connect('clicked') do |widget|
+        if widget.active?
+          connset[CSI_Nodes].each do |node|
+            PandoraGUI.find_or_start_connection(node, 0, self)
+          end
+        else
+          connset[CSI_Nodes].each do |node|
+            PandoraGUI.stop_connection(node, false)
+          end
+        end
+      end
+      online_button.active = (known_node != nil)
+
+      bbox.pack_start(online_button, false, false, 0)
+
+      @snd_button = Gtk::CheckButton.new(_('Sound'), true)
+      snd_button.signal_connect('toggled') do |widget|
+        p 'Sound: '+widget.active?.to_s
+      end
+      bbox.pack_start(snd_button, false, false, 0)
+
+      @vid_button = Gtk::CheckButton.new(_('Video'), true)
+      vid_button.signal_connect('clicked') do |widget|
+        #add_and_send_mes('video:'+widget.active?.to_s+':', node, self)
+        if widget.active?
+          online_button.active = true
+          Thread.pass
+          if init_video_sender(true)
+            ptrind = PandoraGUI.set_send_ptrind_by_room(room_id)
+            count = PandoraGUI.nil_send_ptrind_by_room(nil)
+            p '=====   !!!!!!!1   ptrind='+ptrind.inspect+'   count='+count.inspect
+            connset[CSI_Nodes].each do |node|
+              PandoraGUI.find_or_start_connection(node, CSF_Media, self)
+            end
+          end
+        else
+          init_video_sender(false)
+          count = PandoraGUI.nil_send_ptrind_by_room(room_id)
+          p '=====   --------    count='+count.inspect
+        end
+      end
+
+      bbox.pack_start(vid_button, false, false, 0)
+
+      hbox.pack_start(bbox, false, false, 1.0)
+
+      vpaned1.pack1(area, false, true)
+      vpaned1.pack2(hbox, false, true)
+      vpaned1.set_size_request(350, 270)
+
+      @talkview = Gtk::TextView.new
+      talkview.set_size_request(200, 200)
+      talkview.wrap_mode = Gtk::TextTag::WRAP_WORD
+      #view.cursor_visible = false
+      #view.editable = false
+
+      talkview.buffer.create_tag('you', 'foreground' => $you_color)
+      talkview.buffer.create_tag('dude', 'foreground' => $dude_color)
+      talkview.buffer.create_tag('you_bold', 'foreground' => $you_color, 'weight' => Pango::FontDescription::WEIGHT_BOLD)
+      talkview.buffer.create_tag('dude_bold', 'foreground' => $dude_color,  'weight' => Pango::FontDescription::WEIGHT_BOLD)
+
+      @editbox = Gtk::TextView.new
+      editbox.wrap_mode = Gtk::TextTag::WRAP_WORD
+      editbox.set_size_request(200, 70)
+
+      editbox.grab_focus
+
+      # because of bug - doesnt work Enter at 'key-press-event'
+      editbox.signal_connect('key-release-event') do |widget, event|
+        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+          widget.signal_emit('key-press-event', event)
+          false
+        end
+      end
+
+      talksw = Gtk::ScrolledWindow.new(nil, nil)
+      talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      talksw.add(talkview)
+
+      editbox.signal_connect('key-press-event') do |widget, event|
+        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+          if editbox.buffer.text != ''
+            mes = editbox.buffer.text
+            sended = false
+            connset[CSI_Nodes].each do |node|
+              if PandoraGUI.add_and_send_mes(mes, node, self)
+                sended = true
+              end
+            end
+            if sended
+              t = Time.now
+              talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
+              talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'you')
+              talkview.buffer.insert(talkview.buffer.end_iter, 'You:', 'you_bold')
+              talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
+              talkview.parent.vadjustment.value = talkview.parent.vadjustment.upper
+              editbox.buffer.text = ''
+            end
+          end
+          true
+        elsif (Gdk::Keyval::GDK_Escape==event.keyval)
+          editbox.buffer.text = ''
+          false
+        else
+          false
+        end
+      end
+
+      hpaned2 = Gtk::HPaned.new
+      @area2 = Gtk::DrawingArea.new
+      area2.set_size_request(120, 90)
+      area2.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
+      hpaned2.pack1(area2, false, true)
+      hpaned2.pack2(editbox, true, true)
+
+      list_sw = Gtk::ScrolledWindow.new(nil, nil)
+      list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+      list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+      #list_sw.visible = false
+
+      list_store = Gtk::ListStore.new(TrueClass, String)
+      connset[CSI_Nodes].each do |node|
+        user_iter = list_store.append
+        user_iter[CL_Name] = node.inspect
+      end
+
+      # create tree view
+      list_tree = Gtk::TreeView.new(list_store)
+      list_tree.rules_hint = true
+      list_tree.search_column = CL_Name
+
+      # column for fixed toggles
+      renderer = Gtk::CellRendererToggle.new
+      renderer.signal_connect('toggled') do |cell, path_str|
+        path = Gtk::TreePath.new(path_str)
+        iter = list_store.get_iter(path)
+        fixed = iter[CL_Online]
+        p 'fixed='+fixed.inspect
+        fixed ^= 1
+        iter[CL_Online] = fixed
+      end
+
+      tit_image = Gtk::Image.new(Gtk::Stock::CONNECT, Gtk::IconSize::MENU)
+      #tit_image.set_padding(2, 0)
+      tit_image.show_all
+
+      column = Gtk::TreeViewColumn.new('', renderer, 'active' => CL_Online)
+
+      #title_widget = Gtk::HBox.new
+      #title_widget.pack_start(tit_image, false, false, 0)
+      #title_label = Gtk::Label.new(_('People'))
+      #title_widget.pack_start(title_label, false, false, 0)
+      column.widget = tit_image
+
+
+      # set this column to a fixed sizing (of 50 pixels)
+      #column.sizing = Gtk::TreeViewColumn::FIXED
+      #column.fixed_width = 50
+      list_tree.append_column(column)
+
+      # column for description
+      renderer = Gtk::CellRendererText.new
+
+      column = Gtk::TreeViewColumn.new(_('Nodes'), renderer, 'text' => CL_Name)
+      column.set_sort_column_id(CL_Name)
+      list_tree.append_column(column)
+
+      list_sw.add(list_tree)
+
+      hpaned3 = Gtk::HPaned.new
+      hpaned3.pack1(list_sw, true, true)
+      hpaned3.pack2(talksw, true, true)
+      #motion-notify-event  #leave-notify-event  enter-notify-event
+      #hpaned3.signal_connect('notify::position') do |widget, param|
+      #  if hpaned3.position <= 1
+      #    list_tree.set_size_request(0, -1)
+      #    list_sw.set_size_request(0, -1)
+      #  end
+      #end
+      hpaned3.position = 1
+      hpaned3.position = 0
+
+      area2.add_events(Gdk::Event::BUTTON_PRESS_MASK)
+      area2.signal_connect('button-press-event') do |widget, event|
+        if hpaned3.position <= 1
+          list_sw.width_request = 150 if list_sw.width_request <= 1
+          hpaned3.position = list_sw.width_request
+        else
+          list_sw.width_request = list_sw.allocation.width
+          hpaned3.position = 0
+        end
+      end
+
+      area2.signal_connect('visibility_notify_event') do |widget, event_visibility|
+        case event_visibility.state
+          when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
+            init_video_sender(true) if vid_button.active?
+          when Gdk::EventVisibility::FULLY_OBSCURED
+            init_video_sender(false)
+        end
+      end
+
+      area2.signal_connect('destroy') do |*args|
+        init_video_sender(false)
+      end
+
+      vpaned2.pack1(hpaned3, true, true)
+      vpaned2.pack2(hpaned2, false, true)
+
+      hpaned.pack1(vpaned1, false, true)
+      hpaned.pack2(vpaned2, true, true)
+
+      area.signal_connect('visibility_notify_event') do |widget, event_visibility|
+        case event_visibility.state
+          when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
+            init_video_receiver(true) #if vid_button.active?
+          when Gdk::EventVisibility::FULLY_OBSCURED
+            #init_video_receiver(false)
+        end
+      end
+
+      area.signal_connect('destroy') do |*args|
+        init_video_receiver(false)
+      end
+
+      area.show
+
+      label_box = TabLabelBox.new(image, title, self, false, 0) do
+        init_video_sender(false)
+        init_video_receiver(false)
+        area.destroy
+
+        connset[CSI_Nodes].each do |node|
+          PandoraGUI.stop_connection(node, false)
+        end
+      end
+
+      page = $notebook.append_page(self, label_box)
+      show_all
+      $notebook.page = $notebook.n_pages-1 if not known_node
+      editbox.grab_focus
+    end
+
+    # Update tab color when received new data
+    # RU: Обновляет цвет закладки при получении новых данных
+    def update_state(received=true, curpage=nil)
+      tab_widget = $notebook.get_tab_label(self)
+      if tab_widget
+        curpage ||= $notebook.get_nth_page($notebook.page)
+        if $last_page and ($last_page.is_a? TalkScrolledWindow) \
+        and $last_page.read_thread and (curpage != $last_page)
+          $last_page.read_thread.exit
+          $last_page.read_thread = nil
+        end
+        if received
+          color = Gdk::Color.parse($tab_color)
+          tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
+          tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
+        end
+        timer_setted = false
+        if (not self.read_thread) and (curpage == self)
+          color = $window.modifier_style.fg(Gtk::STATE_NORMAL)
+          curcolor = tab_widget.label.modifier_style.fg(Gtk::STATE_ACTIVE)
+          if (color != curcolor)
+            timer_setted = true
+            self.read_thread = Thread.new do
+              sleep(0.3)
+              if (not curpage.destroyed?) and (not curpage.editbox.destroyed?)
+                curpage.editbox.grab_focus
+              end
+              read_sec = $read_time-0.3
+              if read_sec >= 0
+                sleep(read_sec)
+              end
+              if (not self.destroyed?) and (not tab_widget.destroyed?) \
+              and (not tab_widget.label.destroyed?)
+                tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
+                tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
+                self.read_thread = nil
+              end
+            end
+          end
+        end
+        if curpage and (curpage.is_a? TalkScrolledWindow) and curpage.editbox
+          if not timer_setted
+            Thread.new do
+              sleep(0.3)
+              if (not curpage.destroyed?) and (not curpage.editbox.destroyed?)
+                curpage.editbox.grab_focus
+              end
+            end
+          end
+          Thread.pass
+          curpage.editbox.grab_focus
+        end
+      end
+    end
+
+    $send_media_pipelines = {}
+    $webcam_xvimagesink   = nil
+
+    def init_video_sender(start=true)
+      video_pipeline = $send_media_pipelines['video']
+      if (not start) or (not vid_button.active?)
+        #p 'init_video_sender OFF  node='+connset.inspect
+        count = PandoraGUI.nil_send_ptrind_by_room(nil)
+        video_pipeline.stop if video_pipeline and (count==0)
+        #if $webcam_xvimagesink
+          #$webcam_xvimagesink.pause
+          #pads = $webcam_xvimagesink.pads
+          #p '==========++++++++++ pads='+pads.inspect
+          #$webcam_xvimagesink.unlink_pads(pads[0])
+          #$webcam_xvimagesink.get_pad('src').unlink(pads[0])
+          #$webcam_xvimagesink.xwindow_id = 0
+        #end
+        #area2.hide
+        #area2.show
+      else
+        #p 'init_video_sender ON node='+connset.inspect
+        if not video_pipeline
+          Gst.init
+          winos = (os_family == 'windows')
+          video_pipeline = Gst::Pipeline.new('pipeline1')
+          $send_media_pipelines['video'] = video_pipeline
+
+          webcam = nil
+          if winos
+            #gst-launch dshowvideosrc ! ffmpegcolorspace ! directdrawsink
+            webcam = Gst::ElementFactory.make('dshowvideosrc', 'webcam1')
+          else
+            webcam = Gst::ElementFactory.make('v4l2src')
+            webcam.decimate=3
+          end
+
+          capsfilter = Gst::ElementFactory.make('capsfilter', 'capsfilter1')
+          capsfilter.caps = Gst::Caps.parse('video/x-raw-rgb,width=320,height=240')
+
+          ffmpegcolorspace1 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace1')
+
+          tee = Gst::ElementFactory.make('tee', 'tee1')
+
+          vp8enc = Gst::ElementFactory.make('vp8enc', 'vp8enc1')
+          vp8enc.max_latency=0.5
+
+          appsink = Gst::ElementFactory.make('appsink', 'appsink1')
+          appsink.emit_signals = true
+          $send_media_queue ||= PandoraGUI.init_empty_queue(true)
+          appsink.signal_connect('new-buffer') do |appsink|
+            buf = appsink.pull_buffer
+            if buf
+              data = buf.data
+              PandoraGUI.add_block_to_queue($send_media_queue, data, $media_buf_size)
+            end
+          end
+
+          queue1 = Gst::ElementFactory.make('queue', 'queue1')
+
+          $webcam_xvimagesink = Gst::ElementFactory.make('xvimagesink', 'xvimagesink1');
+          $webcam_xvimagesink.sync = true
+
+          video_pipeline.add(webcam, capsfilter, ffmpegcolorspace1, tee, vp8enc, appsink, queue1, $webcam_xvimagesink)
+          webcam >> capsfilter >> ffmpegcolorspace1 >> tee
+          tee >> vp8enc >> appsink
+          tee >> queue1 >> $webcam_xvimagesink
+        #rescue
+        #  log_message(LM_Warning, _('Video camera init exception'))
+        #  vid_button.active = false
+        end
+
+        $webcam_xvimagesink.xwindow_id = area2.window.xid if not area2.destroyed? and (area2.window != nil)
+        video_pipeline.bus.add_watch do |bus, message|
+          if ((message != nil) and (message.structure != nil) and (message.structure.name != nil) \
+            and (message.structure.name == 'prepare-xwindow-id'))
+          then
+            message.src.set_xwindow_id(area2.window.xid) if not area2.destroyed? and (area2.window != nil)
+          end
+          true
+        end
+        area2.signal_connect('expose-event') do |*args|
+          $webcam_xvimagesink.xwindow_id = area2.window.xid if not area2.destroyed? and (area2.window != nil)
+        end
+
+        video_pipeline.play
+      end
+      video_pipeline
+    end
+
+    def init_video_receiver(start=true)
+      if not start
+        recv_media_pipeline.stop if recv_media_pipeline
+        ximagesink.xwindow_id = 0 if ximagesink
+      else
+        if not recv_media_pipeline
+          @recv_media_queue ||= PandoraGUI.init_empty_queue
+
+          dialog_id = '_'+PandoraKernel.bytes_to_hex(room_id[0,8])
+          recv_media_pipeline = Gst::Pipeline.new('pipe'+dialog_id)
+
+          @appsrc = Gst::ElementFactory.make('appsrc', 'appsrc'+dialog_id)
+          appsrc.caps = Gst::Caps.parse('caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
+          appsrc.emit_signals = false
+
+          vp8dec = Gst::ElementFactory.make('vp8dec', 'vp8dec'+dialog_id)
+
+          ffmpegcolorspace2 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace'+dialog_id)
+
+          @ximagesink = Gst::ElementFactory.make('ximagesink', 'ximagesink'+dialog_id);
+          ximagesink.sync = false
+
+          recv_media_pipeline.add(appsrc, vp8dec, ffmpegcolorspace2, ximagesink)
+          appsrc >> vp8dec >> ffmpegcolorspace2 >> ximagesink
+        #rescue
+        #  log_message(LM_Warning, _('Video receiver init exception'))
+        #  vid_button.active = false
+        end
+        ximagesink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
+        recv_media_pipeline.bus.add_watch do |bus, message|
+          if ((message != nil) and (message.structure != nil) and (message.structure.name != nil) \
+            and (message.structure.name == 'prepare-xwindow-id'))
+          then
+            message.src.set_xwindow_id(area.window.xid) if not area.destroyed? and (area.window != nil)
+          end
+          true
+        end
+        area.signal_connect('expose-event') do |*args|
+          ximagesink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
+        end
+        recv_media_pipeline.play
+      end
+    end
+
+  end
 
   # Show conversation dialog
   # RU: Показать диалог общения
   def self.show_talk_dialog(persons, known_node=nil)
-    p '[persons, known_node]='+[persons, known_node].inspect
+    p 'show_talk_dialog: [persons, known_node]='+[persons, known_node].inspect
     connset = [[], [], []]
     connset[CSI_Nodes] << known_node if known_node
     if persons.is_a? Array
@@ -5569,285 +5951,16 @@ module PandoraGUI
 
     $notebook.children.each do |child|
       if (child.is_a? TalkScrolledWindow) and (child.room_id==room_id)
-        $notebook.page = $notebook.children.index(child)
+        $notebook.page = $notebook.children.index(child) if not known_node
         child.room_id = room_id
         child.connset = connset
+        child.online_button.active = (known_node != nil)
         return child
       end
     end
 
     title = consctruct_room_title(connset[CSI_Persons])
-
-    sw = TalkScrolledWindow.new(nil, nil)
-    sw.room_id = room_id
-    sw.connset = connset
-
-    sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-    #sw.name = title
-    #sw.add(treeview)
-    sw.border_width = 0;
-
-    image = Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU)
-    image.set_padding(2, 0)
-
-    hpaned = Gtk::HPaned.new
-    sw.add_with_viewport(hpaned)
-
-    vpaned1 = Gtk::VPaned.new
-    vpaned2 = Gtk::VPaned.new
-
-    area = Gtk::DrawingArea.new
-    area.set_size_request(320, 240)
-    area.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
-    sw.area = area
-
-    hbox = Gtk::HBox.new
-
-    bbox = Gtk::HBox.new
-    bbox.border_width = 5
-    bbox.spacing = 5
-
-    online_button = Gtk::CheckButton.new(_('Online'), true)
-    online_button.signal_connect('clicked') do |widget|
-      if widget.active?
-        sw.connset[CSI_Nodes].each do |node|
-          find_or_start_connection(node, 0, sw)
-        end
-      else
-        sw.connset[CSI_Nodes].each do |node|
-          stop_connection(node, false)
-        end
-      end
-    end
-    online_button.active = (known_node != nil)
-
-    bbox.pack_start(online_button, false, false, 0)
-
-    snd_button = Gtk::CheckButton.new(_('Sound'), true)
-    snd_button.signal_connect('toggled') do |widget|
-      p 'Sound: '+widget.active?.to_s
-    end
-    bbox.pack_start(snd_button, false, false, 0)
-
-    vid_button = Gtk::CheckButton.new(_('Video'), true)
-    vid_button.signal_connect('toggled') do |widget|
-      #add_and_send_mes('video:'+widget.active?.to_s+':', node, sw)
-      if widget.active?
-        sw.init_media
-        sw.play_pipeline
-      else
-        sw.stop_pipeline
-        #if (sw.area2 and (not sw.area2.destroyed?) and sw.area2.drawable?)
-        #  sw.area2.queue_draw
-        #end
-      end
-    end
-
-    bbox.pack_start(vid_button, false, false, 0)
-
-    hbox.pack_start(bbox, false, false, 1.0)
-
-    vpaned1.pack1(area, false, true)
-    vpaned1.pack2(hbox, false, true)
-    vpaned1.set_size_request(350, 270)
-
-    talkview = Gtk::TextView.new
-    talkview.set_size_request(200, 200)
-    talkview.wrap_mode = Gtk::TextTag::WRAP_WORD
-    #view.cursor_visible = false
-    #view.editable = false
-
-    talkview.buffer.create_tag('you', 'foreground' => $you_color)
-    talkview.buffer.create_tag('dude', 'foreground' => $dude_color)
-    talkview.buffer.create_tag('you_bold', 'foreground' => $you_color, 'weight' => Pango::FontDescription::WEIGHT_BOLD)
-    talkview.buffer.create_tag('dude_bold', 'foreground' => $dude_color,  'weight' => Pango::FontDescription::WEIGHT_BOLD)
-
-    editbox = Gtk::TextView.new
-    editbox.wrap_mode = Gtk::TextTag::WRAP_WORD
-    editbox.set_size_request(200, 70)
-
-    editbox.grab_focus
-
-    # because of bug - doesnt work Enter at 'key-press-event'
-    editbox.signal_connect('key-release-event') do |widget, event|
-      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-        widget.signal_emit('key-press-event', event)
-        false
-      end
-    end
-
-    editbox.signal_connect('key-press-event') do |widget, event|
-      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-        if editbox.buffer.text != ''
-          mes = editbox.buffer.text
-          sended = false
-          sw.connset[CSI_Nodes].each do |node|
-            if add_and_send_mes(mes, node, sw)
-              sended = true
-            end
-          end
-          if sended
-            t = Time.now
-            talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
-            talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'you')
-            talkview.buffer.insert(talkview.buffer.end_iter, 'You:', 'you_bold')
-            talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
-            talkview.move_viewport(Gtk::SCROLL_ENDS, 1)
-            editbox.buffer.text = ''
-          end
-        end
-        true
-      elsif (Gdk::Keyval::GDK_Escape==event.keyval)
-        editbox.buffer.text = ''
-        false
-      else
-        false
-      end
-    end
-
-    hpaned2 = Gtk::HPaned.new
-    area2 = Gtk::DrawingArea.new
-    sw.area2 = area2
-    area2.set_size_request(120, 90)
-    area2.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
-    hpaned2.pack1(area2, false, true)
-    hpaned2.pack2(editbox, true, true)
-
-    talksw = Gtk::ScrolledWindow.new(nil, nil)
-    talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-    talksw.add(talkview)
-
-    list_sw = Gtk::ScrolledWindow.new(nil, nil)
-    list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
-    list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
-    #list_sw.visible = false
-
-    list_store = Gtk::ListStore.new(TrueClass, String)
-    sw.connset[CSI_Nodes].each do |node|
-      user_iter = list_store.append
-      user_iter[CL_Name] = node.inspect
-    end
-
-    # create tree view
-    list_tree = Gtk::TreeView.new(list_store)
-    list_tree.rules_hint = true
-    list_tree.search_column = CL_Name
-
-    # column for fixed toggles
-    renderer = Gtk::CellRendererToggle.new
-    renderer.signal_connect('toggled') do |cell, path_str|
-      path = Gtk::TreePath.new(path_str)
-      iter = list_store.get_iter(path)
-      fixed = iter[CL_Online]
-      p 'fixed='+fixed.inspect
-      fixed ^= 1
-      iter[CL_Online] = fixed
-    end
-
-    tit_image = Gtk::Image.new(Gtk::Stock::CONNECT, Gtk::IconSize::MENU)
-    #tit_image.set_padding(2, 0)
-    tit_image.show_all
-
-    column = Gtk::TreeViewColumn.new('', renderer, 'active' => CL_Online)
-
-    #title_widget = Gtk::HBox.new
-    #title_widget.pack_start(tit_image, false, false, 0)
-    #title_label = Gtk::Label.new(_('People'))
-    #title_widget.pack_start(title_label, false, false, 0)
-    column.widget = tit_image
-
-
-    # set this column to a fixed sizing (of 50 pixels)
-    #column.sizing = Gtk::TreeViewColumn::FIXED
-    #column.fixed_width = 50
-    list_tree.append_column(column)
-
-    # column for description
-    renderer = Gtk::CellRendererText.new
-
-    column = Gtk::TreeViewColumn.new(_('Nodes'), renderer, 'text' => CL_Name)
-    column.set_sort_column_id(CL_Name)
-    list_tree.append_column(column)
-
-    list_sw.add(list_tree)
-
-    hpaned3 = Gtk::HPaned.new
-    hpaned3.pack1(list_sw, true, true)
-    hpaned3.pack2(talksw, true, true)
-    #motion-notify-event  #leave-notify-event  enter-notify-event
-    #hpaned3.signal_connect('notify::position') do |widget, param|
-    #  if hpaned3.position <= 1
-    #    list_tree.set_size_request(0, -1)
-    #    list_sw.set_size_request(0, -1)
-    #  end
-    #end
-    hpaned3.position = 1
-    hpaned3.position = 0
-
-    area2.add_events(Gdk::Event::BUTTON_PRESS_MASK)
-    area2.signal_connect('button-press-event') do |widget, event|
-      if hpaned3.position <= 1
-        list_sw.width_request = 150 if list_sw.width_request <= 1
-        hpaned3.position = list_sw.width_request
-      else
-        list_sw.width_request = list_sw.allocation.width
-        hpaned3.position = 0
-      end
-    end
-
-    vpaned2.pack1(hpaned3, true, true)
-    vpaned2.pack2(hpaned2, false, true)
-
-    hpaned.pack1(vpaned1, false, true)
-    hpaned.pack2(vpaned2, true, true)
-
-    sw.online_button    = online_button
-    sw.snd_button       = snd_button
-    sw.vid_button       = vid_button
-    sw.talkview         = talkview
-    sw.editbox          = editbox
-
-    area.signal_connect('visibility_notify_event') do |widget, event_visibility|
-      case event_visibility.state
-        when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
-          sw.play_pipeline if vid_button.active?
-        when Gdk::EventVisibility::FULLY_OBSCURED
-          sw.stop_pipeline
-      end
-    end
-
-    area.signal_connect('destroy') do |*args|
-      sw.stop_pipeline
-    end
-
-    area.show
-
-    #connection = find_or_start_connection(node, true, false, false)
-    #connection.dialog = sw if connection
-
-    label_box = TabLabelBox.new(image, title, sw, false, 0) do
-      sw.stop_pipeline
-      area.destroy
-
-      sw.connset[CSI_Nodes].each do |node|
-        connection = connection_of_node(node)
-        if connection
-          connection.dialog = nil
-          #connection.conn_mode = connection.conn_mode & (~CM_Persistent)
-          stop_connection(node, false)
-          #if connection.conn_state == CS_Disconnected
-            #Thread.critical = true
-          #  del_connection(connection)
-            #Thread.critical = false
-          #end
-        end
-      end
-    end
-
-    page = $notebook.append_page(sw, label_box)
-    sw.show_all
-    $notebook.page = $notebook.n_pages-1
-    editbox.grab_focus
+    sw = TalkScrolledWindow.new(persons, known_node, room_id, connset, title)
     sw
   end
 
@@ -6123,13 +6236,13 @@ module PandoraGUI
     $notebook.signal_connect('switch-page') do |widget, page, page_num|
     #$notebook.signal_connect('change-current-page') do |widget, page_num|
       cur_page = $notebook.get_nth_page(page_num)
-      if $last_lage and (cur_page != $last_lage) and ($last_lage.is_a? PandoraGUI::TalkScrolledWindow)
-        $last_lage.stop_pipeline
-      end
+      #if $last_page and (cur_page != $last_page) and ($last_page.is_a? PandoraGUI::TalkScrolledWindow)
+      #  $last_page.init_video_receiver(false)
+      #end
       if cur_page.is_a? PandoraGUI::TalkScrolledWindow
         cur_page.update_state(false, cur_page)
       end
-      $last_lage = cur_page
+      $last_page = cur_page
     end
 
     $view = Gtk::TextView.new
@@ -6186,7 +6299,6 @@ module PandoraGUI
     $window.maximize
     $window.show_all
     $window.signal_connect('destroy') do |*args|
-      #sw.stop_pipeline
       Gtk.main_quit
     end
 
@@ -6209,7 +6321,7 @@ module PandoraGUI
         if $notebook.page >= 0
           sw = $notebook.get_nth_page($notebook.page)
           #treeview = sw.children[0]
-          sw.stop_pipeline if sw.is_a? TalkScrolledWindow
+          #sw.init_video_receiver(false) if sw.is_a? TalkScrolledWindow
         end
         if widget.visible? and widget.active?
           $window.hide
