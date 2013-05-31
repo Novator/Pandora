@@ -3380,8 +3380,7 @@ module PandoraGUI
           elsif last_auth_key
             dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
               Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-              _('Bad password. Try again?')+"\nlast_auth_key=[" \
-              +PandoraKernel.bytes_to_hex(last_auth_key[2,16])+']')
+              _('Bad password. Try again?')+"\n[" +PandoraKernel.bytes_to_hex(last_auth_key[2,16])+']')
             dialog.title = _('Key init')
             dialog.default_response = Gtk::Dialog::RESPONSE_OK
             dialog.icon = $window.icon
@@ -3951,7 +3950,8 @@ module PandoraGUI
   # Showing panobject list
   # RU: Показ списка субъектов
   def self.show_panobject_list(panobject_class, widget=nil, sw=nil)
-    if widget
+    single = (sw == nil)
+    if single
       $notebook.children.each do |child|
         if child.name==panobject_class.ider
           $notebook.page = $notebook.children.index(child)
@@ -4090,7 +4090,7 @@ module PandoraGUI
     sw.add(treeview)
     sw.border_width = 0;
 
-    if widget
+    if single
       if widget.is_a? Gtk::ImageMenuItem
         animage = widget.image
       elsif widget.is_a? Gtk::ToolButton
@@ -4280,7 +4280,7 @@ module PandoraGUI
     block
   end
 
-  $media_buf_size = 255
+  $media_buf_size = 50
   $send_media_queue    = nil
   $send_media_rooms = nil
 
@@ -4536,11 +4536,9 @@ module PandoraGUI
             #curpage = dialog
             Thread.pass
           end
+          dialog.init_video_receiver(true, true) if not dialog.recv_media_queue
           if dialog
-            dialog.init_video_receiver(true)
-            if rdata and dialog.recv_media_queue
-              #p '!!!!! rdata='+rdata.size.to_s
-              dialog.init_video_receiver(true) if not dialog.recv_media_pipeline
+            if dialog and dialog.recv_media_queue
               PandoraGUI.add_block_to_queue(dialog.recv_media_queue, rdata, $media_buf_size)
             end
           end
@@ -4842,7 +4840,7 @@ module PandoraGUI
                   comm = rbuf[0, processedlen]
                   rindex, rcmd, rcode, rsegsign, errcode = unpack_comm(comm)
                   if errcode == 0
-                    p log_mes+' RM_Comm: '+[rindex, rcmd, rcode, rsegsign].inspect
+                    #p log_mes+' RM_Comm: '+[rindex, rcmd, rcode, rsegsign].inspect
                     if rsegsign == Connection::LONG_SEG_SIGN
                       nextreadmode = RM_CommExt
                       waitlen = CommExtSize
@@ -4864,13 +4862,13 @@ module PandoraGUI
                 when RM_CommExt
                   comm = rbuf[0, processedlen]
                   rdatasize, fullcrc32, rsegsize = unpack_comm_ext(comm)
-                  p log_mes+' RM_CommExt: '+[rdatasize, fullcrc32, rsegsize].inspect
+                  #p log_mes+' RM_CommExt: '+[rdatasize, fullcrc32, rsegsize].inspect
                   nextreadmode = RM_Segment1
                   waitlen = rsegsize+4   #+CRC32
                 when RM_SegLenN
                   comm = rbuf[0, processedlen]
                   rindex, rsegindex, rsegsize = comm.unpack('CNn')
-                  p log_mes+' RM_SegLenN: '+[rindex, rsegindex, rsegsize].inspect
+                  #p log_mes+' RM_SegLenN: '+[rindex, rsegindex, rsegsize].inspect
                   nextreadmode = RM_SegmentN
                   waitlen = rsegsize+4   #+CRC32
                 when RM_SegmentS, RM_Segment1, RM_SegmentN
@@ -4974,6 +4972,7 @@ module PandoraGUI
           processed += 1
           recv_media_chunk = PandoraGUI.get_block_from_queue(dialog.recv_media_queue, $media_buf_size)
           if recv_media_chunk
+            #p '??? load  size='+recv_media_chunk.size.to_s
             buf = Gst::Buffer.new
             buf.data = recv_media_chunk
             buf.timestamp = Time.now.to_i * Gst::NSECOND
@@ -5028,7 +5027,8 @@ module PandoraGUI
         # пакетирование буферов
         if ((send_state & CSF_Media)>0) and $send_media_queue and $send_media_rooms \
         and (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Protocoled) \
-        and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id
+        and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
+        and dialog.vid_button.active?
           pointer_ind = PandoraGUI.set_send_ptrind_by_room(dialog.room_id)
           processed = 0
           while ((send_state & CSF_Media)>0) and (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) \
@@ -5036,7 +5036,7 @@ module PandoraGUI
             processed += 1
             send_media_chunk = PandoraGUI.get_block_from_queue($send_media_queue, $media_buf_size, pointer_ind)
             if send_media_chunk
-              p log_mes+'send_media_chunk='+send_media_chunk.size.to_s
+              #p log_mes+'send_media_chunk='+send_media_chunk.size.to_s
               if not add_send_segment(EC_Media, true, send_media_chunk)
                 log_message(LM_Error, 'Ошибка отправки буфера data.size='+send_media_chunk.size.to_s)
               end
@@ -5519,17 +5519,12 @@ module PandoraGUI
           online_button.active = true
           Thread.pass
           if init_video_sender(true)
-            ptrind = PandoraGUI.set_send_ptrind_by_room(room_id)
-            count = PandoraGUI.nil_send_ptrind_by_room(nil)
-            p '=====   !!!!!!!1   ptrind='+ptrind.inspect+'   count='+count.inspect
             connset[CSI_Nodes].each do |node|
               PandoraGUI.find_or_start_connection(node, CSF_Media, self)
             end
           end
         else
           init_video_sender(false)
-          count = PandoraGUI.nil_send_ptrind_by_room(room_id)
-          p '=====   --------    count='+count.inspect
         end
       end
 
@@ -5684,14 +5679,14 @@ module PandoraGUI
         end
       end
 
-      area2.signal_connect('visibility_notify_event') do |widget, event_visibility|
-        case event_visibility.state
-          when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
-            init_video_sender(true) if vid_button.active?
-          when Gdk::EventVisibility::FULLY_OBSCURED
-            init_video_sender(false)
-        end
-      end
+      #area2.signal_connect('visibility_notify_event') do |widget, event_visibility|
+      #  case event_visibility.state
+      #    when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
+      #      init_video_sender(true) if vid_button.active?
+      #    when Gdk::EventVisibility::FULLY_OBSCURED
+      #      init_video_sender(false)
+      #  end
+      #end
 
       area2.signal_connect('destroy') do |*args|
         init_video_sender(false)
@@ -5708,7 +5703,7 @@ module PandoraGUI
           when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
             init_video_receiver(true) #if vid_button.active?
           when Gdk::EventVisibility::FULLY_OBSCURED
-            #init_video_receiver(false)
+            init_video_receiver(false)
         end
       end
 
@@ -5796,8 +5791,9 @@ module PandoraGUI
       video_pipeline = $send_media_pipelines['video']
       if (not start) or (not vid_button.active?)
         #p 'init_video_sender OFF  node='+connset.inspect
-        count = PandoraGUI.nil_send_ptrind_by_room(nil)
+        count = PandoraGUI.nil_send_ptrind_by_room(room_id)
         video_pipeline.stop if video_pipeline and (count==0)
+        p '=====   OFFFF   count='+count.inspect
         #if $webcam_xvimagesink
           #$webcam_xvimagesink.pause
           #pads = $webcam_xvimagesink.pads
@@ -5806,8 +5802,8 @@ module PandoraGUI
           #$webcam_xvimagesink.get_pad('src').unlink(pads[0])
           #$webcam_xvimagesink.xwindow_id = 0
         #end
-        #area2.hide
-        #area2.show
+        area2.hide
+        area2.show
       else
         #p 'init_video_sender ON node='+connset.inspect
         if not video_pipeline
@@ -5873,21 +5869,29 @@ module PandoraGUI
           $webcam_xvimagesink.xwindow_id = area2.window.xid if not area2.destroyed? and (area2.window != nil)
         end
 
-        video_pipeline.play
+        ptrind = PandoraGUI.set_send_ptrind_by_room(room_id)
+        count = PandoraGUI.nil_send_ptrind_by_room(nil)
+        p '=====   !!!! ON   ptrind='+ptrind.inspect+'   count='+count.inspect
+
+        video_pipeline.play if count>0
+        #init_video_receiver(false) if count==0
       end
       video_pipeline
     end
 
-    def init_video_receiver(start=true)
+    def init_video_receiver(start=true, paused=false)
       if not start
-        recv_media_pipeline.stop if recv_media_pipeline
-        ximagesink.xwindow_id = 0 if ximagesink
+        recv_media_pipeline.pause if recv_media_pipeline
+        #ximagesink.xwindow_id = 0 if ximagesink
       else
         if not recv_media_pipeline
           @recv_media_queue ||= PandoraGUI.init_empty_queue
 
-          dialog_id = '_'+PandoraKernel.bytes_to_hex(room_id[0,8])
-          recv_media_pipeline = Gst::Pipeline.new('pipe'+dialog_id)
+          dialog_id = '_'+PandoraKernel.bytes_to_hex(room_id[0,4])
+
+          p '^^^^^^ init_video_receive:  dialog_id='+dialog_id
+
+          @recv_media_pipeline = Gst::Pipeline.new('pipe'+dialog_id)
 
           @appsrc = Gst::ElementFactory.make('appsrc', 'appsrc'+dialog_id)
           appsrc.caps = Gst::Caps.parse('caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
@@ -5918,7 +5922,7 @@ module PandoraGUI
         area.signal_connect('expose-event') do |*args|
           ximagesink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
         end
-        recv_media_pipeline.play
+        recv_media_pipeline.play if not paused
       end
     end
 
@@ -6236,9 +6240,9 @@ module PandoraGUI
     $notebook.signal_connect('switch-page') do |widget, page, page_num|
     #$notebook.signal_connect('change-current-page') do |widget, page_num|
       cur_page = $notebook.get_nth_page(page_num)
-      #if $last_page and (cur_page != $last_page) and ($last_page.is_a? PandoraGUI::TalkScrolledWindow)
-      #  $last_page.init_video_receiver(false)
-      #end
+      if $last_page and (cur_page != $last_page) and ($last_page.is_a? PandoraGUI::TalkScrolledWindow)
+        $last_page.init_video_receiver(false)
+      end
       if cur_page.is_a? PandoraGUI::TalkScrolledWindow
         cur_page.update_state(false, cur_page)
       end
@@ -6267,7 +6271,7 @@ module PandoraGUI
       do_menu_act('Hunt')
     end
     add_status_field(SF_Conn, '0/0/0') do
-      do_menu_act('Nodes')
+      do_menu_act('Node')
     end
 
     sw = Gtk::ScrolledWindow.new(nil, nil)
@@ -6320,8 +6324,7 @@ module PandoraGUI
       then
         if $notebook.page >= 0
           sw = $notebook.get_nth_page($notebook.page)
-          #treeview = sw.children[0]
-          #sw.init_video_receiver(false) if sw.is_a? TalkScrolledWindow
+          sw.init_video_receiver(false) if sw.is_a? TalkScrolledWindow
         end
         if widget.visible? and widget.active?
           $window.hide
