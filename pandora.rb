@@ -5534,8 +5534,8 @@ module PandoraGUI
             end
           end
         else
-          init_video_sender(false)
           init_video_sender(false, true)
+          init_video_sender(false)
         end
       end
 
@@ -5690,14 +5690,14 @@ module PandoraGUI
         end
       end
 
-      #area2.signal_connect('visibility_notify_event') do |widget, event_visibility|
-      #  case event_visibility.state
-      #    when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
-      #      init_video_sender(true, true) if vid_button.active?
-      #    when Gdk::EventVisibility::FULLY_OBSCURED
-      #      init_video_sender(false, true)
-      #  end
-      #end
+      area2.signal_connect('visibility_notify_event') do |widget, event_visibility|
+        case event_visibility.state
+          when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
+            init_video_sender(true, true)
+          when Gdk::EventVisibility::FULLY_OBSCURED
+            init_video_sender(false, true)
+        end
+      end
 
       area2.signal_connect('destroy') do |*args|
         init_video_sender(false)
@@ -5800,7 +5800,6 @@ module PandoraGUI
       if not area.window
         area.realize
         Gtk.main_iteration
-        #Thread.pass
       end
       sink.xwindow_id = area.window.xid
       if pipeline
@@ -5825,90 +5824,121 @@ module PandoraGUI
     def init_video_sender(start=true, just_upd_area=false)
       video_pipeline = $send_media_pipelines['video']
       if not start
-        #if send_display_handler and not just_upd_area
-        #  area2.signal_handler_disconnect(send_display_handler)
-        #  @send_display_handler = nil
-        #end
+        if $webcam_xvimagesink and ($webcam_xvimagesink.get_state == Gst::STATE_PLAYING)
+          $webcam_xvimagesink.pause
+        end
         if just_upd_area
+          if send_display_handler
+            area2.signal_handler_disconnect(send_display_handler)
+            @send_display_handler = nil
+          end
           tsw = PandoraGUI.find_active_sender(self)
           if $webcam_xvimagesink and tsw and tsw.area2 and tsw.area2.window
             $webcam_xvimagesink.xwindow_id = tsw.area2.window.xid
             #p 'RECONN tsw.title='+PandoraGUI.consctruct_room_title(connset[CSI_Persons]).inspect
           end
+          #p '--LEAVE'
+          area2.hide
+          area2.show
         else
           count = PandoraGUI.nil_send_ptrind_by_room(room_id)
-          video_pipeline.stop if video_pipeline and (count==0)
+          if video_pipeline and (count==0) and (video_pipeline.get_state != Gst::STATE_NULL)
+            video_pipeline.stop
+            if send_display_handler
+              area2.signal_handler_disconnect(send_display_handler)
+              @send_display_handler = nil
+            end
+            #p '==STOP!!'
+          end
         end
         #Thread.pass
-        area2.hide
-        area2.show
-      else
-        if (not video_pipeline) and vid_button.active?
-        begin
-          Gst.init
-          winos = (os_family == 'windows')
-          video_pipeline = Gst::Pipeline.new('pipeline1')
-          $send_media_pipelines['video'] = video_pipeline
+      elsif vid_button.active?
+        if not video_pipeline
+          begin
+            Gst.init
+            winos = (os_family == 'windows')
+            video_pipeline = Gst::Pipeline.new('pipeline1')
+            $send_media_pipelines['video'] = video_pipeline
 
-          webcam = nil
-          if winos
-            #gst-launch dshowvideosrc ! ffmpegcolorspace ! directdrawsink
-            webcam = Gst::ElementFactory.make('dshowvideosrc', 'webcam1')
-          else
-            webcam = Gst::ElementFactory.make('v4l2src')
-            webcam.decimate=3
+            webcam = nil
+            if winos
+              #gst-launch dshowvideosrc ! ffmpegcolorspace ! directdrawsink
+              webcam = Gst::ElementFactory.make('dshowvideosrc', 'webcam1')
+            else
+              webcam = Gst::ElementFactory.make('v4l2src')
+              webcam.decimate=3
+            end
+
+            capsfilter = Gst::ElementFactory.make('capsfilter', 'capsfilter1')
+            capsfilter.caps = Gst::Caps.parse('video/x-raw-rgb,width=320,height=240')
+
+            ffmpegcolorspace1 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace1')
+
+            tee = Gst::ElementFactory.make('tee', 'tee1')
+
+            vp8enc = Gst::ElementFactory.make('vp8enc', 'vp8enc1')
+            vp8enc.max_latency=0.5
+
+            appsink = Gst::ElementFactory.make('appsink', 'appsink1')
+            appsink.emit_signals = true
+            $send_media_queue ||= PandoraGUI.init_empty_queue(true)
+            appsink.signal_connect('new-buffer') do |appsink|
+              buf = appsink.pull_buffer
+              if buf
+                data = buf.data
+                PandoraGUI.add_block_to_queue($send_media_queue, data, $media_buf_size)
+              end
+            end
+
+            queue1 = Gst::ElementFactory.make('queue', 'queue1')
+
+            $webcam_xvimagesink = Gst::ElementFactory.make('xvimagesink', 'xvimagesink1');
+            $webcam_xvimagesink.sync = true
+
+            video_pipeline.add(webcam, capsfilter, ffmpegcolorspace1, tee, vp8enc, appsink, queue1, $webcam_xvimagesink)
+            webcam >> capsfilter >> ffmpegcolorspace1 >> tee
+            tee >> vp8enc >> appsink
+            tee >> queue1 >> $webcam_xvimagesink
+          rescue
+            $send_media_pipelines['video'] = nil
+            log_message(LM_Warning, _('Video camera init exception'))
+            vid_button.active = false
           end
+        end
 
-          capsfilter = Gst::ElementFactory.make('capsfilter', 'capsfilter1')
-          capsfilter.caps = Gst::Caps.parse('video/x-raw-rgb,width=320,height=240')
-
-          ffmpegcolorspace1 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace1')
-
-          tee = Gst::ElementFactory.make('tee', 'tee1')
-
-          vp8enc = Gst::ElementFactory.make('vp8enc', 'vp8enc1')
-          vp8enc.max_latency=0.5
-
-          appsink = Gst::ElementFactory.make('appsink', 'appsink1')
-          appsink.emit_signals = true
-          $send_media_queue ||= PandoraGUI.init_empty_queue(true)
-          appsink.signal_connect('new-buffer') do |appsink|
-            buf = appsink.pull_buffer
-            if buf
-              data = buf.data
-              PandoraGUI.add_block_to_queue($send_media_queue, data, $media_buf_size)
+        if video_pipeline
+          if $webcam_xvimagesink and area2 and area2.window
+            $webcam_xvimagesink.xwindow_id = area2.window.xid
+          end
+          if not just_upd_area
+            video_pipeline.stop if (video_pipeline.get_state != Gst::STATE_NULL)
+            if send_display_handler
+              area2.signal_handler_disconnect(send_display_handler)
+              @send_display_handler = nil
             end
           end
-
-          queue1 = Gst::ElementFactory.make('queue', 'queue1')
-
-          $webcam_xvimagesink = Gst::ElementFactory.make('xvimagesink', 'xvimagesink1');
-          $webcam_xvimagesink.sync = true
-
-          video_pipeline.add(webcam, capsfilter, ffmpegcolorspace1, tee, vp8enc, appsink, queue1, $webcam_xvimagesink)
-          webcam >> capsfilter >> ffmpegcolorspace1 >> tee
-          tee >> vp8enc >> appsink
-          tee >> queue1 >> $webcam_xvimagesink
-        rescue
-          $send_media_pipelines['video'] = nil
-          log_message(LM_Warning, _('Video camera init exception'))
-          vid_button.active = false
-        end
-        end
-
-        if video_pipeline and vid_button.active?
           if not send_display_handler
             @send_display_handler = link_sink_to_area($webcam_xvimagesink, area2,  video_pipeline)
           end
+          if $webcam_xvimagesink and area2 and area2.window
+            $webcam_xvimagesink.xwindow_id = area2.window.xid
+          end
 
-          if not just_upd_area
+          if just_upd_area
+            video_pipeline.play if (video_pipeline.get_state != Gst::STATE_PLAYING)
+          else
             ptrind = PandoraGUI.set_send_ptrind_by_room(room_id)
             count = PandoraGUI.nil_send_ptrind_by_room(nil)
             if count>0
-              video_pipeline.stop
-              video_pipeline.play
+              #Gtk.main_iteration
+              video_pipeline.play if (video_pipeline.get_state != Gst::STATE_PLAYING)
+              #p '==*** PLAY'
             end
           end
+          #if $webcam_xvimagesink and ($webcam_xvimagesink.get_state != Gst::STATE_PLAYING) \
+          #and (video_pipeline.get_state == Gst::STATE_PLAYING)
+          #  $webcam_xvimagesink.play
+          #end
         end
       end
       video_pipeline
@@ -5916,44 +5946,53 @@ module PandoraGUI
 
     def init_video_receiver(start=true, can_play=true, init=true)
       if not start
-        recv_media_pipeline.pause if recv_media_pipeline
-      else
-        if not recv_media_pipeline and init
-        begin
-          Gst.init
-          @recv_media_queue ||= PandoraGUI.init_empty_queue
-
-          dialog_id = '_'+PandoraKernel.bytes_to_hex(room_id[0,4])
-
-          p '^^^^^^ init_video_receive:  dialog_id='+dialog_id
-
-          @recv_media_pipeline = Gst::Pipeline.new('pipe'+dialog_id)
-
-          @appsrc = Gst::ElementFactory.make('appsrc', 'appsrc'+dialog_id)
-          appsrc.caps = Gst::Caps.parse('caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
-          appsrc.emit_signals = false
-
-          vp8dec = Gst::ElementFactory.make('vp8dec', 'vp8dec'+dialog_id)
-
-          ffmpegcolorspace2 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace'+dialog_id)
-
-          @ximagesink = Gst::ElementFactory.make('ximagesink', 'ximagesink'+dialog_id);
-          ximagesink.sync = false
-
-          recv_media_pipeline.add(appsrc, vp8dec, ffmpegcolorspace2, ximagesink)
-          appsrc >> vp8dec >> ffmpegcolorspace2 >> ximagesink
-        rescue
-          @recv_media_pipeline = nil
-          log_message(LM_Warning, _('Video receiver init exception'))
-          vid_button.active = false
-          Thread.pass
+        #recv_media_pipeline.pause if recv_media_pipeline
+        #recv_media_pipeline.stop if recv_media_pipeline
+        ximagesink.pause if ximagesink and (ximagesink.get_state == Gst::STATE_PLAYING)
+        if recv_display_handler
+          area.signal_handler_disconnect(recv_display_handler)
+          @recv_display_handler = nil
         end
+        #p ':::%%--R_PAUSE_STOP'
+      else
+        if (not recv_media_pipeline) and init
+          begin
+            Gst.init
+            @recv_media_queue ||= PandoraGUI.init_empty_queue
+
+            dialog_id = '_'+PandoraKernel.bytes_to_hex(room_id[0,4])
+            #p '^^^^^^ init_video_receive:  dialog_id='+dialog_id
+
+            @recv_media_pipeline = Gst::Pipeline.new('pipe'+dialog_id)
+
+            @appsrc = Gst::ElementFactory.make('appsrc', 'appsrc'+dialog_id)
+            appsrc.caps = Gst::Caps.parse( \
+              'caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
+            appsrc.emit_signals = false
+
+            vp8dec = Gst::ElementFactory.make('vp8dec', 'vp8dec'+dialog_id)
+
+            ffmpegcolorspace2 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace'+dialog_id)
+
+            @ximagesink = Gst::ElementFactory.make('ximagesink', 'ximagesink'+dialog_id);
+            ximagesink.sync = false
+
+            recv_media_pipeline.add(appsrc, vp8dec, ffmpegcolorspace2, ximagesink)
+            appsrc >> vp8dec >> ffmpegcolorspace2 >> ximagesink
+          rescue
+            @recv_media_pipeline = nil
+            log_message(LM_Warning, _('Video receiver init exception'))
+            vid_button.active = false
+            #Thread.pass
+          end
         end
         if recv_media_pipeline and can_play
           if not recv_display_handler and ximagesink
             @recv_display_handler = link_sink_to_area(ximagesink, area,  recv_media_pipeline)
           end
-          recv_media_pipeline.play
+          recv_media_pipeline.play if (recv_media_pipeline.get_state != Gst::STATE_PLAYING)
+          ximagesink.play if (ximagesink.get_state != Gst::STATE_PLAYING)
+          #p '::::R_PLAY'
         end
       end
     end
