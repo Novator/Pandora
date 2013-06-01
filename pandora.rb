@@ -3120,7 +3120,7 @@ module PandoraGUI
     $status_fields[index] = btn
   end
 
-  def self.set_status_field(index, text, enabled=nil)
+  def self.set_status_field(index, text, enabled=false)
     btn = $status_fields[index]
     if btn
       btn.label = _(text) if $status_fields[index]
@@ -3193,7 +3193,7 @@ module PandoraGUI
               PandoraGUI.set_param('last_check', Time.now)
               if (response.content_length == curr_size)
                 http = nil
-                set_status_field(SF_Update, 'Updated', false)
+                set_status_field(SF_Update, 'Updated', true)
                 PandoraGUI.set_param('last_update', Time.now)
               else
                 time = Time.now.to_i
