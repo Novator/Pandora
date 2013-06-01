@@ -266,13 +266,13 @@ module PandoraKernel
   def self.load_language(lang='ru')
 
     def self.unslash_quotes(str)
-      str = '' if str == nil
+      str ||= ''
       str.gsub('\"', '"')
     end
 
     def self.addline(str, line)
       line = unslash_quotes(line)
-      if (str==nil) or (str=='')
+      if (not str) or (str=='')
         str = line
       else
         str = str.to_s + "\n" + line.to_s
@@ -370,9 +370,9 @@ module PandoraKernel
     File.open(langfile, 'w') do |file|
       file.puts('# Pandora language file EN=>'+lang.upcase)
       $lang_trans.each do |value|
-        if (value[0].index('"') == nil) and (value[1].index('"') == nil) \
-          and (value[0].index("\n") == nil) and (value[1].index("\n") == nil) \
-          and not there_are_end_space(value[0]) and not there_are_end_space(value[1])
+        if (not value[0].index('"')) and (not value[1].index('"')) \
+          and (not value[0].index("\n")) and (not value[1].index("\n")) \
+          and (not there_are_end_space(value[0])) and (not there_are_end_space(value[1]))
         then
           str = value[0]+'=>'+value[1]
         else
@@ -477,7 +477,7 @@ module PandoraKernel
       tfd = db.table_info(table_name)
       #p tfd
       tfd.collect! { |x| x['name'] }
-      if (tfd == nil) or (tfd == [])
+      if (not tfd) or (tfd == [])
         @exist[table_name] = FALSE
       else
         @exist[table_name] = TRUE
@@ -502,7 +502,7 @@ module PandoraKernel
     def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil)
       connect
       tfd = fields_table(table_name)
-      if (tfd == nil) or (tfd == [])
+      if (not tfd) or (tfd == [])
         @selection = [['<no>'],['<base>']]
       else
         sql_values = []
@@ -624,7 +624,7 @@ module PandoraKernel
       #find db_ptr in db_list
       adap = nil
       base_des = base_list[$base_index]
-      if base_des[3] == nil
+      if not base_des[3]
         adap = SQLiteDbSession.new
         adap.conn_param = base_des[2]
         base_des[3] = adap
@@ -633,7 +633,7 @@ module PandoraKernel
       end
       table_name = table_ptr[1]
       adap.def_flds[table_name] = panobj.def_fields
-      if table_name==nil or table_name=='' then
+      if (not table_name) or (table_name=='') then
         puts 'No table name for ['+panobj.name+']'
       else
         adap.create_table(table_name, recreate)
@@ -647,7 +647,7 @@ module PandoraKernel
     end
     def get_tab_update(panobj, table_ptr, values, names, filter='')
       res = false
-      recreate = ((values == nil) and (names == nil) and (filter == nil))
+      recreate = ((not values) and (not names) and (not filter))
       adap = get_adapter(panobj, table_ptr, recreate)
       if recreate
         res = (adap != nil)
@@ -672,7 +672,7 @@ module PandoraKernel
     sname, pname = name.split('|')
     if plural==false
       res = sname
-    elsif (pname==nil) or (pname=='')
+    elsif (not pname) or (pname=='')
       res = sname
       res[-1]='ie' if res[-1,1]=='y'
       res = res+'s'
@@ -843,8 +843,8 @@ module PandoraKernel
       def set_if_nil(f, fi, pfd)
         f[fi] ||= pfd[fi]
       end
-      def decode_pos(pos='')
-        pos = '' if pos == nil
+      def decode_pos(pos=nil)
+        pos ||= ''
         pos = pos.to_s
         new_row = 1 if pos.include?('|')
         ind = pos.scan(/[0-9\.\+]+/)
@@ -852,7 +852,7 @@ module PandoraKernel
         lab_or = pos.scan(/[a-z]+/)
         lab_or = lab_or[0] if lab_or
         lab_or = lab_or[0, 1] if lab_or
-        if (lab_or==nil) or (lab_or=='u')
+        if (not lab_or) or (lab_or=='u')
           lab_or = :up
         elsif (lab_or=='l')
           lab_or = :left
@@ -1038,10 +1038,10 @@ module PandoraKernel
                 hash = hash[0, i]
               end
               #p '@@@[ind, hash, len]='+[ind, hash, len].inspect
-              if (hash==nil) or (hash=='') or (len<=0)
+              if (not hash) or (hash=='') or (len<=0)
                 dlen, dhash = def_hash(e)
                 #p '[hash, len, dhash, dlen]='+[hash, len, dhash, dlen].inspect
-                hash = dhash if (hash==nil) or (hash=='')
+                hash = dhash if (not hash) or (hash=='')
                 if len<=0
                   case hash
                     when 'byte'
@@ -1229,7 +1229,7 @@ module PandoraKernel
       res
     end
     def tab_fields
-      if @last_tab_fields == nil
+      if not @last_tab_fields
         @last_tab_fields = self.class.repositories.get_tab_fields(self, self.class.tables[0])
         @last_tab_fields.each do |x|
           x[TI_Desc] = field_des(x[TI_Name])
@@ -1508,7 +1508,7 @@ module PandoraModel
               panobj_name = panobj_id
               if not panobject_class #not PandoraModel.const_defined? panobj_id
                 parent_class = element.attributes['parent']
-                if (parent_class==nil) or (parent_class=='') or (not (PandoraModel.const_defined? parent_class))
+                if (not parent_class) or (parent_class=='') or (not (PandoraModel.const_defined? parent_class))
                   if parent_class
                     puts _('Parent is not defined, ignored')+' /'+filename+':'+panobj_id+'<'+parent_class
                   end
@@ -1842,7 +1842,7 @@ module PandoraGUI
   # RU: Добавить кнопку на панель инструментов
   def self.add_tool_btn(toolbar, stock, title, toggle=nil)
     btn = nil
-    if toggle
+    if toggle != nil
       btn = Gtk::ToggleToolButton.new(stock)
       btn.active = toggle
     else
@@ -3120,11 +3120,11 @@ module PandoraGUI
     $status_fields[index] = btn
   end
 
-  def self.set_status_field(index, text, enabled=false)
+  def self.set_status_field(index, text, enabled=nil)
     btn = $status_fields[index]
     if btn
       btn.label = _(text) if $status_fields[index]
-      if enabled
+      if (enabled != nil)
         btn.sensitive = enabled
       end
     end
@@ -5233,7 +5233,7 @@ module PandoraGUI
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen
-    if $listen_thread == nil
+    if not $listen_thread
       key = current_key(false)
       if key
         set_status_field(SF_Listen, 'Listening')
@@ -6373,7 +6373,7 @@ module PandoraGUI
     if mi[0] == '-'
       menuitem = Gtk::SeparatorMenuItem.new
     else
-      if mi[1] == nil
+      if not mi[1]
         menuitem = Gtk::MenuItem.new(mi[2])
       else
         menuitem = Gtk::ImageMenuItem.new(mi[1])
@@ -6546,9 +6546,9 @@ module PandoraGUI
         if widget.visible? and widget.active?
           $window.hide
           #$window.skip_taskbar_hint = true
-          if @statusicon == nil
+          if not @statusicon
             @statusicon = Gtk::StatusIcon.new!({'visible'=>false})
-            if $window.icon == nil
+            if not $window.icon
               @statusicon.set_icon_name(Gtk::Stock::DIALOG_INFO)
             else
               @statusicon.pixbuf = $window.icon
