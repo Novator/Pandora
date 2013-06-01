@@ -2253,13 +2253,14 @@ module PandoraGUI
         #p 'Final [fld_size, max_size]='+[fld_size, max_size].inspect
         #entry.width_chars = fld_size
         entry.max_length = max_size if max_size >= 0
-        foreground = field[FI_Color]
-        if foreground
-          foreground = Gdk::Color.parse(foreground)
+        color = field[FI_Color]
+        if color
+          color = Gdk::Color.parse(color)
         else
-          foreground = $window.modifier_style.fg(Gtk::STATE_NORMAL)
+          color = $window.modifier_style.fg(Gtk::STATE_NORMAL)
         end
-        entry.modify_fg(Gtk::STATE_NORMAL, foreground)
+        #entry.modify_fg(Gtk::STATE_ACTIVE, color)
+        entry.modify_text(Gtk::STATE_NORMAL, color)
 
         ew = fld_size*@middle_char_width
         ew = form_width if ew > form_width
@@ -3728,11 +3729,12 @@ module PandoraGUI
         if val.is_a? String
           if can_edit
             val = PandoraKernel.bytes_to_hex(val)
+            color = 'dark blue'
           else
             val = PandoraKernel.bytes_to_hex(val[2,16])
+            color = 'blue'
           end
         end
-        color = 'blue'
       elsif view=='panhash'
         if val.is_a? String
           if can_edit
@@ -3740,14 +3742,14 @@ module PandoraGUI
           else
             val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,44])
           end
+          color = 'navy'
         end
-        color = 'navy'
       elsif view=='hex'
-        val = val.to_i
-        val = PandoraKernel.bigint_to_bytes(val)
+        #val = val.to_i
+        val = PandoraKernel.bigint_to_bytes(val) if val.is_a? Integer
         val = PandoraKernel.bytes_to_hex(val)
         #end
-        color = 'red'
+        color = 'dark blue'
       elsif not can_edit and (view=='text')
         val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
         val = val.rstrip
