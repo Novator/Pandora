@@ -155,7 +155,7 @@
 
     <Delegation name.ru="Делегирование|Делегирования">
       <delegate name.ru="Делегат" />
-      <activity name.ru="Деятельность" />
+      <target name.ru="Цель" />
       <expire name.ru="Истекает" />
     </Delegation>
 
@@ -181,7 +181,7 @@
     <Sign name.ru="Подпись|Подписи">
       <key_hash name.ru="Панхэш ключа" />
       <obj_hash name.ru="Панхэш объекта"/>
-      <packed name.ru="Упакован" />
+      <trust name.ru="Доверие" />
       <sign name.ru="Подпись" />
     </Sign>
 

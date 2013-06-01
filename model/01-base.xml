@@ -49,7 +49,7 @@
     <City name="City|Cities" kind="5">
       <name name="Name" type="String" size="96" />
       <country name="Country" type="Panhash(Country)" />
-      <coord name="Coordinates" type="Coord" hash="1:coord(4)" />
+      <coord name="Coordinates" type="Coord" hash="1:integer(4)" />
     </City>
 
     <Street name="Street|Streets" kind="6">
@@ -178,9 +178,9 @@
     </Law>
 
     <Delegation parent="Created">
-      <delegate name="Delegate" type="String" size="32" />
-      <activity name="Activity" type="String" size="32" />
-      <creator hash="1:panhash(15)" />
+      <delegate name="Delegate" type="Panhash(Person)" hash="2:panhash(5)" />
+      <target name="Target" type="Panhash" hash="3:panhash(5)" />
+      <creator hash="1:panhash(5)" />
       <created hash="2:integer(4)" />
       <expire name="Expire" type="Time" />
     </Delegation>
@@ -214,7 +214,7 @@
     <Sign name="Sign" kind="222" parent="Created">
       <obj_hash name="Object panhash" type="String" size="32" />
       <key_hash name="Key panhash" type="String" size="32" />
-      <packed name="Packed" type="Byte" />
+      <trust name="Trust" type="Byte" />
       <sign name="Sign" type="Blob" />
     </Sign>
 

@@ -217,7 +217,7 @@ $lang_trans = {}
 # RU: Перевод фразы
 def _(frase)
   trans = $lang_trans[frase]
-  if (trans == nil) or (trans.size==0) and (frase != nil) and (frase.size>0)
+  if not trans or (trans.size==0) and frase and (frase.size>0)
     trans = frase
   end
   trans
@@ -318,7 +318,7 @@ module PandoraKernel
           if not end_is_found
             if scanmode<2
               i = line.index('"=>"')
-              if i != nil
+              if i
                 frase = addline(frase, line[0, i])
                 line = line[i+4, line.size-i-4]
                 scanmode = 2 #composing a trans
@@ -328,7 +328,7 @@ module PandoraKernel
             end
             if scanmode==2
               k = line.rindex('"')
-              if (k != nil) and ((k==0) or (line[k-1, 1] != "\\"))
+              if k and ((k==0) or (line[k-1, 1] != "\\"))
                 end_is_found = ((k+1)==line.size) or spaces_after(line, k+1)
                 if end_is_found
                   trans = addline(trans, line[0, k])
@@ -389,7 +389,7 @@ module PandoraKernel
     rt_str = rt.to_s
     size_i = size.to_i
     case rt_str
-      when 'Integer', 'Word', 'Byte'
+      when 'Integer', 'Word', 'Byte', 'Coord'
         'INTEGER'
       when 'Float'
         'REAL'
@@ -484,7 +484,7 @@ module PandoraKernel
       end
       tab_def = PandoraKernel::panobj_fld_to_sqlite_tab(def_flds[table_name])
       #p tab_def
-      if (! exist[table_name] or recreate) and tab_def != nil
+      if (! exist[table_name] or recreate) and tab_def
         if exist[table_name] and recreate
           res = db.execute('DROP TABLE '+table_name)
         end
@@ -509,7 +509,7 @@ module PandoraKernel
         if filter.is_a? Hash
           sql2 = ''
           filter.each do |n,v|
-            if n != nil
+            if n
               sql2 = sql2 + ' AND ' if sql2 != ''
               sql2 = sql2 + n.to_s + '=?'
               sql_values << v
@@ -542,7 +542,7 @@ module PandoraKernel
       if filter.is_a? Hash
         sql2 = ''
         filter.each do |n,v|
-          if n != nil
+          if n
             sql2 = sql2 + ' AND ' if sql2 != ''
             sql2 = sql2 + n.to_s + '=?'
             #v.force_encoding('ASCII-8BIT')  and v.is_a? String
@@ -553,16 +553,16 @@ module PandoraKernel
         filter = sql2
       end
 
-      if (values == nil) and (names == nil) and (filter != nil)
+      if (not values) and (not names) and filter
         sql = 'DELETE FROM ' + table_name + ' where '+filter
       elsif values.is_a? Array and names.is_a? Array
         tfd = db.table_info(table_name)
         tfd_name = tfd.collect { |x| x['name'] }
         tfd_type = tfd.collect { |x| x['type'] }
-        if filter != nil
+        if filter
           values.each_with_index do |v,i|
             fname = names[i]
-            if fname != nil
+            if fname
               sql = sql + ',' if sql != ''
               #v.is_a? String
               #v.force_encoding('ASCII-8BIT')  and v.is_a? String
@@ -581,7 +581,7 @@ module PandoraKernel
           sql2 = ''
           values.each_with_index do |v,i|
             fname = names[i]
-            if fname != nil
+            if fname
               sql = sql + ',' if sql != ''
               sql2 = sql2 + ',' if sql2 != ''
               sql = sql + fname.to_s
@@ -596,7 +596,7 @@ module PandoraKernel
         end
       end
       tfd = fields_table(table_name)
-      if (tfd != nil) and (tfd != [])
+      if tfd and (tfd != [])
         sql_values = sql_values+sql_values2
         p '1upd_tab: sql='+sql.inspect
         p '2upd_tab: sql_values='+sql_values.inspect
@@ -650,7 +650,7 @@ module PandoraKernel
       recreate = ((values == nil) and (names == nil) and (filter == nil))
       adap = get_adapter(panobj, table_ptr, recreate)
       if recreate
-        res = adap != nil
+        res = (adap != nil)
       else
         res = adap.update_table(table_ptr[1], values, names, filter)
       end
@@ -764,6 +764,7 @@ module PandoraKernel
   FI_LabH    = 18
   FI_WidW    = 19
   FI_WidH    = 20
+  FI_Color   = 21
 
   $max_hash_len = 20
 
@@ -847,10 +848,10 @@ module PandoraKernel
         pos = pos.to_s
         new_row = 1 if pos.include?('|')
         ind = pos.scan(/[0-9\.\+]+/)
-        ind = ind[0] if ind != nil
+        ind = ind[0] if ind
         lab_or = pos.scan(/[a-z]+/)
-        lab_or = lab_or[0] if lab_or != nil
-        lab_or = lab_or[0, 1] if lab_or != nil
+        lab_or = lab_or[0] if lab_or
+        lab_or = lab_or[0, 1] if lab_or
         if (lab_or==nil) or (lab_or=='u')
           lab_or = :up
         elsif (lab_or=='l')
@@ -867,23 +868,24 @@ module PandoraKernel
       def set_view_and_len(fd)
         view = nil
         len = nil
-        if (fd.is_a? Array) and (fd[FI_Type] != nil)
-          case fd[FI_Type].to_s
+        if (fd.is_a? Array) and fd[FI_Type]
+          type = fd[FI_Type].to_s
+          case type
             when 'Date'
               view = 'date'
-              #len = 3
+              len = 10
             when 'Time'
               view = 'time'
-              #len = 3
+              len = 16
             when 'Byte'
               view = 'byte'
-              len = 1
+              len = 3
             when 'Word'
               view = 'word'
-              len = 2
-            when 'Integer'
+              len = 5
+            when 'Integer', 'Coord'
               view = 'integer'
-              len = 4
+              len = 10
             when 'Blog'
               if not fd[FI_Size] or fd[FI_Size].to_i>25
                 view = 'base64'
@@ -894,16 +896,19 @@ module PandoraKernel
             when 'Text'
               view = 'text'
               #len = 32
-            when 'PHash'
+            when 'Panhash', 'PHash', 'Phash'
               view = 'phash'
               len = 32
-            when 'Panhash'
-              view = 'panhash'
-              len = 32
+            else
+              if type[0,7]=='Panhash'
+                view = 'panhash'
+                len = 32
+              end
           end
         end
         fd[FI_View] = view if view and (not fd[FI_View]) or (fd[FI_View]=='')
         fd[FI_FSize] = len if len and (not fd[FI_FSize]) or (fd[FI_FSize]=='')
+        #p 'name,type,fsize,view,len='+[fd[FI_Name], fd[FI_Type], fd[FI_FSize], view, len].inspect
         [view, len]
       end
       def expand_def_fields_to_parent
@@ -940,18 +945,20 @@ module PandoraKernel
               if field[FI_Size]
                 fldsize = field[FI_Size].to_i
               end
-              fldfsize = fldsize
-              if field[FI_FSize]
-                fldfsize = field[FI_FSize].to_i
-                fldfsize = fldsize if fldfsize > fldsize
-              else
-                fldfsize *= (0.67) if fldfsize>40
-                fldfsize = fldfsize.round
+              fldvsize = fldsize
+              if (not field[FI_FSize] or (field[FI_FSize].to_i==0)) and (fldsize>0)
+                field[FI_FSize] = fldsize
+                field[FI_FSize] = (fldsize*0.67).round if fldvsize>25
+              end
+              fldvsize = field[FI_FSize].to_i if field[FI_FSize]
+              if (fldvsize <= 0) or ((fldvsize > fldsize) and (fldsize>0))
+                fldvsize = (fldsize*0.67).round if (fldsize>0) and (fldvsize>30)
+                fldvsize = 120 if fldvsize>120
               end
               indd, lab_or, new_row = decode_pos(field[FI_Pos])
               plus = (indd and (indd[0, 1]=='+'))
               indd = indd[1..-1] if plus
-              if (indd != nil) and (indd.size>0)
+              if indd and (indd.size>0)
                 indd = indd.to_f
               else
                 indd = nil
@@ -974,7 +981,7 @@ module PandoraKernel
               field[FI_Index] = ind
               field[FI_LabOr] = lab_or
               field[FI_NewRow] = new_row
-              field[FI_VFSize] = fldfsize
+              field[FI_VFSize] = fldvsize
               #p '[field[FI_VFName], field[FI_View]]='+[field[FI_VFName], field[FI_View]].inspect
             end
             df.sort! {|a,b| a[FI_Index]<=>b[FI_Index] }
@@ -985,9 +992,9 @@ module PandoraKernel
       def def_hash(fd)
         len = 0
         hash = ''
-        if (fd.is_a? Array) and (fd[FI_Type] != nil)
+        if (fd.is_a? Array) and fd[FI_Type]
           case fd[FI_Type].to_s
-            when 'Integer', 'Time'
+            when 'Integer', 'Time', 'Coord'
               hash = 'integer'
               len = 4
             when 'Byte'
@@ -1013,7 +1020,7 @@ module PandoraKernel
         def_flds = def_fields
         if def_flds
           def_flds.each do |e|
-            if (e.is_a? Array) and (e[FI_Hash] != nil) and (e[FI_Hash].to_s != '')
+            if (e.is_a? Array) and e[FI_Hash] and (e[FI_Hash].to_s != '')
               hash = e[FI_Hash]
               #p 'hash='+hash.inspect
               ind = 0
@@ -1234,7 +1241,7 @@ module PandoraKernel
       res = nil
       if values.is_a? Array
         i = tab_fields.index{ |tf| tf[0]==fld_name}
-        res = values[i] if i != nil
+        res = values[i] if i
       end
       res
     end
@@ -1287,7 +1294,7 @@ module PandoraKernel
     def calc_hash(hfor, hlen, fval)
       res = nil
       #fval = [fval].pack('C*') if fval.is_a? Fixnum
-      if (fval != nil) and (fval != '')
+      if fval and (fval != '')
         #p 'fval='+fval.inspect+'  hfor='+hfor.inspect
         hfor = 'integer' if (not hfor or hfor=='') and (fval.is_a? Integer)
         hfor = 'hash' if ((hfor=='') or (hfor=='text')) and (fval.is_a? String) and (fval.size>20)
@@ -1297,48 +1304,55 @@ module PandoraKernel
           end
           res = fval
         else
-          if fval.is_a? Float
-            fval = fval.to_s
-          end
-          if fval.is_a? Integer
-            fval = PandoraKernel.bigint_to_bytes(fval)
-          end
-          case hfor
-            when 'sha1', 'hash'
-              res = AsciiString.new
-              #res = ''
-              #res.force_encoding('ASCII-8BIT')
-              res << Digest::SHA1.digest(fval)
-            when 'md5'
-              res = AsciiString.new
-              #res = ''
-              #res.force_encoding('ASCII-8BIT')
-              res << Digest::MD5.digest(fval)
-            when 'date'
-              dmy = fval.split('.')   # D.M.Y
-              # convert DMY to time from 1970 in days
-              #p "date="+[dmy[2].to_i, dmy[1].to_i, dmy[0].to_i].inspect
-              #p Time.now.to_a.inspect
+          if hfor == 'date'
+            #dmy = fval.split('.')   # D.M.Y
+            # convert DMY to time from 1970 in days
+            #p "date="+[dmy[2].to_i, dmy[1].to_i, dmy[0].to_i].inspect
+            #p Time.now.to_a.inspect
 
-              #vals = Time.now.to_a
-              #y, m, d = [vals[5], vals[4], vals[3]]  #current day
-              #p [y, m, d]
-              #expire = Time.local(y+5, m, d)
-              #p expire
-              #p '-------'
-              #p [dmy[2].to_i, dmy[1].to_i, dmy[0].to_i]
+            #vals = Time.now.to_a
+            #y, m, d = [vals[5], vals[4], vals[3]]  #current day
+            #p [y, m, d]
+            #expire = Time.local(y+5, m, d)
+            #p expire
+            #p '-------'
+            #p [dmy[2].to_i, dmy[1].to_i, dmy[0].to_i]
 
-              res = Time.local(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i)
-              #p res
-              res = res.to_i / (24*60*60)
-              # convert date to 0 year epoch
-              res += (1970-1900)*365
-              #res = [t].pack('N')
-            when 'crc16'
-              res = Zlib.crc32(fval) #if fval.is_a? String
-              res = (res & 0xFFFF) ^ (res >> 16)
-            when 'crc32'
-              res = Zlib.crc32(fval) #if fval.is_a? String
+            #res = Time.local(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i)
+            #p res
+            res = 0
+            if fval.is_a? Integer
+              res = Time.at(fval)
+            else
+              res = Time.parse(fval)
+            end
+            res = res.to_i / (24*60*60)
+            # convert date to 0 year epoch
+            res += (1970-1900)*365
+            #res = [t].pack('N')
+          else
+            if fval.is_a? Integer
+              fval = PandoraKernel.bigint_to_bytes(fval)
+            elsif fval.is_a? Float
+              fval = fval.to_s
+            end
+            case hfor
+              when 'sha1', 'hash'
+                res = AsciiString.new
+                #res = ''
+                #res.force_encoding('ASCII-8BIT')
+                res << Digest::SHA1.digest(fval)
+              when 'md5'
+                res = AsciiString.new
+                #res = ''
+                #res.force_encoding('ASCII-8BIT')
+                res << Digest::MD5.digest(fval)
+              when 'crc16'
+                res = Zlib.crc32(fval) #if fval.is_a? String
+                res = (res & 0xFFFF) ^ (res >> 16)
+              when 'crc32'
+                res = Zlib.crc32(fval) #if fval.is_a? String
+            end
           end
         end
         if not res
@@ -1483,7 +1497,7 @@ module PandoraModel
             panobject_class = nil
             panobject_class = PandoraModel.const_get(panobj_id) if PandoraModel.const_defined? panobj_id
             #p panobject_class
-            if panobject_class and (panobject_class.def_fields != nil) and (panobject_class.def_fields != [])
+            if panobject_class and panobject_class.def_fields and (panobject_class.def_fields != [])
               # just extend existed class
               panobj_name = panobject_class.name
               panobj_tabl = panobject_class.tables
@@ -1495,7 +1509,7 @@ module PandoraModel
               if not panobject_class #not PandoraModel.const_defined? panobj_id
                 parent_class = element.attributes['parent']
                 if (parent_class==nil) or (parent_class=='') or (not (PandoraModel.const_defined? parent_class))
-                  if parent_class != nil
+                  if parent_class
                     puts _('Parent is not defined, ignored')+' /'+filename+':'+panobj_id+'<'+parent_class
                   end
                   parent_class = 'Panobject'
@@ -1531,14 +1545,14 @@ module PandoraModel
             flds ||= []
             #p 'flds='+flds.inspect
             panobj_name_en = element.attributes['name']
-            panobj_name = panobj_name_en if (panobj_name==panobj_id) and (panobj_name_en != nil) and (panobj_name_en != '')
+            panobj_name = panobj_name_en if (panobj_name==panobj_id) and panobj_name_en and (panobj_name_en != '')
             panobj_name_lang = element.attributes['name'+lang]
-            panobj_name = panobj_name_lang if (panobj_name_lang != nil) and (panobj_name_lang != '')
+            panobj_name = panobj_name_lang if panobj_name_lang and (panobj_name_lang != '')
             #puts panobj_id+'=['+panobj_name+']'
             panobject_class.name = panobj_name
 
             panobj_tabl = element.attributes['table']
-            panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]] if panobj_tabl != nil
+            panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]] if panobj_tabl
 
             # fill fields
             element.elements.each('*') do |sub_elem|
@@ -1561,27 +1575,27 @@ module PandoraModel
                     fld_name = sub_elem.name
                   end
                   fld_name = sub_elem.attributes['name']
-                  flds[i][FI_Name] = fld_name if (fld_name != nil) and (fld_name != '')
-                  #fld_name = fld_name_en if (fld_name_en != nil) and (fld_name_en != '')
+                  flds[i][FI_Name] = fld_name if fld_name and (fld_name != '')
+                  #fld_name = fld_name_en if (fld_name_en ) and (fld_name_en != '')
                   fld_name_lang = sub_elem.attributes['name'+lang]
-                  flds[i][FI_LName] = fld_name_lang if (fld_name_lang != nil) and (fld_name_lang != '')
-                  #fld_name = fld_name_lang if (fld_name_lang != nil) and (fld_name_lang != '')
+                  flds[i][FI_LName] = fld_name_lang if fld_name_lang and (fld_name_lang != '')
+                  #fld_name = fld_name_lang if (fld_name_lang ) and (fld_name_lang != '')
                   #flds[i][FI_Name] = fld_name
 
                   fld_type = sub_elem.attributes['type']
-                  flds[i][FI_Type] = fld_type if (fld_type != nil) and (fld_type != '')
+                  flds[i][FI_Type] = fld_type if fld_type and (fld_type != '')
                   fld_size = sub_elem.attributes['size']
-                  flds[i][FI_Size] = fld_size if (fld_size != nil) and (fld_size != '')
+                  flds[i][FI_Size] = fld_size if fld_size and (fld_size != '')
                   fld_pos = sub_elem.attributes['pos']
-                  flds[i][FI_Pos] = fld_pos if (fld_pos != nil) and (fld_pos != '')
+                  flds[i][FI_Pos] = fld_pos if fld_pos and (fld_pos != '')
                   fld_fsize = sub_elem.attributes['fsize']
-                  flds[i][FI_FSize] = fld_fsize if (fld_fsize != nil) and (fld_fsize != '')
+                  flds[i][FI_FSize] = fld_fsize.to_i if fld_fsize and (fld_fsize != '')
 
                   fld_hash = sub_elem.attributes['hash']
-                  flds[i][FI_Hash] = fld_hash if (fld_hash != nil) and (fld_hash != '')
+                  flds[i][FI_Hash] = fld_hash if fld_hash and (fld_hash != '')
 
                   fld_view = sub_elem.attributes['view']
-                  flds[i][FI_View] = fld_view if (fld_view != nil) and (fld_view != '')
+                  flds[i][FI_View] = fld_view if fld_view and (fld_view != '')
                 else
                   # not new panobject, field doesn't exists
                   puts _('Property was not defined, ignored')+' /'+filename+':'+panobj_id+'.'+sub_elem.name
@@ -1828,7 +1842,7 @@ module PandoraGUI
   # RU: Добавить кнопку на панель инструментов
   def self.add_tool_btn(toolbar, stock, title, toggle=nil)
     btn = nil
-    if toggle != nil
+    if toggle
       btn = Gtk::ToggleToolButton.new(stock)
       btn.active = toggle
     else
@@ -2064,9 +2078,9 @@ module PandoraGUI
       @statusbar = Gtk::Statusbar.new
       PandoraGUI.set_statusbar_text(statusbar, '')
       statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
-      listen_btn = Gtk::Button.new(_('Panhash'))
-      listen_btn.relief = Gtk::RELIEF_NONE
-      statusbar.pack_start(listen_btn, false, false, 0)
+      panhash_btn = Gtk::Button.new(_('Panhash'))
+      panhash_btn.relief = Gtk::RELIEF_NONE
+      statusbar.pack_start(panhash_btn, false, false, 0)
 
       panelbox.pack_start(statusbar, false, false, 0)
 
@@ -2212,6 +2226,7 @@ module PandoraGUI
       max_entry_height = 0
       @def_widget = nil
       @fields.each do |field|
+        #p 'field='+field.inspect
         max_size = 0
         fld_size = 10
         entry = Gtk::Entry.new
@@ -2227,15 +2242,25 @@ module PandoraGUI
             when 'Blob'
               def_size = 128
           end
-          fld_size = field[FI_VFSize].to_i if field[FI_VFSize] != nil
+          fld_size = field[FI_FSize].to_i if field[FI_FSize]
           max_size = field[FI_Size].to_i
           fld_size = def_size if fld_size<=0
           max_size = fld_size if fld_size>max_size
         rescue
-          fld_size, max_size = def_size
+          #p 'FORM rescue [fld_size, max_size, def_size]='+[fld_size, max_size, def_size].inspect
+          fld_size = def_size
         end
+        #p 'Final [fld_size, max_size]='+[fld_size, max_size].inspect
         #entry.width_chars = fld_size
-        entry.max_length = max_size
+        entry.max_length = max_size if max_size >= 0
+        foreground = field[FI_Color]
+        if foreground
+          foreground = Gdk::Color.parse(foreground)
+        else
+          foreground = $window.modifier_style.fg(Gtk::STATE_NORMAL)
+        end
+        entry.modify_fg(Gtk::STATE_NORMAL, foreground)
+
         ew = fld_size*@middle_char_width
         ew = form_width if ew > form_width
         entry.width_request = ew
@@ -2949,7 +2974,7 @@ module PandoraGUI
   def self.string_to_pantype(type)
     res = PT_Unknown
     case type
-      when 'Integer', 'Word', 'Byte'
+      when 'Integer', 'Word', 'Byte', 'Coord'
         res = PT_Int
       when 'String', 'Text', 'Blob'
         res = PT_Str
@@ -3099,7 +3124,7 @@ module PandoraGUI
     btn = $status_fields[index]
     if btn
       btn.label = _(text) if $status_fields[index]
-      if enabled != nil
+      if enabled
         btn.sensitive = enabled
       end
     end
@@ -3227,7 +3252,6 @@ module PandoraGUI
       end
     end
   end
-
 
   def self.reset_current_key
     deactivate_key(self.the_current_key) if self.the_current_key
@@ -3393,7 +3417,9 @@ module PandoraGUI
     key
   end
 
-  def self.encode_pan_type(basetype, int)
+  # Encode data type and size to PSON type and count of size in bytes (1..8)-1
+  # RU: Кодирует тип данных и размер в тип PSON и число байт размера
+  def self.encode_pson_type(basetype, int)
     count = 0
     while (int>0xFF) and (count<8)
       int = int >> 8
@@ -3406,12 +3432,16 @@ module PandoraGUI
     [basetype ^ (count << 5), count]
   end
 
-  def self.decode_pan_type(type)
+  # Decode PSON type to data type and count of size in bytes (1..8)-1
+  # RU: Раскодирует тип PSON в тип данных и число байт размера
+  def self.decode_pson_type(type)
     basetype = type & 0x1F
     count = type >> 5
     [basetype, count]
   end
 
+  # Convert ruby object to PSON (Pandora Simple Object Notation)
+  # RU: Конвертирует объект руби в PSON ("простая нотация объектов в Пандоре")
   def self.rubyobj_to_pson_elem(rubyobj)
     type = PT_Unknown
     count = 0
@@ -3421,14 +3451,14 @@ module PandoraGUI
       when String
         data << rubyobj
         elem_size = data.size
-        type, count = encode_pan_type(PT_Str, elem_size)
+        type, count = encode_pson_type(PT_Str, elem_size)
       when Symbol
         data << rubyobj.to_s
         elem_size = data.size
-        type, count = encode_pan_type(PT_Sym, elem_size)
+        type, count = encode_pson_type(PT_Sym, elem_size)
       when Integer
         data << PandoraKernel.bigint_to_bytes(rubyobj)
-        type, count = encode_pan_type(PT_Int, rubyobj)
+        type, count = encode_pson_type(PT_Int, rubyobj)
       when TrueClass, FalseClass
         if rubyobj
           data << [1].pack('C')
@@ -3438,25 +3468,23 @@ module PandoraGUI
         type = PT_Bool
       when Time
         data << PandoraKernel.bigint_to_bytes(rubyobj.to_i)
-        type, count = encode_pan_type(PT_Time, rubyobj.to_i)
+        type, count = encode_pson_type(PT_Time, rubyobj.to_i)
       when Array
         rubyobj.each do |a|
           data << rubyobj_to_pson_elem(a)
         end
         elem_size = rubyobj.size
-        type, count = encode_pan_type(PT_Array, elem_size)
+        type, count = encode_pson_type(PT_Array, elem_size)
       when Hash
         rubyobj = rubyobj.sort_by {|k,v| k.to_s}
         rubyobj.each do |a|
           data << rubyobj_to_pson_elem(a[0]) << rubyobj_to_pson_elem(a[1])
         end
         elem_size = rubyobj.size
-        type, count = encode_pan_type(PT_Hash, elem_size)
+        type, count = encode_pson_type(PT_Hash, elem_size)
       else
         puts 'Unknown elem type: ['+rubyobj.class.name+']'
     end
-    #res = ''
-    #res.force_encoding('ASCII-8BIT')
     res = AsciiString.new
     res << [type].pack('C')
     if elem_size
@@ -3467,42 +3495,48 @@ module PandoraGUI
     res = AsciiString.new(res)
   end
 
+  # Convert PSON to ruby object
+  # RU: Конвертирует PSON в объект руби
   def self.pson_elem_to_rubyobj(data)
     data = AsciiString.new(data)
     val = nil
     len = 0
     if data.size>0
-      len = 1
       type = data[0].ord
-      basetype, vlen = decode_pan_type(type)
-      if data.size>1
-        vlen += 1
-        int = PandoraKernel.bytes_to_bigint(data[1, vlen])
+      len = 1
+      basetype, vlen = decode_pson_type(type)
+      vlen += 1
+      if data.size >= len+vlen
+        int = PandoraKernel.bytes_to_bigint(data[len, vlen])
         case basetype
           when PT_Int
             val = int
-          when PT_Str
-            val = data[1+vlen, int]
-            vlen += int
-          when PT_Sym
-            val = data[1+vlen, int].to_sym
-            vlen += int
           when PT_Bool
             val = (int != 0)
           when PT_Time
             val = Time.at(int)
+          when PT_Str, PT_Sym
+            pos = len+vlen
+            if pos+int>data.size
+              int = data.size-pos
+            end
+            val = data[pos, int]
+            vlen += int
+            val = data[pos, int].to_sym if basetype == PT_Sym
           when PT_Array, PT_Hash
             val = []
-            int *= 2 if basetype==PT_Hash
+            int *= 2 if basetype == PT_Hash
             while (data.size-1-vlen>0) and (int>0)
               int -= 1
-              aval, alen = pson_elem_to_rubyobj(data[1+vlen..-1])
+              aval, alen = pson_elem_to_rubyobj(data[len+vlen..-1])
               val << aval
               vlen += alen
             end
-            val = Hash[*val] if basetype==PT_Hash
+            val = Hash[*val] if basetype == PT_Hash
         end
         len += vlen
+      else
+        len = data.size
       end
     end
     [val, len]
@@ -3517,7 +3551,7 @@ module PandoraGUI
 
   # Pack PanObject fields to PSON binary format
   # RU: Пакует поля ПанОбъекта в бинарный формат PSON
-  def self.hash_to_pson(fldvalues, pack_empty=false)
+  def self.namehash_to_pson(fldvalues, pack_empty=false)
     #bytes = ''
     #bytes.force_encoding('ASCII-8BIT')
     bytes = AsciiString.new
@@ -3536,18 +3570,25 @@ module PandoraGUI
     bytes = AsciiString.new(bytes)
   end
 
-  def self.pson_to_hash(pson)
+  def self.pson_to_namehash(pson)
     hash = {}
-    while (pson != nil) and (pson.size>1)
+    while pson and (pson.size>1)
       flen = pson[0].ord
       fname = pson[1, flen]
-      val = nil
-      len = 0
-      if pson.size-flen>1
-        val, len = pson_elem_to_rubyobj(pson[1+flen..-1])
+      if (flen>0) and fname and (fname.size>0)
+        val = nil
+        if pson.size-flen>1
+          pson = pson[1+flen..-1]  # drop getted name
+          val, len = pson_elem_to_rubyobj(pson)
+          pson = pson[len..-1]     # drop getted value
+        else
+          pson = nil
+        end
+        hash[fname] = val
+      else
+        pson = nil
+        hash = nil if hash == {}
       end
-      pson = pson[1+flen+len..-1]
-      hash[fname] = val
     end
     hash
   end
@@ -3561,16 +3602,16 @@ module PandoraGUI
   def self.sign_panobject(panobject)
     res = false
     key = current_key
-    if key and key[KV_Obj] and key_vec[KV_Creator]
+    if key and key[KV_Obj] and key[KV_Creator]
       namesvalues = panobject.namesvalues
       matter_fields = panobject.matter_fields
       #p 'sign: matter_fields='+matter_fields.inspect
-      sign = make_sign(key, hash_to_pson(matter_fields))
+      sign = make_sign(key, namehash_to_pson(matter_fields))
 
       time_now = Time.now.to_i
       obj_hash = namesvalues['panhash']
       key_hash = key[KV_Panhash]
-      creator = key_vec[KV_Creator]
+      creator = key[KV_Creator]
 
       values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, :packed=>PT_Pson1, \
         :creator=>creator, :created=>time_now, :sign=>sign}
@@ -3652,6 +3693,99 @@ module PandoraGUI
     val
   end
 
+  def self.val_to_view(val, type, view, can_edit=true)
+    color = nil
+    if val and view
+      if view=='date'
+        if val.is_a? Integer
+          val = Time.at(val)
+          if can_edit
+            val = val.strftime('%d.%m.%Y')
+          else
+            val = val.strftime('%d.%m.%y')
+          end
+          color = '#551111'
+        end
+      elsif view=='time'
+        if val.is_a? Integer
+          val = Time.at(val)
+          if can_edit
+            val = val.strftime('%d.%m.%Y %R')
+          else
+            val = time_to_str(val)
+          end
+          color = '#338833'
+        end
+      elsif view=='base64'
+        val = val.to_s
+        if $ruby_low19 or (not type) or (type=='text')
+          val = Base64.encode64(val)
+        else
+          val = Base64.strict_encode64(val)
+        end
+        color = 'brown'
+      elsif view=='phash'
+        if val.is_a? String
+          if can_edit
+            val = PandoraKernel.bytes_to_hex(val)
+          else
+            val = PandoraKernel.bytes_to_hex(val[2,16])
+          end
+        end
+        color = 'blue'
+      elsif view=='panhash'
+        if val.is_a? String
+          if can_edit
+            val = PandoraKernel.bytes_to_hex(val)
+          else
+            val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,44])
+          end
+        end
+        color = 'navy'
+      elsif view=='hex'
+        val = val.to_i
+        val = PandoraKernel.bigint_to_bytes(val)
+        val = PandoraKernel.bytes_to_hex(val)
+        #end
+        color = 'red'
+      elsif not can_edit and (view=='text')
+        val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
+        val = val.rstrip
+        color = '#226633'
+      end
+    end
+    val ||= ''
+    val = val.to_s
+    [val, color]
+  end
+
+  def self.view_to_val(val, type, view)
+    #p '---val1='+val.inspect
+    val = nil if val==''
+    if val and view
+      case view
+        when 'date', 'time'
+          begin
+            val = Time.parse(val)  #Time.strptime(defval, '%d.%m.%Y')
+            val = val.to_i
+          rescue
+            val = 0
+          end
+        when 'base64'
+          if $ruby_low19 or (not type) or (type=='text')
+            val = Base64.decode64(val)
+          else
+            val = Base64.strict_decode64(val)
+          end
+          color = 'brown'
+        when 'hex', 'panhash', 'phash'
+          val = val.to_i(16)
+          val = PandoraKernel.bigint_to_bytes(val)
+      end
+    end
+    val
+  end
+
   # View and edit record dialog
   # RU: Окно просмотра и правки записи
   def self.act_panobject(tree_view, action)
@@ -3677,7 +3811,7 @@ module PandoraGUI
 
     path, column = tree_view.cursor
     new_act = action == 'Create'
-    if path != nil or new_act
+    if path or new_act
       panobject = tree_view.panobject
       store = tree_view.model
       iter = nil
@@ -3686,7 +3820,7 @@ module PandoraGUI
       panhash0 = nil
       signed = 0
       lang = 5
-      if path != nil and ! new_act
+      if path and ! new_act
         iter = store.get_iter(path)
         id = iter[0]
         sel = panobject.select('id='+id.to_s, true)
@@ -3735,51 +3869,13 @@ module PandoraGUI
           fid = field[FI_Id]
           col = tab_flds.index{ |tf| tf[0] == fid }
 
-          foreground = 'black'
           val = sel[0][col] if col and sel and sel[0].is_a? Array
           type = field[FI_Type]
           view = field[FI_View]
 
-          if val and view
-            if view=='date'
-              if val.is_a? Integer
-                val = Time.at(val)
-                val = val.strftime('%d.%m.%y')
-                foreground = '#551111'
-              end
-            elsif view=='time'
-              if val.is_a? Integer
-                val = Time.at(val)
-                val = val.strftime('%d.%m.%y %R')
-                foreground = '#338833'
-              end
-            elsif view=='base64'
-              if (type=='text') or $ruby_low19
-                val = Base64.encode64(val)
-              else
-                val = Base64.strict_encode64(val)
-              end
-              foreground = 'brown'
-            elsif view=='phash'
-              val = PandoraKernel.bytes_to_hex(val[2,16])
-              foreground = 'blue'
-            elsif view=='panhash'
-              val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,44])
-              foreground = 'navy'
-            elsif view=='hex'
-              val = PandoraKernel.bigint_to_bytes(val) if val.is_a? Integer
-              val = PandoraKernel.bytes_to_hex(val)
-              foreground = 'red'
-            elsif view=='text'
-              #val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
-              foreground = '#226633'
-              #val = val.rstrip
-            end
-          end
-          val ||= ''
-          val = val.to_s
-
+          val, color = val_to_view(val, type, view, true)
           field[FI_Value] = val
+          field[FI_Color] = color
         end
 
         dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
@@ -3827,12 +3923,15 @@ module PandoraGUI
 
           # fill hash of values
           flds_hash = {}
-          dialog.fields.each_index do |index|
-            field = dialog.fields[index]
-            flds_hash[field[FI_Id]] = field[FI_Value]
+          dialog.fields.each do |field|
+            type = field[FI_Type]
+            view = field[FI_View]
+            val = field[FI_Value]
+
+            val = view_to_val(val, type, view)
+            flds_hash[field[FI_Id]] = val
           end
-          dialog.text_fields.each_index do |index|
-            field = dialog.text_fields[index]
+          dialog.text_fields.each do |field|
             flds_hash[field[FI_Id]] = field[FI_Value]
           end
           begin
@@ -3846,10 +3945,15 @@ module PandoraGUI
           flds_hash['panhash'] = panhash
           time_now = Time.now.to_i
           flds_hash['modified'] = time_now
-          if (panobject.is_a? PandoraModel::Created) and not filter
-            flds_hash['creator'] = '[authorized]'
+          if (panobject.is_a? PandoraModel::Created)
             flds_hash['created'] = time_now
+            key = current_key
+            flds_hash['creator'] = nil
+            if key and key[KV_Obj] and key[KV_Creator]
+              flds_hash['creator'] = key[KV_Creator]
+            end
           end
+
           res = panobject.update(flds_hash, nil, filter, true)
           if res
             filter ||= { :panhash => panhash, :modified => time_now }
@@ -3911,7 +4015,7 @@ module PandoraGUI
       super(*args)
       label_box = self
 
-      label_box.pack_start(image, false, false, 0) if image != nil
+      label_box.pack_start(image, false, false, 0) if image
 
       @label = Gtk::Label.new(title)
 
@@ -4017,7 +4121,6 @@ module PandoraGUI
           color = 'black'
           col = tvc.tab_ind
           panobject = tvc.tree_view.panobject
-          time_now = Time.now
           row = tvc.tree_view.sel[iter.path.indices[0]]
           val = row[col] if row
           if val
@@ -4029,51 +4132,17 @@ module PandoraGUI
               else
                 view = fdesc[FI_View]
               end
-              if view
-                if view=='date'
-                  if val.is_a? Integer
-                    val = Time.at(val)
-                    val = val.strftime('%d.%m.%y')
-                  end
-                  color = '#551111'
-                elsif view=='time'
-                  if val.is_a? Integer
-                    val = Time.at(val)
-                    val = time_to_str(val, time_now)
-                  end
-                  color = '#338833'
-                elsif view=='base64'
-                  if $ruby_low19
-                    val = Base64.encode64(val)
-                  else
-                    val = Base64.strict_encode64(val)
-                  end
-                  color = 'brown'
-                elsif view=='phash'
-                  val = PandoraKernel.bytes_to_hex(val[2,16])
-                  color = 'blue'
-                elsif view=='panhash'
-                  val = PandoraKernel.bytes_to_hex(val[0,2])+' '+PandoraKernel.bytes_to_hex(val[2,44])
-                  color = 'navy'
-                elsif view=='hex'
-                  val = PandoraKernel.bigint_to_bytes(val) if val.is_a? Integer
-                  val = PandoraKernel.bytes_to_hex(val)
-                  color = 'red'
-                elsif view=='text'
-                  val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
-                  val = val.rstrip
-                  color = '#226633'
-                end
-              end
+              val, color = val_to_view(val, nil, view, false)
+            else
+              val = val.to_s
             end
-            val = val.to_s
             if $jcode_on
               val = val[/.{0,#{45}}/m]
             else
               val = val[0,45]
             end
           else
-            val = 'nil'
+            val = ''
           end
           renderer.foreground = color
           renderer.text = val
@@ -4099,7 +4168,7 @@ module PandoraGUI
         animage = nil
       end
       image = nil
-      if animage != nil
+      if animage
         image = Gtk::Image.new(animage.stock, Gtk::IconSize::MENU)
         image.set_padding(2, 0)
       end
@@ -4287,7 +4356,7 @@ module PandoraGUI
   def self.set_send_ptrind_by_room(room_id)
     $send_media_rooms ||= {}
     ptr = nil
-    if room_id != nil
+    if room_id
       ptr = $send_media_rooms[room_id]
       if ptr
         ptr[0] = true
@@ -4302,7 +4371,7 @@ module PandoraGUI
 
   def self.nil_send_ptrind_by_room(room_id)
     $send_media_rooms ||= {}
-    if room_id != nil
+    if room_id
       ptr = $send_media_rooms[room_id]
       if ptr
         ptr[0] = false
@@ -4318,10 +4387,8 @@ module PandoraGUI
   CommExtSize = 10
 
   ECC_Init0_Hello       = 0
-  ECC_Init1_KeyPhrase   = 1
-  ECC_Init2_SignKey     = 2
-  ECC_Init3_PhraseSign  = 3
-  ECC_Init4_Permission  = 4
+  ECC_Init1_Phrase      = 1
+  ECC_Init2_Sign        = 2
 
   ECC_Query0_Kinds      = 0
   ECC_Query255_AllChanges =255
@@ -4334,6 +4401,7 @@ module PandoraGUI
   ECC_Channel3_Closed   = 3
   ECC_Channel4_Fail     = 4
 
+  ECC_Bye_HelloError    = 0
   ECC_Bye_Exit          = 200
   ECC_Bye_Unknown       = 201
   ECC_Bye_BadCommCRC    = 202
@@ -4379,11 +4447,12 @@ module PandoraGUI
   class Connection
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
       :send_thread, :read_thread, :socket, :read_state, :send_state, :read_mes, :read_media, :model_send, \
-      :read_req, :send_mes, :send_media, :send_req, :sindex, :rindex, :read_queue, :send_queue
+      :read_req, :send_mes, :send_media, :send_req, :sindex, :rindex, :read_queue, :send_queue, :params,
+      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :last_scmd, :log_mes
 
     def initialize(ahost_name, ahost_ip, aport, aproto, node, aconn_mode=0, aconn_state=CS_Disconnected)
       super()
-      @stage         = ST_Begin
+      @stage         = ST_IpAllowed
       @host_name     = ahost_name
       @host_ip       = ahost_ip
       @port          = aport
@@ -4404,6 +4473,7 @@ module PandoraGUI
       @read_queue     = PandoraGUI.init_empty_queue
       @send_queue     = PandoraGUI.init_empty_queue
       @model_send     = {}
+      @params         = {}
       #Thread.critical = true
       PandoraGUI.add_connection(self)
       #Thread.critical = false
@@ -4437,7 +4507,7 @@ module PandoraGUI
     # RU: Отправляет команду и данные, если есть !!! ДОБАВИТЬ !!! send_number!, buflen, buf
     def send_comm_and_data(index, cmd, code, data=nil)
       res = nil
-      data ||=""
+      data ||= ''
       data = AsciiString.new(data)
       datasize = data.size
       if datasize <= MaxSegSize
@@ -4523,46 +4593,111 @@ module PandoraGUI
       res
     end
 
+    def encode_hello(vers, mode, port, key)
+      sbuf = PandoraGUI.namehash_to_pson({:version=>vers, :mode=>mode, :port=>port, :key=>key})
+      [ECC_Init0_Hello, sbuf]
+    end
+
     # Accept received segment
     # RU: Принять полученный сегмент
-    def accept_segment(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
+    def accept_segment
+
+      # compose error command and add log message
+      def err_scmd(mes=nil, code=nil, buf=nil)
+        self.scmd = EC_Bye
+        self.scode = rcmd
+        logmes = ''
+        if code
+          self.scode = code
+          logmes = ' err=' + scode.to_s
+        end
+        logmes = '(rcmd=' + rcmd.to_s + '/' + rcode.to_s + ' stage=' + stage.to_s + logmes + ')'
+        logmes = mes+' '+logmes if mes and (mes.size>0)
+        log_message(LM_Warning, _(logmes))
+        self.sbuf = buf
+        self.sbuf ||= logmes
+      end
+
+      def recognize_params
+        hash = PandoraGUI.pson_to_namehash(rdata)
+        if not hash
+          err_scmd('Hello data is wrong')
+        end
+        if (rcmd == EC_Init) and (rcode == ECC_Init0_Hello)
+          params['version']  = hash['version']
+          params['mode']     = hash['mode']
+          params['port']     = hash['port']
+          params['keyhash']  = hash['key']
+        end
+        p log_mes+'recognize_params: '+hash.inspect
+      end
+
+      def set_phrase(phrase)
+        params['sphrase'] = phrase
+        self.scode = ECC_Init1_Phrase
+        self.sbuf = phrase
+      end
+
       case rcmd
         when EC_Init
-          case rcode
-            when ECC_Init0_Hello
-              hello=rdata
-              scmd=EC_Init
-              scode=ECC_Init1_KeyPhrase
-              akey="a1b2c3"
-              sbuf=akey
-              @stage = ST_Protocoled
-            when ECC_Init1_KeyPhrase
-              pphrase=rdata
-              scmd=EC_Init
-              scode=ECC_Init2_SignKey
-              asign="f4443ef"
-              sbuf=asign
-              @stage = ST_KeyAllowed
-            when ECC_Init2_SignKey
-              psign=rdata
-              scmd=EC_Init
-              scode=ECC_Init3_PhraseSign
-              aphrase="Yyyzzzzzz"
-              sbuf=aphrase
-              @stage = ST_Signed
-            when ECC_Init3_PhraseSign
-              psign=rdata
-              scmd=EC_Init
-              scode=ECC_Init4_Permission
-              aperm="011101"
-              sbuf=aperm
-            when ECC_Init4_Permission
-              pperm=rdata
-              #scmd=EC_Query
-              #scode=ECC_Query0_Kinds
-              scmd=EC_Sync
-              scode=0
-              sbuf=''
+          self.scmd = EC_Init
+          if stage<=ST_Signed
+            if rcode<=ECC_Init2_Sign
+              if (rcode==ECC_Init0_Hello) and (stage==ST_IpAllowed)
+                recognize_params
+                if scmd != EC_Bye
+                  vers = params['version']
+                  if vers==0
+                    p log_mes+'  params='+params.inspect
+                    @stage = ST_Protocoled
+                    phrase = 'a1a1a1a1a1a1a1ab1b1b1b1b1b1b11b'
+                    set_phrase(phrase)
+                  else
+                    err_scmd('Protocol is not supported ['+vers.to_s+']')
+                  end
+                end
+              elsif (rcode==ECC_Init1_Phrase) and (stage>= ST_IpAllowed) #ST_Protocoled)
+                rphrase = rdata
+                p log_mes+'  rphrase='+rphrase.inspect
+                self.scmd = EC_Init
+                self.scode = ECC_Init2_Sign
+                self.sbuf = 'b2b2b2b2b2bb2'
+                @stage = ST_KeyAllowed
+              elsif (rcode==ECC_Init2_Sign) and (stage>= ST_IpAllowed) #ST_KeyAllowed)
+                psign = rdata
+                p log_mes+'  psign='+psign.inspect
+                self.scmd=EC_Sync
+                self.scode=0
+                self.sbuf = nil
+
+                #scmd=EC_Init
+                #scode=ECC_Init3_PhraseSign
+                #aphrase="Yyyzzzzzz"
+                #sbuf=aphrase
+                @stage = ST_Signed
+=begin
+              elsif (rcode==ECC_Init3_PhraseSign) and (stage>=ST_Signed)
+                psign=rdata
+                scmd=EC_Init
+                scode=ECC_Init4_Permission
+                aperm="011101"
+                sbuf=aperm
+              elsif (rcode==ECC_Init4_Permission) and (stage>=ST_Protocoled)
+                pperm=rdata
+                #scmd=EC_Query
+                #scode=ECC_Query0_Kinds
+                scmd=EC_Sync
+                scode=0
+                sbuf=''
+=end
+              else
+                err_scmd('Wrong stage for rcode')
+              end
+            else
+              err_scmd('Unknown rcode')
+            end
+          else
+            err_scmd('Wrong stage for rcmd')
           end
         when EC_Message, EC_Channel
           #curpage = nil
@@ -4586,7 +4721,7 @@ module PandoraGUI
               talkview.parent.vadjustment.value = talkview.parent.vadjustment.upper
               dialog.update_state(true)
             else
-              log_message(LM_Error, 'Пришло сообщение, но окно чата не найдено!')
+              log_message(LM_Error, 'Пришло сообщение, но лоток чата не найдено!')
             end
           else #EC_Channel
             case rcode
@@ -4696,23 +4831,21 @@ module PandoraGUI
           p "EC_Sync!!!!! SYNC ==== SYNC"
         when EC_Bye
           if rcode != ECC_Bye_Exit
-            log_message(LM_Error, 'Ошибка на сервере ErrCode='+rcode.to_s)
+            log_message(LM_Error, 'Ошибка на другой стороне ErrCode='+rcode.to_s)
           end
-          scmd=EC_Bye
-          scode=ECC_Bye_Exit
+          self.scmd = EC_Bye
+          self.scode = ECC_Bye_Exit
 
           p 'Ошибка на сервере ErrCode='+rcode.to_s
 
           @conn_state = CS_Stoping
         else
-          scmd=EC_Bye
-          scode=ECC_Bye_Unknown
-          log_message(LM_Error, 'Получена неизвестная команда от сервера='+rcmd.to_s)
-          p 'Получена неизвестная команда от сервера='+rcmd.to_s
-
+          self.scmd = EC_Bye
+          self.scode = ECC_Bye_Unknown
+          log_message(LM_Error, 'Получена неизвестная команда='+rcmd.to_s)
           @conn_state = CS_Stoping
       end
-      [rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd]
+      #[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd]
     end
 
     # Add segment (chunk, grain, phrase) to pack and send when it's time
@@ -4724,8 +4857,7 @@ module PandoraGUI
       sbuf = nil
       case ex_comm
         when EC_Init
-          sbuf = 'pandora,0.1,:5577,0,aa99ffee00'
-          scode = ECC_Init0_Hello
+          scode, sbuf = encode_hello(0, 0, 5577, 'a7a7a7a7')
         when EC_Message
           #mes = send_mes[2][buf_ind] #mes
           #if mes=='video:true:'
@@ -4748,7 +4880,7 @@ module PandoraGUI
           scmd = EC_Bye
           scode = ECC_Bye_Exit
       end
-      res = PandoraGUI.add_block_to_queue(@send_queue, [scmd, scode, sbuf])
+      res = PandoraGUI.add_block_to_queue(send_queue, [scmd, scode, sbuf])
       if not res
         puts 'add_send_segment: add_block_to_queue error'
         @conn_state == CS_Stoping
@@ -4791,14 +4923,13 @@ module PandoraGUI
       #PandoraGUI.add_connection(self)
       #Thread.critical = false
 
+      # Sending thread
       @send_thread = a_send_thread
 
-      # Sending thread
+      @log_mes = 'LIS: '
       if (conn_mode & CM_Hunter)>0
-        log_mes = 'HUN: '
+        @log_mes = 'HUN: '
         add_send_segment(EC_Init, true)
-      else
-        log_mes = 'LIS: '
       end
 
       # Read cicle
@@ -4807,18 +4938,18 @@ module PandoraGUI
         read_thread = Thread.new do
           read_thread = Thread.current
 
-          scmd = EC_More
-          sbuf = ''
-
-          rcmd = EC_More
           sindex = 0
           rindex = 0
-          rbuf = ''
-          rdata = ''
           readmode = RM_Comm
           nextreadmode = RM_Comm
           waitlen = CommSize
-          last_scmd = scmd
+
+          self.scmd = EC_More
+          self.sbuf = ''
+          rbuf = ''
+          self.rcmd = EC_More
+          self.rdata = ''
+          self.last_scmd = scmd
 
           p log_mes+"Цикл ЧТЕНИЯ начало"
           # Цикл обработки команд и блоков данных
@@ -4837,7 +4968,7 @@ module PandoraGUI
               case readmode
                 when RM_Comm
                   comm = rbuf[0, processedlen]
-                  rindex, rcmd, rcode, rsegsign, errcode = unpack_comm(comm)
+                  rindex, self.rcmd, self.rcode, rsegsign, errcode = unpack_comm(comm)
                   if errcode == 0
                     #p log_mes+' RM_Comm: '+[rindex, rcmd, rcode, rsegsign].inspect
                     if rsegsign == Connection::LONG_SEG_SIGN
@@ -4850,13 +4981,16 @@ module PandoraGUI
                     end
                   elsif errcode == 1
                     log_message(LM_Error, 'CRC полученой команды некорректен')
-                    scmd=EC_Bye; scode=ECC_Bye_BadCommCRC
+                    self.scmd = EC_Bye
+                    self.scode = ECC_Bye_BadCommCRC
                   elsif errcode == 2
                     log_message(LM_Error, 'Длина полученой команды некорректна')
-                    scmd=EC_Bye; scode=ECC_Bye_BadCommLen
+                    self.scmd = EC_Bye
+                    self.scode = ECC_Bye_BadCommLen
                   else
                     log_message(LM_Error, 'Полученая команда некорректна')
-                    scmd=EC_Bye; scode=ECC_Bye_Unknown
+                    self.scmd = EC_Bye
+                    self.scode = ECC_Bye_Unknown
                   end
                 when RM_CommExt
                   comm = rbuf[0, processedlen]
@@ -4881,10 +5015,11 @@ module PandoraGUI
                   rsegcrc32 = rbuf[processedlen-4, 4].unpack('N')[0]
                   fsegcrc32 = Zlib.crc32(rseg)
                   if fsegcrc32 == rsegcrc32
-                    rdata << rseg
+                    self.rdata << rseg
                   else
                     log_message(LM_Error, 'CRC полученного сегмента некорректен')
-                    scmd=EC_Bye; scode=ECC_Bye_BadCRC
+                    self.scmd = EC_Bye
+                    self.scode = ECC_Bye_BadCRC
                   end
                   #p log_mes+'RM_SegmentX: data['+rdata+']'+rdata.size.to_s+'/'+rdatasize.to_s
                   if rdata.size == rdatasize
@@ -4892,32 +5027,37 @@ module PandoraGUI
                     waitlen = CommSize
                   elsif rdata.size > rdatasize
                     log_message(LM_Error, 'Слишком много полученных данных')
-                    scmd=EC_Bye; scode=ECC_Bye_DataTooLong
+                    self.scmd = EC_Bye
+                    self.scode = ECC_Bye_DataTooLong
                   end
               end
               # Очистим буфер от определившихся данных
               rbuf.slice!(0, processedlen)
-              scmd = EC_Data if (scmd != EC_Bye) and (scmd != EC_Wait)
+              self.scmd = EC_Data if (scmd != EC_Bye) and (scmd != EC_Wait)
               # Обработаем поступившие команды и блоки данных
               if (scmd != EC_Bye) and (scmd != EC_Wait) and (nextreadmode == RM_Comm)
-                #p log_mes+'accept_request Before='+[rcmd, rcode, rdata.size, scmd, scode, sbuf, last_scmd].inspect
+                p log_mes+'accept_segment1: [rcmd, rcode, rdata.size]='+[rcmd, rcode, rdata.size].inspect
 
-                rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = \
-                  accept_segment(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
+                #rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = \
+                  accept_segment #(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
 
-                rdata = ''
+                self.rdata = ''
+                sbuf ||= ''
+                p log_mes+'accept_segment2: [scmd, scode, sbuf.size]='+[scmd, scode, sbuf.size].inspect
                 #p log_mes+'accept_request After='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
               end
 
               if scmd != EC_Data
-                sbuf='' if scmd == EC_Bye
+                self.sbuf = '' if scmd == EC_Bye
                 res = PandoraGUI.add_block_to_queue(send_queue, [scmd, scode, sbuf])
                 if not res
                   puts 'read cicle answer: add_block_to_queue error'
                   conn_state == CS_Stoping
                 end
                 last_scmd = scmd
-                sbuf = ''
+                self.sbuf = ''
+              else
+                p log_mes+'EC_Data(skip): nextreadmode='+nextreadmode.inspect
               end
               readmode = nextreadmode
             end
@@ -4949,12 +5089,13 @@ module PandoraGUI
           send_segment = PandoraGUI.get_block_from_queue(send_queue)
           while (conn_state != CS_Disconnected) and send_segment
             #p log_mes+' send_segment='+send_segment.inspect
-            scmd, scode, sbuf = send_segment
+            self.scmd, self.scode, self.sbuf = send_segment
             @sindex = send_comm_and_data(sindex, scmd, scode, sbuf)
             if (scmd==EC_Bye)
               p log_mes+'SEND BYE!!!!!!!!!!!!!!!'
               send_segment = nil
               socket.close if not socket.closed?
+              @conn_state = CS_Disconnected
             else
               send_segment = PandoraGUI.get_block_from_queue(send_queue)
             end
@@ -5109,8 +5250,8 @@ module PandoraGUI
             log_message(LM_Warning, 'Не могу открыть порт '+addr_str)
           end
           Thread.current[:listen_server_socket] = server
-          Thread.current[:need_to_listen] = server != nil
-          while Thread.current[:need_to_listen] and (server != nil) and not server.closed?
+          Thread.current[:need_to_listen] = (server != nil)
+          while Thread.current[:need_to_listen] and server and not server.closed?
             # Создать поток при подключении клиента
             client = get_listener_client_or_nil(server)
             while Thread.current[:need_to_listen] and not server.closed? and not client
@@ -5154,7 +5295,6 @@ module PandoraGUI
                     connection = Connection.new(host_name, host_ip, port, proto, node, conn_mode, conn_state)
                     connection.socket = socket
                     #connection.post_init
-                    connection.stage = ST_IpAllowed
                     #p "server: connection="+ connection.inspect
                     #p "server: $connections"+ $connections.inspect
                     #p 'LIS_SOCKET: '+socket.methods.inspect
@@ -5804,16 +5944,16 @@ module PandoraGUI
       sink.xwindow_id = area.window.xid
       if pipeline
         pipeline.bus.add_watch do |bus, message|
-          if ((message != nil) and (message.structure != nil) and (message.structure.name != nil) \
+          if (message and message.structure and message.structure.name \
             and (message.structure.name == 'prepare-xwindow-id'))
           then
-            message.src.set_xwindow_id(area.window.xid) if not area.destroyed? and (area.window != nil)
+            message.src.set_xwindow_id(area.window.xid) if not area.destroyed? and area.window
           end
           true
         end
       end
       res = area.signal_connect('expose-event') do |*args|
-        sink.xwindow_id = area.window.xid if not area.destroyed? and (area.window != nil)
+        sink.xwindow_id = area.window.xid if not area.destroyed? and area.window
       end
       res
     end
@@ -6126,11 +6266,11 @@ module PandoraGUI
         cipher_key = '123'
         p keys = generate_key(type_klen, cipher_hash, cipher_key)
 
-        #typ, count = encode_pan_type(PT_Str, 0x1FF)
-        #p decode_pan_type(typ)
+        #typ, count = encode_pson_type(PT_Str, 0x1FF)
+        #p decode_pson_type(typ)
 
-        #p pson = hash_to_pson({:first_name=>'Ivan', :last_name=>'Inavov', 'ddd'=>555})
-        #p hash = pson_to_hash(pson)
+        #p pson = namehash_to_pson({:first_name=>'Ivan', :last_name=>'Inavov', 'ddd'=>555})
+        #p hash = pson_to_namehash(pson)
 
         #p get_param('base_id')
       else
@@ -6240,7 +6380,7 @@ module PandoraGUI
         label = menuitem.children[0]
         label.set_text(mi[2], true)
       end
-      if mi[3] != nil
+      if mi[3]
         key, mod = Gtk::Accelerator.parse(mi[3])
         menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE)
       end
@@ -6251,9 +6391,9 @@ module PandoraGUI
   end
 
   def self.add_buttons_from_menu_to_toolbar(menu, toolbar)
-    if menu != nil
+    if menu
       menu.each do |child|
-        if child.submenu != nil
+        if child.submenu
           add_buttons_from_menu_to_toolbar(child.submenu, toolbar)
         elsif child.is_a? Gtk::ImageMenuItem
           label = child.children[0]
