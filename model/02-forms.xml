@@ -58,7 +58,7 @@
     <Sign>
       <obj_hash view="panhash" />
       <key_hash view="panhash" />
-      <packed view="hex" />
+      <trust view="byte" />
       <sign view="base64" />
     </Sign>
 
