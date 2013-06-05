@@ -3724,14 +3724,14 @@ module PandoraGUI
     depth -= 1
     if (depth >= 0) and (panhash != querist) and panhash and (panhash != '')
       if (not querist) or (querist == '')
-        querist = key[KV_Panhash]
         key = current_key(false, true)
+        querist = key[KV_Panhash]
       end
       if querist and (querist != '')
-        kind = kind_from_panhash(panhash)
+        #kind = PandoraKernel.kind_from_panhash(panhash)
         $sign_model ||= PandoraModel::Sign.new
-        filter = {:obj_hash => panhash}
-        filter[:key_hash] = key_hash if not just_count
+        filter = { :obj_hash => panhash, :key_hash => querist }
+        #filter = {:obj_hash => panhash}
         sel = $sign_model.select(filter, false, 'creator, created, trust', 'creator')
         if sel and (sel.size>0)
           prev_creator = nil
@@ -3742,14 +3742,18 @@ module PandoraGUI
             creator = row[0]
             created = row[1]
             trust = row[2]
+            #p 'sign: [creator, created, trust]='+[creator, created, trust].inspect
             if creator
-              if (not prev_creator) or (created>last_date) and (creator==prev_creator)
+              #p '[prev_creator, created, last_date, creator]='+[prev_creator, created, last_date, creator].inspect
+              if (not prev_creator) or ((created>last_date) and (creator==prev_creator))
+                #p 'sign2: [creator, created, trust]='+[creator, created, trust].inspect
                 last_date = created
                 last_trust = trust
                 prev_creator ||= creator
               end
               if (creator != prev_creator) or (i==last_i)
-                person_trust = trust_of_person(creator, my_key_hash)
+                p 'sign3: [creator, created, last_trust]='+[creator, created, last_trust].inspect
+                person_trust = 1.0 #trust_of_person(creator, my_key_hash)
                 rate += normalize_trust(last_trust, false) * person_trust
                 prev_creator = creator
                 last_date = created
@@ -3758,6 +3762,7 @@ module PandoraGUI
             end
           end
         end
+        querist_rate = rate
       end
     end
     [count, rate, querist_rate]
@@ -3981,8 +3986,8 @@ module PandoraGUI
         dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
         dialog.icon = panobjecticon if panobjecticon
 
-        rate = rate_of_panobj(panhash0)
-        dialog.trust_btn.active = (rate != nil)
+        count, rate, querist_rate = rate_of_panobj(panhash0)
+        dialog.trust_btn.active = (querist_rate and (querist_rate>0))
         #dialog.trust_btn.inconsistent = signed < 0
         #dialog.lang_entry.active_text = lang.to_s
         #trust_lab = dialog.trust_btn.children[0]
@@ -4883,9 +4888,9 @@ module PandoraGUI
         @scmd = EC_Request
         if panhashes.is_a? Array
           @scode = 0
-          @sbuf = rubyobj_to_pson_elem(panhashes)
+          @sbuf = PandoraKernel.rubyobj_to_pson_elem(panhashes)
         else
-          @scode = kind_from_panhash(panhashes)
+          @scode = PandoraKernel.kind_from_panhash(panhashes)
           @sbuf = panhashes[1,-1]
         end
       end
