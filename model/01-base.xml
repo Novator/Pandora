@@ -214,6 +214,7 @@
     <Sign name="Sign" kind="222" parent="Created">
       <obj_hash name="Object panhash" type="String" size="32" />
       <key_hash name="Key panhash" type="String" size="32" />
+      <pack name="Data pack" type="Byte" />
       <trust name="Trust" type="Byte" />
       <sign name="Sign" type="Blob" />
     </Sign>

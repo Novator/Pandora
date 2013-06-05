@@ -181,6 +181,7 @@
     <Sign name.ru="Подпись|Подписи">
       <key_hash name.ru="Панхэш ключа" />
       <obj_hash name.ru="Панхэш объекта"/>
+      <pack name.ru="Упаковка данных" />
       <trust name.ru="Доверие" />
       <sign name.ru="Подпись" />
     </Sign>

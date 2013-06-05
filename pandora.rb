@@ -1782,7 +1782,7 @@ module PandoraGUI
 
       hbox.pack_start(bbox, true, false, 1.0)
 
-      window.signal_connect("delete-event") { |*args|
+      window.signal_connect('delete-event') { |*args|
         @response=2
         false
       }
@@ -3626,13 +3626,34 @@ module PandoraGUI
     hash
   end
 
+  def self.normalize_trust(trust, to_int=nil)
+    if trust.is_a? Integer
+      if trust<(-127)
+        trust = -127
+      elsif trust>127
+        trust = 127
+      end
+      trust = (trust/127.0) if to_int == false
+    elsif trust.is_a? Float
+      if trust<(-1.0)
+        trust = -1.0
+      elsif trust>1.0
+        trust = 1.0
+      end
+      trust = (trust * 127).round if to_int == true
+    else
+      trust = nil
+    end
+    trust
+  end
+
   PT_Pson1   = 1
 
   $sign_model = nil
 
   # Sign PSON of PanObject and save sign record
   # RU: Подписывает PSON ПанОбъекта и сохраняет запись подписи
-  def self.sign_panobject(panobject)
+  def self.sign_panobject(panobject, trust=0)
     res = false
     key = current_key
     if key and key[KV_Obj] and key[KV_Creator]
@@ -3646,8 +3667,10 @@ module PandoraGUI
       key_hash = key[KV_Panhash]
       creator = key[KV_Creator]
 
-      values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, :packed=>PT_Pson1, \
-        :creator=>creator, :created=>time_now, :sign=>sign}
+      trust = normalize_trust(trust, true)
+
+      values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, :pack=>PT_Pson1, \
+        :trust=>trust, :creator=>creator, :created=>time_now, :sign=>sign}
 
       $sign_model ||= PandoraModel::Sign.new
       panhash = $sign_model.panhash(values)
@@ -3674,29 +3697,70 @@ module PandoraGUI
     res
   end
 
-  def self.panobject_is_signed(obj_hash)
-    res = 0
-    if obj_hash and obj_hash != ''
-      key_hash = nil
-      key = current_key(false, false)
-      res = -1
-      if key and key[KV_Obj]
-        key_hash = key[KV_Panhash]
-        res = 1 if key_hash and key_hash != ''
-      end
-      $sign_model ||= PandoraModel::Sign.new
-      filter = {:obj_hash=>obj_hash}
-      filter[:key_hash]=key_hash if res==1
-      #p '=========filter========='
-      #p filter
-      sel = $sign_model.select(filter, false, 'id')
-      if sel and sel.size>0
-        res = res * sel.size
-      else
-        res = 0
+  $person_trusts = {}
+
+  def self.trust_of_person(panhash, level=0)
+    res = $person_trusts[panhash]
+    if res
+      res = 0.0
+      trust_level = 0
+      if not my_key_hash
+        key = current_key(false, false)
+        if key and key[KV_Obj]
+          my_key_hash = key[KV_Panhash]
+          my_key_hash = nil if not my_key_hash or (my_key_hash == '')
+        end
       end
     end
     res
+  end
+
+  $query_depth = 3
+
+  def self.rate_of_panobj(panhash, depth=$query_depth, querist=nil)
+    count = 0
+    rate = 0.0
+    querist_rate = nil
+    depth -= 1
+    if (depth >= 0) and (panhash != querist) and panhash and (panhash != '')
+      if (not querist) or (querist == '')
+        querist = key[KV_Panhash]
+        key = current_key(false, true)
+      end
+      if querist and (querist != '')
+        kind = kind_from_panhash(panhash)
+        $sign_model ||= PandoraModel::Sign.new
+        filter = {:obj_hash => panhash}
+        filter[:key_hash] = key_hash if not just_count
+        sel = $sign_model.select(filter, false, 'creator, created, trust', 'creator')
+        if sel and (sel.size>0)
+          prev_creator = nil
+          last_date = 0
+          last_trust = nil
+          last_i = sel.size-1
+          sel.each_with_index do |row, i|
+            creator = row[0]
+            created = row[1]
+            trust = row[2]
+            if creator
+              if (not prev_creator) or (created>last_date) and (creator==prev_creator)
+                last_date = created
+                last_trust = trust
+                prev_creator ||= creator
+              end
+              if (creator != prev_creator) or (i==last_i)
+                person_trust = trust_of_person(creator, my_key_hash)
+                rate += normalize_trust(last_trust, false) * person_trust
+                prev_creator = creator
+                last_date = created
+                last_trust = trust
+              end
+            end
+          end
+        end
+      end
+    end
+    [count, rate, querist_rate]
   end
 
   def self.time_to_str(val, time_now=nil)
@@ -3868,7 +3932,6 @@ module PandoraGUI
         lang ||= 0
         panhash0 = panobject.panhash(sel[0], lang)
 
-        signed = panobject_is_signed(panhash0)
       end
       #p sel
 
@@ -3918,8 +3981,9 @@ module PandoraGUI
         dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
         dialog.icon = panobjecticon if panobjecticon
 
-        dialog.trust_btn.active = signed != 0
-        dialog.trust_btn.inconsistent = signed < 0
+        rate = rate_of_panobj(panhash0)
+        dialog.trust_btn.active = (rate != nil)
+        #dialog.trust_btn.inconsistent = signed < 0
         #dialog.lang_entry.active_text = lang.to_s
         #trust_lab = dialog.trust_btn.children[0]
         #trust_lab.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
@@ -4020,10 +4084,12 @@ module PandoraGUI
                 tree_view.set_cursor(Gtk::TreePath.new(tree_view.sel.size-1), nil, false)
               end
 
+              trust = 1.0
+
               #p dialog.support_btn.active?
               unsign_panobject(panhash0, true)
               if dialog.trust_btn.active?
-                sign_panobject(panobject)
+                sign_panobject(panobject, trust)
               end
               #p dialog.public_btn.active?
             end
@@ -4359,6 +4425,30 @@ module PandoraGUI
     res
   end
 
+  QS_Empty     = 0
+  QS_NotEmpty  = 1
+  QS_Full      = 2
+
+  def self.get_queue_state(queue, max=MaxQueue, ptrind=nil)
+    res = QS_NotEmpty
+    ind = queue[QI_ReadInd]
+    if ptrind
+      ind = ind[ptrind]
+      ind ||= -1
+    end
+    if ind == queue[QI_WriteInd]
+      res = QS_Empty
+    else
+      if ind<max
+        ind += 1
+      else
+        ind = 0
+      end
+      res = QS_Full if ind == queue[QI_WriteInd]
+    end
+    res
+  end
+
   # Get block from queue (set "ptrind" like 0,1,2..)
   # RU: Взять блок из очереди (задавай "ptrind" как 0,1,2..)
   def self.get_block_from_queue(queue, max=MaxQueue, ptrind=nil)
@@ -4532,7 +4622,8 @@ module PandoraGUI
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
       :send_thread, :read_thread, :socket, :read_state, :send_state, :read_mes, :read_media, :models, \
       :read_req, :send_mes, :send_media, :send_req, :sindex, :rindex, :read_queue, :send_queue, :params,
-      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :last_scmd, :log_mes, :skey, :rkey, :s_encode, :r_encode
+      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :last_scmd, :log_mes, :skey, :rkey, :s_encode, :r_encode,
+      :media_send
 
     def initialize(ahost_name, ahost_ip, aport, aproto, node, aconn_mode=0, aconn_state=CS_Disconnected)
       super()
@@ -4558,6 +4649,7 @@ module PandoraGUI
       @send_queue     = PandoraGUI.init_empty_queue
       @models         = {}
       @params         = {}
+      @media_send     = false
       #Thread.critical = true
       PandoraGUI.add_connection(self)
       #Thread.critical = false
@@ -4627,7 +4719,15 @@ module PandoraGUI
       # tos_video  af41  0x88  0x22
       # tos_xxx    cs5   0xA0  0x28
       # tos_audio  ef    0xB8  0x2E
-      #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
+      if (not @media_send) and (cmd == EC_Media)
+        @media_send = true
+        socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
+        p '@media_send = true'
+      elsif @media_send and (cmd != EC_Media)
+        @media_send = false
+        socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0)
+        p '@media_send = false'
+      end
       begin
         if socket and not socket.closed?
           sended = socket.write(buf)
@@ -4638,7 +4738,7 @@ module PandoraGUI
         sended = -1
       end
       #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
-      #p "SEND_MAIN: ("+buf+')'
+      #p log_mes+'SEND_MAIN: ('+buf+')'
 
       if sended == buf.size
         res = index
@@ -4667,7 +4767,7 @@ module PandoraGUI
         end
         if sended == buf.size
           res = index
-          #p "SEND_ADD: ("+buf+')'
+          #p log_mes+'SEND_ADD: ('+buf+')'
         elsif sended != -1
           res = nil
           log_message(LM_Error, 'Не все данные отправлены2 '+sended.to_s)
@@ -4739,9 +4839,15 @@ module PandoraGUI
           scmd = EC_Bye
           scode = ECC_Bye_Exit
       end
-      res = PandoraGUI.add_block_to_queue(send_queue, [scmd, scode, sbuf])
+      #while PandoraGUI.get_queue_state(@send_queue) == QS_Full do
+      #  p log_mes+'get_queue_state.EX = '+PandoraGUI.get_queue_state(@send_queue).inspect
+      #  Thread.pass
+      #end
+      res = PandoraGUI.add_block_to_queue(@send_queue, [scmd, scode, sbuf])
 
-      #sbuf ||= ''; p log_mes+'add_send_segment:  '+[scmd, scode, sbuf.size].inspect
+      if scmd != EC_Media
+        sbuf ||= ''; p log_mes+'add_send_segment:  '+[scmd, scode, sbuf.size].inspect
+      end
       if not res
         puts 'add_send_segment: add_block_to_queue error'
         @conn_state == CS_Stoping
@@ -4786,10 +4892,9 @@ module PandoraGUI
 
       case rcmd
         when EC_Init
-          @scmd = EC_Init
           if stage<=ST_Exchange
             if rcode<=ECC_Init2_Sign
-              if (rcode==ECC_Init0_Hello) and ((stage==ST_Protocol)) # or (stage==ST_Exchange))
+              if (rcode==ECC_Init0_Hello) and ((stage==ST_Protocol) or (stage==ST_Sign))
                 recognize_params
                 if scmd != EC_Bye
                   vers = params['version']
@@ -4803,6 +4908,7 @@ module PandoraGUI
                       mode = params['mode']
                       @skey = PandoraGUI.open_key(skey_panhash, @models, false)
                       if @skey
+                        @scmd = EC_Init
                         @stage = ST_Sign
                         #phrase = SecureRandom.random_bytes(256)
                         phrase = OpenSSL::Random.random_bytes(256)
@@ -4836,8 +4942,8 @@ module PandoraGUI
                     if (conn_mode & CM_Hunter) == 0
                       add_send_segment(EC_Init, true)
                     end
-                    @scmd = EC_Sync
-                    @scode = EСC_Sync10_Encode
+                    @scmd = EC_Data
+                    @scode = 0
                     @sbuf = nil
                     @stage = ST_Exchange
                   else
@@ -4920,10 +5026,8 @@ module PandoraGUI
             Thread.pass
           end
           dialog.init_video_receiver(true, false) if not dialog.recv_media_queue
-          if dialog
-            if dialog and dialog.recv_media_queue
-              PandoraGUI.add_block_to_queue(dialog.recv_media_queue, rdata, $media_buf_size)
-            end
+          if dialog and dialog.recv_media_queue
+            PandoraGUI.add_block_to_queue(dialog.recv_media_queue, rdata, $media_buf_size)
           end
         when EC_Query
           case rcode
@@ -5166,6 +5270,7 @@ module PandoraGUI
               rbuf.slice!(0, processedlen)
               @scmd = EC_Data if (scmd != EC_Bye) and (scmd != EC_Wait)
               # Обработаем поступившие команды и блоки данных
+              rdata0 = rdata
               if (scmd != EC_Bye) and (scmd != EC_Wait) and (nextreadmode == RM_Comm)
                 #p log_mes+'-->>>> before accept: [rcmd, rcode, rdata.size]='+[rcmd, rcode, rdata.size].inspect
                 if @rdata and (@rdata.size>0) and @r_encode
@@ -5184,11 +5289,16 @@ module PandoraGUI
               end
 
               if scmd != EC_Data
-                @sbuf = '' if scmd == EC_Bye
+                #@sbuf = '' if scmd == EC_Bye
                 #p log_mes+'add to queue [scmd, scode, sbuf]='+[scmd, scode, @sbuf].inspect
-                res = PandoraGUI.add_block_to_queue(send_queue, [scmd, scode, @sbuf])
+                p log_mes+'recv/send: ='+[rcmd, rcode, rdata0.size].inspect+'/'+[scmd, scode, @sbuf].inspect
+                #while PandoraGUI.get_queue_state(@send_queue) == QS_Full do
+                #  p log_mes+'get_queue_state.MAIN = '+PandoraGUI.get_queue_state(@send_queue).inspect
+                #  Thread.pass
+                #end
+                res = PandoraGUI.add_block_to_queue(@send_queue, [scmd, scode, @sbuf])
                 if not res
-                  puts 'read cicle answer: add_block_to_queue error'
+                  log_message(LM_Error, 'Error while adding segment to queue')
                   conn_state == CS_Stoping
                 end
                 last_scmd = scmd
@@ -5223,7 +5333,7 @@ module PandoraGUI
       while conn_state != CS_Disconnected
         # отправка сформированных сегментов и их удаление
         if (conn_state != CS_Disconnected)
-          send_segment = PandoraGUI.get_block_from_queue(send_queue)
+          send_segment = PandoraGUI.get_block_from_queue(@send_queue)
           while (conn_state != CS_Disconnected) and send_segment
             #p log_mes+' send_segment='+send_segment.inspect
             @scmd, @scode, @sbuf = send_segment
@@ -5241,7 +5351,7 @@ module PandoraGUI
               socket.close if not socket.closed?
               @conn_state = CS_Disconnected
             else
-              send_segment = PandoraGUI.get_block_from_queue(send_queue)
+              send_segment = PandoraGUI.get_block_from_queue(@send_queue)
             end
           end
         end
@@ -5312,7 +5422,7 @@ module PandoraGUI
         if $send_media_queue and $send_media_rooms \
         and (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Key) \
         and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
-        and dialog.vid_button.active?
+        and dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?
           pointer_ind = PandoraGUI.set_send_ptrind_by_room(dialog.room_id)
           processed = 0
           while (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) \
@@ -5759,7 +5869,7 @@ module PandoraGUI
   # RU: Диалог разговора
   class TalkScrolledWindow < Gtk::ScrolledWindow
     attr_accessor :room_id, :connset, :online_button, :snd_button, :vid_button, :talkview, \
-      :editbox, :area, :recv_media_pipeline, :appsrc, :connection, :area2, :ximagesink, \
+      :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrc, :connection, :ximagesink, \
       :read_thread, :recv_media_queue, :send_display_handler, :recv_display_handler
 
     include PandoraGUI
@@ -5789,9 +5899,9 @@ module PandoraGUI
       vpaned1 = Gtk::VPaned.new
       vpaned2 = Gtk::VPaned.new
 
-      @area = Gtk::DrawingArea.new
-      area.set_size_request(320, 240)
-      area.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
+      @area_recv = Gtk::DrawingArea.new
+      area_recv.set_size_request(320, 240)
+      area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
 
       hbox = Gtk::HBox.new
 
@@ -5842,7 +5952,7 @@ module PandoraGUI
 
       hbox.pack_start(bbox, false, false, 1.0)
 
-      vpaned1.pack1(area, false, true)
+      vpaned1.pack1(area_recv, false, true)
       vpaned1.pack2(hbox, false, true)
       vpaned1.set_size_request(350, 270)
 
@@ -5905,10 +6015,10 @@ module PandoraGUI
       end
 
       hpaned2 = Gtk::HPaned.new
-      @area2 = Gtk::DrawingArea.new
-      area2.set_size_request(120, 90)
-      area2.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
-      hpaned2.pack1(area2, false, true)
+      @area_send = Gtk::DrawingArea.new
+      area_send.set_size_request(120, 90)
+      area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
+      hpaned2.pack1(area_send, false, true)
       hpaned2.pack2(editbox, true, true)
 
       list_sw = Gtk::ScrolledWindow.new(nil, nil)
@@ -5978,8 +6088,8 @@ module PandoraGUI
       hpaned3.position = 1
       hpaned3.position = 0
 
-      area2.add_events(Gdk::Event::BUTTON_PRESS_MASK)
-      area2.signal_connect('button-press-event') do |widget, event|
+      area_send.add_events(Gdk::Event::BUTTON_PRESS_MASK)
+      area_send.signal_connect('button-press-event') do |widget, event|
         if hpaned3.position <= 1
           list_sw.width_request = 150 if list_sw.width_request <= 1
           hpaned3.position = list_sw.width_request
@@ -5989,16 +6099,16 @@ module PandoraGUI
         end
       end
 
-      area2.signal_connect('visibility_notify_event') do |widget, event_visibility|
+      area_send.signal_connect('visibility_notify_event') do |widget, event_visibility|
         case event_visibility.state
           when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
-            init_video_sender(true, true)
+            init_video_sender(true, true) if not area_send.destroyed?
           when Gdk::EventVisibility::FULLY_OBSCURED
-            init_video_sender(false, true)
+            init_video_sender(false, true) if not area_send.destroyed?
         end
       end
 
-      area2.signal_connect('destroy') do |*args|
+      area_send.signal_connect('destroy') do |*args|
         init_video_sender(false)
       end
 
@@ -6008,25 +6118,26 @@ module PandoraGUI
       hpaned.pack1(vpaned1, false, true)
       hpaned.pack2(vpaned2, true, true)
 
-      area.signal_connect('visibility_notify_event') do |widget, event_visibility|
+      area_recv.signal_connect('visibility_notify_event') do |widget, event_visibility|
         case event_visibility.state
           when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
-            init_video_receiver(true, true, false) #if vid_button.active?
+            init_video_receiver(true, true, false) if not area_recv.destroyed?
           when Gdk::EventVisibility::FULLY_OBSCURED
-            init_video_receiver(false)
+            init_video_receiver(false) if not area_recv.destroyed?
         end
       end
 
-      area.signal_connect('destroy') do |*args|
-        init_video_receiver(false)
+      area_recv.signal_connect('destroy') do |*args|
+        init_video_receiver(false, false)
       end
 
-      area.show
+      area_recv.show
 
       label_box = TabLabelBox.new(image, title, self, false, 0) do
-        init_video_sender(false)
-        init_video_receiver(false)
-        area.destroy
+        #init_video_sender(false)
+        #init_video_receiver(false, false)
+        area_send.destroy if not area_send.destroyed?
+        area_recv.destroy if not area_recv.destroyed?
 
         connset[CSI_Nodes].each do |node|
           PandoraGUI.stop_connection(node, false)
@@ -6034,6 +6145,14 @@ module PandoraGUI
       end
 
       page = $notebook.append_page(self, label_box)
+
+      self.signal_connect('delete-event') do |*args|
+        #init_video_sender(false)
+        #init_video_receiver(false, false)
+        area_send.destroy if not area_send.destroyed?
+        area_recv.destroy if not area_recv.destroyed?
+      end
+
       show_all
       $notebook.page = $notebook.n_pages-1 if not known_node
       editbox.grab_focus
@@ -6096,17 +6215,35 @@ module PandoraGUI
 
     def link_sink_to_area(sink, area, pipeline=nil)
       res = nil
-      if not area.window
-        area.realize
-        Gtk.main_iteration
-      end
-      sink.xwindow_id = area.window.xid
-      if pipeline
+      if pipeline and (not pipeline.destroyed?)
+        if area and (not area.destroyed?) and (not area.window)
+          area.realize
+          Gtk.main_iteration
+        end
+        sink.xwindow_id = area.window.xid
+        #p '---------'
+        #p pipeline.bus
+        #p pipeline.bus.methods
+        #asd = sfas / 0
         pipeline.bus.add_watch do |bus, message|
           if (message and message.structure and message.structure.name \
-            and (message.structure.name == 'prepare-xwindow-id'))
-          then
-            message.src.set_xwindow_id(area.window.xid) if not area.destroyed? and area.window
+          and (message.structure.name == 'prepare-xwindow-id'))
+            #Gdk::Threads.enter
+            Gdk::Threads.synchronize do
+              Gdk::Display.default.sync
+              if not area.destroyed? and area.window
+                win_id = nil
+                if os_family=='windows'
+                  win_id = area.window.handle
+                else
+                  win_id = area.window.xid
+                end
+                imagesink = message.src
+                #imagesink.set_property("force-aspect-ratio", true)
+                imagesink.set_xwindow_id(win_id)
+              end
+            end
+            #Gdk::Threads.leave
           end
           true
         end
@@ -6128,30 +6265,32 @@ module PandoraGUI
         end
         if just_upd_area
           if send_display_handler
-            area2.signal_handler_disconnect(send_display_handler)
+            area_send.signal_handler_disconnect(send_display_handler)
             @send_display_handler = nil
           end
           tsw = PandoraGUI.find_active_sender(self)
-          if $webcam_xvimagesink and tsw and tsw.area2 and tsw.area2.window
-            $webcam_xvimagesink.xwindow_id = tsw.area2.window.xid
+          if $webcam_xvimagesink and (not $webcam_xvimagesink.destroyed?) and tsw \
+          and tsw.area_send and tsw.area_send.window
+            $webcam_xvimagesink.xwindow_id = tsw.area_send.window.xid
             #p 'RECONN tsw.title='+PandoraGUI.consctruct_room_title(connset[CSI_Persons]).inspect
           end
           #p '--LEAVE'
-          area2.hide
-          area2.show
+          area_send.queue_draw if area_send and (not area_send.destroyed?)
         else
+          #$webcam_xvimagesink.xwindow_id = 0
           count = PandoraGUI.nil_send_ptrind_by_room(room_id)
           if video_pipeline and (count==0) and (video_pipeline.get_state != Gst::STATE_NULL)
             video_pipeline.stop
             if send_display_handler
-              area2.signal_handler_disconnect(send_display_handler)
+              area_send.signal_handler_disconnect(send_display_handler)
               @send_display_handler = nil
             end
             #p '==STOP!!'
           end
         end
         #Thread.pass
-      elsif vid_button.active?
+      elsif (not self.destroyed?) and (not vid_button.destroyed?) and vid_button.active? \
+      and area_send and (not area_send.destroyed?)
         if not video_pipeline
           begin
             Gst.init
@@ -6206,23 +6345,22 @@ module PandoraGUI
         end
 
         if video_pipeline
-          if $webcam_xvimagesink and area2 and area2.window
-            $webcam_xvimagesink.xwindow_id = area2.window.xid
+          if $webcam_xvimagesink and area_send and area_send.window
+            $webcam_xvimagesink.xwindow_id = area_send.window.xid
           end
           if not just_upd_area
             video_pipeline.stop if (video_pipeline.get_state != Gst::STATE_NULL)
             if send_display_handler
-              area2.signal_handler_disconnect(send_display_handler)
+              area_send.signal_handler_disconnect(send_display_handler)
               @send_display_handler = nil
             end
           end
           if not send_display_handler
-            @send_display_handler = link_sink_to_area($webcam_xvimagesink, area2,  video_pipeline)
+            @send_display_handler = link_sink_to_area($webcam_xvimagesink, area_send,  video_pipeline)
           end
-          if $webcam_xvimagesink and area2 and area2.window
-            $webcam_xvimagesink.xwindow_id = area2.window.xid
+          if $webcam_xvimagesink and area_send and area_send.window
+            $webcam_xvimagesink.xwindow_id = area_send.window.xid
           end
-
           if just_upd_area
             video_pipeline.play if (video_pipeline.get_state != Gst::STATE_PLAYING)
           else
@@ -6247,20 +6385,26 @@ module PandoraGUI
       if not start
         #recv_media_pipeline.pause if recv_media_pipeline
         #recv_media_pipeline.stop if recv_media_pipeline
-        ximagesink.pause if ximagesink and (ximagesink.get_state == Gst::STATE_PLAYING)
+        if ximagesink and (ximagesink.get_state == Gst::STATE_PLAYING)
+          if can_play
+            ximagesink.pause
+          else
+            ximagesink.stop
+            #ximagesink.xwindow_id = 0
+          end
+        end
         if recv_display_handler
-          area.signal_handler_disconnect(recv_display_handler)
+          area_recv.signal_handler_disconnect(recv_display_handler)
           @recv_display_handler = nil
         end
         #p ':::%%--R_PAUSE_STOP'
-      else
+      elsif (not self.destroyed?) and area_recv and (not area_recv.destroyed?)
         if (not recv_media_pipeline) and init
           begin
             Gst.init
             @recv_media_queue ||= PandoraGUI.init_empty_queue
 
             dialog_id = '_'+PandoraKernel.bytes_to_hex(room_id[0,4])
-            #p '^^^^^^ init_video_receive:  dialog_id='+dialog_id
 
             @recv_media_pipeline = Gst::Pipeline.new('pipe'+dialog_id)
 
@@ -6287,7 +6431,7 @@ module PandoraGUI
         end
         if recv_media_pipeline and can_play
           if not recv_display_handler and ximagesink
-            @recv_display_handler = link_sink_to_area(ximagesink, area,  recv_media_pipeline)
+            @recv_display_handler = link_sink_to_area(ximagesink, area_recv,  recv_media_pipeline)
           end
           recv_media_pipeline.play if (recv_media_pipeline.get_state != Gst::STATE_PLAYING)
           ximagesink.play if (ximagesink.get_state != Gst::STATE_PLAYING)
@@ -6613,13 +6757,13 @@ module PandoraGUI
     #$notebook.signal_connect('change-current-page') do |widget, page_num|
       cur_page = $notebook.get_nth_page(page_num)
       if $last_page and (cur_page != $last_page) and ($last_page.is_a? PandoraGUI::TalkScrolledWindow)
-        $last_page.init_video_receiver(false)
-        $last_page.init_video_sender(false, true)
+        $last_page.init_video_sender(false, true) if not $last_page.area_send.destroyed?
+        $last_page.init_video_receiver(false) if not $last_page.area_recv.destroyed?
       end
       if cur_page.is_a? PandoraGUI::TalkScrolledWindow
         cur_page.update_state(false, cur_page)
-        cur_page.init_video_receiver(true, true, false)
-        cur_page.init_video_sender(true, true)
+        cur_page.init_video_receiver(true, true, false) if not cur_page.area_recv.destroyed?
+        cur_page.init_video_sender(true, true) if not cur_page.area_send.destroyed?
       end
       $last_page = cur_page
     end
@@ -6677,6 +6821,16 @@ module PandoraGUI
     $window.set_default_size(640, 420)
     $window.maximize
     $window.show_all
+
+    $window.signal_connect('delete-event') { |*args|
+      if $notebook and (not $notebook.destroyed?)
+        $notebook.children.each do |child|
+          child.destroy
+        end
+        false
+      end
+    }
+
     $window.signal_connect('destroy') do |*args|
       Gtk.main_quit
     end
@@ -6700,8 +6854,8 @@ module PandoraGUI
         if $notebook.page >= 0
           sw = $notebook.get_nth_page($notebook.page)
           if sw.is_a? TalkScrolledWindow
-            sw.init_video_receiver(false)
-            sw.init_video_sender(false, true)
+            sw.init_video_sender(false, true) if not sw.area_send.destroyed?
+            sw.init_video_receiver(false) if not sw.area_recv.destroyed?
           end
         end
         if widget.visible? and widget.active?
