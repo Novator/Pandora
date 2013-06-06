@@ -30,8 +30,9 @@
   <Pandora name="Pandora Node">
 
     <Panobject>
-      <panhash pos="|254,hide" view="phash" />
-      <modified pos="255" view="time" />
+      <panhash pos="|253,hide" view="phash" />
+      <modified pos="|254" view="time" />
+      <panstate pos="255,hide" view="word" />
     </Panobject>
 
     <Created>

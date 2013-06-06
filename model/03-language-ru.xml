@@ -4,6 +4,7 @@
     <Panobject name.ru="Объект Пандоры">
       <panhash name.ru="Панхэш" />
       <modified name.ru="Изменен" />
+      <panstate name.ru="Состояние" />
     </Panobject>
 
     <Created>

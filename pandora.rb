@@ -695,6 +695,15 @@ module PandoraKernel
     res
   end
 
+  def self.hex_to_bytes(hexstr)
+    bytes = AsciiString.new
+    hexstr = '0'+hexstr if hexstr.size % 2 > 0
+    ((hexstr.size+1)/2).times do |i|
+      bytes << hexstr[i*2,2].to_i(16).chr
+    end
+    AsciiString.new(bytes)
+  end
+
   # Convert big integer to string of bytes
   # RU: Преобрзует большое целое в строку байт
   def self.bigint_to_bytes(bigint)
@@ -1877,7 +1886,7 @@ module PandoraGUI
     include PandoraKernel
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
-      :support_btn, :trust_btn, :public_btn, :lang_entry, :format, :view_buffer
+      :support_btn, :vouch_btn, :trust_scale, :trust0, :public_btn, :lang_entry, :format, :view_buffer
 
     def add_menu_item(label, menu, text)
       mi = Gtk::MenuItem.new(text)
@@ -2099,27 +2108,109 @@ module PandoraGUI
       #rbvbox.pack_start(support_btn, false, false, 0)
       hbox.pack_start(support_btn, false, false, 0)
 
-      @trust_btn = Gtk::CheckButton.new(_('trust'), true)
-      trust_btn.signal_connect('clicked') do |widget|
-        if not widget.destroyed? and widget.inconsistent?
-          widget.inconsistent = false
-          widget.active = true
+      trust_box = Gtk::VBox.new
+
+      trust0 = nil
+      @vouch_btn = Gtk::CheckButton.new(_('vouch'), true)
+      vouch_btn.signal_connect('clicked') do |widget|
+        if not widget.destroyed?
+          if widget.inconsistent?
+            if PandoraGUI.current_user_or_key(false)
+              widget.inconsistent = false
+              widget.active = true
+              trust0 = 0.4
+            end
+          end
+          trust_scale.sensitive = widget.active?
+          if widget.active?
+            trust0 ||= 0.4
+            trust_scale.value = trust0
+          else
+            trust0 = trust_scale.value
+          end
         end
       end
-      hbox.pack_start(trust_btn, false, false, 0)
+      trust_box.pack_start(vouch_btn, false, false, 0)
+
+      #@scale_button = Gtk::ScaleButton.new(Gtk::IconSize::BUTTON)
+      #@scale_button.set_icons(['gtk-goto-bottom', 'gtk-goto-top', 'gtk-execute'])
+      #@scale_button.signal_connect('value-changed') { |widget, value| puts "value changed: #{value}" }
+
+      tips = [_('villian'), _('destroyer'), _('dirty'), _('harmful'), _('bad'), _('vain'), \
+        _('trying'), _('useful'), _('constructive'), _('creative'), _('genius')]
+
+      #@trust ||= (127*0.4).round
+      #val = trust/127.0
+      adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
+      @trust_scale = Gtk::HScale.new(adjustment)
+      trust_scale.set_size_request(140, -1)
+      trust_scale.update_policy = Gtk::UPDATE_DELAYED
+      trust_scale.digits = 1
+      trust_scale.draw_value = true
+      step = 254.fdiv(tips.size-1)
+      trust_scale.signal_connect('value-changed') do |widget|
+        #val = (widget.value*20).round/20.0
+        val = widget.value
+        #widget.value = val #if (val-widget.value).abs>0.05
+        trust = (val*127).round
+        #vouch_lab.text = sprintf('%2.1f', val) #trust.fdiv(127))
+        r = 0
+        g = 0
+        b = 0
+        if trust==0
+          b = 40000
+        else
+          mul = ((trust.fdiv(127))*45000).round
+          if trust>0
+            g = mul+20000
+          else
+            r = -mul+20000
+          end
+        end
+        tip = val.to_s
+        color = Gdk::Color.new(r, g, b)
+        widget.modify_fg(Gtk::STATE_NORMAL, color)
+        @vouch_btn.modify_bg(Gtk::STATE_ACTIVE, color)
+        i = ((trust+127)/step).round
+        tip = tips[i]
+        widget.tooltip_text = tip
+      end
+      #scale.signal_connect('change-value') do |widget|
+      #  true
+      #end
+      trust_box.pack_start(trust_scale, false, false, 0)
+
+      hbox.pack_start(trust_box, false, false, 0)
+
+      public_box = Gtk::VBox.new
 
       @public_btn = Gtk::CheckButton.new(_('public'), true)
-      #public_btn.signal_connect('toggled') do |widget|
-      #  p "public"
-      #end
-      hbox.pack_start(public_btn, false, false, 0)
+      public_btn.signal_connect('clicked') do |widget|
+        if not widget.destroyed?
+          if widget.inconsistent?
+            if PandoraGUI.current_user_or_key(false)
+              widget.inconsistent = false
+              widget.active = true
+            end
+          end
+        end
+      end
+      public_box.pack_start(public_btn, false, false, 0)
 
-      @lang_entry = Gtk::ComboBoxEntry.new(true)
-      lang_entry.set_size_request(60, 15)
-      lang_entry.append_text('0')
-      lang_entry.append_text('1')
-      lang_entry.append_text('5')
-      hbox.pack_start(lang_entry, false, true, 5)
+      #@lang_entry = Gtk::ComboBoxEntry.new(true)
+      #lang_entry.set_size_request(60, 15)
+      #lang_entry.append_text('0')
+      #lang_entry.append_text('1')
+      #lang_entry.append_text('5')
+
+      @lang_entry = Gtk::Combo.new
+      @lang_entry.set_popdown_strings(['0','1','5'])
+      @lang_entry.entry.text = ''
+      @lang_entry.entry.select_region(0, -1)
+      @lang_entry.set_size_request(50, -1)
+      public_box.pack_start(lang_entry, true, true, 5)
+
+      hbox.pack_start(public_box, false, false, 0)
 
       #hbox.pack_start(rbvbox, false, false, 1.0)
       hbox.show_all
@@ -2192,7 +2283,6 @@ module PandoraGUI
       page = notebook.append_page(sw, label_box2)
 
       PandoraGUI.show_panobject_list(PandoraModel::Opinion, nil, sw)
-
 
       # create labels, remember them, calc middle char width
       texts_width = 0
@@ -2647,6 +2737,8 @@ module PandoraGUI
         res = OpenSSL::Digest::SHA1.new
       when KH_Sha2
         case klen
+          when KL_bit256
+            res = OpenSSL::Digest::SHA256.new
           when KL_bit224
             res = OpenSSL::Digest::SHA224.new
           when KL_bit384
@@ -2658,6 +2750,8 @@ module PandoraGUI
         end
       when KH_Sha3
         case klen
+          when KL_bit256
+            res = SHA3::Digest::SHA256.new
           when KL_bit224
             res = SHA3::Digest::SHA224.new
           when KL_bit384
@@ -3055,13 +3149,25 @@ module PandoraGUI
     value
   end
 
-  $param_model = nil
+  $model_gui = {}
+
+  def self.model_gui(ider)
+    res = $model_gui[ider]
+    if not res
+      if PandoraModel.const_defined? ider
+        panobj_class = PandoraModel.const_get(ider)
+        res = panobj_class.new
+        $model_gui[ider] = res
+      end
+    end
+    res
+  end
 
   def self.get_param(name, get_id=false)
     value = nil
     id = nil
-    $param_model ||= PandoraModel::Parameter.new
-    sel = $param_model.select({'name'=>name}, false, 'value, id')
+    param_model = model_gui('Parameter')
+    sel = param_model.select({'name'=>name}, false, 'value, id')
     if not sel[0]
       # parameter was not found
       ind = $pandora_parameters.index{ |row| row[PF_Name]==name }
@@ -3076,10 +3182,10 @@ module PandoraGUI
         values = { :name=>name, :desc=>row[PF_Desc],
           :value=>create_default_param(type, row[PF_Setting]), :type=>type,
           :section=>section, :setting=>row[PF_Setting], :modified=>Time.now.to_i }
-        panhash = $param_model.panhash(values)
+        panhash = param_model.panhash(values)
         values['panhash'] = panhash
-        $param_model.update(values, nil, nil)
-        sel = $param_model.select({'name'=>name}, false, 'value, id')
+        param_model.update(values, nil, nil)
+        sel = param_model.select({'name'=>name}, false, 'value, id')
       end
     end
     if sel[0]
@@ -3095,9 +3201,10 @@ module PandoraGUI
   def self.set_param(name, value, definition=nil)
     res = false
     old_value, id = get_param(name, true)
-    if value != old_value
+    param_model = model_gui('Parameter')
+    if (value != old_value) and param_model
       values = {:value=>value, :modified=>Time.now.to_i}
-      res = $param_model.update(values, nil, 'id='+id.to_s)
+      res = param_model.update(values, nil, 'id='+id.to_s)
     end
     res
   end
@@ -3298,21 +3405,21 @@ module PandoraGUI
       while try
         try = false
         creator = nil
-        $key_model ||= PandoraModel::Key.new
+        key_model = model_gui('Key')
         last_auth_key = get_param('last_auth_key')
         if last_auth_key.is_a? Integer
           last_auth_key = AsciiString.new(PandoraKernel.bigint_to_bytes(last_auth_key))
         end
         if last_auth_key and (last_auth_key != '')
           filter = {:panhash => last_auth_key}
-          sel = $key_model.select(filter, false)
+          sel = key_model.select(filter, false)
           #p 'curkey  sel='+sel.inspect
-          if sel and sel.size>1
+          if sel and (sel.size>1)
 
-            kind0 = $key_model.field_val('kind', sel[0])
-            kind1 = $key_model.field_val('kind', sel[1])
-            body0 = $key_model.field_val('body', sel[0])
-            body1 = $key_model.field_val('body', sel[1])
+            kind0 = key_model.field_val('kind', sel[0])
+            kind1 = key_model.field_val('kind', sel[1])
+            body0 = key_model.field_val('body', sel[0])
+            body1 = key_model.field_val('body', sel[1])
 
             type0, klen0 = divide_type_and_klen(kind0)
             cipher = 0
@@ -3320,14 +3427,14 @@ module PandoraGUI
               priv = body0
               pub = body1
               kind = kind1
-              cipher = $key_model.field_val('cipher', sel[0])
-              creator = $key_model.field_val('creator', sel[0])
+              cipher = key_model.field_val('cipher', sel[0])
+              creator = key_model.field_val('creator', sel[0])
             else
               priv = body1
               pub = body0
               kind = kind0
-              cipher = $key_model.field_val('cipher', sel[1])
-              creator = $key_model.field_val('creator', sel[1])
+              cipher = key_model.field_val('cipher', sel[1])
+              creator = key_model.field_val('creator', sel[1])
             end
             cipher ||= 0
 
@@ -3341,6 +3448,7 @@ module PandoraGUI
               label = Gtk::Label.new(_('Password'))
               vbox.pack_start(label, false, false, 2)
               entry = Gtk::Entry.new
+              entry.visibility = false
               vbox.pack_start(entry, false, false, 2)
               dialog.def_widget = entry
 
@@ -3368,16 +3476,26 @@ module PandoraGUI
           vbox = Gtk::VBox.new
           dialog.viewport.add(vbox)
 
+          creator = PandoraKernel.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
+          label = Gtk::Label.new(_('Person'))
+          vbox.pack_start(label, false, false, 2)
+          user_entry = Gtk::Entry.new
+          user_entry.text = PandoraKernel.bytes_to_hex(creator)
+          vbox.pack_start(user_entry, false, false, 2)
+
           label = Gtk::Label.new(_('Password'))
           vbox.pack_start(label, false, false, 2)
-          entry = Gtk::Entry.new
-          vbox.pack_start(entry, false, false, 2)
-          dialog.def_widget = entry
+          pass_entry = Gtk::Entry.new
+          vbox.pack_start(pass_entry, false, false, 2)
+
+          dialog.def_widget = pass_entry
 
           dialog.run do
             #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
             cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
-            cipher_key = entry.text
+            cipher_key = pass_entry.text
+            creator = PandoraKernel.hex_to_bytes(user_entry.text)
+
             #p 'cipher_hash='+cipher_hash.to_s
             type_klen = KT_Rsa | KL_bit2048
 
@@ -3391,7 +3509,6 @@ module PandoraGUI
             cipher_hash = key_vec[KV_Ciph]
             cipher_key = key_vec[KV_Pass]
 
-            creator = PandoraKernel.bigint_to_bytes(0x2ec783d34331de1d39006fc80000)
             key_vec[KV_Creator] = creator
 
             time_now = Time.now
@@ -3404,18 +3521,18 @@ module PandoraGUI
 
             values = {:kind=>type_klen, :creator=>creator, :created=>time_now, :expire=>expire, \
               :cipher=>0, :body=>pub, :modified=>time_now}
-            panhash = $key_model.panhash(values)
+            panhash = key_model.panhash(values)
             values['panhash'] = panhash
             key_vec[KV_Panhash] = panhash
 
             #p '========================'
             #p values
-            res = $key_model.update(values, nil, nil)
+            res = key_model.update(values, nil, nil)
             if res
               values[:kind] = KT_Priv
               values[:body] = priv
               values[:cipher] = cipher_hash
-              res = $key_model.update(values, nil, nil)
+              res = key_model.update(values, nil, nil)
               if res
                 #p 'last_auth_key='+panhash.inspect
                 set_param('last_auth_key', panhash)
@@ -3448,6 +3565,19 @@ module PandoraGUI
       end
     end
     key_vec
+  end
+
+  def self.current_user_or_key(user=true, init=true)
+    panhash = nil
+    key = current_key(false, init)
+    if key and key[KV_Obj]
+      if user
+        panhash = key[KV_Creator]
+      else
+        panhash = key[KV_Panhash]
+      end
+    end
+    panhash
   end
 
   # Encode data type and size to PSON type and count of size in bytes (1..8)-1
@@ -3672,27 +3802,55 @@ module PandoraGUI
       values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, :pack=>PT_Pson1, \
         :trust=>trust, :creator=>creator, :created=>time_now, :sign=>sign}
 
-      $sign_model ||= PandoraModel::Sign.new
-      panhash = $sign_model.panhash(values)
+      sign_model = model_gui('Sign')
+      panhash = sign_model.panhash(values)
       #p '!!!!!!panhash='+PandoraKernel.bytes_to_hex(panhash).inspect
 
       values['panhash'] = panhash
 
-      res = $sign_model.update(values, nil, nil)
+      res = sign_model.update(values, nil, nil)
     end
     res
   end
 
   def self.unsign_panobject(obj_hash, delete_all=false)
     res = true
-    key = current_key(false, (not delete_all))
-    key_hash = nil
-    key_hash = key[KV_Panhash] if key and key[KV_Obj]
+    key_hash = current_user_or_key(false, (not delete_all))
     if obj_hash and (delete_all or key_hash)
-      $sign_model ||= PandoraModel::Sign.new
+      sign_model = model_gui('Sign')
       filter = {:obj_hash=>obj_hash}
       filter[:key_hash] = key_hash if key_hash
-      res = $sign_model.update(nil, nil, filter)
+      res = sign_model.update(nil, nil, filter)
+    end
+    res
+  end
+
+  def self.trust_of_panobject(panhash)
+    res = nil
+    if panhash and (panhash != '')
+      key_hash = current_user_or_key(false, false)
+      sign_model = model_gui('Sign')
+      filter = {:obj_hash => panhash}
+      filter[:key_hash] = key_hash if key_hash
+      sel = sign_model.select(filter, false, 'created, trust')
+      if sel and (sel.size>0)
+        if key_hash
+          last_date = 0
+          sel.each_with_index do |row, i|
+            created = row[0]
+            trust = row[1]
+            #p 'sign: [creator, created, trust]='+[creator, created, trust].inspect
+            #p '[prev_creator, created, last_date, creator]='+[prev_creator, created, last_date, creator].inspect
+            if created>last_date
+              #p 'sign2: [creator, created, trust]='+[creator, created, trust].inspect
+              last_date = created
+              res = normalize_trust(trust, false)
+            end
+          end
+        else
+          res = sel.size
+        end
+      end
     end
     res
   end
@@ -3705,11 +3863,8 @@ module PandoraGUI
       res = 0.0
       trust_level = 0
       if not my_key_hash
-        key = current_key(false, false)
-        if key and key[KV_Obj]
-          my_key_hash = key[KV_Panhash]
-          my_key_hash = nil if not my_key_hash or (my_key_hash == '')
-        end
+        my_key_hash = current_user_or_key(false, false)
+        p 'trust of person'
       end
     end
     res
@@ -3724,15 +3879,14 @@ module PandoraGUI
     depth -= 1
     if (depth >= 0) and (panhash != querist) and panhash and (panhash != '')
       if (not querist) or (querist == '')
-        key = current_key(false, true)
-        querist = key[KV_Panhash]
+        querist = current_user_or_key(false, true)
       end
       if querist and (querist != '')
         #kind = PandoraKernel.kind_from_panhash(panhash)
-        $sign_model ||= PandoraModel::Sign.new
+        sign_model = model_gui('Sign')
         filter = { :obj_hash => panhash, :key_hash => querist }
         #filter = {:obj_hash => panhash}
-        sel = $sign_model.select(filter, false, 'creator, created, trust', 'creator')
+        sel = sign_model.select(filter, false, 'creator, created, trust', 'creator')
         if sel and (sel.size>0)
           prev_creator = nil
           last_date = 0
@@ -3766,6 +3920,85 @@ module PandoraGUI
       end
     end
     [count, rate, querist_rate]
+  end
+
+  # Realtion types
+  # RU: Типы связей
+  RT_Equal    = 0
+  RT_Similar  = 1
+  RT_Antipod  = 2
+  RT_PartOf   = 3
+  RT_Cause    = 4
+  RT_Follow   = 5
+  RT_Ignore   = 6
+  RT_CameFrom = 7
+  RT_Public   = 8
+  #...
+  RT_Unknown = 255
+
+  # Relation is symmetric
+  # RU: Связь симметрична
+  def self.relation_is_symmetric(relation)
+    res = [RT_Equal, RT_Similar, RT_Unknown].include? relation
+  end
+
+  # Check, create or delete relation between two panobjects
+  # RU: Проверяет, создаёт или удаляет связь между двумя объектами
+  def self.act_relation(panhash1, panhash2, rel_type=RT_Unknown, act=:check, creator=true, init=false)
+    res = nil
+    if panhash1 or panhash2
+      if not (panhash1 and panhash2)
+        panhash = current_user_or_key(creator, init)
+        if panhash
+          if not panhash1
+            panhash1 = panhash
+          else
+            panhash2 = panhash
+          end
+        end
+      end
+      if panhash1 and panhash2 #and (panhash1 != panhash2)
+        #p 'relat [p1,p2,t]='+[PandoraKernel.bytes_to_hex(panhash1), PandoraKernel.bytes_to_hex(panhash2), rel_type].inspect
+        relation_model = model_gui('Relation')
+        if relation_model
+          filter = {:first => panhash1, :second => panhash2, :type => rel_type}
+          filter2 = nil
+          if relation_is_symmetric(rel_type) and (panhash1 != panhash2)
+            filter2 = {:first => panhash2, :second => panhash1, :type => rel_type}
+          end
+          #p 'relat2 [p1,p2,t]='+[PandoraKernel.bytes_to_hex(panhash1), PandoraKernel.bytes_to_hex(panhash2), rel_type].inspect
+          #p 'act='+act.inspect
+          if (act != :delete)
+            #p 'create'
+            sel = relation_model.select(filter, false, 'id')
+            exist = (sel and (sel.size>0))
+            if not exist and filter2
+              sel = relation_model.select(filter2, false, 'id')
+              exist = (sel and (sel.size>0))
+            end
+            res = exist
+            if not exist and (act == :create)
+              #p 'UPD!!!'
+              if filter2 and (panhash1>panhash2) #when symmetric relation less panhash must be at left
+                filter = filter2
+              end
+              panhash = relation_model.panhash(filter, 0)
+              filter['panhash'] = panhash
+              filter['modified'] = Time.now.to_i
+              res = relation_model.update(filter, nil, nil)
+            end
+          else #check or delete
+            #p 'delete'
+            res = relation_model.update(nil, nil, filter)
+            if filter2
+              res2 = relation_model.update(nil, nil, filter2)
+              res = res or res2
+            end
+          end
+        end
+      end
+    end
+    res
   end
 
   def self.time_to_str(val, time_now=nil)
@@ -3882,15 +4115,21 @@ module PandoraGUI
           end
           color = 'brown'
         when 'hex', 'panhash', 'phash'
-          p 'type='+type.inspect
-          val = val.to_i(16)
+          #p 'type='+type.inspect
           if (['Bigint', 'Panhash', 'String', 'Blob', 'Text'].include? type) or (type[0,7]=='Panhash')
-            val = AsciiString.new(PandoraKernel.bigint_to_bytes(val))
+            #val = AsciiString.new(PandoraKernel.bigint_to_bytes(val))
+            val = PandoraKernel.hex_to_bytes(val)
+          else
+            val = val.to_i(16)
           end
       end
     end
     val
   end
+
+  # Panobject state flages
+  # RU: Флаги состояния объекта
+  PSF_Support   = 1
 
   # View and edit record dialog
   # RU: Окно просмотра и правки записи
@@ -3924,9 +4163,11 @@ module PandoraGUI
       sel = nil
       id = nil
       panhash0 = nil
-      signed = 0
       lang = 5
-      if path and ! new_act
+      panstate = 0
+      created0 = nil
+      creator0 = nil
+      if path and (not new_act)
         iter = store.get_iter(path)
         id = iter[0]
         sel = panobject.select('id='+id.to_s, true)
@@ -3936,7 +4177,13 @@ module PandoraGUI
         lang = panhash0[1].ord if panhash0 and panhash0.size>1
         lang ||= 0
         panhash0 = panobject.panhash(sel[0], lang)
-
+        panstate = panobject.namesvalues['panstate']
+        panstate ||= 0
+        if (panobject.is_a? PandoraModel::Created)
+          created0 = panobject.namesvalues['created']
+          creator0 = panobject.namesvalues['creator']
+          p 'created0, creator0='+[created0, creator0].inspect
+        end
       end
       #p sel
 
@@ -3983,12 +4230,28 @@ module PandoraGUI
           field[FI_Color] = color
         end
 
+        pub_exist = act_relation(nil, panhash0, RT_Public, :check)
+
         dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
         dialog.icon = panobjecticon if panobjecticon
 
-        count, rate, querist_rate = rate_of_panobj(panhash0)
-        dialog.trust_btn.active = (querist_rate and (querist_rate>0))
-        #dialog.trust_btn.inconsistent = signed < 0
+        #count, rate, querist_rate = rate_of_panobj(panhash0)
+        trust = nil
+        res = trust_of_panobject(panhash0)
+        trust = res if res.is_a? Float
+        dialog.vouch_btn.active = (res != nil)
+        dialog.vouch_btn.inconsistent = (res.is_a? Integer)
+        dialog.trust_scale.sensitive = (trust != nil)
+        #dialog.trust_scale.signal_emit('value-changed')
+        trust ||= 0.0
+        dialog.trust_scale.value = trust
+
+        dialog.support_btn.active = (PSF_Support & panstate)>0
+        dialog.public_btn.active = pub_exist
+        dialog.public_btn.inconsistent = (pub_exist==nil)
+
+        dialog.lang_entry.entry.text = lang.to_s if lang
+
         #dialog.lang_entry.active_text = lang.to_s
         #trust_lab = dialog.trust_btn.children[0]
         #trust_lab.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
@@ -4040,32 +4303,42 @@ module PandoraGUI
           dialog.text_fields.each do |field|
             flds_hash[field[FI_Id]] = field[FI_Value]
           end
+          lg = nil
           begin
-            lg = dialog.lang_entry.active_text
-            lang = lg.to_i if lg != ''
+            lg = dialog.lang_entry.text
+            lg = lg.to_i if (lg != '')
           rescue
-            lang = 5
           end
+          lang = lg if lg
+          lang ||= 5
 
-          panhash = panobject.panhash(flds_hash, lang)
-          flds_hash['panhash'] = panhash
           time_now = Time.now.to_i
           flds_hash['modified'] = time_now
+          panstate = 0
+          panstate = panstate | PSF_Support if dialog.support_btn.active?
+          flds_hash['panstate'] = panstate
           if (panobject.is_a? PandoraModel::Created)
+            flds_hash['created'] = created0 if created0
+            flds_hash['creator'] = creator0 if creator0
+            creator = current_user_or_key(true)
+            p '222 created0, creator0, creator='+[created0, creator0, creator].inspect
+            flds_hash['creator'] = creator if (creator != creator0)
+          end
+          p '---------flds_hash='+flds_hash.inspect
+          panhash = panobject.panhash(flds_hash, lang)
+          p '==panhash, panhash0='+[panhash, panhash0].inspect
+          if (panobject.is_a? PandoraModel::Created) and (panhash != panhash0)
+            p 'SET_CREATED!!!'
             flds_hash['created'] = time_now
-            key = current_key
-            flds_hash['creator'] = nil
-            if key and key[KV_Obj] and key[KV_Creator]
-              flds_hash['creator'] = key[KV_Creator]
-            end
+            panhash = panobject.panhash(flds_hash, lang)
           end
 
+          flds_hash['panhash'] = panhash
           res = panobject.update(flds_hash, nil, filter, true)
           if res
             filter ||= { :panhash => panhash, :modified => time_now }
             sel = panobject.select(filter, false)
             if sel[0]
-              #p 'panhash='+panhash.inspect
               #p 'panobject.namesvalues='+panobject.namesvalues.inspect
               #p 'panobject.matter_fields='+panobject.matter_fields.inspect
 
@@ -4089,14 +4362,23 @@ module PandoraGUI
                 tree_view.set_cursor(Gtk::TreePath.new(tree_view.sel.size-1), nil, false)
               end
 
-              trust = 1.0
-
-              #p dialog.support_btn.active?
-              unsign_panobject(panhash0, true)
-              if dialog.trust_btn.active?
-                sign_panobject(panobject, trust)
+              if not dialog.vouch_btn.inconsistent?
+                unsign_panobject(panhash0, true)
+                if dialog.vouch_btn.active?
+                  trust = (dialog.trust_scale.value*127).round
+                  sign_panobject(panobject, trust)
+                end
               end
-              #p dialog.public_btn.active?
+
+              if not dialog.public_btn.inconsistent?
+                #p 'panhash,panhash0='+[panhash, panhash0].inspect
+                act_relation(nil, panhash0, RT_Public, :delete, true, true) if panhash != panhash0
+                if dialog.public_btn.active?
+                  act_relation(nil, panhash, RT_Public, :create, true, true)
+                else
+                  act_relation(nil, panhash, RT_Public, :delete, true, true)
+                end
+              end
             end
           end
         end
@@ -4934,6 +5216,7 @@ module PandoraGUI
                 p log_mes+'recived phrase len='+rphrase.size.to_s
                 @scmd = EC_Init
                 @scode = ECC_Init2_Sign
+                rphrase = OpenSSL::Digest::SHA384.digest(rphrase)
                 sign = PandoraGUI.make_sign(@rkey, rphrase)
                 @sbuf = sign
                 #@stage = ST_Check
@@ -4943,7 +5226,7 @@ module PandoraGUI
 
                 @skey = PandoraGUI.open_key(@skey, @models, true)
                 if @skey and @skey[KV_Obj]
-                  if PandoraGUI.verify_sign(@skey, params['sphrase'], rsign)
+                  if PandoraGUI.verify_sign(@skey, OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
                     if (conn_mode & CM_Hunter) == 0
                       add_send_segment(EC_Init, true)
                     end
@@ -5437,7 +5720,12 @@ module PandoraGUI
             send_media_chunk = PandoraGUI.get_block_from_queue($send_media_queue, $media_buf_size, pointer_ind)
             if send_media_chunk
               #p log_mes+'send_media_chunk='+send_media_chunk.size.to_s
-              if not add_send_segment(EC_Media, true, send_media_chunk)
+              @scmd = EC_Media
+              @scode = 0
+              @sbuf = send_media_chunk
+              @sindex = send_comm_and_data(sindex, @scmd, @scode, @sbuf)
+              if not @sindex
+              #if not add_send_segment(EC_Media, true, send_media_chunk)
                 log_message(LM_Error, 'Ошибка отправки буфера data.size='+send_media_chunk.size.to_s)
               end
             end
@@ -5493,8 +5781,8 @@ module PandoraGUI
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen
     if not $listen_thread
-      key = current_key(false)
-      if key
+      user = current_user_or_key(true)
+      if user
         set_status_field(SF_Listen, 'Listening')
         $port = get_param('tcp_port')
         $host = get_param('local_host')
@@ -5752,8 +6040,6 @@ module PandoraGUI
     destination
   end
 
-  $message_model_add = nil
-
   # Send message to node
   # RU: Отправляет сообщение на узел
   def self.add_and_send_mes(text, destination, dialog)
@@ -5768,11 +6054,11 @@ module PandoraGUI
       values = {:modified=>time_now, :destination=>destination, :state=>state, :text=>text, \
         :creator=>creator, :created=>time_now}
 
-      $message_model_add ||= PandoraModel::Message.new
-      panhash = $message_model_add.panhash(values)
+      message_model = model_gui('Message')
+      panhash = message_model.panhash(values)
       values['panhash'] = panhash
 
-      res = $message_model_add.update(values, nil, nil)
+      res = message_model.update(values, nil, nil)
 
       node  = find_node_by_destination(destination)
 
@@ -5782,8 +6068,6 @@ module PandoraGUI
     end
     res
   end
-
-  $model_gui = {}
 
   CSI_Persons = 0
   CSI_Nodes   = 1
@@ -6828,6 +7112,7 @@ module PandoraGUI
     $window.show_all
 
     $window.signal_connect('delete-event') { |*args|
+      reset_current_key
       if $notebook and (not $notebook.destroyed?)
         $notebook.children.each do |child|
           child.destroy

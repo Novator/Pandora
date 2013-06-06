@@ -5,6 +5,7 @@
     <Panobject abstract="true">
       <panhash name="Panhash" type="Panhash" />
       <modified name="Modified" type="Time" />
+      <panstate name="Panstate" type="Integer" />
     </Panobject>
 
     <Created abstract="true">
@@ -97,9 +98,9 @@
     </Blob>
 
     <Relation name="Relation" kind="16" lang="no">
-      <first name="First object" size="50" />
-      <second name="Second object" size="50" />
-      <type name="Type" type="Byte" />
+      <first name="First object" type="Panhash" hash="1:hash(9)" />
+      <second name="Second object" type="Panhash" hash="2:hash(9)" />
+      <type name="Type" type="Byte" hash="2:byte(1)" />
     </Relation>
 
     <Opinion name="Opinion" kind="17">
