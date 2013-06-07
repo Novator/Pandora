@@ -25,6 +25,12 @@
       <hash view="hex" />
     </Article>
 
+    <Relation>
+      <first view="panhash" />
+      <second view="panhash" />
+      <type view="byte" />
+    </Relation>
+
   </World>
 
   <Pandora name="Pandora Node">

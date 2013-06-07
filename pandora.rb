@@ -1795,7 +1795,7 @@ module PandoraGUI
         @response=2
         false
       }
-      window.signal_connect("destroy") { |*args| @response=2 }
+      window.signal_connect('destroy') { |*args| @response=2 }
 
       window.signal_connect('key_press_event') do |widget, event|
         if (event.keyval==Gdk::Keyval::GDK_Tab) and enter_like_tab  # Enter works like Tab
@@ -1846,7 +1846,7 @@ module PandoraGUI
           yield(@response) if block_given?
           res = true
         end
-        destroy
+        self.destroy
       end
       res
     end
@@ -4213,6 +4213,8 @@ module PandoraGUI
       elsif action=='Talk'
         show_talk_dialog(panhash0)
       else  # Edit or Insert
+        edit = ((not new_act) and (action != 'Copy'))
+
         i = 0
         formfields = panobject.def_fields.clone
         tab_flds = panobject.tab_fields
@@ -4230,31 +4232,42 @@ module PandoraGUI
           field[FI_Color] = color
         end
 
-        pub_exist = act_relation(nil, panhash0, RT_Public, :check)
-
         dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
         dialog.icon = panobjecticon if panobjecticon
 
-        #count, rate, querist_rate = rate_of_panobj(panhash0)
-        trust = nil
-        res = trust_of_panobject(panhash0)
-        trust = res if res.is_a? Float
-        dialog.vouch_btn.active = (res != nil)
-        dialog.vouch_btn.inconsistent = (res.is_a? Integer)
-        dialog.trust_scale.sensitive = (trust != nil)
-        #dialog.trust_scale.signal_emit('value-changed')
-        trust ||= 0.0
-        dialog.trust_scale.value = trust
+        if edit
+          pub_exist = act_relation(nil, panhash0, RT_Public, :check)
+          #count, rate, querist_rate = rate_of_panobj(panhash0)
+          trust = nil
+          res = trust_of_panobject(panhash0)
+          trust = res if res.is_a? Float
+          dialog.vouch_btn.active = (res != nil)
+          dialog.vouch_btn.inconsistent = (res.is_a? Integer)
+          dialog.trust_scale.sensitive = (trust != nil)
+          #dialog.trust_scale.signal_emit('value-changed')
+          trust ||= 0.0
+          dialog.trust_scale.value = trust
 
-        dialog.support_btn.active = (PSF_Support & panstate)>0
-        dialog.public_btn.active = pub_exist
-        dialog.public_btn.inconsistent = (pub_exist==nil)
+          dialog.support_btn.active = (PSF_Support & panstate)>0
+          dialog.public_btn.active = pub_exist
+          dialog.public_btn.inconsistent = (pub_exist==nil)
 
-        dialog.lang_entry.entry.text = lang.to_s if lang
+          dialog.lang_entry.entry.text = lang.to_s if lang
 
-        #dialog.lang_entry.active_text = lang.to_s
-        #trust_lab = dialog.trust_btn.children[0]
-        #trust_lab.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
+          #dialog.lang_entry.active_text = lang.to_s
+          #trust_lab = dialog.trust_btn.children[0]
+          #trust_lab.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
+        else
+          key = current_key(false, false)
+          not_key_inited = (not (key and key[KV_Obj]))
+          dialog.support_btn.active = true
+          dialog.vouch_btn.active = true
+          if not_key_inited
+            dialog.vouch_btn.inconsistent = true
+            dialog.trust_scale.sensitive = false
+          end
+          dialog.public_btn.inconsistent = not_key_inited
+        end
 
         st_text = '{' + panobject.panhash_pattern_to_s + '}'
         st_text = panobject.panhash(sel[0], lang, true, true) + ' ' + st_text if sel and sel.size>0
@@ -4274,12 +4287,14 @@ module PandoraGUI
           #dialog.action_area.add(menu)
         end
 
+        titadd = nil
+        if not edit
+        #  titadd = _('edit')
+        #else
+          titadd = _('new')
+        end
+        dialog.title += ' ('+titadd+')' if titadd and (titadd != '')
         dialog.run do
-          filter = nil
-          if not new_act and (action != 'Copy')
-            filter = 'id='+id.to_s
-          end
-
           # take value from form
           dialog.fields.each do |field|
             entry = field[FI_Widget]
@@ -4305,12 +4320,12 @@ module PandoraGUI
           end
           lg = nil
           begin
-            lg = dialog.lang_entry.text
+            lg = dialog.lang_entry.entry.text
             lg = lg.to_i if (lg != '')
           rescue
           end
           lang = lg if lg
-          lang ||= 5
+          lang = 5 if (not lang.is_a? Integer) or (lang<0) or (lang>255)
 
           time_now = Time.now.to_i
           flds_hash['modified'] = time_now
@@ -4321,19 +4336,22 @@ module PandoraGUI
             flds_hash['created'] = created0 if created0
             flds_hash['creator'] = creator0 if creator0
             creator = current_user_or_key(true)
-            p '222 created0, creator0, creator='+[created0, creator0, creator].inspect
+            #p '222 created0, creator0, creator='+[created0, creator0, creator].inspect
             flds_hash['creator'] = creator if (creator != creator0)
           end
-          p '---------flds_hash='+flds_hash.inspect
+          #p '---------flds_hash='+flds_hash.inspect
           panhash = panobject.panhash(flds_hash, lang)
-          p '==panhash, panhash0='+[panhash, panhash0].inspect
+          #p '==panhash, panhash0='+[panhash, panhash0].inspect
           if (panobject.is_a? PandoraModel::Created) and (panhash != panhash0)
-            p 'SET_CREATED!!!'
+            #p 'SET_CREATED!!!'
             flds_hash['created'] = time_now
             panhash = panobject.panhash(flds_hash, lang)
           end
 
           flds_hash['panhash'] = panhash
+
+          filter = nil
+          filter = 'id='+id.to_s if edit
           res = panobject.update(flds_hash, nil, filter, true)
           if res
             filter ||= { :panhash => panhash, :modified => time_now }
@@ -7111,17 +7129,20 @@ module PandoraGUI
     $window.maximize
     $window.show_all
 
-    $window.signal_connect('delete-event') { |*args|
+    $window.signal_connect('delete-event') do |*args|
       reset_current_key
-      if $notebook and (not $notebook.destroyed?)
-        $notebook.children.each do |child|
-          child.destroy
-        end
-        false
-      end
-    }
+      #if $notebook and (not $notebook.destroyed?)
+      #  i = $notebook.children.size
+      #  while (i>0)
+      #    i -= 1
+      #    child = $notebook.children[i]
+      #    child.destroy if child and (not child.destroyed?)
+      #  end
+      #end
+      false
+    end
 
-    $window.signal_connect('destroy') do |*args|
+    $window.signal_connect('destroy') do |window|
       Gtk.main_quit
     end
 

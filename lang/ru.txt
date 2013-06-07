@@ -46,6 +46,8 @@ Fundamentals:
 "
 Addresses=>Адреса
 Insert=>Создать
+edit=>правка
+new=>новый
 Communities=>Сообщества
 Contracts=>Договоры
 Listening=>Слушаю
@@ -149,7 +151,6 @@ Unions=>Объединения
 File is updated=>Файл обновлён
 Not exist or read only=>Не существует или только для чтения
 vouch=>ручаюсь
-
 villian=>злодей
 destroyer=>разрушитель
 dirty=>пакостный
