@@ -174,6 +174,7 @@
 
     <Key name.ru="Ключ|Ключи">
       <kind name.ru="Тип" />
+      <rights name.ru="Разрешения" />
       <expire name.ru="Истекает" />
       <cipher name.ru="Шифрован" />
       <body name.ru="Тело" />

@@ -162,3 +162,7 @@ useful=>полезный
 constructive=>дельный
 creative=>созидатель
 genius=>гений
+Person=>Человек
+Creator=>Создатель
+Owner=>Владелец
+Rights=>Разрешения

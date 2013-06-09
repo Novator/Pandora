@@ -298,7 +298,7 @@ module PandoraKernel
         if (line.is_a? String) and (line.size>0)
           #line = line[0..-2] if line[-1,1]=="\n"
           #line = line[0..-2] if line[-1,1]=="\r"
-          line.chop!
+          line.chomp!
           end_is_found = false
           if scanmode==0
             end_is_found = true
@@ -3394,6 +3394,9 @@ module PandoraGUI
     self.the_current_key
   end
 
+  KR_Exchange  = 1
+  KR_Sign      = 2
+
   $key_model = nil
 
   def self.current_key(switch_key=false, need_init=true)
@@ -3472,16 +3475,24 @@ module PandoraGUI
         end
         if (not key_vec) and (not try)
           dialog = AdvancedDialog.new(_('Key generation'))
+          dialog.set_default_size(400, 250)
 
           vbox = Gtk::VBox.new
           dialog.viewport.add(vbox)
 
           creator = PandoraKernel.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
-          label = Gtk::Label.new(_('Person'))
+          label = Gtk::Label.new(_('Creator'))
           vbox.pack_start(label, false, false, 2)
           user_entry = Gtk::Entry.new
           user_entry.text = PandoraKernel.bytes_to_hex(creator)
           vbox.pack_start(user_entry, false, false, 2)
+
+          rights = KR_Exchange | KR_Sign
+          label = Gtk::Label.new(_('Rights'))
+          vbox.pack_start(label, false, false, 2)
+          rights_entry = Gtk::Entry.new
+          rights_entry.text = rights.to_s
+          vbox.pack_start(rights_entry, false, false, 2)
 
           label = Gtk::Label.new(_('Password'))
           vbox.pack_start(label, false, false, 2)
@@ -3495,6 +3506,7 @@ module PandoraGUI
             cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
             cipher_key = pass_entry.text
             creator = PandoraKernel.hex_to_bytes(user_entry.text)
+            rights = rights_entry.text.to_i
 
             #p 'cipher_hash='+cipher_hash.to_s
             type_klen = KT_Rsa | KL_bit2048
@@ -3519,8 +3531,8 @@ module PandoraGUI
 
             time_now = time_now.to_i
 
-            values = {:kind=>type_klen, :creator=>creator, :created=>time_now, :expire=>expire, \
-              :cipher=>0, :body=>pub, :modified=>time_now}
+            values = {:kind=>type_klen, :rights=>rights, :expire=>expire, \
+              :creator=>creator, :created=>time_now, :cipher=>0, :body=>pub, :modified=>time_now}
             panhash = key_model.panhash(values)
             values['panhash'] = panhash
             key_vec[KV_Panhash] = panhash
@@ -6610,7 +6622,7 @@ module PandoraGUI
               #gst-launch dshowvideosrc ! ffmpegcolorspace ! directdrawsink
               webcam = Gst::ElementFactory.make('dshowvideosrc', 'webcam1')
             else
-              webcam = Gst::ElementFactory.make('v4l2src')
+              webcam = Gst::ElementFactory.make('v4l2src', 'webcam1')
               webcam.decimate=3
             end
 
@@ -6716,8 +6728,8 @@ module PandoraGUI
             @recv_media_pipeline = Gst::Pipeline.new('pipe'+dialog_id)
 
             @appsrc = Gst::ElementFactory.make('appsrc', 'appsrc'+dialog_id)
-            appsrc.caps = Gst::Caps.parse( \
-              'caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
+            #appsrc.caps = Gst::Caps.parse( \
+            #  'caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
             appsrc.emit_signals = false
 
             vp8dec = Gst::ElementFactory.make('vp8dec', 'vp8dec'+dialog_id)
