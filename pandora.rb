@@ -4770,31 +4770,33 @@ module PandoraGUI
   # RU: Взять блок из очереди (задавай "ptrind" как 0,1,2..)
   def self.get_block_from_queue(queue, max=MaxQueue, ptrind=nil)
     block = nil
-    pointers = nil
-    ind = queue[QI_ReadInd]
-    if ptrind
-      pointers = ind
-      ind = pointers[ptrind]
-      ind ||= -1
-    end
-    if ind != queue[QI_WriteInd]
-      if ind<max
-        ind += 1
-      else
-        ind = 0
-      end
-      block = queue[QI_QueueInd][ind]
+    if queue
+      pointers = nil
+      ind = queue[QI_ReadInd]
       if ptrind
-        pointers[ptrind] = ind
-      else
-        queue[QI_ReadInd] = ind
+        pointers = ind
+        ind = pointers[ptrind]
+        ind ||= -1
+      end
+      if ind != queue[QI_WriteInd]
+        if ind<max
+          ind += 1
+        else
+          ind = 0
+        end
+        block = queue[QI_QueueInd][ind]
+        if ptrind
+          pointers[ptrind] = ind
+        else
+          queue[QI_ReadInd] = ind
+        end
       end
     end
     block
   end
 
   $media_buf_size = 50
-  $send_media_queue    = nil
+  $send_media_queue = []
   $send_media_rooms = nil
 
   def self.set_send_ptrind_by_room(room_id)
@@ -5045,6 +5047,13 @@ module PandoraGUI
         socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0)
         p '@media_send = false'
       end
+      #if cmd == EC_Media
+      #  if code==0
+      #    p 'send AUDIO ('+buf.size.to_s+')'
+      #  else
+      #    p 'send VIDEO ('+buf.size.to_s+')'
+      #  end
+      #end
       begin
         if socket and not socket.closed?
           sended = socket.write(buf)
@@ -5150,8 +5159,8 @@ module PandoraGUI
           #  sbuf = mes
           #end
           sbuf = param
-        when EC_Media
-          sbuf = param
+        #when EC_Media
+        #  sbuf = param
         else
           scmd = EC_Bye
           scode = ECC_Bye_Exit
@@ -5343,9 +5352,20 @@ module PandoraGUI
             dialog.update_state(true)
             Thread.pass
           end
-          dialog.init_video_receiver(true, false) if not dialog.recv_media_queue
-          if dialog and dialog.recv_media_queue
-            PandoraGUI.add_block_to_queue(dialog.recv_media_queue, rdata, $media_buf_size)
+          cannel = rcode
+          recv_buf = dialog.recv_media_queue[cannel]
+          if not recv_buf
+            if cannel==0
+              dialog.init_audio_receiver(true, false)
+            else
+              dialog.init_video_receiver(true, false)
+            end
+            Thread.pass
+            recv_buf = dialog.recv_media_queue[cannel]
+          end
+          if dialog and recv_buf
+            p 'RECV AUD ('+rdata.size.to_s+')' #if cannel==0
+            PandoraGUI.add_block_to_queue(recv_buf, rdata, $media_buf_size)
           end
         when EC_Query
           case rcode
@@ -5678,18 +5698,26 @@ module PandoraGUI
 
         # разгрузка принятых буферов в gstreamer
         processed = 0
+        cannel = 0
         while (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Key) \
         and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
-        and dialog and (not dialog.destroyed?) and dialog.recv_media_queue
-          processed += 1
-          recv_media_chunk = PandoraGUI.get_block_from_queue(dialog.recv_media_queue, $media_buf_size)
-          if recv_media_chunk
-            #p '??? load  size='+recv_media_chunk.size.to_s
-            buf = Gst::Buffer.new
-            buf.data = recv_media_chunk
-            buf.timestamp = Time.now.to_i * Gst::NSECOND
-            dialog.appsrc.push_buffer(buf)
-            recv_media_chunk = PandoraGUI.get_block_from_queue(dialog.recv_media_queue, $media_buf_size)
+        and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size)
+          if dialog.recv_media_pipeline[cannel] and dialog.appsrcs[cannel]
+          #and (dialog.recv_media_pipeline[cannel].get_state == Gst::STATE_PLAYING)
+            processed += 1
+            recv_media_chunk = PandoraGUI.get_block_from_queue(dialog.recv_media_queue[cannel], $media_buf_size)
+            if recv_media_chunk and (recv_media_chunk.size>0)
+              #p 'GET BUF size='+recv_media_chunk.size.to_s
+              buf = Gst::Buffer.new
+              buf.data = recv_media_chunk
+              buf.timestamp = Time.now.to_i * Gst::NSECOND
+              dialog.appsrcs[cannel].push_buffer(buf)
+              #recv_media_chunk = PandoraGUI.get_block_from_queue(dialog.recv_media_queue[cannel], $media_buf_size)
+            else
+              cannel += 1
+            end
+          else
+            cannel += 1
           end
         end
 
@@ -5737,27 +5765,34 @@ module PandoraGUI
         end
 
         # пакетирование буферов
-        if $send_media_queue and $send_media_rooms \
+        if ($send_media_queue.size>0) and $send_media_rooms \
         and (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Key) \
         and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
-        and dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?
+        and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
+        or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
+          #p 'packbuf '+cannel.to_s
           pointer_ind = PandoraGUI.set_send_ptrind_by_room(dialog.room_id)
           processed = 0
+          cannel = 0
           while (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) \
           and ((send_state & CSF_Message) == 0) and (processed<$media_block_count) \
-          and dialog.vid_button.active?
+          and (cannel<$send_media_queue.size) \
+          and dialog and (not dialog.destroyed?) \
+          and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
+          or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
             processed += 1
-            send_media_chunk = PandoraGUI.get_block_from_queue($send_media_queue, $media_buf_size, pointer_ind)
+            send_media_chunk = PandoraGUI.get_block_from_queue($send_media_queue[cannel], $media_buf_size, pointer_ind)
             if send_media_chunk
               #p log_mes+'send_media_chunk='+send_media_chunk.size.to_s
               @scmd = EC_Media
-              @scode = 0
+              @scode = cannel
               @sbuf = send_media_chunk
               @sindex = send_comm_and_data(sindex, @scmd, @scode, @sbuf)
               if not @sindex
-              #if not add_send_segment(EC_Media, true, send_media_chunk)
                 log_message(LM_Error, 'Ошибка отправки буфера data.size='+send_media_chunk.size.to_s)
               end
+            else
+              cannel += 1
             end
           end
         end
@@ -6188,7 +6223,7 @@ module PandoraGUI
   # RU: Диалог разговора
   class TalkScrolledWindow < Gtk::ScrolledWindow
     attr_accessor :room_id, :connset, :online_button, :snd_button, :vid_button, :talkview, \
-      :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrc, :connection, :ximagesink, \
+      :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :connection, :ximagesink, \
       :read_thread, :recv_media_queue, :send_display_handler, :recv_display_handler
 
     include PandoraGUI
@@ -6203,6 +6238,9 @@ module PandoraGUI
 
       @room_id = a_room_id
       @connset = a_connset
+      @recv_media_queue = []
+      @recv_media_pipeline = []
+      @appsrcs = []
 
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       #sw.name = title
@@ -6246,20 +6284,22 @@ module PandoraGUI
 
       @snd_button = Gtk::CheckButton.new(_('Sound'), true)
       snd_button.signal_connect('toggled') do |widget|
-        p 'Sound: '+widget.active?.to_s
+        if widget.active?
+          if init_audio_sender(true)
+            online_button.active = true
+          end
+        else
+          init_audio_sender(false, true)
+          init_audio_sender(false)
+        end
       end
       bbox.pack_start(snd_button, false, false, 0)
 
       @vid_button = Gtk::CheckButton.new(_('Video'), true)
       vid_button.signal_connect('clicked') do |widget|
-        #add_and_send_mes('video:'+widget.active?.to_s+':', node, self)
         if widget.active?
-          online_button.active = true
-          Thread.pass
           if init_video_sender(true)
-            connset[CSI_Nodes].each do |node|
-              PandoraGUI.find_or_start_connection(node, 0, self)
-            end
+            online_button.active = true
           end
         else
           init_video_sender(false, true)
@@ -6532,6 +6572,193 @@ module PandoraGUI
       end
     end
 
+    def parse_gst_string(text)
+      elements = []
+      text.strip!
+      elem = nil
+      link = false
+      i = 0
+      while i<text.size
+        j = 0
+        while (i+j<text.size) and (not ([' ', '=', "\\", '!', '/', 10.chr, 13.chr].include? text[i+j, 1]))
+          j += 1
+        end
+        #p [i, j, text[i+j, 1], text[i, j]]
+        word = nil
+        param = nil
+        val = nil
+        if i+j<text.size
+          sym = text[i+j, 1]
+          if ['=', '/'].include? sym
+            if sym=='='
+              param = text[i, j]
+              i += j
+            end
+            i += 1
+            j = 0
+            quotes = false
+            while (i+j<text.size) and (quotes or (not ([' ', "\\", '!', 10.chr, 13.chr].include? text[i+j, 1])))
+              if quotes
+                if text[i+j, 1]=='"'
+                  quotes = false
+                end
+              elsif (j==0) and (text[i+j, 1]=='"')
+                quotes = true
+              end
+              j += 1
+            end
+            sym = text[i+j, 1]
+            val = text[i, j].strip
+            val = val[1..-2] if val and (val.size>1) and (val[0]=='"') and (val[-1]=='"')
+            val.strip!
+            param.strip! if param
+            if (not param) or (param=='')
+              param = 'caps'
+              if not elem
+                word = 'capsfilter'
+                elem = elements.size
+                elements[elem] = [word, {}]
+              end
+            end
+            #puts '++  [word, param, val]='+[word, param, val].inspect
+          else
+            word = text[i, j]
+          end
+          link = true if sym=='!'
+        else
+          word = text[i, j]
+        end
+        #p 'word='+word.inspect
+        word.strip! if word
+        #p '---[word, param, val]='+[word, param, val].inspect
+        if param or val
+          elements[elem][1][param] = val if elem and param and val
+        elsif word and (word != '')
+          elem = elements.size
+          elements[elem] = [word, {}]
+        end
+        if link
+          elements[elem][2] = true if elem
+          elem = nil
+          link = false
+        end
+        #p '===elements='+elements.inspect
+        i += j+1
+      end
+      elements
+    end
+
+    def append_elems_to_pipe(elements, pipeline, prev_elem=nil, prev_pad=nil, name_suff=nil)
+      # create elements and add to pipeline
+      #p '---- begin add&link elems='+elements.inspect
+      elements.each do |elem_desc|
+        factory = elem_desc[0]
+        params = elem_desc[1]
+        if factory and (factory != '')
+          i = factory.index('.')
+          if not i
+            elemname = nil
+            elemname = factory+name_suff if name_suff
+            elem = Gst::ElementFactory.make(factory, elemname)
+            if elem
+              elem_desc[3] = elem
+              if params.is_a? Hash
+                params.each do |k, v|
+                  v0 = elem.get_property(k)
+                  #puts '[factory, elem, k, v]='+[factory, elem, v0, k, v].inspect
+                  #v = v[1,-2] if v and (v.size>1) and (v[0]=='"') and (v[-1]=='"')
+                  #puts 'v='+v.inspect
+                  if (k=='caps') or (v0.is_a? Gst::Caps)
+                    v = Gst::Caps.parse(v)
+                  elsif (v0.is_a? Integer) or (v0.is_a? Float)
+                    if v.index('.')
+                      v = v.to_f
+                    else
+                      v = v.to_i
+                    end
+                  elsif (v0.is_a? TrueClass) or (v0.is_a? FalseClass)
+                    v = ((v=='true') or (v=='1'))
+                  end
+                  #puts '[factory, elem, k, v]='+[factory, elem, v0, k, v].inspect
+                  elem.set_property(k, v)
+                  #p '----'
+                  elem_desc[4] = v if k=='name'
+                end
+              end
+              pipeline.add(elem) if pipeline
+            else
+              p 'Cannot create gstreamer element "'+factory+'"'
+            end
+          end
+        end
+      end
+      # resolve names
+      elements.each do |elem_desc|
+        factory = elem_desc[0]
+        link = elem_desc[2]
+        if factory and (factory != '')
+          #p '----'
+          #p factory
+          i = factory.index('.')
+          if i
+            name = factory[0,i]
+            #p 'name='+name
+            if name and (name != '')
+              elem_desc = elements.find{ |ed| ed[4]==name }
+              elem = elem_desc[3]
+              if not elem
+                p 'find by name in pipeline!!'
+                p elem = pipeline.get_by_name(name)
+              end
+              elem[3] = elem if elem
+              if elem
+                pad = factory[i+1, -1]
+                elem[5] = pad if pad and (pad != '')
+              end
+              #p 'elem[3]='+elem[3].inspect
+            end
+          end
+        end
+      end
+      # link elements
+      link1 = false
+      elem1 = nil
+      pad1  = nil
+      if prev_elem
+        link1 = true
+        elem1 = prev_elem
+        pad1  = prev_pad
+      end
+      elements.each_with_index do |elem_desc|
+        link2 = elem_desc[2]
+        elem2 = elem_desc[3]
+        pad2  = elem_desc[5]
+        if link1 and elem1 and elem2
+          if pad1 or pad2
+            pad1 ||= 'src'
+            apad2 = pad2
+            apad2 ||= 'sink'
+            p 'pad elem1.pad1 >> elem2.pad2 - '+[elem1, pad1, elem2, apad2].inspect
+            elem1.get_pad(pad1).link(elem2.get_pad(apad2))
+          else
+            #p 'elem1 >> elem2 - '+[elem1, elem2].inspect
+            elem1 >> elem2
+          end
+        end
+        link1 = link2
+        elem1 = elem2
+        pad1  = pad2
+      end
+      #p '===final add&link'
+      [elem1, pad1]
+    end
+
+    def add_elem_to_pipe(str, pipeline, prev_elem=nil, prev_pad=nil, name_suff=nil)
+      elements = parse_gst_string(str)
+      elem, pad = append_elems_to_pipe(elements, pipeline, prev_elem, prev_pad, name_suff)
+      [elem, pad]
+    end
+
     def link_sink_to_area(sink, area, pipeline=nil)
       res = nil
       if pipeline and (not pipeline.destroyed?)
@@ -6614,48 +6841,54 @@ module PandoraGUI
           begin
             Gst.init
             winos = (os_family == 'windows')
-            video_pipeline = Gst::Pipeline.new('pipeline1')
+            video_pipeline = Gst::Pipeline.new('spipe_v')
             $send_media_pipelines['video'] = video_pipeline
 
-            webcam = nil
+            video_src = 'v4l2src decimate=3'
+            video_src_caps = 'capsfilter caps="video/x-raw-rgb,width=320,height=240"'
+            #video_src_caps = 'capsfilter caps="video/x-raw-yuv,width=320,height=240"'
+            #video_src_caps = 'capsfilter caps="video/x-raw-yuv,width=320,height=240" ! videorate drop=10'
+            #video_src_caps = 'capsfilter caps="video/x-raw-yuv, framerate=10/1, width=320, height=240"'
+            #video_src_caps = 'capsfilter caps="width=320,height=240"'
+            video_send_tee = 'ffmpegcolorspace ! tee name=vidtee'
+            #video_send_tee = 'tee name=tee1'
+            video_view1 = 'queue ! xvimagesink force-aspect-ratio=true'
+            video_can_encoder = 'vp8enc max-latency=0.5'
+            #video_can_encoder = 'vp8enc speed=2 max-latency=2 quality=5.0 max-keyframe-distance=3 threads=5'
+            #video_can_encoder = 'ffmpegcolorspace ! videoscale ! theoraenc quality=16 ! queue'
+            #video_can_encoder = 'jpegenc quality=80'
+            #video_can_encoder = 'jpegenc'
+            #video_can_encoder = 'smokeenc keyframe=8 qmax=40'
+            #video_can_encoder = 'theoraenc bitrate=128'
+            #video_can_encoder = 'theoraenc ! oggmux'
+            #video_can_encoder = videorate ! videoscale ! x264enc bitrate=256 byte-stream=true'
+            #video_can_encoder = 'queue ! x264enc bitrate=96'
+            #video_can_encoder = 'ffenc_h263'
+            #video_can_encoder = 'h264enc'
+            video_can_sink = 'appsink emit-signals=true'
+
             if winos
-              #gst-launch dshowvideosrc ! ffmpegcolorspace ! directdrawsink
-              webcam = Gst::ElementFactory.make('dshowvideosrc', 'webcam1')
-            else
-              webcam = Gst::ElementFactory.make('v4l2src', 'webcam1')
-              webcam.decimate=3
+              video_src_win = 'dshowvideosrc'
+              video_view1_win = 'queue ! directdrawsink'
+              video_src = video_src_win
+              video_view1 = video_view1_win
             end
 
-            capsfilter = Gst::ElementFactory.make('capsfilter', 'capsfilter1')
-            capsfilter.caps = Gst::Caps.parse('video/x-raw-rgb,width=320,height=240')
+            webcam, pad = add_elem_to_pipe(video_src, video_pipeline)
+            capsfilter, pad = add_elem_to_pipe(video_src_caps, video_pipeline, webcam, pad)
+            tee, teepad = add_elem_to_pipe(video_send_tee, video_pipeline, capsfilter, pad)
+            encoder, pad = add_elem_to_pipe(video_can_encoder, video_pipeline, tee, teepad)
+            appsink, pad = add_elem_to_pipe(video_can_sink, video_pipeline, encoder, pad)
+            $webcam_xvimagesink, pad = add_elem_to_pipe(video_view1, video_pipeline, tee, teepad)
 
-            ffmpegcolorspace1 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace1')
-
-            tee = Gst::ElementFactory.make('tee', 'tee1')
-
-            vp8enc = Gst::ElementFactory.make('vp8enc', 'vp8enc1')
-            vp8enc.max_latency=0.5
-
-            appsink = Gst::ElementFactory.make('appsink', 'appsink1')
-            appsink.emit_signals = true
-            $send_media_queue ||= PandoraGUI.init_empty_queue(true)
+            $send_media_queue[1] ||= PandoraGUI.init_empty_queue(true)
             appsink.signal_connect('new-buffer') do |appsink|
               buf = appsink.pull_buffer
               if buf
                 data = buf.data
-                PandoraGUI.add_block_to_queue($send_media_queue, data, $media_buf_size)
+                PandoraGUI.add_block_to_queue($send_media_queue[1], data, $media_buf_size)
               end
             end
-
-            queue1 = Gst::ElementFactory.make('queue', 'queue1')
-
-            $webcam_xvimagesink = Gst::ElementFactory.make('xvimagesink', 'xvimagesink1');
-            $webcam_xvimagesink.sync = true
-
-            video_pipeline.add(webcam, capsfilter, ffmpegcolorspace1, tee, vp8enc, appsink, queue1, $webcam_xvimagesink)
-            webcam >> capsfilter >> ffmpegcolorspace1 >> tee
-            tee >> vp8enc >> appsink
-            tee >> queue1 >> $webcam_xvimagesink
           rescue
             $send_media_pipelines['video'] = nil
             log_message(LM_Warning, _('Video camera init exception'))
@@ -6718,43 +6951,167 @@ module PandoraGUI
         end
         #p ':::%%--R_PAUSE_STOP'
       elsif (not self.destroyed?) and area_recv and (not area_recv.destroyed?)
-        if (not recv_media_pipeline) and init
+        if (not recv_media_pipeline[1]) and init
           begin
             Gst.init
-            @recv_media_queue ||= PandoraGUI.init_empty_queue
+            @recv_media_queue[1] ||= PandoraGUI.init_empty_queue
+            dialog_id = '_v'+PandoraKernel.bytes_to_hex(room_id[0,4])
+            @recv_media_pipeline[1] = Gst::Pipeline.new('rpipe'+dialog_id)
+            vidpipe = @recv_media_pipeline[1]
 
-            dialog_id = '_'+PandoraKernel.bytes_to_hex(room_id[0,4])
+            video_can_src = 'appsrc emit-signals=false'
+            video_can_decoder = 'vp8dec'
+            #video_can_decoder = 'queue ! theoradec ! videoscale ! capsfilter caps="video/x-raw,width=320"'
+            #video_can_decoder = 'jpegdec'
+            #video_can_decoder = 'smokedec'
+            #video_can_decoder = 'oggdemux ! theoradec'
+            #video_can_decoder = 'theoradec'
+            #! video/x-h264,width=176,height=144,framerate=25/1 ! ffdec_h264 ! videorate
+            #video_can_decoder = 'x264dec'
+            video_recv_tee = 'ffmpegcolorspace ! tee'
+            #video_recv_tee = 'tee'
+            video_view2 = 'ximagesink sync=false'
+            #video_view2 = 'queue ! xvimagesink force-aspect-ratio=true sync=false'
 
-            @recv_media_pipeline = Gst::Pipeline.new('pipe'+dialog_id)
-
-            @appsrc = Gst::ElementFactory.make('appsrc', 'appsrc'+dialog_id)
-            #appsrc.caps = Gst::Caps.parse( \
-            #  'caps=video/x-vp8,width=320,height=240,framerate=30/1,pixel-aspect-ratio=1/1')
-            appsrc.emit_signals = false
-
-            vp8dec = Gst::ElementFactory.make('vp8dec', 'vp8dec'+dialog_id)
-
-            ffmpegcolorspace2 = Gst::ElementFactory.make('ffmpegcolorspace', 'ffmpegcolorspace'+dialog_id)
-
-            @ximagesink = Gst::ElementFactory.make('ximagesink', 'ximagesink'+dialog_id);
-            ximagesink.sync = false
-
-            recv_media_pipeline.add(appsrc, vp8dec, ffmpegcolorspace2, ximagesink)
-            appsrc >> vp8dec >> ffmpegcolorspace2 >> ximagesink
+            @appsrcs[1], pad = add_elem_to_pipe(video_can_src, vidpipe, nil, nil, dialog_id)
+            decoder, pad = add_elem_to_pipe(video_can_decoder, vidpipe, appsrcs[1], pad, dialog_id)
+            recv_tee, pad = add_elem_to_pipe(video_recv_tee, vidpipe, decoder, pad, dialog_id)
+            @ximagesink, pad = add_elem_to_pipe(video_view2, vidpipe, recv_tee, pad, dialog_id)
           rescue
-            @recv_media_pipeline = nil
+            @recv_media_pipeline[1] = nil
             log_message(LM_Warning, _('Video receiver init exception'))
             vid_button.active = false
             #Thread.pass
           end
         end
-        if recv_media_pipeline and can_play
+        if recv_media_pipeline[1] and can_play
           if not recv_display_handler and ximagesink
-            @recv_display_handler = link_sink_to_area(ximagesink, area_recv,  recv_media_pipeline)
+            @recv_display_handler = link_sink_to_area(ximagesink, area_recv,  recv_media_pipeline[1])
           end
-          recv_media_pipeline.play if (recv_media_pipeline.get_state != Gst::STATE_PLAYING)
+          recv_media_pipeline[1].play if (recv_media_pipeline[1].get_state != Gst::STATE_PLAYING)
           ximagesink.play if (ximagesink.get_state != Gst::STATE_PLAYING)
           #p '::::R_PLAY'
+        end
+      end
+    end
+
+
+    def init_audio_sender(start=true, just_upd_area=false)
+      audio_pipeline = $send_media_pipelines['audio']
+      #p 'init_audio_sender pipe='+audio_pipeline.inspect+'  btn='+snd_button.active?.inspect
+      if not start
+        #count = PandoraGUI.nil_send_ptrind_by_room(room_id)
+        #if audio_pipeline and (count==0) and (audio_pipeline.get_state != Gst::STATE_NULL)
+        if audio_pipeline and (audio_pipeline.get_state != Gst::STATE_NULL)
+          audio_pipeline.stop
+        end
+      elsif (not self.destroyed?) and (not snd_button.destroyed?) and snd_button.active?
+        if not audio_pipeline
+          begin
+            Gst.init
+            winos = (os_family == 'windows')
+            audio_pipeline = Gst::Pipeline.new('spipe_a')
+            $send_media_pipelines['audio'] = audio_pipeline
+
+            audio_src = 'alsasrc device=hw:0 ! audioconvert ! audioresample'
+            #audio_src = 'autoaudiosrc'
+            #audio_src = 'alsasrc'
+            #audio_src = 'audiotestsrc'
+            #audio_src = 'pulsesrc'
+            audio_src_caps = 'capsfilter caps="audio/x-raw-int,rate=8000,channels=1,depth=8,width=8"'
+            #audio_src_caps = 'queue ! capsfilter caps="audio/x-raw-int,rate=8000,depth=8"'
+            #audio_src_caps = 'capsfilter caps="audio/x-raw-int,rate=8000,depth=8"'
+            #audio_src_caps = 'capsfilter caps="audio/x-raw-int,endianness=1234,signed=true,width=16,depth=16,rate=22000,channels=1"'
+            #audio_src_caps = 'queue'
+            audio_send_tee = 'audioconvert ! tee name=audtee'
+            #audio_can_encoder = 'vorbisenc'
+            #audio_can_encoder = 'vorbisenc quality=0.0 max-bitrate=32768'
+            #audio_can_encoder = 'mulawenc'
+            audio_can_encoder = 'speexenc'
+            #audio_can_encoder = 'speexenc vad=true vbr=true'
+            #audio_can_encoder = 'speexenc vbr=1 dtx=1 nframes=4'
+            #audio_can_encoder = 'opusenc'
+            audio_can_sink = 'appsink emit-signals=true'
+
+            if winos
+              #audio_src_win = 'dshowaudiosrc'
+              #audio_view1_win = 'queue ! directdrawsink'
+              #audio_src = audio_src_win
+              #audio_view1 = audio_view1_win
+            end
+
+            micro, pad = add_elem_to_pipe(audio_src, audio_pipeline)
+            capsfilter, pad = add_elem_to_pipe(audio_src_caps, audio_pipeline, micro, pad)
+            tee, teepad = add_elem_to_pipe(audio_send_tee, audio_pipeline, capsfilter, pad)
+            audenc, pad = add_elem_to_pipe(audio_can_encoder, audio_pipeline, tee, teepad)
+            appsink, pad = add_elem_to_pipe(audio_can_sink, audio_pipeline, audenc, pad)
+
+            $send_media_queue[0] ||= PandoraGUI.init_empty_queue(true)
+            appsink.signal_connect('new-buffer') do |appsink|
+              buf = appsink.pull_buffer
+              if buf
+                #p 'GET AUDIO ['+buf.size.to_s+']'
+                data = buf.data
+                PandoraGUI.add_block_to_queue($send_media_queue[0], data, $media_buf_size)
+              end
+            end
+          rescue
+            $send_media_pipelines['audio'] = nil
+            log_message(LM_Warning, _('Microphone init exception'))
+            snd_button.active = false
+          end
+        end
+
+        if audio_pipeline
+          ptrind = PandoraGUI.set_send_ptrind_by_room(room_id)
+          count = PandoraGUI.nil_send_ptrind_by_room(nil)
+          p 'AAAAAAAAAAAAAAAAAAA count='+count.to_s
+          if (count>0) and (audio_pipeline.get_state != Gst::STATE_PLAYING)
+          #if (audio_pipeline.get_state != Gst::STATE_PLAYING)
+            audio_pipeline.play
+          end
+        end
+      end
+      audio_pipeline
+    end
+
+    def init_audio_receiver(start=true, can_play=true, init=true)
+      if not start
+        if recv_media_pipeline[0] and (recv_media_pipeline[0].get_state != Gst::STATE_NULL)
+          recv_media_pipeline[0].stop
+        end
+        p 'init_audio_receiver stop ???'
+      elsif (not self.destroyed?)
+        if (not recv_media_pipeline[0]) #and init
+          begin
+            Gst.init
+            @recv_media_queue[0] ||= PandoraGUI.init_empty_queue
+            dialog_id = '_a'+PandoraKernel.bytes_to_hex(room_id[0,4])
+            @recv_media_pipeline[0] = Gst::Pipeline.new('rpipe'+dialog_id)
+            audpipe = @recv_media_pipeline[0]
+
+            audio_can_src = 'appsrc emit-signals=false'
+            #audio_can_src = 'appsrc'
+            #audio_can_decoder = 'mulawdec'
+            audio_can_decoder = 'speexdec'
+            #audio_can_decoder = 'vorbisdec'
+            audio_recv_tee = 'audioconvert ! tee'
+            audio_phones = 'alsasink'
+            #audio_phones = 'autoaudiosink'
+            #audio_phones = 'pulsesink'
+
+            @appsrcs[0], pad = add_elem_to_pipe(audio_can_src, audpipe, nil, nil, dialog_id)
+            auddec, pad = add_elem_to_pipe(audio_can_decoder, audpipe, appsrcs[0], pad, dialog_id)
+            recv_tee, pad = add_elem_to_pipe(audio_recv_tee, audpipe, auddec, pad, dialog_id)
+            audiosink, pad = add_elem_to_pipe(audio_phones, audpipe, recv_tee, pad, dialog_id)
+          rescue
+            @recv_media_pipeline[0] = nil
+            log_message(LM_Warning, _('Audio receiver init exception'))
+            snd_button.active = false
+          end
+        end
+        if recv_media_pipeline[0] #and can_play
+          recv_media_pipeline[0].play if (recv_media_pipeline[0].get_state != Gst::STATE_PLAYING)
         end
       end
     end
