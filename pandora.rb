@@ -21,7 +21,7 @@ if $ruby_low19
   rescue Exception
     $jcode_on = false
   end
-  if RUBY_VERSION<'1.8.7'
+  if (RUBY_VERSION<'1.8.7')
     puts 'The Pandora needs Ruby 1.8.7 or higher (current '+RUBY_VERSION+')'
     exit(10)
   end
@@ -4892,7 +4892,7 @@ module PandoraGUI
   ECC_Channel3_Closed   = 3
   ECC_Channel4_Fail     = 4
 
-  EСC_Sync10_Encode     = 10
+  ECC_Sync10_Encode     = 10
 
   ECC_Bye_HelloError    = 0
   ECC_Bye_Exit          = 200
@@ -5364,12 +5364,15 @@ module PandoraGUI
             recv_buf = dialog.recv_media_queue[cannel]
           end
           if dialog and recv_buf
-            #p 'RECV AUD ('+rdata.size.to_s+')' #if cannel==0
-            #PandoraGUI.add_block_to_queue(recv_buf, rdata, $media_buf_size)
-            buf = Gst::Buffer.new
-            buf.data = rdata
-            buf.timestamp = Time.now.to_i * Gst::NSECOND
-            dialog.appsrcs[cannel].push_buffer(buf)
+            #p 'RECV AUD ('+rdata.size.to_s+')'
+            if cannel==0  #audio processes quickly
+              buf = Gst::Buffer.new
+              buf.data = rdata
+              buf.timestamp = Time.now.to_i * Gst::NSECOND
+              dialog.appsrcs[cannel].push_buffer(buf)
+            else  #video puts to queue
+              PandoraGUI.add_block_to_queue(recv_buf, rdata, $media_buf_size)
+            end
           end
         when EC_Query
           case rcode
