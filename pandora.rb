@@ -1053,7 +1053,7 @@ module PandoraKernel
                 hash = dhash if (not hash) or (hash=='')
                 if len<=0
                   case hash
-                    when 'byte'
+                    when 'byte', 'lang'
                       len = 1
                     when 'date'
                       len = 3
@@ -1307,62 +1307,62 @@ module PandoraKernel
         #p 'fval='+fval.inspect+'  hfor='+hfor.inspect
         hfor = 'integer' if (not hfor or hfor=='') and (fval.is_a? Integer)
         hfor = 'hash' if ((hfor=='') or (hfor=='text')) and (fval.is_a? String) and (fval.size>20)
-        if ['integer', 'word', 'byte'].include? hfor
+        if ['integer', 'word', 'byte', 'lang'].include? hfor
           if fval.is_a? String
             fval = fval.to_i
           end
           res = fval
-        else
-          if hfor == 'date'
-            #dmy = fval.split('.')   # D.M.Y
-            # convert DMY to time from 1970 in days
-            #p "date="+[dmy[2].to_i, dmy[1].to_i, dmy[0].to_i].inspect
-            #p Time.now.to_a.inspect
+        elsif hfor == 'date'
+          #dmy = fval.split('.')   # D.M.Y
+          # convert DMY to time from 1970 in days
+          #p "date="+[dmy[2].to_i, dmy[1].to_i, dmy[0].to_i].inspect
+          #p Time.now.to_a.inspect
 
-            #vals = Time.now.to_a
-            #y, m, d = [vals[5], vals[4], vals[3]]  #current day
-            #p [y, m, d]
-            #expire = Time.local(y+5, m, d)
-            #p expire
-            #p '-------'
-            #p [dmy[2].to_i, dmy[1].to_i, dmy[0].to_i]
+          #vals = Time.now.to_a
+          #y, m, d = [vals[5], vals[4], vals[3]]  #current day
+          #p [y, m, d]
+          #expire = Time.local(y+5, m, d)
+          #p expire
+          #p '-------'
+          #p [dmy[2].to_i, dmy[1].to_i, dmy[0].to_i]
 
-            #res = Time.local(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i)
-            #p res
-            res = 0
-            if fval.is_a? Integer
-              res = Time.at(fval)
-            else
-              res = Time.parse(fval)
-            end
-            res = res.to_i / (24*60*60)
-            # convert date to 0 year epoch
-            res += (1970-1900)*365
-            p res.to_s(16)
-            #res = [t].pack('N')
+          #res = Time.local(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i)
+          #p res
+          res = 0
+          if fval.is_a? Integer
+            res = Time.at(fval)
           else
-            if fval.is_a? Integer
-              fval = PandoraKernel.bigint_to_bytes(fval)
-            elsif fval.is_a? Float
-              fval = fval.to_s
-            end
-            case hfor
-              when 'sha1', 'hash'
-                res = AsciiString.new
-                #res = ''
-                #res.force_encoding('ASCII-8BIT')
-                res << Digest::SHA1.digest(fval)
-              when 'md5'
-                res = AsciiString.new
-                #res = ''
-                #res.force_encoding('ASCII-8BIT')
-                res << Digest::MD5.digest(fval)
-              when 'crc16'
-                res = Zlib.crc32(fval) #if fval.is_a? String
-                res = (res & 0xFFFF) ^ (res >> 16)
-              when 'crc32'
-                res = Zlib.crc32(fval) #if fval.is_a? String
-            end
+            res = Time.parse(fval)
+          end
+          res = res.to_i / (24*60*60)
+          # convert date to 0 year epoch
+          res += (1970-1900)*365
+          #p res.to_s(16)
+          #res = [t].pack('N')
+        else
+          if fval.is_a? Integer
+            fval = PandoraKernel.bigint_to_bytes(fval)
+          elsif fval.is_a? Float
+            fval = fval.to_s
+          end
+          case hfor
+            when 'sha1', 'hash'
+              res = AsciiString.new
+              #res = ''
+              #res.force_encoding('ASCII-8BIT')
+              res << Digest::SHA1.digest(fval)
+            when 'phash'
+              res = fval[2..-1]
+            when 'md5'
+              res = AsciiString.new
+              #res = ''
+              #res.force_encoding('ASCII-8BIT')
+              res << Digest::MD5.digest(fval)
+            when 'crc16'
+              res = Zlib.crc32(fval) #if fval.is_a? String
+              res = (res & 0xFFFF) ^ (res >> 16)
+            when 'crc32'
+              res = Zlib.crc32(fval) #if fval.is_a? String
           end
         end
         if not res
@@ -1403,9 +1403,6 @@ module PandoraKernel
       #res.force_encoding('ASCII-8BIT')
       res = AsciiString.new(res)
     end
-    def objhash(lang=0)
-      [kind, lang].pack('CC')
-    end
     def show_panhash(val, prefix=true)
       res = ''
       if prefix
@@ -1425,13 +1422,16 @@ module PandoraKernel
     end
     def panhash(values, lang=0, prefix=true, hexview=false)
       res = AsciiString.new
-      res << objhash(lang) if prefix
+      if prefix
+        res << [kind,lang].pack('CC')
+      end
       if values.is_a? Hash
         values0 = values
         values = {}
         values0.each {|k,v| values[k.to_s] = v}  # sym key to string key
       end
-      panhash_pattern.each_with_index do |pat, ind|
+      pattern = panhash_pattern
+      pattern.each_with_index do |pat, ind|
         fname = pat[0]
         fval = nil
         if values.is_a? Hash
@@ -3531,9 +3531,11 @@ module PandoraGUI
 
             time_now = time_now.to_i
 
-            values = {:kind=>type_klen, :rights=>rights, :expire=>expire, \
+            panstate = PSF_Support
+
+            values = {:panstate=>panstate, :kind=>type_klen, :rights=>rights, :expire=>expire, \
               :creator=>creator, :created=>time_now, :cipher=>0, :body=>pub, :modified=>time_now}
-            panhash = key_model.panhash(values)
+            panhash = key_model.panhash(values, rights)
             values['panhash'] = panhash
             key_vec[KV_Panhash] = panhash
 
@@ -4188,7 +4190,7 @@ module PandoraGUI
         panhash0 = panobject.namesvalues['panhash']
         lang = panhash0[1].ord if panhash0 and panhash0.size>1
         lang ||= 0
-        panhash0 = panobject.panhash(sel[0], lang)
+        #panhash0 = panobject.panhash(sel[0], lang)
         panstate = panobject.namesvalues['panstate']
         panstate ||= 0
         if (panobject.is_a? PandoraModel::Created)
@@ -4340,27 +4342,28 @@ module PandoraGUI
           lang = 5 if (not lang.is_a? Integer) or (lang<0) or (lang>255)
 
           time_now = Time.now.to_i
+          if (panobject.is_a? PandoraModel::Created)
+            flds_hash['created'] = created0 if created0
+            if not edit
+              flds_hash['created'] = time_now
+              creator = current_user_or_key(true)
+              flds_hash['creator'] = creator
+            end
+          end
           flds_hash['modified'] = time_now
           panstate = 0
           panstate = panstate | PSF_Support if dialog.support_btn.active?
           flds_hash['panstate'] = panstate
-          if (panobject.is_a? PandoraModel::Created)
-            flds_hash['created'] = created0 if created0
-            flds_hash['creator'] = creator0 if creator0
-            creator = current_user_or_key(true)
-            #p '222 created0, creator0, creator='+[created0, creator0, creator].inspect
-            flds_hash['creator'] = creator if (creator != creator0)
-          end
-          #p '---------flds_hash='+flds_hash.inspect
-          panhash = panobject.panhash(flds_hash, lang)
-          #p '==panhash, panhash0='+[panhash, panhash0].inspect
-          if (panobject.is_a? PandoraModel::Created) and (panhash != panhash0)
-            #p 'SET_CREATED!!!'
-            flds_hash['created'] = time_now
-            panhash = panobject.panhash(flds_hash, lang)
+          if (panobject.is_a? PandoraModel::Key)
+            lang = flds_hash['rights'].to_i
           end
 
+          panhash = panobject.panhash(flds_hash, lang)
           flds_hash['panhash'] = panhash
+
+          if (panobject.is_a? PandoraModel::Key) and (flds_hash['kind'].to_i == KT_Priv) and edit
+            flds_hash['panhash'] = panhash0
+          end
 
           filter = nil
           filter = 'id='+id.to_s if edit
@@ -5212,7 +5215,7 @@ module PandoraGUI
           @sbuf = PandoraKernel.rubyobj_to_pson_elem(panhashes)
         else
           @scode = PandoraKernel.kind_from_panhash(panhashes)
-          @sbuf = panhashes[1,-1]
+          @sbuf = panhashes[1..-1]
         end
       end
 
@@ -5279,27 +5282,6 @@ module PandoraGUI
                 else
                   err_scmd('Cannot init your key')
                 end
-
-
-                #scmd=EC_Init
-                #scode=ECC_Init3_PhraseSign
-                #aphrase="Yyyzzzzzz"
-                #sbuf=aphrase
-=begin
-              elsif (rcode==ECC_Init3_PhraseSign) and (stage>=ST_Signed)
-                psign=rdata
-                scmd=EC_Init
-                scode=ECC_Init4_Permission
-                aperm="011101"
-                sbuf=aperm
-              elsif (rcode==ECC_Init4_Permission) and (stage>=ST_Protocoled)
-                pperm=rdata
-                #scmd=EC_Query
-                #scode=ECC_Query0_Kinds
-                scmd=EC_Sync
-                scode=0
-                sbuf=''
-=end
               else
                 err_scmd('Wrong stage for rcode')
               end
@@ -5374,6 +5356,14 @@ module PandoraGUI
               PandoraGUI.add_block_to_queue(recv_buf, rdata, $media_buf_size)
             end
           end
+        when EC_Request
+          panhashes = nil
+          if rcode==0
+            panhashes = PandoraKernel.pson_elem_to_rubyobj(panhashes)
+          else
+            panhashes = [rcode].pack['C']+rdata
+          end
+          p log_mes+'EC_Request panhashes='+panhashes.inspect
         when EC_Query
           case rcode
             when ECC_Query0_Kinds

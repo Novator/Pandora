@@ -207,7 +207,7 @@
       <kind name="Kind" type="Byte" />
       <rights name="Rights" type="Byte" />
       <expire name="Expire" type="Time" />
-      <creator hash="1:panhash(15)" />
+      <creator hash="1:phash(12)" />
       <created hash="2:integer(4)" />
       <cipher name="Ciphered" type="Word" />
       <body name="Body" type="Blob" hash="3:crc32(4)" />
