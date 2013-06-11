@@ -85,9 +85,9 @@
     </Word>
 
     <Article name="Article" kind="14" parent="Created">
-      <name name="Name" type="String" size="512" hash="1:hash(6)" />
-      <type name="Type" type="Word" />
-      <text name="Text" type="Text" hash="2:hash(14)" />
+      <name name="Name" type="String" size="512" hash="1:hash(18)" />
+      <type name="Type" type="Word" hash="2:word(2)" />
+      <text name="Text" type="Text" gist="1" />
       <hash name="SHA1" type="String" size="20" />
       <size name="Size" type="Integer" />
     </Article>

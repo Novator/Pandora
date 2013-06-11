@@ -1705,7 +1705,7 @@ module PandoraGUI
       file = File.open(File.join($pandora_root_dir, 'LICENSE.TXT'), 'r')
       gpl_text = '================='+_('Full text')+" LICENSE.TXT==================\n"+file.read
       file.close
-    rescue Exception
+    rescue
       gpl_text = _('Full text is in the file')+' LICENSE.TXT.'
     end
     dlg.license = _("Pandora is licensed under GNU GPLv2.\n"+
@@ -1867,7 +1867,7 @@ module PandoraGUI
     begin
       btn.tooltip_text = btn.label
       new_api = true
-    rescue Exception
+    rescue
     end
     btn.signal_connect('clicked') do |*args|
       yield(*args) if block_given?
@@ -4222,7 +4222,7 @@ module PandoraGUI
           end
           dialog.destroy
         end
-      elsif action=='Talk'
+      elsif action=='Dialog'
         show_talk_dialog(panhash0)
       else  # Edit or Insert
         edit = ((not new_act) and (action != 'Copy'))
@@ -4614,8 +4614,8 @@ module PandoraGUI
     menu.append(create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete']))
     menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert']))
     menu.append(create_menu_item(['-', nil, nil]))
-    menu.append(create_menu_item(['Talk', Gtk::Stock::MEDIA_PLAY, _('Talk'), '<control>T']))
-    menu.append(create_menu_item(['Express', Gtk::Stock::JUMP_TO, _('Express'), '<control>BackSpace']))
+    menu.append(create_menu_item(['Dialog', Gtk::Stock::MEDIA_PLAY, _('Dialog'), '<control>D']))
+    menu.append(create_menu_item(['Opinion', Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace']))
     menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N']))
     menu.append(create_menu_item(['-', nil, nil]))
     menu.append(create_menu_item(['Clone', Gtk::Stock::CONVERT, _('Recreate the table')]))
@@ -5364,8 +5364,12 @@ module PandoraGUI
             recv_buf = dialog.recv_media_queue[cannel]
           end
           if dialog and recv_buf
-            p 'RECV AUD ('+rdata.size.to_s+')' #if cannel==0
-            PandoraGUI.add_block_to_queue(recv_buf, rdata, $media_buf_size)
+            #p 'RECV AUD ('+rdata.size.to_s+')' #if cannel==0
+            #PandoraGUI.add_block_to_queue(recv_buf, rdata, $media_buf_size)
+            buf = Gst::Buffer.new
+            buf.data = rdata
+            buf.timestamp = Time.now.to_i * Gst::NSECOND
+            dialog.appsrcs[cannel].push_buffer(buf)
           end
         when EC_Query
           case rcode
@@ -6535,11 +6539,11 @@ module PandoraGUI
         end
         timer_setted = false
         if (not self.read_thread) and (curpage == self)
-          color = $window.modifier_style.fg(Gtk::STATE_NORMAL)
+          color = $window.modifier_style.text(Gtk::STATE_NORMAL)
           curcolor = tab_widget.label.modifier_style.fg(Gtk::STATE_ACTIVE)
-          if (color != curcolor)
+          if curcolor and (color != curcolor)
             timer_setted = true
-            self.read_thread = Thread.new do
+            self.read_thread = Thread.new(color) do |color|
               sleep(0.3)
               if (not curpage.destroyed?) and (not curpage.editbox.destroyed?)
                 curpage.editbox.grab_focus
@@ -6550,8 +6554,8 @@ module PandoraGUI
               end
               if (not self.destroyed?) and (not tab_widget.destroyed?) \
               and (not tab_widget.label.destroyed?)
-                tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
-                tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
+                tab_widget.label.modify_fg(Gtk::STATE_NORMAL, nil)
+                tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, nil)
                 self.read_thread = nil
               end
             end
@@ -6858,6 +6862,12 @@ module PandoraGUI
             #video_can_encoder = 'ffmpegcolorspace ! videoscale ! theoraenc quality=16 ! queue'
             #video_can_encoder = 'jpegenc quality=80'
             #video_can_encoder = 'jpegenc'
+            #video_can_encoder = 'mimenc'
+            #video_can_encoder = 'mpeg2enc'
+            #video_can_encoder = 'diracenc'
+            #video_can_encoder = 'xvidenc'
+            #video_can_encoder = 'ffenc_flashsv'
+            #video_can_encoder = 'ffenc_flashsv2'
             #video_can_encoder = 'smokeenc keyframe=8 qmax=40'
             #video_can_encoder = 'theoraenc bitrate=128'
             #video_can_encoder = 'theoraenc ! oggmux'
@@ -6889,9 +6899,11 @@ module PandoraGUI
                 PandoraGUI.add_block_to_queue($send_media_queue[1], data, $media_buf_size)
               end
             end
-          rescue
+          rescue => err
             $send_media_pipelines['video'] = nil
-            log_message(LM_Warning, _('Video camera init exception'))
+            mes = 'Camera init exception'
+            log_message(LM_Warning, _(mes))
+            puts mes+': '+err.message
             vid_button.active = false
           end
         end
@@ -6961,13 +6973,19 @@ module PandoraGUI
 
             video_can_src = 'appsrc emit-signals=false'
             video_can_decoder = 'vp8dec'
+            #video_can_decoder = 'xviddec'
+            #video_can_decoder = 'ffdec_flashsv'
+            #video_can_decoder = 'ffdec_flashsv2'
             #video_can_decoder = 'queue ! theoradec ! videoscale ! capsfilter caps="video/x-raw,width=320"'
             #video_can_decoder = 'jpegdec'
+            #video_can_decoder = 'schrodec'
             #video_can_decoder = 'smokedec'
             #video_can_decoder = 'oggdemux ! theoradec'
             #video_can_decoder = 'theoradec'
             #! video/x-h264,width=176,height=144,framerate=25/1 ! ffdec_h264 ! videorate
             #video_can_decoder = 'x264dec'
+            #video_can_decoder = 'mpeg2dec'
+            #video_can_decoder = 'mimdec'
             video_recv_tee = 'ffmpegcolorspace ! tee'
             #video_recv_tee = 'tee'
             video_view2 = 'ximagesink sync=false'
@@ -6977,9 +6995,11 @@ module PandoraGUI
             decoder, pad = add_elem_to_pipe(video_can_decoder, vidpipe, appsrcs[1], pad, dialog_id)
             recv_tee, pad = add_elem_to_pipe(video_recv_tee, vidpipe, decoder, pad, dialog_id)
             @ximagesink, pad = add_elem_to_pipe(video_view2, vidpipe, recv_tee, pad, dialog_id)
-          rescue
+          rescue => err
             @recv_media_pipeline[1] = nil
-            log_message(LM_Warning, _('Video receiver init exception'))
+            mes = 'Video receiver init exception'
+            log_message(LM_Warning, _(mes))
+            puts mes+': '+err.message
             vid_button.active = false
             #Thread.pass
           end
@@ -6994,7 +7014,6 @@ module PandoraGUI
         end
       end
     end
-
 
     def init_audio_sender(start=true, just_upd_area=false)
       audio_pipeline = $send_media_pipelines['audio']
@@ -7025,9 +7044,21 @@ module PandoraGUI
             #audio_src_caps = 'queue'
             audio_send_tee = 'audioconvert ! tee name=audtee'
             #audio_can_encoder = 'vorbisenc'
-            #audio_can_encoder = 'vorbisenc quality=0.0 max-bitrate=32768'
+            audio_can_encoder = 'vorbisenc quality=0.0'
+            #audio_can_encoder = 'vorbisenc quality=0.0 bitrate=16000 managed=true' #8192
+            #audio_can_encoder = 'vorbisenc quality=0.0 max-bitrate=32768' #32768  16384  65536
             #audio_can_encoder = 'mulawenc'
-            audio_can_encoder = 'speexenc'
+            #audio_can_encoder = 'lamemp3enc bitrate=8 encoding-engine-quality=speed fast-vbr=true'
+            #audio_can_encoder = 'lamemp3enc bitrate=8 target=bitrate mono=true cbr=true'
+            #audio_can_encoder = 'speexenc'
+            #audio_can_encoder = 'voaacenc'
+            #audio_can_encoder = 'faac'
+            #audio_can_encoder = 'a52enc'
+            #audio_can_encoder = 'voamrwbenc'
+            #audio_can_encoder = 'adpcmenc'
+            #audio_can_encoder = 'amrnbenc'
+            #audio_can_encoder = 'flacenc'
+            #audio_can_encoder = 'ffenc_nellymoser'
             #audio_can_encoder = 'speexenc vad=true vbr=true'
             #audio_can_encoder = 'speexenc vbr=1 dtx=1 nframes=4'
             #audio_can_encoder = 'opusenc'
@@ -7055,9 +7086,11 @@ module PandoraGUI
                 PandoraGUI.add_block_to_queue($send_media_queue[0], data, $media_buf_size)
               end
             end
-          rescue
+          rescue => err
             $send_media_pipelines['audio'] = nil
-            log_message(LM_Warning, _('Microphone init exception'))
+            mes = 'Microphone init exception'
+            log_message(LM_Warning, _(mes))
+            puts mes+': '+err.message
             snd_button.active = false
           end
         end
@@ -7092,21 +7125,33 @@ module PandoraGUI
 
             audio_can_src = 'appsrc emit-signals=false'
             #audio_can_src = 'appsrc'
+            audio_can_decoder = 'vorbisdec'
             #audio_can_decoder = 'mulawdec'
-            audio_can_decoder = 'speexdec'
-            #audio_can_decoder = 'vorbisdec'
+            #audio_can_decoder = 'speexdec'
+            #audio_can_decoder = 'decodebin'
+            #audio_can_decoder = 'decodebin2'
+            #audio_can_decoder = 'flump3dec'
+            #audio_can_decoder = 'amrwbdec'
+            #audio_can_decoder = 'adpcmdec'
+            #audio_can_decoder = 'amrnbdec'
+            #audio_can_decoder = 'voaacdec'
+            #audio_can_decoder = 'faad'
+            #audio_can_decoder = 'ffdec_nellymoser'
+            #audio_can_decoder = 'flacdec'
             audio_recv_tee = 'audioconvert ! tee'
-            audio_phones = 'alsasink'
-            #audio_phones = 'autoaudiosink'
+            #audio_phones = 'alsasink'
+            audio_phones = 'autoaudiosink'
             #audio_phones = 'pulsesink'
 
             @appsrcs[0], pad = add_elem_to_pipe(audio_can_src, audpipe, nil, nil, dialog_id)
             auddec, pad = add_elem_to_pipe(audio_can_decoder, audpipe, appsrcs[0], pad, dialog_id)
             recv_tee, pad = add_elem_to_pipe(audio_recv_tee, audpipe, auddec, pad, dialog_id)
             audiosink, pad = add_elem_to_pipe(audio_phones, audpipe, recv_tee, pad, dialog_id)
-          rescue
+          rescue => err
             @recv_media_pipeline[0] = nil
-            log_message(LM_Warning, _('Audio receiver init exception'))
+            mes = 'Audio receiver init exception'
+            log_message(LM_Warning, _(mes))
+            puts mes+': '+err.message
             snd_button.active = false
           end
         end
@@ -7178,7 +7223,7 @@ module PandoraGUI
           close_btn = tab.children[tab.children.size-1].children[0]
           close_btn.clicked
         end
-      when 'Create','Edit','Delete','Copy', 'Talk'
+      when 'Create','Edit','Delete','Copy', 'Dialog'
         if $notebook.page >= 0
           sw = $notebook.get_nth_page($notebook.page)
           treeview = sw.children[0]
@@ -7193,13 +7238,14 @@ module PandoraGUI
         end
       when 'Listen'
         start_or_stop_listen
-      when 'Connect'
-        if $notebook.page >= 0
-          sw = $notebook.get_nth_page($notebook.page)
-          treeview = sw.children[0]
-          node = define_node_by_current_record(treeview)
-          find_or_start_connection(node)
-        end
+      #when 'Connect'
+      #  if $notebook.page >= 0
+      #    sw = $notebook.get_nth_page($notebook.page)
+      #    treeview = sw.children[0]
+      #    show_talk_dialog(panhash0)
+      #    node = define_node_by_current_record(treeview)
+      #    find_or_start_connection(node)
+      #  end
       when 'Hunt'
         hunt_nodes
       when 'Authorize'
