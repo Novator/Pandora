@@ -3,9 +3,9 @@
   <World>
 
     <Person order="1">
-      <first_name pos="1" fsize="20" />
-      <last_name pos="+1" fsize="25" />
-      <birth_day pos="|+1" />
+      <first_name pos="1" fsize="20" required="2" />
+      <last_name pos="+1" fsize="25" required="2" />
+      <birth_day pos="|+1" required="8" />
       <birth_place pos="+0.10up" />
       <father_name pos="|up+0.3" />
       <mother_name pos="up+0.1" />
@@ -28,7 +28,7 @@
     <Relation>
       <first view="panhash" />
       <second view="panhash" />
-      <type view="byte" />
+      <kind view="byte" />
     </Relation>
 
   </World>

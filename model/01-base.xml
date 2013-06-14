@@ -100,7 +100,7 @@
     <Relation name="Relation" kind="16" lang="no">
       <first name="First object" type="Panhash" hash="1:hash(9)" />
       <second name="Second object" type="Panhash" hash="2:hash(9)" />
-      <type name="Type" type="Byte" hash="2:byte(1)" />
+      <kind name="Kind" type="Byte" hash="2:byte(1)" />
     </Relation>
 
     <Opinion name="Opinion" kind="17">
@@ -114,8 +114,8 @@
   </World>
   <Business name="Business">
 
-    <Member parent="Person" table="persons" >
-    </Member>
+    <Partner parent="Person" table="persons">
+    </Partner>
 
     <Company parent="Community"  table="communities">
     </Company>
@@ -194,7 +194,7 @@
   </Region>
   <Pandora lang="no">
 
-    <Parameter name="Parameter" kind="220">
+    <Parameter name="Parameter" kind="220" parent="Created">
       <name name="Name" type="String" size="96" hash="1:hash(18)" />
       <desc name="Description" type="String" size="128" />
       <value name="Value" type="Blob" />

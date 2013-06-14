@@ -101,7 +101,7 @@
     <Relation name.ru="Связь|Связи">
       <first name.ru="Первый объект" />
       <second name.ru="Второй объект" />
-      <type name.ru="Тип" />
+      <kind name.ru="Вид" />
     </Relation>
 
     <Opinion name.ru="Мнение|Мнения">

@@ -794,6 +794,8 @@ module PandoraKernel
         @def_fields = []
         @def_fields_expanded = false
         @panhash_pattern = nil
+        @panhash_ind = nil
+        @modified_ind = nil
       end
       def ider
         @ider
@@ -812,6 +814,12 @@ module PandoraKernel
       end
       def sort=(x)
         @sort = x
+      end
+      def panhash_ind
+        @panhash_ind
+      end
+      def modified_ind
+        @modified_ind
       end
       #def lang
       #  @lang
@@ -920,6 +928,15 @@ module PandoraKernel
         #p 'name,type,fsize,view,len='+[fd[FI_Name], fd[FI_Type], fd[FI_FSize], view, len].inspect
         [view, len]
       end
+      def tab_fields
+        if not @last_tab_fields
+          @last_tab_fields = repositories.get_tab_fields(self, tables[0])
+          @last_tab_fields.each do |x|
+            x[TI_Desc] = field_des(x[TI_Name])
+          end
+        end
+        @last_tab_fields
+      end
       def expand_def_fields_to_parent
         if not @def_fields_expanded
           @def_fields_expanded = true
@@ -995,6 +1012,10 @@ module PandoraKernel
             end
             df.sort! {|a,b| a[FI_Index]<=>b[FI_Index] }
           end
+          #i = tab_fields.index{ |tf| tf[0]=='panhash'}
+          #@panhash_ind = i if i
+          #i = tab_fields.index{ |tf| tf[0]=='modified'}
+          #@modified_ind = i if i
           @def_fields = df
         end
       end
@@ -1151,7 +1172,7 @@ module PandoraKernel
       def name=(x)
         @name = x
       end
-      def BasePanobject.repositories
+      def repositories
         $repositories
       end
     end
@@ -1211,6 +1232,9 @@ module PandoraKernel
       _(PandoraKernel.get_name_or_names(name, true))
     end
     attr_accessor :namesvalues
+    def tab_fields
+      self.class.tab_fields
+    end
     def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil, limit=nil)
       res = self.class.repositories.get_tab_select(self, self.class.tables[0], afilter, fields, sort, limit)
       if set_namesvalues and res[0].is_a? Array
@@ -1236,15 +1260,6 @@ module PandoraKernel
         end
       end
       res
-    end
-    def tab_fields
-      if not @last_tab_fields
-        @last_tab_fields = self.class.repositories.get_tab_fields(self, self.class.tables[0])
-        @last_tab_fields.each do |x|
-          x[TI_Desc] = field_des(x[TI_Name])
-        end
-      end
-      @last_tab_fields
     end
     def field_val(fld_name, values)
       res = nil
@@ -1458,6 +1473,21 @@ module PandoraKernel
           if fname
             fval = namesvalues[fname]
             res[fname] = fval
+          end
+        end
+      end
+      res
+    end
+    def clear_excess_fields(row)
+      #row.delete_at(0)
+      #row.delete_at(self.class.panhash_ind) if self.class.panhash_ind
+      #row.delete_at(self.class.modified_ind) if self.class.modified_ind
+      #row
+      res = {}
+      if namesvalues.is_a? Hash
+        namesvalues.each do |k, v|
+          if not (['id', 'panhash', 'modified'].include? k)
+            res[k] = v
           end
         end
       end
@@ -1838,8 +1868,9 @@ module PandoraGUI
         @def_widget.grab_focus
       end
       while (not destroyed?) and (@response == 0) do
-        Gtk.main_iteration
+        #Gtk.main_iteration
         #sleep 0.03
+        Thread.pass
       end
       if not destroyed?
         if (@response==1)
@@ -2798,6 +2829,7 @@ module PandoraGUI
   KV_Pass  = 5
   KV_Panhash = 6
   KV_Creator = 7
+  KV_Trust   = 8
 
   def self.sym_recrypt(data, encode=true, cipher_hash=nil, cipher_key=nil)
     #p 'sym_recrypt: [cipher_hash, cipher_key]='+[cipher_hash, cipher_key].inspect
@@ -3014,7 +3046,7 @@ module PandoraGUI
       else
         data = AsciiString.new(data)
         #data.force_encoding('ASCII-8BIT')
-        data = pson_elem_to_rubyobj(data)[0]   # pson to array
+        data, len = pson_elem_to_rubyobj(data)   # pson to array
         #p 'decrypt: data='+data.inspect
         key.decrypt
         #p 'DDDDDDEEEEECR'
@@ -3444,9 +3476,17 @@ module PandoraGUI
             passwd = nil
             if cipher != 0
               dialog = AdvancedDialog.new(_('Key init'))
+              dialog.set_default_size(400, 190)
 
               vbox = Gtk::VBox.new
               dialog.viewport.add(vbox)
+
+              label = Gtk::Label.new(_('Key'))
+              vbox.pack_start(label, false, false, 2)
+              entry = Gtk::Entry.new
+              entry.text = PandoraKernel.bytes_to_hex(last_auth_key)
+              entry.editable = false
+              vbox.pack_start(entry, false, false, 2)
 
               label = Gtk::Label.new(_('Password'))
               vbox.pack_start(label, false, false, 2)
@@ -3936,29 +3976,29 @@ module PandoraGUI
     [count, rate, querist_rate]
   end
 
-  # Realtion types
-  # RU: Типы связей
-  RT_Equal    = 0
-  RT_Similar  = 1
-  RT_Antipod  = 2
-  RT_PartOf   = 3
-  RT_Cause    = 4
-  RT_Follow   = 5
-  RT_Ignore   = 6
-  RT_CameFrom = 7
-  RT_Public   = 8
-  #...
-  RT_Unknown = 255
+  # Realtion kinds
+  # RU: Виды связей
+  RK_Unknown  = 0
+  RK_Equal    = 1
+  RK_Similar  = 2
+  RK_Antipod  = 3
+  RK_PartOf   = 4
+  RK_Cause    = 5
+  RK_Follow   = 6
+  RK_Ignore   = 7
+  RK_CameFrom = 8
+  RK_MinPublic = 235
+  RK_MaxPublic = 255
 
   # Relation is symmetric
   # RU: Связь симметрична
   def self.relation_is_symmetric(relation)
-    res = [RT_Equal, RT_Similar, RT_Unknown].include? relation
+    res = [RK_Equal, RK_Similar, RK_Unknown].include? relation
   end
 
   # Check, create or delete relation between two panobjects
   # RU: Проверяет, создаёт или удаляет связь между двумя объектами
-  def self.act_relation(panhash1, panhash2, rel_type=RT_Unknown, act=:check, creator=true, init=false)
+  def self.act_relation(panhash1, panhash2, rel_kind=RK_Unknown, act=:check, creator=true, init=false)
     res = nil
     if panhash1 or panhash2
       if not (panhash1 and panhash2)
@@ -3972,15 +4012,15 @@ module PandoraGUI
         end
       end
       if panhash1 and panhash2 #and (panhash1 != panhash2)
-        #p 'relat [p1,p2,t]='+[PandoraKernel.bytes_to_hex(panhash1), PandoraKernel.bytes_to_hex(panhash2), rel_type].inspect
+        #p 'relat [p1,p2,t]='+[PandoraKernel.bytes_to_hex(panhash1), PandoraKernel.bytes_to_hex(panhash2), rel_kind.inspect
         relation_model = model_gui('Relation')
         if relation_model
-          filter = {:first => panhash1, :second => panhash2, :type => rel_type}
+          filter = {:first => panhash1, :second => panhash2, :kind => rel_kind}
           filter2 = nil
-          if relation_is_symmetric(rel_type) and (panhash1 != panhash2)
-            filter2 = {:first => panhash2, :second => panhash1, :type => rel_type}
+          if relation_is_symmetric(rel_kind) and (panhash1 != panhash2)
+            filter2 = {:first => panhash2, :second => panhash1, :kind => rel_kind}
           end
-          #p 'relat2 [p1,p2,t]='+[PandoraKernel.bytes_to_hex(panhash1), PandoraKernel.bytes_to_hex(panhash2), rel_type].inspect
+          #p 'relat2 [p1,p2,t]='+[PandoraKernel.bytes_to_hex(panhash1), PandoraKernel.bytes_to_hex(panhash2), rel_kind].inspect
           #p 'act='+act.inspect
           if (act != :delete)
             #p 'create'
@@ -4196,7 +4236,7 @@ module PandoraGUI
         if (panobject.is_a? PandoraModel::Created)
           created0 = panobject.namesvalues['created']
           creator0 = panobject.namesvalues['creator']
-          p 'created0, creator0='+[created0, creator0].inspect
+          #p 'created0, creator0='+[created0, creator0].inspect
         end
       end
       #p sel
@@ -4250,7 +4290,7 @@ module PandoraGUI
         dialog.icon = panobjecticon if panobjecticon
 
         if edit
-          pub_exist = act_relation(nil, panhash0, RT_Public, :check)
+          pub_exist = act_relation(nil, panhash0, RK_MaxPublic, :check)
           #count, rate, querist_rate = rate_of_panobj(panhash0)
           trust = nil
           res = trust_of_panobject(panhash0)
@@ -4370,7 +4410,7 @@ module PandoraGUI
           res = panobject.update(flds_hash, nil, filter, true)
           if res
             filter ||= { :panhash => panhash, :modified => time_now }
-            sel = panobject.select(filter, false)
+            sel = panobject.select(filter, true)
             if sel[0]
               #p 'panobject.namesvalues='+panobject.namesvalues.inspect
               #p 'panobject.matter_fields='+panobject.matter_fields.inspect
@@ -4405,11 +4445,11 @@ module PandoraGUI
 
               if not dialog.public_btn.inconsistent?
                 #p 'panhash,panhash0='+[panhash, panhash0].inspect
-                act_relation(nil, panhash0, RT_Public, :delete, true, true) if panhash != panhash0
+                act_relation(nil, panhash0, RK_MaxPublic, :delete, true, true) if panhash != panhash0
                 if dialog.public_btn.active?
-                  act_relation(nil, panhash, RT_Public, :create, true, true)
+                  act_relation(nil, panhash, RK_MaxPublic, :create, true, true)
                 else
-                  act_relation(nil, panhash, RT_Public, :delete, true, true)
+                  act_relation(nil, panhash, RK_MaxPublic, :delete, true, true)
                 end
               end
             end
@@ -4489,20 +4529,20 @@ module PandoraGUI
     panobject = panobject_class.new
     sel = panobject.select(nil, false, nil, panobject.sort)
     store = Gtk::ListStore.new(Integer)
-    view_col = nil
-    view_col = sel[0].size if panobject.ider=='Parameter'
-    sel.each_with_index do |row, i|
+    param_view_col = nil
+    param_view_col = sel[0].size if panobject.ider=='Parameter'
+    sel.each do |row|
       iter = store.append
       id = row[0].to_i
       iter[0] = id
-      if view_col
+      if param_view_col
         sel2 = panobject.select('id='+id.to_s, false, 'type, setting')
         type = sel2[0][0]
         setting = sel2[0][1]
         ps = decode_param_setting(setting)
         view = ps['view']
         view ||= pantype_to_view(type)
-        row[view_col] = view
+        row[param_view_col] = view
       end
     end
     treeview = SubjTreeView.new(store)
@@ -4550,8 +4590,8 @@ module PandoraGUI
             fdesc = panobject.tab_fields[col][TI_Desc]
             if fdesc.is_a? Array
               view = nil
-              if view_col and (fdesc[FI_Id]=='value')
-                view = row[view_col] if row
+              if param_view_col and (fdesc[FI_Id]=='value')
+                view = row[param_view_col] if row
               else
                 view = fdesc[FI_View]
               end
@@ -4620,6 +4660,7 @@ module PandoraGUI
     menu.append(create_menu_item(['Dialog', Gtk::Stock::MEDIA_PLAY, _('Dialog'), '<control>D']))
     menu.append(create_menu_item(['Opinion', Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace']))
     menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N']))
+    menu.append(create_menu_item(['Relate', Gtk::Stock::INDEX, _('Relate'), '<control>R']))
     menu.append(create_menu_item(['-', nil, nil]))
     menu.append(create_menu_item(['Clone', Gtk::Stock::CONVERT, _('Recreate the table')]))
     menu.show_all
@@ -4834,6 +4875,7 @@ module PandoraGUI
   $open_keys = {}
 
   def self.open_key(panhash, models, init=true)
+    key_vec = nil
     if panhash.is_a? String
       key_vec = $open_keys[panhash]
       #p 'openkey key='+key_vec.inspect+' $open_keys.size='+$open_keys.size.inspect
@@ -4858,11 +4900,14 @@ module PandoraGUI
               #key_vec[KV_Pass] = passwd
               key_vec[KV_Panhash] = panhash
               key_vec[KV_Creator] = creator
+              key_vec[KV_Trust] = 0 #0.4
 
               $open_keys[panhash] = key_vec
               break
             end
           end
+        else
+          key_vec = 0
         end
       end
     else
@@ -4875,6 +4920,162 @@ module PandoraGUI
     key_vec
   end
 
+  def self.find_sha1_solution(phrase)
+    res = nil
+    lenbit = phrase[phrase.size-1].ord
+    len = lenbit/8
+    puzzle = phrase[0, len]
+    tailbyte = nil
+    drift = lenbit - len*8
+    if drift>0
+      tailmask = 0xFF >> (8-drift)
+      tailbyte = (phrase[len].ord & tailmask) if tailmask>0
+    end
+    i = 0
+    while (not res) and (i<0xFFFFFFFF)
+      add = PandoraKernel.bigint_to_bytes(i)
+      hash = Digest::SHA1.digest(phrase+add)
+      offer = hash[0, len]
+      if (offer==puzzle) and ((not tailbyte) or ((hash[len].ord & tailmask)==tailbyte))
+        res = add
+      end
+      i += 1
+    end
+    res
+  end
+
+  def self.check_sha1_solution(phrase, add)
+    res = false
+    lenbit = phrase[phrase.size-1].ord
+    len = lenbit/8
+    puzzle = phrase[0, len]
+    tailbyte = nil
+    drift = lenbit - len*8
+    if drift>0
+      tailmask = 0xFF >> (8-drift)
+      tailbyte = (phrase[len].ord & tailmask) if tailmask>0
+    end
+    hash = Digest::SHA1.digest(phrase+add)
+    offer = hash[0, len]
+    if (offer==puzzle) and ((not tailbyte) or ((hash[len].ord & tailmask)==tailbyte))
+      res = true
+    end
+    res
+  end
+
+  CapSymbols = '123456789qertyupasdfghkzxvbnmQRTYUPADFGHJKLBNM'
+  CapFonts = ['Sans', 'Arial', 'Times', 'Verdana', 'Tahoma']
+
+  def self.generate_capcha(drawing=nil, length=6, height=70, circles=5, curves=0)
+
+    def self.show_char(c, cr, x0, y0, step)
+      #cr.set_font_size(0.3+0.1*rand)
+      size = 0.36
+      size = 0.38 if ('a'..'z').include? c
+      cr.set_font_size(size*(0.7+0.3*rand))
+      cr.select_font_face(CapFonts[rand(CapFonts.size)], Cairo::FONT_SLANT_NORMAL, Cairo::FONT_WEIGHT_NORMAL)
+      x = x0 + step + 0.2*(rand-0.5)
+      y = y0 + 0.1 + 0.3*(rand-0.5)
+      cr.move_to(x, y)
+      cr.show_text(c)
+      cr.stroke
+      [x, y]
+    end
+
+    def self.show_blur(cr, x0, y0, r)
+      cr.close_path
+      x, y = [x0, y0]
+      #cr.move_to(x, y)
+      x1, y1 = x0+1.0*rand*r, y0-0.5*rand*r
+      cr.curve_to(x0, y0, x0, y1, x1, y1)
+      x2, y2 = x0-1.0*rand*r, y0+0.5*rand-r
+      cr.curve_to(x1, y1, x1, y2, x2, y2)
+      x3, y3 = x0+1.0*rand*r, y0+0.5*rand-r
+      cr.curve_to(x2, y2, x3, y2, x3, y3)
+      cr.curve_to(x3, y3, x0, y3, x0, y0)
+      cr.stroke
+    end
+
+    width = height*2
+    if not drawing
+      drawing = Gdk::Pixmap.new(nil, width, height, 24)
+    end
+
+    cr = drawing.create_cairo_context
+    #cr.scale(*widget.window.size)
+    cr.scale(height, height)
+    cr.set_line_width(0.03)
+
+    cr.set_source_color(Gdk::Color.new(65535, 65535, 65535))
+    cr.gdk_rectangle(Gdk::Rectangle.new(0, 0, 2, 1))
+    cr.fill
+
+    text = ''
+    length.times do
+      text << CapSymbols[rand(CapSymbols.size)]
+    end
+    cr.set_source_rgba(0.0, 0.0, 0.0, 1.0)
+
+    extents = cr.text_extents(text)
+    step = 2.0/(text.size+2.0)
+    x = 0.0
+    y = 0.5
+
+    text.each_char do |c|
+      x, y2 = show_char(c, cr, x, y, step)
+    end
+
+    cr.set_source_rgba(0.0, 0.0, 0.0, 1.0)
+
+    circles.times do
+      x = 0.1+rand(20)/10.0
+      y = 0.1+rand(10)/12.0
+      r = 0.05+rand/12.0
+      f = 2.0*Math::PI * rand
+      cr.arc(x, y, r, f, f+(2.2*Math::PI * rand))
+      cr.stroke
+    end
+    curves.times do
+      x = 0.1+rand(20)/10.0
+      y = 0.1+rand(10)/10.0
+      r = 0.3+rand/10.0
+      show_blur(cr, x, y, r)
+    end
+
+    pixbuf = Gdk::Pixbuf.from_drawable(nil, drawing, 0, 0, width, height)
+    buf = pixbuf.save_to_buffer('jpeg')
+    [text, buf]
+  end
+
+  PK_Key    = 221
+
+  def self.get_record_by_panhash(kind, panhash, with_kind=true)
+    res = nil
+    panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+    param_model = model_gui(panobjectclass.ider)
+    filter = {'panhash'=>panhash}
+    if kind==PK_Key
+      filter['kind'] = 0x81
+    end
+    sel = param_model.select(filter, true, nil, nil, 1)
+    if sel and sel.size>0
+      #namesvalues = panobject.namesvalues
+      #fields = param_model.matter_fields
+      fields = param_model.clear_excess_fields(sel[0])
+      p 'get_rec: matter_fields='+fields.inspect
+      # need get all fields (except: id, panhash, modified) + kind
+      res = ''
+      res = [kind].pack('C') if with_kind
+      res << namehash_to_pson(fields)
+    end
+    res
+  end
+
+  def self.save_record(kind, fields)
+    p '====================save_record  [kind, fields]='+[kind, fields].inspect
+    true
+  end
+
   MaxPackSize = 1500
   MaxSegSize  = 1200
   CommSize = 6
@@ -4883,6 +5084,8 @@ module PandoraGUI
   ECC_Init0_Hello       = 0
   ECC_Init1_Phrase      = 1
   ECC_Init2_Sign        = 2
+  ECC_Init3_Captcha     = 3
+  ECC_Init4_Answer      = 4
 
   ECC_Query0_Kinds      = 0
   ECC_Query255_AllChanges =255
@@ -4933,7 +5136,8 @@ module PandoraGUI
   ST_Protocol     = 3
   ST_Key          = 4
   ST_Sign         = 5
-  ST_Exchange     = 6
+  ST_Captcha      = 6
+  ST_Exchange     = 7
 
   # Connection state flags
   # RU: Флаги состояния соединения
@@ -5202,12 +5406,6 @@ module PandoraGUI
         p log_mes+'recognize_params: '+hash.inspect
       end
 
-      def set_phrase(phrase)
-        params['sphrase'] = phrase
-        @scode = ECC_Init1_Phrase
-        @sbuf = phrase
-      end
-
       def set_request(panhashes)
         @scmd = EC_Request
         if panhashes.is_a? Array
@@ -5219,10 +5417,51 @@ module PandoraGUI
         end
       end
 
+      def init_skey_or_error(first=true)
+        skey_panhash = params['key']
+        if skey_panhash.is_a? String and (skey_panhash.size>0)
+          @skey = PandoraGUI.open_key(skey_panhash, @models, false)
+          # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
+          # or just 4? other later!
+          if @skey and (not first)
+            @scmd = EC_Init
+            @stage = ST_Sign
+            phrase = OpenSSL::Random.random_bytes(256)
+            #phrase = PandoraKernel.bigint_to_bytes(phrase)
+            p log_mes+'send phrase len='+phrase.size.to_s
+            params['sphrase'] = phrase
+            @scode = ECC_Init1_Phrase
+            @sbuf = phrase
+          elsif first #and (@skey==0)
+            set_request(skey_panhash)
+          else
+            err_scmd('Bad key is received')
+          end
+        else
+          err_scmd('Key panhash is required')
+        end
+      end
+
+      def send_captcha
+        attempts = @skey[KV_Trust]
+        p log_mes+'send_captcha:  attempts='+attempts.to_s
+        if attempts<2
+          @skey[KV_Trust] = attempts+1
+          @scmd = EC_Init
+          @scode = ECC_Init3_Captcha
+          text, buf = PandoraGUI.generate_capcha(nil)
+          params['captcha'] = text
+          @sbuf = buf
+          @stage = ST_Captcha
+        else
+          err_scmd('Captcha attempts is exhausted')
+        end
+      end
+
       case rcmd
         when EC_Init
           if stage<=ST_Exchange
-            if rcode<=ECC_Init2_Sign
+            if rcode<=ECC_Init4_Answer
               if (rcode==ECC_Init0_Hello) and ((stage==ST_Protocol) or (stage==ST_Sign))
                 recognize_params
                 if scmd != EC_Bye
@@ -5232,23 +5471,8 @@ module PandoraGUI
                     addr = params['addr']
                     p log_mes+'addr='+addr.inspect
                     PandoraGUI.check_incoming_addr(addr, host_ip) if addr
-                    skey_panhash = params['key']
-                    if skey_panhash.is_a? String and (skey_panhash.size>0)
-                      mode = params['mode']
-                      @skey = PandoraGUI.open_key(skey_panhash, @models, false)
-                      if @skey
-                        @scmd = EC_Init
-                        @stage = ST_Sign
-                        #phrase = SecureRandom.random_bytes(256)
-                        phrase = OpenSSL::Random.random_bytes(256)
-                        p log_mes+'send phrase len='+phrase.size.to_s
-                        set_phrase(phrase)
-                      else
-                        set_request(skey_panhash)
-                      end
-                    else
-                      err_scmd('Key panhash is required')
-                    end
+                    mode = params['mode']
+                    init_skey_or_error(true)
                   else
                     err_scmd('Protocol is not supported ['+vers.to_s+']')
                   end
@@ -5265,22 +5489,93 @@ module PandoraGUI
               elsif (rcode==ECC_Init2_Sign) and (stage==ST_Sign)
                 rsign = rdata
                 p log_mes+'recived rsign len='+rsign.size.to_s
-
                 @skey = PandoraGUI.open_key(@skey, @models, true)
                 if @skey and @skey[KV_Obj]
                   if PandoraGUI.verify_sign(@skey, OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
-                    if (conn_mode & CM_Hunter) == 0
-                      add_send_segment(EC_Init, true)
+                    @skey[KV_Trust] = 0.4  #the hack!
+                    trust = @skey[KV_Trust]
+                    if trust.is_a? Integer
+                      @skey[KV_Trust] = 0
+                      send_captcha
+                    elsif trust.is_a? Float
+                      if trust>0
+                        @stage = ST_Exchange
+                        if (conn_mode & CM_Hunter) == 0
+                          add_send_segment(EC_Init, true)
+                        end
+                        @scmd = EC_Data
+                        @scode = 0
+                        @sbuf = nil
+                      else
+                        err_scmd('Key is not trusted')
+                      end
+                    else
+                      err_scmd('Key stil is not checked')
                     end
-                    @scmd = EC_Data
-                    @scode = 0
-                    @sbuf = nil
-                    @stage = ST_Exchange
                   else
                     err_scmd('Wrong sign')
                   end
                 else
                   err_scmd('Cannot init your key')
+                end
+              elsif (rcode==ECC_Init3_Captcha) and ((stage==ST_Protocol) or (stage==ST_Exchange))
+                p log_mes+'CAPTCHA!!!'
+                captcha_buf = rdata
+                pixbuf_loader = Gdk::PixbufLoader.new
+                pixbuf_loader.last_write(captcha_buf)
+
+                capdialog = AdvancedDialog.new(_('Captcha check'))
+                capdialog.set_default_size(400, 250)
+
+                vbox = Gtk::VBox.new
+                capdialog.viewport.add(vbox)
+
+                label = Gtk::Label.new(_('Key'))
+                vbox.pack_start(label, false, false, 2)
+                entry = Gtk::Entry.new
+                entry.text = PandoraKernel.bytes_to_hex(params['key'])
+                entry.editable = false
+                vbox.pack_start(entry, false, false, 2)
+
+                image = Gtk::Image.new(pixbuf_loader.pixbuf)
+                vbox.pack_start(image, false, false, 2)
+
+                label = Gtk::Label.new(_('Enter text'))
+                vbox.pack_start(label, false, false, 2)
+                entry = Gtk::Entry.new
+                vbox.pack_start(entry, false, false, 2)
+                capdialog.def_widget = entry
+
+                p 'show!!!!'
+                entered = false
+                capdialog.show_all
+                Thread.pass
+                capdialog.run do
+                  Thread.pass
+                  captcha = entry.text
+                  @scmd = EC_Init
+                  @scode = ECC_Init4_Answer
+                  @sbuf = captcha
+                  entered = true
+                end
+                if not entered
+                  err_scmd('Captcha enter canceled')
+                end
+                p '????!!!!'
+              elsif (rcode==ECC_Init4_Answer) and (stage==ST_Captcha)
+                captcha = rdata
+                p log_mes+'recived captcha='+captcha
+                if captcha==params['captcha']
+                  @stage = ST_Exchange
+                  p 'Captcha is GONE!'
+                  if (conn_mode & CM_Hunter) == 0
+                    add_send_segment(EC_Init, true)
+                  end
+                  @scmd = EC_Data
+                  @scode = 0
+                  @sbuf = nil
+                else
+                  send_captcha
                 end
               else
                 err_scmd('Wrong stage for rcode')
@@ -5300,10 +5595,15 @@ module PandoraGUI
             @dialog = PandoraGUI.show_talk_dialog([panhash], node)
             #curpage = dialog
             Thread.pass
+            #sleep(0.1)
+            #Thread.pass
+            #p log_mes+'NEW dialog1='+dialog.inspect
+            #p log_mes+'NEW dialog2='+@dialog.inspect
           end
           if rcmd==EC_Message
             mes = @rdata
             talkview = nil
+            #p log_mes+'MES dialog='+dialog.inspect
             talkview = dialog.talkview if dialog
             if talkview
               t = Time.now
@@ -5359,11 +5659,57 @@ module PandoraGUI
         when EC_Request
           panhashes = nil
           if rcode==0
-            panhashes = PandoraKernel.pson_elem_to_rubyobj(panhashes)
+            panhashes, len = PandoraKernel.pson_elem_to_rubyobj(panhashes)
           else
-            panhashes = [rcode].pack['C']+rdata
+            panhashes = [[rcode].pack('C')+rdata]
           end
-          p log_mes+'EC_Request panhashes='+panhashes.inspect
+          if panhashes.size==1
+            panhash = panhashes[0]
+            kind = PandoraKernel.kind_from_panhash(panhash)
+            @sbuf = PandoraGUI.get_record_by_panhash(kind, panhash, false)
+            @scode = kind
+          else
+            records = []
+            panhashes.each do |panhash|
+              kind = PandoraKernel.kind_from_panhash(panhash)
+              p log_mes+'EC_Request panhashes='+PandoraKernel.bytes_to_hex(panhash).inspect
+              records << PandoraGUI.get_record_by_panhash(kind, panhash, true)
+            end
+            @sbuf = PandoraGUI.rubyobj_to_pson_elem(records)
+            @scode = 0
+          end
+          @scmd = EC_Record
+          p log_mes+'records='+records.inspect
+        when EC_Record
+          p log_mes+' EC_Record: [rcode, rdata.size]='+[rcode, rdata.size].inspect
+          if rcode>0
+            kind = rcode
+            if (stage==ST_Exchange) or (kind==PK_Key)
+              fields = PandoraGUI.pson_to_namehash(rdata)
+              p log_mes+"!record1! recs="+fields.inspect
+              if not PandoraGUI.save_record(kind, fields)
+                log_message(LM_Warning, 'Не удалось сохранить запись 1')
+              end
+              init_skey_or_error(false) if stage<ST_Exchange
+            else
+              err_scmd('Record ('+kind.to_s+') came on wrong stage')
+            end
+          else
+            if (stage==ST_Exchange)
+              records, len = PandoraGUI.pson_elem_to_rubyobj(rdata)
+              p log_mes+"!record2! recs="+records.inspect
+              records.each do |rec|
+                kind = rec[0].ord
+                fields = PandoraGUI.pson_to_namehash(rec[1..-1])
+                if not PandoraGUI.save_record(kind, fields)
+                  log_message(LM_Warning, 'Не удалось сохранить запись 2')
+                end
+                p 'fields='+fields.inspect
+              end
+            else
+              err_scmd('Records came on wrong stage')
+            end
+          end
         when EC_Query
           case rcode
             when ECC_Query0_Kinds
@@ -5426,7 +5772,6 @@ module PandoraGUI
               @scode=ECC_Bye_Unknown
               log_message(LM_Error, '2Получена неизвестная команда от сервера='+rcmd.to_s)
               p '2Получена неизвестная команда от сервера='+rcmd.to_s
-
               @conn_state = CS_Stoping
           end
         when EC_News
@@ -5438,10 +5783,6 @@ module PandoraGUI
           @sbuf=''
         when EC_Patch
           p "!patch!"
-        when EC_Request
-          p "EC_Request"
-        when EC_Record
-          p "!record!"
         when EC_Pipe
           p "EC_Pipe"
         when EC_Sync
@@ -7329,7 +7670,7 @@ module PandoraGUI
     ['Relation', nil, _('Relations')],
     ['Opinion', nil, _('Opinions')],
     [nil, nil, _('_Bussiness')],
-    ['Member', nil, _('Members')],
+    ['Partner', nil, _('Partners')],
     ['Company', nil, _('Companies')],
     ['-', nil, '-'],
     ['Ad', nil, _('Ads')],
@@ -7628,6 +7969,7 @@ module PandoraGUI
   end
 
 end
+
 
 # ====MAIN=======================================================================
 
