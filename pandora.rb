@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
-# -*- coding: utf-8 -*-
 # encoding: UTF-8
+# coding: UTF-8
 
 # The Pandora. Free peer-to-peer information system
 # RU: Пандора. Свободная пиринговая информационная система
@@ -9,8 +9,6 @@
 # RU: Эта программа распространяется под GNU GPLv2
 # 2012 (c) Michael Galyuk
 # RU: 2012 (c) Михаил Галюк
-#
-# coding: UTF-8
 
 $ruby_low19 = RUBY_VERSION<'1.9'
 if $ruby_low19
@@ -1860,7 +1858,7 @@ module PandoraGUI
     end
 
     # show dialog until key pressed
-    def run
+    def run(alien_thread=false)
       res = false
       show_all
       if @def_widget
@@ -1868,8 +1866,9 @@ module PandoraGUI
         @def_widget.grab_focus
       end
       while (not destroyed?) and (@response == 0) do
-        #Gtk.main_iteration
-        #sleep 0.03
+        unless alien_thread
+          Gtk.main_iteration
+        end
         Thread.pass
       end
       if not destroyed?
@@ -1908,6 +1907,43 @@ module PandoraGUI
       toolbar.add(btn)
     else
       toolbar.append(btn, btn.label, btn.label)
+    end
+  end
+
+  # Entry with allowed symbols of mask
+  # RU: Поле ввода с допустимыми символами в маске
+  class MaskEntry < Gtk::Entry
+    attr_accessor :mask
+    def initialize
+      super
+      @mask_key_press_event = signal_connect('key_press_event') do |widget, event|
+        res = false
+        if (event.keyval<60000) and (mask.is_a? String) and (mask.size>0)
+          res = (not mask.include?(event.keyval.chr))
+        end
+        res
+      end
+    end
+  end
+
+  class IntegerEntry < MaskEntry
+    def initialize
+      super
+      @mask = '0123456789-'
+    end
+  end
+
+  class FloatEntry < MaskEntry
+    def initialize
+      super
+      @mask = '0123456789.-e'
+    end
+  end
+
+  class HexEntry < MaskEntry
+    def initialize
+      super
+      @mask = '0123456789abcdefABCDEF'
     end
   end
 
@@ -4267,6 +4303,7 @@ module PandoraGUI
       elsif action=='Dialog'
         show_talk_dialog(panhash0)
       else  # Edit or Insert
+
         edit = ((not new_act) and (action != 'Copy'))
 
         i = 0
@@ -4348,6 +4385,7 @@ module PandoraGUI
           titadd = _('new')
         end
         dialog.title += ' ('+titadd+')' if titadd and (titadd != '')
+
         dialog.run do
           # take value from form
           dialog.fields.each do |field|
@@ -4966,7 +5004,7 @@ module PandoraGUI
   CapSymbols = '123456789qertyupasdfghkzxvbnmQRTYUPADFGHJKLBNM'
   CapFonts = ['Sans', 'Arial', 'Times', 'Verdana', 'Tahoma']
 
-  def self.generate_capcha(drawing=nil, length=6, height=70, circles=5, curves=0)
+  def self.generate_captcha(drawing=nil, length=6, height=70, circles=5, curves=0)
 
     def self.show_char(c, cr, x0, y0, step)
       #cr.set_font_size(0.3+0.1*rand)
@@ -5081,11 +5119,12 @@ module PandoraGUI
   CommSize = 6
   CommExtSize = 10
 
-  ECC_Init0_Hello       = 0
-  ECC_Init1_Phrase      = 1
-  ECC_Init2_Sign        = 2
-  ECC_Init3_Captcha     = 3
-  ECC_Init4_Answer      = 4
+  ECC_Init_Hello       = 0
+  ECC_Init_Puzzle      = 1
+  ECC_Init_Phrase      = 2
+  ECC_Init_Sign        = 3
+  ECC_Init_Captcha     = 4
+  ECC_Init_Answer      = 5
 
   ECC_Query0_Kinds      = 0
   ECC_Query255_AllChanges =255
@@ -5134,7 +5173,7 @@ module PandoraGUI
   ST_Begin        = 0
   ST_IpCheck      = 1
   ST_Protocol     = 3
-  ST_Key          = 4
+  ST_Puzzle       = 4
   ST_Sign         = 5
   ST_Captcha      = 6
   ST_Exchange     = 7
@@ -5310,11 +5349,6 @@ module PandoraGUI
       res
     end
 
-    def encode_hello(vers, mode, addr, key)
-      sbuf = PandoraGUI.namehash_to_pson({:version=>vers, :mode=>mode, :addr=>addr, :key=>key})
-      [ECC_Init0_Hello, sbuf]
-    end
-
     # compose error command and add log message
     def err_scmd(mes=nil, code=nil, buf=nil)
       @scmd = EC_Bye
@@ -5345,10 +5379,13 @@ module PandoraGUI
           if @rkey and @rkey[KV_Obj]
             key_hash = @rkey[KV_Panhash]
             scode = EC_Init
-            scode, sbuf = encode_hello(0, 0, ':5577tcp', key_hash)
+            scode = ECC_Init_Hello
+            sbuf = PandoraGUI.namehash_to_pson({:version=>0, :mode=>0, :addr=>':5577tcp', \
+              :mykey=>key_hash, :tokey=>nil})
           else
             scmd = EC_Bye
             scode = ECC_Bye_Exit
+            sbuf = nil
           end
         when EC_Message
           #mes = send_mes[2][buf_ind] #mes
@@ -5371,6 +5408,7 @@ module PandoraGUI
         else
           scmd = EC_Bye
           scode = ECC_Bye_Exit
+          sbuf = nil
       end
       #while PandoraGUI.get_queue_state(@send_queue) == QS_Full do
       #  p log_mes+'get_queue_state.EX = '+PandoraGUI.get_queue_state(@send_queue).inspect
@@ -5388,6 +5426,10 @@ module PandoraGUI
       res
     end
 
+    $puzzle_bit_length = 0  #8..24  (recommended 14)
+    $puzzle_sec_delay = 2   #0..255 (recommended 2)
+    $captcha_length = 4     #4..8   (recommended 6)
+
     # Accept received segment
     # RU: Принять полученный сегмент
     def accept_segment
@@ -5397,13 +5439,15 @@ module PandoraGUI
         if not hash
           err_scmd('Hello data is wrong')
         end
-        if (rcmd == EC_Init) and (rcode == ECC_Init0_Hello)
+        if (rcmd == EC_Init) and (rcode == ECC_Init_Hello)
           params['version']  = hash['version']
           params['mode']     = hash['mode']
           params['addr']     = hash['addr']
-          params['key']      = hash['key']
+          params['srckey']   = hash['mykey']
+          params['dstkey']   = hash['tokey']
         end
-        p log_mes+'recognize_params: '+hash.inspect
+        p log_mes+'RECOGNIZE_params: '+hash.inspect
+        #p params['srckey']
       end
 
       def set_request(panhashes)
@@ -5418,24 +5462,49 @@ module PandoraGUI
       end
 
       def init_skey_or_error(first=true)
-        skey_panhash = params['key']
-        if skey_panhash.is_a? String and (skey_panhash.size>0)
-          @skey = PandoraGUI.open_key(skey_panhash, @models, false)
-          # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
-          # or just 4? other later!
-          if @skey and (not first)
-            @scmd = EC_Init
-            @stage = ST_Sign
+        def get_sphrase(init=false)
+          phrase = params['sphrase'] if not init
+          if init or (not phrase)
             phrase = OpenSSL::Random.random_bytes(256)
-            #phrase = PandoraKernel.bigint_to_bytes(phrase)
-            p log_mes+'send phrase len='+phrase.size.to_s
             params['sphrase'] = phrase
-            @scode = ECC_Init1_Phrase
+            init = true
+          end
+          [phrase, init]
+        end
+        skey_panhash = params['srckey']
+        #p log_mes+'     skey_panhash='+skey_panhash.inspect
+        if skey_panhash.is_a? String and (skey_panhash.size>0)
+          if first and (stage == ST_Protocol) and $puzzle_bit_length \
+          and ($puzzle_bit_length>0) and ((conn_mode & CM_Hunter) == 0)
+            phrase, init = get_sphrase(true)
+            phrase[phrase.size-1] = $puzzle_bit_length.chr
+            phrase[phrase.size-2] = $puzzle_sec_delay.chr
+            @stage = ST_Puzzle
+            @scode = ECC_Init_Puzzle
+            @scmd  = EC_Init
             @sbuf = phrase
-          elsif first #and (@skey==0)
-            set_request(skey_panhash)
+            params['puzzle_start'] = Time.now.to_i
           else
-            err_scmd('Bad key is received')
+            @skey = PandoraGUI.open_key(skey_panhash, @models, false)
+            # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
+            # or just 4? other later!
+            if @skey    and (not first) #the huck!
+              #phrase = PandoraKernel.bigint_to_bytes(phrase)
+              @stage = ST_Sign
+              @scode = ECC_Init_Phrase
+              @scmd  = EC_Init
+              phrase, init = get_sphrase(false)
+              p log_mes+'send phrase len='+phrase.size.to_s
+              if init
+                @sbuf = phrase
+              else
+                @sbuf = nil
+              end
+            elsif first #and (@skey==0)
+              set_request(skey_panhash)
+            else
+              err_scmd('Bad key is received')
+            end
           end
         else
           err_scmd('Key panhash is required')
@@ -5448,10 +5517,12 @@ module PandoraGUI
         if attempts<2
           @skey[KV_Trust] = attempts+1
           @scmd = EC_Init
-          @scode = ECC_Init3_Captcha
-          text, buf = PandoraGUI.generate_capcha(nil)
-          params['captcha'] = text
-          @sbuf = buf
+          @scode = ECC_Init_Captcha
+          text, buf = PandoraGUI.generate_captcha(nil, $captcha_length)
+          params['captcha'] = text.downcase
+          clue_text = 'You may enter small letters|'+$captcha_length.to_s+'|'+PandoraGUI::CapSymbols
+          clue_text = clue_text[0,255]
+          @sbuf = [clue_text.size].pack('C')+clue_text+buf
           @stage = ST_Captcha
         else
           err_scmd('Captcha attempts is exhausted')
@@ -5461,13 +5532,12 @@ module PandoraGUI
       case rcmd
         when EC_Init
           if stage<=ST_Exchange
-            if rcode<=ECC_Init4_Answer
-              if (rcode==ECC_Init0_Hello) and ((stage==ST_Protocol) or (stage==ST_Sign))
+            if rcode<=ECC_Init_Answer
+              if (rcode==ECC_Init_Hello) and ((stage==ST_Protocol) or (stage==ST_Sign))
                 recognize_params
                 if scmd != EC_Bye
                   vers = params['version']
                   if vers==0
-                    @stage = ST_Key
                     addr = params['addr']
                     p log_mes+'addr='+addr.inspect
                     PandoraGUI.check_incoming_addr(addr, host_ip) if addr
@@ -5477,24 +5547,73 @@ module PandoraGUI
                     err_scmd('Protocol is not supported ['+vers.to_s+']')
                   end
                 end
-              elsif (rcode==ECC_Init1_Phrase) and ((stage==ST_Protocol) or (stage==ST_Exchange))
-                rphrase = rdata
+              elsif ((rcode==ECC_Init_Puzzle) or (rcode==ECC_Init_Phrase)) \
+              and ((stage==ST_Protocol) or (stage==ST_Exchange))
+                if rdata and (rdata != '')
+                  rphrase = rdata
+                  params['rphrase'] = rphrase
+                else
+                  rphrase = params['rphrase']
+                end
                 p log_mes+'recived phrase len='+rphrase.size.to_s
-                @scmd = EC_Init
-                @scode = ECC_Init2_Sign
-                rphrase = OpenSSL::Digest::SHA384.digest(rphrase)
-                sign = PandoraGUI.make_sign(@rkey, rphrase)
-                @sbuf = sign
-                #@stage = ST_Check
-              elsif (rcode==ECC_Init2_Sign) and (stage==ST_Sign)
+                if rphrase and (rphrase != '')
+                  if rcode==ECC_Init_Puzzle
+                    if ((conn_mode & CM_Hunter) == 0)
+                      err_scmd('Puzzle for listener is denied')
+                    else
+                      delay = rphrase[rphrase.size-2].ord
+                      p 'PUZZLE delay='+delay.to_s
+                      start_time = 0
+                      end_time = 0
+                      start_time = Time.now.to_i if delay
+                      suffix = PandoraGUI.find_sha1_solution(rphrase)
+                      end_time = Time.now.to_i if delay
+                      if delay
+                        need_sleep = delay - (end_time - start_time) + 0.5
+                        sleep(need_sleep) if need_sleep>0
+                      end
+                      @sbuf = suffix
+                      @scode = ECC_Init_Answer
+                    end
+                  else
+                    p log_mes+'SIGN'
+                    rphrase = OpenSSL::Digest::SHA384.digest(rphrase)
+                    sign = PandoraGUI.make_sign(@rkey, rphrase)
+                    @sbuf = sign
+                    @scode = ECC_Init_Sign
+                  end
+                  @scmd = EC_Init
+                  #@stage = ST_Check
+                else
+                  err_scmd('Empty received phrase')
+                end
+              elsif (rcode==ECC_Init_Answer) and (stage==ST_Puzzle)
+                interval = nil
+                if $puzzle_sec_delay>0
+                  start_time = params['puzzle_start']
+                  cur_time = Time.now.to_i
+                  interval = cur_time - start_time
+                end
+                if interval and (interval<$puzzle_sec_delay)
+                  err_scmd('Too fast puzzle answer')
+                else
+                  suffix = rdata
+                  sphrase = params['sphrase']
+                  if PandoraGUI.check_sha1_solution(sphrase, suffix)
+                    init_skey_or_error(true)
+                  else
+                    err_scmd('Wrong sha1 solution')
+                  end
+                end
+              elsif (rcode==ECC_Init_Sign) and (stage==ST_Sign)
                 rsign = rdata
                 p log_mes+'recived rsign len='+rsign.size.to_s
                 @skey = PandoraGUI.open_key(@skey, @models, true)
                 if @skey and @skey[KV_Obj]
                   if PandoraGUI.verify_sign(@skey, OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
-                    @skey[KV_Trust] = 0.4  #the hack!
+                    @skey[KV_Trust] = 0.4  if ((conn_mode & CM_Hunter) != 0) #the hack!
                     trust = @skey[KV_Trust]
-                    if trust.is_a? Integer
+                    if (trust.is_a? Integer) and ((conn_mode & CM_Hunter) == 0)
                       @skey[KV_Trust] = 0
                       send_captcha
                     elsif trust.is_a? Float
@@ -5518,54 +5637,102 @@ module PandoraGUI
                 else
                   err_scmd('Cannot init your key')
                 end
-              elsif (rcode==ECC_Init3_Captcha) and ((stage==ST_Protocol) or (stage==ST_Exchange))
-                p log_mes+'CAPTCHA!!!'
-                captcha_buf = rdata
-                pixbuf_loader = Gdk::PixbufLoader.new
-                pixbuf_loader.last_write(captcha_buf)
+              elsif (rcode==ECC_Init_Captcha) and ((stage==ST_Protocol) or (stage==ST_Exchange))
+                p log_mes+'CAPTCHA!!!  ' #+params.inspect
+                if ((conn_mode & CM_Hunter) == 0)
+                  err_scmd('Captcha for listener is denied')
+                else
+                  clue_length = rdata[0].ord
+                  clue_text = rdata[1,clue_length]
+                  captcha_buf = rdata[clue_length+1..-1]
+                  pixbuf_loader = Gdk::PixbufLoader.new
+                  pixbuf_loader.last_write(captcha_buf)
 
-                capdialog = AdvancedDialog.new(_('Captcha check'))
-                capdialog.set_default_size(400, 250)
+                  capdialog = AdvancedDialog.new(_('Human check'))
+                  capdialog.set_default_size(400, 350)
 
-                vbox = Gtk::VBox.new
-                capdialog.viewport.add(vbox)
+                  vbox = Gtk::VBox.new
+                  capdialog.viewport.add(vbox)
 
-                label = Gtk::Label.new(_('Key'))
-                vbox.pack_start(label, false, false, 2)
-                entry = Gtk::Entry.new
-                entry.text = PandoraKernel.bytes_to_hex(params['key'])
-                entry.editable = false
-                vbox.pack_start(entry, false, false, 2)
+                  label = Gtk::Label.new(_('Far node'))
+                  vbox.pack_start(label, false, false, 2)
+                  entry = Gtk::Entry.new
+                  node_text = PandoraKernel.bytes_to_hex(params['srckey'])
+                  node_text = @node if (not node_text) or (node_text=='')
+                  entry.text = node_text
+                  entry.editable = false
+                  vbox.pack_start(entry, false, false, 2)
 
-                image = Gtk::Image.new(pixbuf_loader.pixbuf)
-                vbox.pack_start(image, false, false, 2)
+                  image = Gtk::Image.new(pixbuf_loader.pixbuf)
+                  vbox.pack_start(image, false, false, 2)
 
-                label = Gtk::Label.new(_('Enter text'))
-                vbox.pack_start(label, false, false, 2)
-                entry = Gtk::Entry.new
-                vbox.pack_start(entry, false, false, 2)
-                capdialog.def_widget = entry
+                  clue, length, symbols = clue_text.split('|')
+                  p log_mes+'    [clue, length, symbols]='+[clue, length, symbols].inspect
+                  len = 0
+                  begin
+                    len = length.to_i if length
+                  rescue
+                  end
 
-                p 'show!!!!'
-                entered = false
-                capdialog.show_all
-                Thread.pass
-                capdialog.run do
+                  label = Gtk::Label.new(_('Enter text from picture'))
+                  vbox.pack_start(label, false, false, 2)
+                  entry = PandoraGUI::MaskEntry.new
+                  entry.max_length = len
+                  mask = symbols.downcase+symbols.upcase
+                  entry.mask = mask
+
+                  ew = 150
+                  if len>0
+                    str = label.text
+                    label.text = 'W'*(len+1)
+                    ew,lh = label.size_request
+                    label.text = str
+                  end
+
+                  entry.width_request = ew
+                  align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+                  align.add(entry)
+                  vbox.pack_start(align, false, false, 2)
+                  capdialog.def_widget = entry
+
+                  if clue
+                    label = Gtk::Label.new(_(clue))
+                    vbox.pack_start(label, false, false, 2)
+                  end
+                  if length
+                    label = Gtk::Label.new(_('Length')+'='+length.to_s)
+                    vbox.pack_start(label, false, false, 2)
+                  end
+                  if symbols
+                    sym_text = _('Symbols')+': '+symbols.to_s
+                    i = 30
+                    while i<sym_text.size do
+                      sym_text = sym_text[0,i]+"\n"+sym_text[i+1..-1]
+                      i += 31
+                    end
+                    label = Gtk::Label.new(sym_text)
+                    vbox.pack_start(label, false, false, 2)
+                  end
+
+                  entered = false
+                  capdialog.show_all
                   Thread.pass
-                  captcha = entry.text
-                  @scmd = EC_Init
-                  @scode = ECC_Init4_Answer
-                  @sbuf = captcha
-                  entered = true
+                  capdialog.run(true) do
+                    Thread.pass
+                    captcha = entry.text
+                    @scmd = EC_Init
+                    @scode = ECC_Init_Answer
+                    @sbuf = captcha
+                    entered = true
+                  end
+                  if not entered
+                    err_scmd('Captcha enter canceled')
+                  end
                 end
-                if not entered
-                  err_scmd('Captcha enter canceled')
-                end
-                p '????!!!!'
-              elsif (rcode==ECC_Init4_Answer) and (stage==ST_Captcha)
+              elsif (rcode==ECC_Init_Answer) and (stage==ST_Captcha)
                 captcha = rdata
                 p log_mes+'recived captcha='+captcha
-                if captcha==params['captcha']
+                if captcha.downcase==params['captcha']
                   @stage = ST_Exchange
                   p 'Captcha is GONE!'
                   if (conn_mode & CM_Hunter) == 0
@@ -5796,6 +5963,7 @@ module PandoraGUI
           end
           @scmd = EC_Bye
           @scode = ECC_Bye_Exit
+          @sbuf = nil
 
           p 'Ошибка на сервере ErrCode='+rcode.to_s
 
@@ -5803,6 +5971,7 @@ module PandoraGUI
         else
           @scmd = EC_Bye
           @scode = ECC_Bye_Unknown
+          @sbuf = nil
           log_message(LM_Error, 'Получена неизвестная команда='+rcmd.to_s)
           @conn_state = CS_Stoping
       end
@@ -6037,7 +6206,7 @@ module PandoraGUI
         # разгрузка принятых буферов в gstreamer
         processed = 0
         cannel = 0
-        while (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Key) \
+        while (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Sign) \
         and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
         and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size)
           if dialog.recv_media_pipeline[cannel] and dialog.appsrcs[cannel]
@@ -6104,7 +6273,7 @@ module PandoraGUI
 
         # пакетирование буферов
         if ($send_media_queue.size>0) and $send_media_rooms \
-        and (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Key) \
+        and (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Sign) \
         and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
         and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
         or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
