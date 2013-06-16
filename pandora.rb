@@ -737,6 +737,16 @@ module PandoraKernel
     res
   end
 
+  def self.bytes_to_int(bytes)
+    res = 0
+    i = bytes.size
+    bytes.each_byte do |b|
+      i -= 1
+      res += (b << 8*i)
+    end
+    res
+  end
+
   # Fill string by zeros from left to defined size
   # RU: Заполнить строку нулями слева до нужного размера
   def self.fill_zeros_from_left(data, size)
@@ -777,6 +787,10 @@ module PandoraKernel
 
   def self.kind_from_panhash(panhash)
     kind = panhash[0].ord
+  end
+
+  def self.lang_from_panhash(panhash)
+    lang = panhash[1].ord
   end
 
   # Base Pandora's object
@@ -1316,12 +1330,13 @@ module PandoraKernel
     def calc_hash(hfor, hlen, fval)
       res = nil
       #fval = [fval].pack('C*') if fval.is_a? Fixnum
-      if fval and (fval != '')
+      #p 'fval='+fval.inspect+'  hfor='+hfor.inspect
+      if fval and (not (fval.is_a? String) or (fval != ''))
         #p 'fval='+fval.inspect+'  hfor='+hfor.inspect
         hfor = 'integer' if (not hfor or hfor=='') and (fval.is_a? Integer)
         hfor = 'hash' if ((hfor=='') or (hfor=='text')) and (fval.is_a? String) and (fval.size>20)
         if ['integer', 'word', 'byte', 'lang'].include? hfor
-          if fval.is_a? String
+          if not (fval.is_a? Integer)
             fval = fval.to_i
           end
           res = fval
@@ -3760,7 +3775,7 @@ module PandoraGUI
       basetype, vlen = decode_pson_type(type)
       vlen += 1
       if data.size >= len+vlen
-        int = PandoraKernel.bytes_to_bigint(data[len, vlen])
+        int = PandoraKernel.bytes_to_int(data[len, vlen])
         case basetype
           when PT_Int
             val = int
@@ -4938,7 +4953,7 @@ module PandoraGUI
               #key_vec[KV_Pass] = passwd
               key_vec[KV_Panhash] = panhash
               key_vec[KV_Creator] = creator
-              key_vec[KV_Trust] = 0 #0.4
+              key_vec[KV_Trust] = trust_of_panobject(panhash)
 
               $open_keys[panhash] = key_vec
               break
@@ -5102,16 +5117,36 @@ module PandoraGUI
       fields = param_model.clear_excess_fields(sel[0])
       p 'get_rec: matter_fields='+fields.inspect
       # need get all fields (except: id, panhash, modified) + kind
+      lang = PandoraKernel.lang_from_panhash(panhash)
       res = ''
-      res = [kind].pack('C') if with_kind
+      res << [kind].pack('C') if with_kind
+      res << [lang].pack('C')
       res << namehash_to_pson(fields)
     end
     res
   end
 
-  def self.save_record(kind, fields)
-    p '====================save_record  [kind, fields]='+[kind, fields].inspect
-    true
+  def self.save_record(kind, lang, values)
+    res = false
+    p '=======save_record  [kind, lang, values]='+[kind, lang, values].inspect
+    panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+    param_model = model_gui(panobjectclass.ider)
+    panhash = param_model.panhash(values, lang)
+    p 'panhash='+panhash.inspect
+
+    filter = {'panhash'=>panhash}
+    if kind==PK_Key
+      filter['kind'] = 0x81
+    end
+    sel = param_model.select(filter, true, nil, nil, 1)
+    if sel and (sel.size>0)
+      res = true
+    else
+      values['panhash'] = panhash
+      values['modified'] = Time.now.to_i
+      res = param_model.update(values, nil, nil)
+    end
+    res
   end
 
   MaxPackSize = 1500
@@ -5428,7 +5463,7 @@ module PandoraGUI
 
     $puzzle_bit_length = 0  #8..24  (recommended 14)
     $puzzle_sec_delay = 2   #0..255 (recommended 2)
-    $captcha_length = 4     #4..8   (recommended 6)
+    $captcha_length = 0     #4..8   (recommended 6)
 
     # Accept received segment
     # RU: Принять полученный сегмент
@@ -5488,7 +5523,9 @@ module PandoraGUI
             @skey = PandoraGUI.open_key(skey_panhash, @models, false)
             # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
             # or just 4? other later!
-            if @skey    and (not first) #the huck!
+            if (@skey.is_a? Integer) and (@skey==0)
+              set_request(skey_panhash)
+            elsif @skey
               #phrase = PandoraKernel.bigint_to_bytes(phrase)
               @stage = ST_Sign
               @scode = ECC_Init_Phrase
@@ -5500,10 +5537,8 @@ module PandoraGUI
               else
                 @sbuf = nil
               end
-            elsif first #and (@skey==0)
-              set_request(skey_panhash)
             else
-              err_scmd('Bad key is received')
+              err_scmd('Key is invalid')
             end
           end
         else
@@ -5611,9 +5646,9 @@ module PandoraGUI
                 @skey = PandoraGUI.open_key(@skey, @models, true)
                 if @skey and @skey[KV_Obj]
                   if PandoraGUI.verify_sign(@skey, OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
-                    @skey[KV_Trust] = 0.4  if ((conn_mode & CM_Hunter) != 0) #the hack!
                     trust = @skey[KV_Trust]
-                    if (trust.is_a? Integer) and ((conn_mode & CM_Hunter) == 0)
+                    p log_mes+'----trust='+trust.inspect
+                    if ($captcha_length>0) and (trust.is_a? Integer) and ((conn_mode & CM_Hunter) == 0)
                       @skey[KV_Trust] = 0
                       send_captcha
                     elsif trust.is_a? Float
@@ -5833,17 +5868,20 @@ module PandoraGUI
           if panhashes.size==1
             panhash = panhashes[0]
             kind = PandoraKernel.kind_from_panhash(panhash)
-            @sbuf = PandoraGUI.get_record_by_panhash(kind, panhash, false)
+            record = PandoraGUI.get_record_by_panhash(kind, panhash, false)
             @scode = kind
+            @sbuf = record
           else
-            records = []
+            rec_array = []
             panhashes.each do |panhash|
               kind = PandoraKernel.kind_from_panhash(panhash)
+              record = PandoraGUI.get_record_by_panhash(kind, panhash, true)
               p log_mes+'EC_Request panhashes='+PandoraKernel.bytes_to_hex(panhash).inspect
-              records << PandoraGUI.get_record_by_panhash(kind, panhash, true)
+              rec_array << record
             end
-            @sbuf = PandoraGUI.rubyobj_to_pson_elem(records)
+            records = PandoraGUI.rubyobj_to_pson_elem(rec_array)
             @scode = 0
+            @sbuf = records
           end
           @scmd = EC_Record
           p log_mes+'records='+records.inspect
@@ -5852,9 +5890,9 @@ module PandoraGUI
           if rcode>0
             kind = rcode
             if (stage==ST_Exchange) or (kind==PK_Key)
-              fields = PandoraGUI.pson_to_namehash(rdata)
-              p log_mes+"!record1! recs="+fields.inspect
-              if not PandoraGUI.save_record(kind, fields)
+              lang = rdata[0].ord
+              values = PandoraGUI.pson_to_namehash(rdata[1..-1])
+              if not PandoraGUI.save_record(kind, lang, values)
                 log_message(LM_Warning, 'Не удалось сохранить запись 1')
               end
               init_skey_or_error(false) if stage<ST_Exchange
@@ -5865,10 +5903,11 @@ module PandoraGUI
             if (stage==ST_Exchange)
               records, len = PandoraGUI.pson_elem_to_rubyobj(rdata)
               p log_mes+"!record2! recs="+records.inspect
-              records.each do |rec|
-                kind = rec[0].ord
-                fields = PandoraGUI.pson_to_namehash(rec[1..-1])
-                if not PandoraGUI.save_record(kind, fields)
+              records.each do |record|
+                kind = record[0].ord
+                lang = record[1].ord
+                values = PandoraGUI.pson_to_namehash(record[2..-1])
+                if not PandoraGUI.save_record(kind, lang, values)
                   log_message(LM_Warning, 'Не удалось сохранить запись 2')
                 end
                 p 'fields='+fields.inspect
