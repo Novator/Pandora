@@ -168,7 +168,7 @@
   </Business>
   <Region name="Region">
 
-    <Citizen parent="Member" table="persons">
+    <Citizen parent="Partner" table="persons">
     </Citizen>
 
     <Union parent="Company" table="communities">
@@ -218,7 +218,9 @@
       <key_hash name="Key panhash" type="String" size="32" />
       <pack name="Data pack" type="Byte" />
       <trust name="Trust" type="Byte" />
-      <sign name="Sign" type="Blob" />
+      <creator hash="1:phash(12)" />
+      <created hash="2:integer(4)" />
+      <sign name="Sign" type="Blob" hash="3:crc32(4)" />
     </Sign>
 
     <Node name="Node" kind="223" parent="Created">

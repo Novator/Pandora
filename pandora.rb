@@ -1113,7 +1113,7 @@ module PandoraKernel
           end
         else
           res.sort! { |a,b| a[0]<=>b[0] }  # sort formula by index
-          res.collect! { |e| [e[1],e[2],e[3]] }  # delete sort index
+          res.collect! { |e| [e[1],e[2],e[3]] }  # delete sort index (id, hash, len)
         end
         if auto_calc
           if ((not res) or (res == [])) and (def_flds.is_a? Array)
@@ -1293,21 +1293,43 @@ module PandoraKernel
       end
       @panhash_pattern
     end
-    def panhash_pattern_to_s
+    def lang_to_str(lang)
+      case lang
+        when 0
+          _('any')
+        when 1
+          _('eng')
+        when 5
+          _('rus')
+        else
+          _('lang')
+      end
+    end
+    def panhash_formula
       res = ''
       pp = panhash_pattern
       if pp.is_a? Array
-        # just names on current language
-        ppn = pp.collect{|p| field_title(p[0]).gsub(' ', '.') }
+        #ppn = pp.collect{|p| field_title(p[0]).gsub(' ', '.') }
+        flddes = def_fields
+        # ids and names on current language for all fields
+        fldtits = flddes.collect do |fd|
+          id = fd[FI_Id]
+          tit = field_title(fd)    #.gsub(' ', '.')
+          [id, tit]
+        end
+        #p '[fldtits,pp]='+[fldtits,pp].inspect
         # to receive restricted names
         ppr = []
-        ppn.each_with_index do |n,i|
+        pp.each_with_index do |p,i|
+          n = nil
+          j = fldtits.index {|ft| ft[0]==p[0]}
+          n = fldtits[j][1] if j
           if n.is_a? String
             s = 1
             found = false
             while (s<8) and (s<n.size) and not found
               nr = n[0,s]
-              equaled = ppn.select { |f| f[0,s]==nr  }
+              equaled = fldtits.select { |ft| ft[1][0,s]==nr  }
               found = equaled.count<=1
               s += 1
             end
@@ -1317,13 +1339,15 @@ module PandoraKernel
             ppr[i] = n.to_s
           end
         end
+        # compose panhash mask
         siz = 2
         pp.each_with_index do |hp,i|
-          res << ' ' if res != ''
+          res << '/' if res != ''
           res << ppr[i]+':'+hp[2].to_s
           siz += hp[2].to_i
         end
-        res = '2+ ' + res + ' =' + siz.to_s
+        kn = ider.downcase
+        res = 'pandora:' + kn + '/' + res + ' =' + siz.to_s
       end
       res
     end
@@ -1434,7 +1458,7 @@ module PandoraKernel
     def show_panhash(val, prefix=true)
       res = ''
       if prefix
-        res = PandoraKernel.bytes_to_hex(val[0,2])+': '
+        res = PandoraKernel.bytes_to_hex(val[0,2])+' '
         val = val[2..-1]
       end
       res2 = PandoraKernel.bytes_to_hex(val)
@@ -4375,8 +4399,8 @@ module PandoraGUI
           dialog.public_btn.inconsistent = not_key_inited
         end
 
-        st_text = '{' + panobject.panhash_pattern_to_s + '}'
-        st_text = panobject.panhash(sel[0], lang, true, true) + ' ' + st_text if sel and sel.size>0
+        st_text = panobject.panhash_formula
+        st_text = st_text + ' [#'+panobject.panhash(sel[0], lang, true, true)+']' if sel and sel.size>0
         PandoraGUI.set_statusbar_text(dialog.statusbar, st_text)
 
         if panobject.class==PandoraModel::Key

@@ -178,3 +178,5 @@ Enter text from picture=>Введите текст с картинки
 You may enter small letters=>Можно вводить маленькие буквы
 Symbols=>Символы
 Length=>Длина
+Kind=>Тип
+Lang=>Язык
