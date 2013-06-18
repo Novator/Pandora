@@ -214,8 +214,8 @@
     </Key>
 
     <Sign name="Sign" kind="222" parent="Created">
-      <obj_hash name="Object panhash" type="String" size="32" />
-      <key_hash name="Key panhash" type="String" size="32" />
+      <obj_hash name="Object panhash" type="Panhash" />
+      <key_hash name="Key panhash" type="Panhash(Key)" />
       <pack name="Data pack" type="Byte" />
       <trust name="Trust" type="Byte" />
       <creator hash="1:phash(12)" />
@@ -224,24 +224,26 @@
     </Sign>
 
     <Node name="Node" kind="223" parent="Created">
-      <domain name="Domain" type="String" size="255" />
+      <key_hash name="Key panhash" type="Panhash(Key)" hash="1:phash(12)" />
+      <base_id name="Base ID" type="Panhash" hash="2:raw(8)" />
+      <addr_from name="Address from" type="String" size="20" />
+      <addr_from_type name="Address from type" type="Byte" />
       <addr name="Address" type="String" size="20" />
+      <addr_type name="Address type" type="Byte" />
       <tport name="TCP port" type="Word" />
       <uport name="UDP port" type="Word" />
-      <base_id name="Origin" type="String" size="32" />
+      <domain name="Domain" type="String" size="255" />
       <city name="City" type="[City]" />
       <home name="Home" type="[Address]" />
       <coord name="Coord" type="Integer" />
       <state name="State" type="Word" />
       <sended name="Sended B" type="Integer" />
       <received name="Recieved B" type="Integer" />
+      <one_ip_count name="Conns from one IP" type="Integer" />
       <speed name="Speed B/s" type="Integer" />
       <bad_attempts name="Bad attempts" type="Integer" />
       <ban_time name="Time of ban" type="Time" />
-      <addr_from name="Address from" type="String" size="20" />
-      <one_ip_count name="Connection from one IP" type="Integer" />
       <session_key name="Session key" type="String" size="32" />
-      <conn_time name="Connection time" type="Time" />
       <try_upnp_time name="UPnP try time" type="Time" />
       <try_natpmp_time name="NAT-PMP try time" type="Time" />
       <!-- last_link_time name="Last received link" type="Time" />

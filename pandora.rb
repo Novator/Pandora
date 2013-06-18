@@ -752,9 +752,10 @@ module PandoraKernel
   def self.fill_zeros_from_left(data, size)
     #data.force_encoding('ASCII-8BIT')
     data = AsciiString.new(data)
-    if data.size<size
-      data = [0].pack('C')*(size-data.size) + data
-    end
+    #if data.size<size
+    #  data = [0].pack('C')*(size-data.size) + data
+    #end
+    data.rjust(size, 0.chr)
     data = AsciiString.new(data)
   end
 
@@ -1415,6 +1416,8 @@ module PandoraKernel
               res = (res & 0xFFFF) ^ (res >> 16)
             when 'crc32'
               res = Zlib.crc32(fval) #if fval.is_a? String
+            when 'raw'
+              res = AsciiString.new(fval)
           end
         end
         if not res
@@ -3163,10 +3166,8 @@ module PandoraGUI
   end
 
   def self.create_base_id
-    res = PandoraKernel.fill_zeros_from_left(PandoraKernel.bigint_to_bytes(Time.now.to_i), 4)
-    res = res[0,4]
-    res << PandoraKernel.fill_zeros_from_left(PandoraKernel.bigint_to_bytes(rand(0xFFFFFFFFFFFFFFFF)), 8)
-    res << PandoraKernel.fill_zeros_from_left(PandoraKernel.bigint_to_bytes(rand(0xFFFFFFFF)), 4)
+    res = PandoraKernel.fill_zeros_from_left(PandoraKernel.bigint_to_bytes(Time.now.to_i), 4)[0,4]
+    res << OpenSSL::Random.random_bytes(12)
     res
   end
 
@@ -3258,13 +3259,21 @@ module PandoraGUI
 
   $model_gui = {}
 
-  def self.model_gui(ider)
-    res = $model_gui[ider]
+  def self.model_gui(ider, models=nil)
+    if models
+      res = models[ider]
+    else
+      res = $model_gui[ider]
+    end
     if not res
       if PandoraModel.const_defined? ider
         panobj_class = PandoraModel.const_get(ider)
         res = panobj_class.new
-        $model_gui[ider] = res
+        if models
+          models[ider] = res
+        else
+          $model_gui[ider] = res
+        end
       end
     end
     res
@@ -3912,7 +3921,7 @@ module PandoraGUI
 
   # Sign PSON of PanObject and save sign record
   # RU: Подписывает PSON ПанОбъекта и сохраняет запись подписи
-  def self.sign_panobject(panobject, trust=0)
+  def self.sign_panobject(panobject, trust=0, models=nil)
     res = false
     key = current_key
     if key and key[KV_Obj] and key[KV_Creator]
@@ -3931,7 +3940,7 @@ module PandoraGUI
       values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, :pack=>PT_Pson1, \
         :trust=>trust, :creator=>creator, :created=>time_now, :sign=>sign}
 
-      sign_model = model_gui('Sign')
+      sign_model = model_gui('Sign', models)
       panhash = sign_model.panhash(values)
       #p '!!!!!!panhash='+PandoraKernel.bytes_to_hex(panhash).inspect
 
@@ -3942,11 +3951,11 @@ module PandoraGUI
     res
   end
 
-  def self.unsign_panobject(obj_hash, delete_all=false)
+  def self.unsign_panobject(obj_hash, delete_all=false, models=nil)
     res = true
     key_hash = current_user_or_key(false, (not delete_all))
     if obj_hash and (delete_all or key_hash)
-      sign_model = model_gui('Sign')
+      sign_model = model_gui('Sign', models)
       filter = {:obj_hash=>obj_hash}
       filter[:key_hash] = key_hash if key_hash
       res = sign_model.update(nil, nil, filter)
@@ -3954,11 +3963,11 @@ module PandoraGUI
     res
   end
 
-  def self.trust_of_panobject(panhash)
+  def self.trust_of_panobject(panhash, models=nil)
     res = nil
     if panhash and (panhash != '')
       key_hash = current_user_or_key(false, false)
-      sign_model = model_gui('Sign')
+      sign_model = model_gui('Sign', models)
       filter = {:obj_hash => panhash}
       filter[:key_hash] = key_hash if key_hash
       sel = sign_model.select(filter, false, 'created, trust')
@@ -4001,7 +4010,7 @@ module PandoraGUI
 
   $query_depth = 3
 
-  def self.rate_of_panobj(panhash, depth=$query_depth, querist=nil)
+  def self.rate_of_panobj(panhash, depth=$query_depth, querist=nil, models=nil)
     count = 0
     rate = 0.0
     querist_rate = nil
@@ -4012,7 +4021,7 @@ module PandoraGUI
       end
       if querist and (querist != '')
         #kind = PandoraKernel.kind_from_panhash(panhash)
-        sign_model = model_gui('Sign')
+        sign_model = model_gui('Sign', models)
         filter = { :obj_hash => panhash, :key_hash => querist }
         #filter = {:obj_hash => panhash}
         sel = sign_model.select(filter, false, 'creator, created, trust', 'creator')
@@ -4073,7 +4082,8 @@ module PandoraGUI
 
   # Check, create or delete relation between two panobjects
   # RU: Проверяет, создаёт или удаляет связь между двумя объектами
-  def self.act_relation(panhash1, panhash2, rel_kind=RK_Unknown, act=:check, creator=true, init=false)
+  def self.act_relation(panhash1, panhash2, rel_kind=RK_Unknown, act=:check, creator=true, \
+  init=false, models=nil)
     res = nil
     if panhash1 or panhash2
       if not (panhash1 and panhash2)
@@ -4088,7 +4098,7 @@ module PandoraGUI
       end
       if panhash1 and panhash2 #and (panhash1 != panhash2)
         #p 'relat [p1,p2,t]='+[PandoraKernel.bytes_to_hex(panhash1), PandoraKernel.bytes_to_hex(panhash2), rel_kind.inspect
-        relation_model = model_gui('Relation')
+        relation_model = model_gui('Relation', models)
         if relation_model
           filter = {:first => panhash1, :second => panhash2, :kind => rel_kind}
           filter2 = nil
@@ -4097,8 +4107,8 @@ module PandoraGUI
           end
           #p 'relat2 [p1,p2,t]='+[PandoraKernel.bytes_to_hex(panhash1), PandoraKernel.bytes_to_hex(panhash2), rel_kind].inspect
           #p 'act='+act.inspect
-          if (act != :delete)
-            #p 'create'
+          if (act != :delete)  #check or create
+            #p 'check or create'
             sel = relation_model.select(filter, false, 'id')
             exist = (sel and (sel.size>0))
             if not exist and filter2
@@ -4116,7 +4126,7 @@ module PandoraGUI
               filter['modified'] = Time.now.to_i
               res = relation_model.update(filter, nil, nil)
             end
-          else #check or delete
+          else #delete
             #p 'delete'
             res = relation_model.update(nil, nil, filter)
             if filter2
@@ -5126,19 +5136,19 @@ module PandoraGUI
 
   PK_Key    = 221
 
-  def self.get_record_by_panhash(kind, panhash, with_kind=true)
+  def self.get_record_by_panhash(kind, panhash, with_kind=true, models=nil)
     res = nil
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-    param_model = model_gui(panobjectclass.ider)
+    model = model_gui(panobjectclass.ider, models)
     filter = {'panhash'=>panhash}
     if kind==PK_Key
       filter['kind'] = 0x81
     end
-    sel = param_model.select(filter, true, nil, nil, 1)
+    sel = model.select(filter, true, nil, nil, 1)
     if sel and sel.size>0
       #namesvalues = panobject.namesvalues
-      #fields = param_model.matter_fields
-      fields = param_model.clear_excess_fields(sel[0])
+      #fields = model.matter_fields
+      fields = model.clear_excess_fields(sel[0])
       p 'get_rec: matter_fields='+fields.inspect
       # need get all fields (except: id, panhash, modified) + kind
       lang = PandoraKernel.lang_from_panhash(panhash)
@@ -5150,28 +5160,30 @@ module PandoraGUI
     res
   end
 
-  def self.save_record(kind, lang, values)
+  def self.save_record(kind, lang, values, models=nil)
     res = false
     p '=======save_record  [kind, lang, values]='+[kind, lang, values].inspect
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-    param_model = model_gui(panobjectclass.ider)
-    panhash = param_model.panhash(values, lang)
+    model = model_gui(panobjectclass.ider, models)
+    panhash = model.panhash(values, lang)
     p 'panhash='+panhash.inspect
 
     filter = {'panhash'=>panhash}
     if kind==PK_Key
       filter['kind'] = 0x81
     end
-    sel = param_model.select(filter, true, nil, nil, 1)
+    sel = model.select(filter, true, nil, nil, 1)
     if sel and (sel.size>0)
       res = true
     else
       values['panhash'] = panhash
       values['modified'] = Time.now.to_i
-      res = param_model.update(values, nil, nil)
+      res = model.update(values, nil, nil)
     end
     res
   end
+
+  $base_id = ''
 
   MaxPackSize = 1500
   MaxSegSize  = 1200
@@ -5235,19 +5247,28 @@ module PandoraGUI
   ST_Puzzle       = 4
   ST_Sign         = 5
   ST_Captcha      = 6
-  ST_Exchange     = 7
+  ST_Greeting     = 7
+  ST_Exchange     = 8
 
   # Connection state flags
   # RU: Флаги состояния соединения
   CSF_Message     = 1
   CSF_Messaging   = 2
 
+  # Address types
+  # RU: Типы адресов
+  AT_Ip4        = 0
+  AT_Ip6        = 1
+  AT_Hyperboria = 2
+  AT_Netsukuku  = 3
+
   class Connection
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
-      :send_thread, :read_thread, :socket, :read_state, :send_state, :read_mes, :read_media, :models, \
+      :send_thread, :read_thread, :socket, :read_state, :send_state, :read_mes, :read_media,
+      :send_models, :recv_models, \
       :read_req, :send_mes, :send_media, :send_req, :sindex, :rindex, :read_queue, :send_queue, :params,
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :last_scmd, :log_mes, :skey, :rkey, :s_encode, :r_encode,
-      :media_send
+      :media_send, :node_id
 
     def initialize(ahost_name, ahost_ip, aport, aproto, node, aconn_mode=0, aconn_state=CS_Disconnected)
       super()
@@ -5271,9 +5292,11 @@ module PandoraGUI
       @send_req       = PandoraGUI.init_empty_queue
       @read_queue     = PandoraGUI.init_empty_queue
       @send_queue     = PandoraGUI.init_empty_queue
-      @models         = {}
+      @send_models    = {}
+      @recv_models    = {}
       @params         = {}
       @media_send     = false
+      @node_id        = nil
       #Thread.critical = true
       PandoraGUI.add_connection(self)
       #Thread.critical = false
@@ -5544,7 +5567,7 @@ module PandoraGUI
             @sbuf = phrase
             params['puzzle_start'] = Time.now.to_i
           else
-            @skey = PandoraGUI.open_key(skey_panhash, @models, false)
+            @skey = PandoraGUI.open_key(skey_panhash, @recv_models, false)
             # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
             # or just 4? other later!
             if (@skey.is_a? Integer) and (@skey==0)
@@ -5588,9 +5611,87 @@ module PandoraGUI
         end
       end
 
+      def update_node(skey_panhash=nil, sbase_id=nil, trust=nil, session_key=nil)
+        node_model = PandoraGUI.model_gui('Node', @recv_models)
+        state = 0
+        sended = 0
+        received = 0
+        one_ip_count = 0
+        bad_attempts = 0
+        ban_time = 0
+        time_now = Time.now.to_i
+        if not @node_id
+          trusted = ((trust.is_a? Float) and (trust>0))
+          filter = {:key_hash=>skey_panhash, :base_id=>sbase_id}
+          if not trusted
+            filter[:addr_from] = host_ip
+            #act_relation(panhash1, panhash2, rel_kind=RK_Unknown, act=:check, creator=true, \
+            #  init=false, models=nil)
+            #act_relation(skey_panhash, panhash0, RK_CameFrom, :check)
+            #act_relation(nil, panhash0, RK_MaxPublic, :delete, true, true) if panhash != panhash0
+            #act_relation(nil, panhash, RK_MaxPublic, :create, true, true)
+            #act_relation(nil, panhash, RK_MaxPublic, :delete, true, true)
+          end
+          sel = node_model.select(filter, false, 'id, state, sended, received, one_ip_count, bad_attempts, ban_time')
+          filter = nil
+          if sel and sel.size>0
+            row = sel[0]
+            @node_id = row[0]
+            state = row[1]
+            sended = row[2]
+            received = row[3]
+            one_ip_count = row[4]
+            bad_attempts = row[5]
+            ban_time = row[6]
+            if sel.size>1
+              p 'need to del excess nodes!'
+            end
+          end
+        end
+        filter = nil
+        if @node_id
+          filter = {:id=>@node_id}
+          values = {}
+        else
+          creator = PandoraGUI.current_user_or_key(true)
+          values = {:key_hash=>skey_panhash, :base_id=>sbase_id, :creator=>creator, :created=>time_now}
+          panhash = node_model.panhash(values)
+          values[:panhash] = panhash
+        end
+        values[:addr_from] = host_ip
+        values[:addr_from_type] = AT_Ip4
+        values[:state]        = state
+        values[:sended]       = sended
+        values[:received]     = received
+        values[:one_ip_count] = one_ip_count+1
+        values[:bad_attempts] = bad_attempts
+        values[:session_key]  = session_key
+        ban_time     = ban_time
+        if trusted
+          addr = params['addr']
+          if addr and (addr != '')
+            host, port, proto = PandoraGUI.decode_node(addr)
+            if (host and (host != '')) or (port and (port != 0))
+              host = host_ip if (not host) or (host=='')
+              port = 5577 if (not port) or (port==0)
+              values[:domain] = host
+              proto ||= ''
+              values[:tport] = port if (proto != 'udp')
+              values[:uport] = port if (proto != 'tcp')
+              values[:addr_type] = AT_Ip4
+            end
+          end
+        end
+        values[:modified] = time_now
+        res = node_model.update(values, nil, filter)
+        #panhash = panhashes[0]
+        #kind = PandoraKernel.kind_from_panhash(panhash)
+        #record = PandoraGUI.get_record_by_panhash(kind, panhash, false, @recv_models)
+      end
+
       case rcmd
         when EC_Init
-          if stage<=ST_Exchange
+          if stage<=ST_Greeting
             if rcode<=ECC_Init_Answer
               if (rcode==ECC_Init_Hello) and ((stage==ST_Protocol) or (stage==ST_Sign))
                 recognize_params
@@ -5607,7 +5708,7 @@ module PandoraGUI
                   end
                 end
               elsif ((rcode==ECC_Init_Puzzle) or (rcode==ECC_Init_Phrase)) \
-              and ((stage==ST_Protocol) or (stage==ST_Exchange))
+              and ((stage==ST_Protocol) or (stage==ST_Greeting))
                 if rdata and (rdata != '')
                   rphrase = rdata
                   params['rphrase'] = rphrase
@@ -5616,9 +5717,9 @@ module PandoraGUI
                 end
                 p log_mes+'recived phrase len='+rphrase.size.to_s
                 if rphrase and (rphrase != '')
-                  if rcode==ECC_Init_Puzzle
+                  if rcode==ECC_Init_Puzzle  #phrase for puzzle
                     if ((conn_mode & CM_Hunter) == 0)
-                      err_scmd('Puzzle for listener is denied')
+                      err_scmd('Puzzle to listener is denied')
                     else
                       delay = rphrase[rphrase.size-2].ord
                       p 'PUZZLE delay='+delay.to_s
@@ -5634,12 +5735,15 @@ module PandoraGUI
                       @sbuf = suffix
                       @scode = ECC_Init_Answer
                     end
-                  else
+                  else #phrase for sign
                     p log_mes+'SIGN'
                     rphrase = OpenSSL::Digest::SHA384.digest(rphrase)
                     sign = PandoraGUI.make_sign(@rkey, rphrase)
-                    @sbuf = sign
+                    len = $base_id.size
+                    len = 255 if len>255
+                    @sbuf = [len].pack('C')+$base_id[0,len]+sign
                     @scode = ECC_Init_Sign
+                    @stage = ST_Exchange if @stage == ST_Greeting
                   end
                   @scmd = EC_Init
                   #@stage = ST_Check
@@ -5665,21 +5769,26 @@ module PandoraGUI
                   end
                 end
               elsif (rcode==ECC_Init_Sign) and (stage==ST_Sign)
-                rsign = rdata
+                len = rdata[0].ord
+                sbase_id = rdata[1, len]
+                rsign = rdata[len+1..-1]
                 p log_mes+'recived rsign len='+rsign.size.to_s
-                @skey = PandoraGUI.open_key(@skey, @models, true)
+                @skey = PandoraGUI.open_key(@skey, @recv_models, true)
                 if @skey and @skey[KV_Obj]
                   if PandoraGUI.verify_sign(@skey, OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
                     trust = @skey[KV_Trust]
+                    update_node(@skey[KV_Panhash], sbase_id, trust)
                     p log_mes+'----trust='+trust.inspect
                     if ($captcha_length>0) and (trust.is_a? Integer) and ((conn_mode & CM_Hunter) == 0)
                       @skey[KV_Trust] = 0
                       send_captcha
                     elsif trust.is_a? Float
                       if trust>0
-                        @stage = ST_Exchange
                         if (conn_mode & CM_Hunter) == 0
+                          @stage = ST_Greeting
                           add_send_segment(EC_Init, true)
+                        else
+                          @stage = ST_Exchange
                         end
                         @scmd = EC_Data
                         @scode = 0
@@ -5696,7 +5805,7 @@ module PandoraGUI
                 else
                   err_scmd('Cannot init your key')
                 end
-              elsif (rcode==ECC_Init_Captcha) and ((stage==ST_Protocol) or (stage==ST_Exchange))
+              elsif (rcode==ECC_Init_Captcha) and ((stage==ST_Protocol) or (stage==ST_Greeting))
                 p log_mes+'CAPTCHA!!!  ' #+params.inspect
                 if ((conn_mode & CM_Hunter) == 0)
                   err_scmd('Captcha for listener is denied')
@@ -5792,7 +5901,7 @@ module PandoraGUI
                 captcha = rdata
                 p log_mes+'recived captcha='+captcha
                 if captcha.downcase==params['captcha']
-                  @stage = ST_Exchange
+                  @stage = ST_Greeting
                   p 'Captcha is GONE!'
                   if (conn_mode & CM_Hunter) == 0
                     add_send_segment(EC_Init, true)
@@ -5892,14 +6001,14 @@ module PandoraGUI
           if panhashes.size==1
             panhash = panhashes[0]
             kind = PandoraKernel.kind_from_panhash(panhash)
-            record = PandoraGUI.get_record_by_panhash(kind, panhash, false)
+            record = PandoraGUI.get_record_by_panhash(kind, panhash, false, @recv_models)
             @scode = kind
             @sbuf = record
           else
             rec_array = []
             panhashes.each do |panhash|
               kind = PandoraKernel.kind_from_panhash(panhash)
-              record = PandoraGUI.get_record_by_panhash(kind, panhash, true)
+              record = PandoraGUI.get_record_by_panhash(kind, panhash, true, @recv_models)
               p log_mes+'EC_Request panhashes='+PandoraKernel.bytes_to_hex(panhash).inspect
               rec_array << record
             end
@@ -5916,10 +6025,10 @@ module PandoraGUI
             if (stage==ST_Exchange) or (kind==PK_Key)
               lang = rdata[0].ord
               values = PandoraGUI.pson_to_namehash(rdata[1..-1])
-              if not PandoraGUI.save_record(kind, lang, values)
+              if not PandoraGUI.save_record(kind, lang, values, @recv_models)
                 log_message(LM_Warning, 'Не удалось сохранить запись 1')
               end
-              init_skey_or_error(false) if stage<ST_Exchange
+              init_skey_or_error(false) if stage<ST_Greeting
             else
               err_scmd('Record ('+kind.to_s+') came on wrong stage')
             end
@@ -5931,7 +6040,7 @@ module PandoraGUI
                 kind = record[0].ord
                 lang = record[1].ord
                 values = PandoraGUI.pson_to_namehash(record[2..-1])
-                if not PandoraGUI.save_record(kind, lang, values)
+                if not PandoraGUI.save_record(kind, lang, values, @recv_models)
                   log_message(LM_Warning, 'Не удалось сохранить запись 2')
                 end
                 p 'fields='+fields.inspect
@@ -6234,8 +6343,8 @@ module PandoraGUI
       #  Thread.pass
       #end
 
-      models['Message'] ||= PandoraModel::Message.new
-      message_model = models['Message']
+      send_models['Message'] ||= PandoraModel::Message.new
+      message_model = send_models['Message']
 
       p log_mes+'ЦИКЛ ОТПРАВКИ начало'
       while conn_state != CS_Disconnected
@@ -6647,14 +6756,18 @@ module PandoraGUI
         set_status_field(SF_Hunt, 'Hunting')
         node_model = PandoraModel::Node.new
         while round_count>0
-          sel = node_model.select('addr<>"" OR domain<>""', false)
+          sel = node_model.select('addr<>"" OR domain<>""', false, 'addr, domain, tport')
           if sel and sel.size>0
             sel.each do |row|
-              addr   = node_model.field_val('addr', row)
-              domain = node_model.field_val('domain', row)
-              tport = node_model.field_val('tport', row)
-              tport = $port if (not tport) or (tport=='')
-              domain = addr if ((domain == '') or not domain)
+              addr   = row[0]
+              domain = row[1]
+              tport = 0
+              begin
+                tport = row[2].to_i
+              rescue
+              end
+              tport = $port if (not tport) or (tport==0) or (tport=='')
+              domain = addr if ((not domain) or (domain == ''))
 
               node = encode_node(domain, tport, 'tcp')
               p '==hunt node: '+node.inspect
@@ -8175,7 +8288,7 @@ module PandoraGUI
       end
     end
 
-    base_id = PandoraGUI.get_param('base_id')
+    $base_id = PandoraGUI.get_param('base_id')
     check_update = PandoraGUI.get_param('check_update')
     if (check_update==1) or (check_update==true)
       last_check = PandoraGUI.get_param('last_check')

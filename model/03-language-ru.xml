@@ -189,6 +189,7 @@
     </Sign>
 
     <Node name.ru="Узел|Узлы">
+      <key_hash name.ru="Панхэш ключа" />
       <base_id name.ru="ID базы" />
       <domain name.ru="Домен" />
       <addr name.ru="Адрес" />
