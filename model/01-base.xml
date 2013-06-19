@@ -276,11 +276,11 @@
     </Repository>
 
     <Message name="Message" kind="227" parent="Created">
-      <creator hash="1:panhash(16)" />
+      <creator hash="1:phash(12)" />
       <created hash="2:integer(4)" />
-      <destination name="Destination" type="String" size="32" />
+      <destination name="Destination" type="Panhash" />
       <state name="State" type="Word" />
-      <text name="Text" type="Text" />
+      <text name="Text" type="Text" hash="3:crc32(4)" />
     </Message>
 
     <Fishhook name="Fishhook|Fishhooks" kind="228" parent="Created">

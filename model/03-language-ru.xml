@@ -207,7 +207,6 @@
       <addr_from name.ru="Адрес откуда" />
       <one_ip_count name.ru="Соединений с одного IP" />
       <session_key name.ru="Сеансовый ключ" />
-      <conn_time name.ru="Время соединения" />
       <try_upnp_time name.ru="Время попытки UPnP" />
       <try_natpmp_time name.ru="Время попытки NAT-PMP" />
     </Node>
