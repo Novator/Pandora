@@ -4621,6 +4621,7 @@ module PandoraGUI
       end
     end
     panobject = panobject_class.new
+    p 'panobject.sort='+panobject.sort.inspect
     sel = panobject.select(nil, false, nil, panobject.sort)
     store = Gtk::ListStore.new(Integer)
     param_view_col = nil
@@ -5147,6 +5148,16 @@ module PandoraGUI
     [text, buf]
   end
 
+  def self.get_exchage_params
+    $incoming_addr       = PandoraGUI.get_param('incoming_addr')
+    $puzzle_bit_length   = PandoraGUI.get_param('puzzle_bit_length')
+    $puzzle_sec_delay    = PandoraGUI.get_param('puzzle_sec_delay')
+    $captcha_length      = PandoraGUI.get_param('captcha_length')
+    $captcha_attempts    = PandoraGUI.get_param('captcha_attempts')
+    $trust_for_captchaed = PandoraGUI.get_param('trust_for_captchaed')
+    $trust_for_listener  = PandoraGUI.get_param('trust_for_listener')
+  end
+
   PK_Key    = 221
 
   def self.get_record_by_panhash(kind, panhash, with_kind=true, models=nil, get_pson=true)
@@ -5288,6 +5299,14 @@ module PandoraGUI
   # RU: Шаги почемучки
   IS_CreatorCheck  = 0
   IS_Finished      = 255
+
+  $incoming_addr = nil
+  $puzzle_bit_length = 0  #8..24  (recommended 14)
+  $puzzle_sec_delay = 2   #0..255 (recommended 2)
+  $captcha_length = 4     #4..8   (recommended 6)
+  $captcha_attempts = 2
+  $trust_for_captchaed = true
+  $trust_for_listener = true
 
   class Connection
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
@@ -5491,8 +5510,9 @@ module PandoraGUI
             key_hash = @rkey[KV_Panhash]
             scode = EC_Init
             scode = ECC_Init_Hello
-            sbuf = PandoraGUI.namehash_to_pson({:version=>0, :mode=>0, :addr=>':5577tcp', \
-              :mykey=>key_hash, :tokey=>nil})
+            hparams = {:version=>0, :mode=>0, :mykey=>key_hash, :tokey=>nil}
+            hparams[:addr] = $incoming_addr if $incoming_addr and (not ($incoming_addr != ''))
+            sbuf = PandoraGUI.namehash_to_pson(hparams)
           else
             scmd = EC_Bye
             scode = ECC_Bye_Exit
@@ -5559,13 +5579,6 @@ module PandoraGUI
         @sbuf = asbuf
       end
     end
-
-    $puzzle_bit_length = 0  #8..24  (recommended 14)
-    $puzzle_sec_delay = 2   #0..255 (recommended 2)
-    $captcha_length = 4     #4..8   (recommended 6)
-    $captcha_attempts = 2
-    $trust_for_captchaed = true
-    $trust_for_listener = true
 
     # Accept received segment
     # RU: Принять полученный сегмент
@@ -5732,7 +5745,7 @@ module PandoraGUI
         addr = params['addr']
         if addr and (addr != '')
           host, port, proto = PandoraGUI.decode_node(addr)
-          p log_mes+'AAAAAAAAAAAADDDDDDDDDDDDDRRRRRRRR [addr, host, port, proto]='+[addr, host, port, proto].inspect
+          #p log_mes+'ADDR [addr, host, port, proto]='+[addr, host, port, proto].inspect
           if (host and (host != '')) and (port and (port != 0))
             host = host_ip if (not host) or (host=='')
             port = 5577 if (not port) or (port==0)
@@ -5803,7 +5816,7 @@ module PandoraGUI
                       err_scmd('Puzzle to listener is denied')
                     else
                       delay = rphrase[-2].ord
-                      p 'PUZZLE delay='+delay.to_s
+                      #p 'PUZZLE delay='+delay.to_s
                       start_time = 0
                       end_time = 0
                       start_time = Time.now.to_i if delay
@@ -5817,7 +5830,7 @@ module PandoraGUI
                       @scode = ECC_Init_Answer
                     end
                   else #phrase for sign
-                    p log_mes+'SIGN'
+                    #p log_mes+'SIGN'
                     rphrase = OpenSSL::Digest::SHA384.digest(rphrase)
                     sign = PandoraGUI.make_sign(@rkey, rphrase)
                     len = $base_id.bytesize
@@ -5853,7 +5866,7 @@ module PandoraGUI
                 len = rdata[0].ord
                 sbase_id = rdata[1, len]
                 rsign = rdata[len+1..-1]
-                p log_mes+'recived rsign len='+rsign.bytesize.to_s
+                #p log_mes+'recived rsign len='+rsign.bytesize.to_s
                 @skey = PandoraGUI.open_key(@skey, @recv_models, true)
                 if @skey and @skey[KV_Obj]
                   if PandoraGUI.verify_sign(@skey, OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
@@ -5898,7 +5911,7 @@ module PandoraGUI
                   err_scmd('Cannot init your key')
                 end
               elsif (rcode==ECC_Init_Captcha) and ((stage==ST_Protocol) or (stage==ST_Greeting))
-                p log_mes+'CAPTCHA!!!  ' #+params.inspect
+                #p log_mes+'CAPTCHA!!!  ' #+params.inspect
                 if ((conn_mode & CM_Hunter) == 0)
                   err_scmd('Captcha for listener is denied')
                 else
@@ -5927,7 +5940,7 @@ module PandoraGUI
                   vbox.pack_start(image, false, false, 2)
 
                   clue, length, symbols = clue_text.split('|')
-                  p log_mes+'    [clue, length, symbols]='+[clue, length, symbols].inspect
+                  #p log_mes+'    [clue, length, symbols]='+[clue, length, symbols].inspect
                   len = 0
                   begin
                     len = length.to_i if length
@@ -6682,6 +6695,7 @@ module PandoraGUI
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen
+    get_exchage_params
     if not $listen_thread
       user = current_user_or_key(true)
       if user
@@ -7701,6 +7715,20 @@ module PandoraGUI
       res
     end
 
+=begin
+            video_src = 'v4l2src decimate=3'
+            video_src_caps = 'capsfilter caps="video/x-raw-rgb,width=320,height=240"'
+            video_send_tee = 'ffmpegcolorspace ! tee name=vidtee'
+            video_view1 = 'queue ! xvimagesink force-aspect-ratio=true'
+            video_can_encoder = 'vp8enc max-latency=0.5'
+            video_can_sink = 'appsink emit-signals=true'
+
+            video_can_src = 'appsrc emit-signals=false'
+            video_can_decoder = 'vp8dec'
+            video_recv_tee = 'ffmpegcolorspace ! tee'
+            video_view2 = 'ximagesink sync=false'
+=end
+
     $send_media_pipelines = {}
     $webcam_xvimagesink   = nil
 
@@ -7912,6 +7940,31 @@ module PandoraGUI
       end
     end
 
+    def get_audio_sender_params(src_param = 'audio_src_alsa', \
+      send_caps_param = 'audio_send_caps_8000', send_tee_param = 'audio_send_tee_def', \
+      can_encoder_param = 'audio_can_encoder_vorbis', can_sink_param = 'audio_can_sink_app')
+
+      # getting from setup (will be feature)
+      #src = PandoraGUI.get_param(src_param)
+      #send_caps = PandoraGUI.get_param(send_caps_param)
+      #send_tee = PandoraGUI.get_param(send_tee_param)
+      #can_encoder = PandoraGUI.get_param(can_encoder_param)
+      #can_sink = PandoraGUI.get_param(can_sink_param)
+
+      # default param (temporary)
+      src = 'alsasrc device=hw:0'
+      send_caps = 'audio/x-raw-int,rate=8000,channels=1,depth=8,width=8'
+      send_tee = 'audioconvert ! tee name=audtee'
+      can_encoder = 'vorbisenc quality=0.0'
+      can_sink = 'appsink emit-signals=true'
+
+      # extend src and its caps
+      src = src + ' ! audioconvert ! audioresample'
+      send_caps = 'capsfilter caps="'+send_caps+'"'
+
+      [src, send_caps, send_tee, can_encoder, can_sink]
+    end
+
     def init_audio_sender(start=true, just_upd_area=false)
       audio_pipeline = $send_media_pipelines['audio']
       #p 'init_audio_sender pipe='+audio_pipeline.inspect+'  btn='+snd_button.active?.inspect
@@ -7929,19 +7982,19 @@ module PandoraGUI
             audio_pipeline = Gst::Pipeline.new('spipe_a')
             $send_media_pipelines['audio'] = audio_pipeline
 
-            audio_src = 'alsasrc device=hw:0 ! audioconvert ! audioresample'
+            ##audio_src = 'alsasrc device=hw:0 ! audioconvert ! audioresample'
             #audio_src = 'autoaudiosrc'
             #audio_src = 'alsasrc'
             #audio_src = 'audiotestsrc'
             #audio_src = 'pulsesrc'
-            audio_src_caps = 'capsfilter caps="audio/x-raw-int,rate=8000,channels=1,depth=8,width=8"'
+            ##audio_src_caps = 'capsfilter caps="audio/x-raw-int,rate=8000,channels=1,depth=8,width=8"'
             #audio_src_caps = 'queue ! capsfilter caps="audio/x-raw-int,rate=8000,depth=8"'
             #audio_src_caps = 'capsfilter caps="audio/x-raw-int,rate=8000,depth=8"'
             #audio_src_caps = 'capsfilter caps="audio/x-raw-int,endianness=1234,signed=true,width=16,depth=16,rate=22000,channels=1"'
             #audio_src_caps = 'queue'
-            audio_send_tee = 'audioconvert ! tee name=audtee'
+            ##audio_send_tee = 'audioconvert ! tee name=audtee'
             #audio_can_encoder = 'vorbisenc'
-            audio_can_encoder = 'vorbisenc quality=0.0'
+            ##audio_can_encoder = 'vorbisenc quality=0.0'
             #audio_can_encoder = 'vorbisenc quality=0.0 bitrate=16000 managed=true' #8192
             #audio_can_encoder = 'vorbisenc quality=0.0 max-bitrate=32768' #32768  16384  65536
             #audio_can_encoder = 'mulawenc'
@@ -7959,7 +8012,10 @@ module PandoraGUI
             #audio_can_encoder = 'speexenc vad=true vbr=true'
             #audio_can_encoder = 'speexenc vbr=1 dtx=1 nframes=4'
             #audio_can_encoder = 'opusenc'
-            audio_can_sink = 'appsink emit-signals=true'
+            ##audio_can_sink = 'appsink emit-signals=true'
+
+            audio_src, audio_send_caps, audio_send_tee, audio_can_encoder, audio_can_sink  \
+              = get_audio_sender_params
 
             if winos
               #audio_src_win = 'dshowaudiosrc'
@@ -7969,7 +8025,7 @@ module PandoraGUI
             end
 
             micro, pad = add_elem_to_pipe(audio_src, audio_pipeline)
-            capsfilter, pad = add_elem_to_pipe(audio_src_caps, audio_pipeline, micro, pad)
+            capsfilter, pad = add_elem_to_pipe(audio_send_caps, audio_pipeline, micro, pad)
             tee, teepad = add_elem_to_pipe(audio_send_tee, audio_pipeline, capsfilter, pad)
             audenc, pad = add_elem_to_pipe(audio_can_encoder, audio_pipeline, tee, teepad)
             appsink, pad = add_elem_to_pipe(audio_can_sink, audio_pipeline, audenc, pad)
@@ -8538,6 +8594,8 @@ module PandoraGUI
         start_updating(false)
       end
     end
+
+    PandoraGUI.get_exchage_params
 
     Gtk.main
   end
