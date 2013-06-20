@@ -297,6 +297,7 @@
     <section_update desc="Update" type="Word" section="0" setting="2" />
     <section_net desc="Network" type="Word" section="0" setting="3" />
     <section_crypto desc="Crypto" type="Word" section="0" setting="4" />
+    <section_media desc="Media" type="Word" section="0" setting="5" />
 
     <base_id desc="Base ID" type="String" section="common" setting="[create_base_id],hex" />
 
@@ -309,8 +310,99 @@
     <tcp_port desc="TCP port" type="Integer" section="net" setting="5577" />
     <udp_port desc="UDP port" type="Integer" section="net" setting="5577" />
     <local_host desc="Local host" type="String" section="net" setting="localhost" />
+    <incoming_addr desc="Incoming address" type="String" section="net" setting="," />
+    <puzzle_bit_length desc="Puzzle length (bit)" type="Byte" section="net" setting="0" />
+    <puzzle_sec_delay desc="Puzzle delay (sec)" type="Byte" section="net" setting="2" />
+    <captcha_length desc="Captcha length (char)" type="Byte" section="net" setting="4" />
+    <captcha_attempts desc="Captcha attempts count" type="Byte" section="net" setting="2" />
+    <trust_for_captchaed desc="Trust for captchaed" type="Boolean" section="net" setting="true" />
+    <trust_for_listener desc="Trust for listener" type="Boolean" section="net" setting="true" />
 
     <last_auth_key desc="Last auth key" type="Bigint" section="crypto" setting=",hex" />
+
+    <video_src_v4l2 desc="Video source V2L2" type="String" section="media" setting="v4l2src decimate=3" />
+    <video_src_win desc="Video source Windows" type="String" section="media" setting="dshowvideosrc" />
+    <video_src desc="Video source" type="String" section="media" setting="video_src_v4l2" />
+    <video_send_caps_raw_320x240 desc="Video format raw 320x240" type="String" section="media" setting='"video/x-raw-rgb,width=320,height=240"' />
+    <video_send_caps_raw_640x480 desc="Video format raw 640x480" type="String" section="media" setting='"video/x-raw-rgb,width=640,height=480"' />
+    <video_send_caps_yuv_320x240 desc="Video format yuv 320x240" type="String" section="media" setting='"video/x-raw-yuv,width=320,height=240"' />
+    <video_send_caps_yuv_640x480 desc="Video format yuv 640x480" type="String" section="media" setting='"video/x-raw-yuv,width=640,height=480"' />
+    <video_send_caps desc="Video format" type="String" section="media" setting="video_send_caps_raw_320x240" />
+    <video_send_tee_def desc="Video T-sender" type="String" section="media" setting="ffmpegcolorspace ! tee name=vidtee" />
+    <video_view1_x desc="Video sending X view" type="String" section="media" setting="queue ! ximagesink sync=false" />
+    <video_view1_xv desc="Video sending Xv view" type="String" section="media" setting="queue ! xvimagesink force-aspect-ratio=true" />
+    <video_view1_win desc="Video sending Win view" type="String" section="media" setting="queue ! directdrawsink" />
+    <video_view1 desc="Video sending view" type="String" section="media" setting="video_view1_xv" />
+    <video_can_encoder_vp8 desc="Video cannel VP8 encoder" type="String" section="media" setting="vp8enc max-latency=0.5" />
+    <video_can_encoder_jpeg desc="Video cannel JPEG encoder" type="String" section="media" setting="jpegenc quality=80" />
+    <video_can_encoder_smoke desc="Video cannel Smoke encoder" type="String" section="media" setting="smokeenc keyframe=8 qmax=40" />
+    <video_can_encoder_theora desc="Video cannel Theora encoder" type="String" section="media" setting="theoraenc bitrate=128" />
+    <video_can_encoder_x264 desc="Video cannel x264 encoder" type="String" section="media" setting="queue ! x264enc bitrate=96" />
+    <video_can_encoder_h264 desc="Video cannel h264 encoder" type="String" section="media" setting="h264enc" />
+    <video_can_encoder desc="Video cannel encoder" type="String" section="media" setting="video_can_encoder_vp8" />
+    <video_can_sink_app desc="Video cannel sink" type="String" section="media" setting="appsink emit-signals=true" />
+
+    <video_can_src_app desc="Video cannel source" type="String" section="media" setting="appsrc emit-signals=false" />
+    <video_can_decoder_vp8 desc="Video cannel VP8 decoder" type="String" section="media" setting="vp8dec" />
+    <video_can_decoder_jpeg desc="Video cannel JPEG decoder" type="String" section="media" setting="jpegdec" />
+    <video_can_decoder_smoke desc="Video cannel Smoke decoder" type="String" section="media" setting="smokedec" />
+    <video_can_decoder_theora desc="Video cannel Theora decoder" type="String" section="media" setting="theoradec" />
+    <video_can_decoder_x264 desc="Video cannel x264 decoder" type="String" section="media" setting="x264dec" />
+    <video_can_decoder_h263 desc="Video cannel h264 decoder" type="String" section="media" setting="h264dec" />
+    <video_can_decoder desc="Video cannel decoder" type="String" section="media" setting="video_can_decoder_vp8" />
+    <video_recv_tee_def desc="Video T-receiver" type="String" section="media" setting="ffmpegcolorspace ! tee" />
+    <video_view2_x desc="Video receiving X" type="String" section="media" setting="ximagesink sync=false" />
+    <video_view2_xv desc="Video receiving Xv" type="String" section="media" setting="xvimagesink force-aspect-ratio=true" />
+    <video_view2_win desc="Video receiving Win" type="String" section="media" setting="queue ! directdrawsink" />
+    <video_view2 desc="Video receiving view" type="String" section="media" setting="video_view2_x" />
+
+    <audio_src_alsa desc="Audio sourse ALSA" type="String" section="media" setting="alsasrc device=hw:0" />
+    <audio_src_pulse desc="Audio sourse Pulse" type="String" section="media" setting="pulsesrc" />
+    <audio_src_auto desc="Audio sourse Auto" type="String" section="media" setting="autoaudiosrc" />
+    <audio_src_win desc="Audio sourse Windows" type="String" section="media" setting="dshowaudiosrc" />
+    <audio_src_test desc="Audio sourse Test" type="String" section="media" setting="audiotestsrc" />
+    <audio_src desc="Audio sourse" type="String" section="media" setting="audio_src_alsa" />
+    <audio_send_caps_8000 desc="Audio format 8000" type="String" section="media" setting='"audio/x-raw-int,rate=8000,channels=1,depth=8,width=8"' />
+    <audio_send_caps desc="Audio format" type="String" section="media" setting="audio_send_caps_8000" />
+    <audio_send_tee_def desc="Audio T-sender" type="String" section="media" setting="audioconvert ! tee name=audtee" />
+    <audio_can_encoder_vorbis desc="Audio cannel Vorbis encoder" type="String" section="media" setting="vorbisenc quality=0.0" />
+    <audio_can_encoder_speex desc="Audio cannel Speex encoder" type="String" section="media" setting="speexenc" />
+    <audio_can_encoder_opus desc="Audio cannel Opus encoder" type="String" section="media" setting="opusenc" />
+    <audio_can_encoder_a52 desc="Audio cannel a52 encoder" type="String" section="media" setting="a52enc" />
+    <audio_can_encoder_flac desc="Audio cannel Flac encoder" type="String" section="media" setting="flacenc" />
+    <audio_can_encoder_mulaw desc="Audio cannel MuLaw encoder" type="String" section="media" setting="mulawenc" />
+    <audio_can_encoder_mp3 desc="Audio cannel Lame MP3 encoder" type="String" section="media" setting="lamemp3enc bitrate=8 encoding-engine-quality=speed fast-vbr=true" />
+    <audio_can_encoder_voaac desc="Audio cannel VoACC encoder" type="String" section="media" setting="voaacenc" />
+    <audio_can_encoder_faac desc="Audio cannel FAA encoder" type="String" section="media" setting="faac" />
+    <audio_can_encoder_voamrwb desc="Audio cannel AMRWB encoder" type="String" section="media" setting="voamrwbenc" />
+    <audio_can_encoder_adpcm desc="Audio cannel ADPCM encoder" type="String" section="media" setting="adpcmenc" />
+    <audio_can_encoder_amrnb desc="Audio cannel AMRNB encoder" type="String" section="media" setting="amrnbenc" />
+    <audio_can_encoder_nelly desc="Audio cannel NellyMoser encoder" type="String" section="media" setting="ffenc_nellymoser" />
+    <audio_can_encoder desc="Audio cannel encoder" type="String" section="media" setting="audio_can_encoder_vorbis" />
+    <audio_can_sink_app desc="Audio cannel sink" type="String" section="media" setting="appsink emit-signals=true" />
+
+    <audio_can_src_app desc="Audio cannel source" type="String" section="media" setting="appsrc emit-signals=false" />
+    <audio_can_decoder_vorbis desc="Audio cannel Vorbis decoder" type="String" section="media" setting="vorbisdec" />
+    <audio_can_decoder_speex desc="Audio cannel Speex decoder" type="String" section="media" setting="speexdec" />
+    <audio_can_decoder_mulaw desc="Audio cannel MuLaw decoder" type="String" section="media" setting="mulawdec" />
+    <audio_can_decoder_mp3 desc="Audio cannel FluMP3 decoder" type="String" section="media" setting="flump3dec" />
+    <audio_can_decoder_amrwb desc="Audio cannel AMRWB decoder" type="String" section="media" setting="amrwbdec" />
+    <audio_can_decoder_adpcm desc="Audio cannel ADPCM decoder" type="String" section="media" setting="adpcmdec" />
+    <audio_can_decoder_amrnb desc="Audio cannel AMRNB decoder" type="String" section="media" setting="amrnbdec" />
+    <audio_can_decoder_voaac desc="Audio cannel VoACC decoder" type="String" section="media" setting="voaacdec" />
+    <audio_can_decoder_a52 desc="Audio cannel a53 decoder" type="String" section="media" setting="a52dec" />
+    <audio_can_decoder_faad desc="Audio cannel FAA decoder" type="String" section="media" setting="faad" />
+    <audio_can_decoder_nelly desc="Audio cannel NellyMoser decoder" type="String" section="media" setting="ffdec_nellymoser" />
+    <audio_can_decoder_flac desc="Audio cannel Flac decoder" type="String" section="media" setting="flacdec" />
+    <audio_can_decoder_opus desc="Audio cannel Opus decoder" type="String" section="media" setting="opusdec" />
+    <audio_can_decoder desc="Audio cannel decoder" type="String" section="media" setting="audio_can_decoder_vorbis" />
+    <audio_recv_tee_def desc="Audio T-receiver" type="String" section="media" setting="audioconvert ! tee" />
+    <audio_phones_auto desc="Audio auto output" type="String" section="media" setting="autoaudiosink" />
+    <audio_phones_alsa desc="Audio ALSA output" type="String" section="media" setting="alsasink" />
+    <audio_phones_pulse desc="Audio Pulse output" type="String" section="media" setting="pulsesink" />
+    <audio_phones_win desc="Audio Windows output" type="String" section="media" setting="autoaudiosink" />
+    <audio_phones desc="Audio output" type="String" section="media" setting="audio_phones_auto" />
+
   </Defaults>
 
 </pandora-model>

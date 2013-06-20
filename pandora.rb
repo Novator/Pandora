@@ -3219,9 +3219,19 @@ module PandoraGUI
 
   def self.decode_param_setting(setting)
     res = {}
-    sets = setting.split(',')
-    res['default'] = sets[0]
-    res['view'] = sets[1]
+    i = setting.index('"')
+    j = nil
+    j = setting.index('"', i+1) if i
+    if i and j
+      res['default'] = setting[i+1..j-1]
+      i = setting.index(',', j+1)
+      i ||= j
+      res['view'] = setting[i+1..-1]
+    else
+      sets = setting.split(',')
+      res['default'] = sets[0]
+      res['view'] = sets[1]
+    end
     res
   end
 
@@ -7715,19 +7725,32 @@ module PandoraGUI
       res
     end
 
-=begin
-            video_src = 'v4l2src decimate=3'
-            video_src_caps = 'capsfilter caps="video/x-raw-rgb,width=320,height=240"'
-            video_send_tee = 'ffmpegcolorspace ! tee name=vidtee'
-            video_view1 = 'queue ! xvimagesink force-aspect-ratio=true'
-            video_can_encoder = 'vp8enc max-latency=0.5'
-            video_can_sink = 'appsink emit-signals=true'
+    def get_video_sender_params(src_param = 'video_src_v4l2', \
+      send_caps_param = 'video_send_caps_raw_320x240', send_tee_param = 'video_send_tee_def', \
+      view1_param = 'video_view1_xv', can_encoder_param = 'video_can_encoder_vp8', \
+      can_sink_param = 'video_can_sink_app')
 
-            video_can_src = 'appsrc emit-signals=false'
-            video_can_decoder = 'vp8dec'
-            video_recv_tee = 'ffmpegcolorspace ! tee'
-            video_view2 = 'ximagesink sync=false'
-=end
+      # getting from setup (will be feature)
+      src         = PandoraGUI.get_param(src_param)
+      send_caps   = PandoraGUI.get_param(send_caps_param)
+      send_tee    = PandoraGUI.get_param(send_tee_param)
+      view1       = PandoraGUI.get_param(view1_param)
+      can_encoder = PandoraGUI.get_param(can_encoder_param)
+      can_sink    = PandoraGUI.get_param(can_sink_param)
+
+      # default param (temporary)
+      #src = 'v4l2src decimate=3'
+      #send_caps = 'video/x-raw-rgb,width=320,height=240'
+      #send_tee = 'ffmpegcolorspace ! tee name=vidtee'
+      #view1 = 'queue ! xvimagesink force-aspect-ratio=true'
+      #can_encoder = 'vp8enc max-latency=0.5'
+      #can_sink = 'appsink emit-signals=true'
+
+      # extend src and its caps
+      send_caps = 'capsfilter caps="'+send_caps+'"'
+
+      [src, send_caps, send_tee, view1, can_encoder, can_sink]
+    end
 
     $send_media_pipelines = {}
     $webcam_xvimagesink   = nil
@@ -7773,16 +7796,16 @@ module PandoraGUI
             video_pipeline = Gst::Pipeline.new('spipe_v')
             $send_media_pipelines['video'] = video_pipeline
 
-            video_src = 'v4l2src decimate=3'
-            video_src_caps = 'capsfilter caps="video/x-raw-rgb,width=320,height=240"'
+            ##video_src = 'v4l2src decimate=3'
+            ##video_src_caps = 'capsfilter caps="video/x-raw-rgb,width=320,height=240"'
             #video_src_caps = 'capsfilter caps="video/x-raw-yuv,width=320,height=240"'
             #video_src_caps = 'capsfilter caps="video/x-raw-yuv,width=320,height=240" ! videorate drop=10'
             #video_src_caps = 'capsfilter caps="video/x-raw-yuv, framerate=10/1, width=320, height=240"'
             #video_src_caps = 'capsfilter caps="width=320,height=240"'
-            video_send_tee = 'ffmpegcolorspace ! tee name=vidtee'
+            ##video_send_tee = 'ffmpegcolorspace ! tee name=vidtee'
             #video_send_tee = 'tee name=tee1'
-            video_view1 = 'queue ! xvimagesink force-aspect-ratio=true'
-            video_can_encoder = 'vp8enc max-latency=0.5'
+            ##video_view1 = 'queue ! xvimagesink force-aspect-ratio=true'
+            ##video_can_encoder = 'vp8enc max-latency=0.5'
             #video_can_encoder = 'vp8enc speed=2 max-latency=2 quality=5.0 max-keyframe-distance=3 threads=5'
             #video_can_encoder = 'ffmpegcolorspace ! videoscale ! theoraenc quality=16 ! queue'
             #video_can_encoder = 'jpegenc quality=80'
@@ -7800,17 +7823,28 @@ module PandoraGUI
             #video_can_encoder = 'queue ! x264enc bitrate=96'
             #video_can_encoder = 'ffenc_h263'
             #video_can_encoder = 'h264enc'
-            video_can_sink = 'appsink emit-signals=true'
+            ##video_can_sink = 'appsink emit-signals=true'
+
+            src_param = PandoraGUI.get_param('video_src')
+            send_caps_param = PandoraGUI.get_param('video_send_caps')
+            send_tee_param = 'video_send_tee_def'
+            view1_param = PandoraGUI.get_param('video_view1')
+            can_encoder_param = PandoraGUI.get_param('video_can_encoder')
+            can_sink_param = 'video_can_sink_app'
+
+            video_src, video_send_caps, video_send_tee, video_view1, video_can_encoder, video_can_sink \
+              = get_video_sender_params(src_param, send_caps_param, send_tee_param, view1_param, \
+                can_encoder_param, can_sink_param)
 
             if winos
-              video_src_win = 'dshowvideosrc'
-              video_view1_win = 'queue ! directdrawsink'
-              video_src = video_src_win
-              video_view1 = video_view1_win
+              video_src = PandoraGUI.get_param('video_src_win')
+              video_src ||= 'dshowvideosrc'
+              video_view1 = PandoraGUI.get_param('video_view1_win')
+              video_view1 ||= 'queue ! directdrawsink'
             end
 
             webcam, pad = add_elem_to_pipe(video_src, video_pipeline)
-            capsfilter, pad = add_elem_to_pipe(video_src_caps, video_pipeline, webcam, pad)
+            capsfilter, pad = add_elem_to_pipe(video_send_caps, video_pipeline, webcam, pad)
             tee, teepad = add_elem_to_pipe(video_send_tee, video_pipeline, capsfilter, pad)
             encoder, pad = add_elem_to_pipe(video_can_encoder, video_pipeline, tee, teepad)
             appsink, pad = add_elem_to_pipe(video_can_sink, video_pipeline, encoder, pad)
@@ -7870,6 +7904,25 @@ module PandoraGUI
       video_pipeline
     end
 
+    def get_video_receiver_params(can_src_param = 'video_can_src_app', \
+      can_decoder_param = 'video_can_decoder_vp8', recv_tee_param = 'video_recv_tee_def', \
+      view2_param = 'video_view2_x')
+
+      # getting from setup (will be feature)
+      can_src     = PandoraGUI.get_param(can_src_param)
+      can_decoder = PandoraGUI.get_param(can_decoder_param)
+      recv_tee    = PandoraGUI.get_param(recv_tee_param)
+      view2       = PandoraGUI.get_param(view2_param)
+
+      # default param (temporary)
+      #can_src     = 'appsrc emit-signals=false'
+      #can_decoder = 'vp8dec'
+      #recv_tee    = 'ffmpegcolorspace ! tee'
+      #view2       = 'ximagesink sync=false'
+
+      [can_src, can_decoder, recv_tee, view2]
+    end
+
     def init_video_receiver(start=true, can_play=true, init=true)
       if not start
         #recv_media_pipeline.pause if recv_media_pipeline
@@ -7891,13 +7944,14 @@ module PandoraGUI
         if (not recv_media_pipeline[1]) and init
           begin
             Gst.init
+            winos = (os_family == 'windows')
             @recv_media_queue[1] ||= PandoraGUI.init_empty_queue
             dialog_id = '_v'+PandoraKernel.bytes_to_hex(room_id[0,4])
             @recv_media_pipeline[1] = Gst::Pipeline.new('rpipe'+dialog_id)
             vidpipe = @recv_media_pipeline[1]
 
-            video_can_src = 'appsrc emit-signals=false'
-            video_can_decoder = 'vp8dec'
+            ##video_can_src = 'appsrc emit-signals=false'
+            ##video_can_decoder = 'vp8dec'
             #video_can_decoder = 'xviddec'
             #video_can_decoder = 'ffdec_flashsv'
             #video_can_decoder = 'ffdec_flashsv2'
@@ -7911,10 +7965,24 @@ module PandoraGUI
             #video_can_decoder = 'x264dec'
             #video_can_decoder = 'mpeg2dec'
             #video_can_decoder = 'mimdec'
-            video_recv_tee = 'ffmpegcolorspace ! tee'
+            ##video_recv_tee = 'ffmpegcolorspace ! tee'
             #video_recv_tee = 'tee'
-            video_view2 = 'ximagesink sync=false'
+            ##video_view2 = 'ximagesink sync=false'
             #video_view2 = 'queue ! xvimagesink force-aspect-ratio=true sync=false'
+
+            can_src_param = 'video_can_src_app'
+            can_decoder_param = PandoraGUI.get_param('video_can_decoder')
+            recv_tee_param = 'video_recv_tee_def'
+            view2_param = PandoraGUI.get_param('video_view2')
+
+            video_can_src, video_can_decoder, video_recv_tee, video_view2 \
+              = get_video_receiver_params(can_src_param, can_decoder_param, \
+                recv_tee_param, view2_param)
+
+            if winos
+              video_view2 = PandoraGUI.get_param('video_view2_win')
+              video_view2 ||= 'queue ! directdrawsink'
+            end
 
             @appsrcs[1], pad = add_elem_to_pipe(video_can_src, vidpipe, nil, nil, dialog_id)
             decoder, pad = add_elem_to_pipe(video_can_decoder, vidpipe, appsrcs[1], pad, dialog_id)
@@ -7945,18 +8013,18 @@ module PandoraGUI
       can_encoder_param = 'audio_can_encoder_vorbis', can_sink_param = 'audio_can_sink_app')
 
       # getting from setup (will be feature)
-      #src = PandoraGUI.get_param(src_param)
-      #send_caps = PandoraGUI.get_param(send_caps_param)
-      #send_tee = PandoraGUI.get_param(send_tee_param)
-      #can_encoder = PandoraGUI.get_param(can_encoder_param)
-      #can_sink = PandoraGUI.get_param(can_sink_param)
+      src = PandoraGUI.get_param(src_param)
+      send_caps = PandoraGUI.get_param(send_caps_param)
+      send_tee = PandoraGUI.get_param(send_tee_param)
+      can_encoder = PandoraGUI.get_param(can_encoder_param)
+      can_sink = PandoraGUI.get_param(can_sink_param)
 
       # default param (temporary)
-      src = 'alsasrc device=hw:0'
-      send_caps = 'audio/x-raw-int,rate=8000,channels=1,depth=8,width=8'
-      send_tee = 'audioconvert ! tee name=audtee'
-      can_encoder = 'vorbisenc quality=0.0'
-      can_sink = 'appsink emit-signals=true'
+      #src = 'alsasrc device=hw:0'
+      #send_caps = 'audio/x-raw-int,rate=8000,channels=1,depth=8,width=8'
+      #send_tee = 'audioconvert ! tee name=audtee'
+      #can_encoder = 'vorbisenc quality=0.0'
+      #can_sink = 'appsink emit-signals=true'
 
       # extend src and its caps
       src = src + ' ! audioconvert ! audioresample'
@@ -8014,14 +8082,19 @@ module PandoraGUI
             #audio_can_encoder = 'opusenc'
             ##audio_can_sink = 'appsink emit-signals=true'
 
+            src_param = PandoraGUI.get_param('audio_src')
+            send_caps_param = PandoraGUI.get_param('audio_send_caps')
+            send_tee_param = 'audio_send_tee_def'
+            can_encoder_param = PandoraGUI.get_param('audio_can_encoder')
+            can_sink_param = 'audio_can_sink_app'
+
             audio_src, audio_send_caps, audio_send_tee, audio_can_encoder, audio_can_sink  \
-              = get_audio_sender_params
+              = get_audio_sender_params(src_param, send_caps_param, send_tee_param, \
+                can_encoder_param, can_sink_param)
 
             if winos
-              #audio_src_win = 'dshowaudiosrc'
-              #audio_view1_win = 'queue ! directdrawsink'
-              #audio_src = audio_src_win
-              #audio_view1 = audio_view1_win
+              audio_src = PandoraGUI.get_param('audio_src_win')
+              audio_src ||= 'dshowaudiosrc'
             end
 
             micro, pad = add_elem_to_pipe(audio_src, audio_pipeline)
@@ -8051,7 +8124,7 @@ module PandoraGUI
         if audio_pipeline
           ptrind = PandoraGUI.set_send_ptrind_by_room(room_id)
           count = PandoraGUI.nil_send_ptrind_by_room(nil)
-          p 'AAAAAAAAAAAAAAAAAAA count='+count.to_s
+          #p 'AAAAAAAAAAAAAAAAAAA count='+count.to_s
           if (count>0) and (audio_pipeline.get_state != Gst::STATE_PLAYING)
           #if (audio_pipeline.get_state != Gst::STATE_PLAYING)
             audio_pipeline.play
@@ -8059,6 +8132,25 @@ module PandoraGUI
         end
       end
       audio_pipeline
+    end
+
+    def get_audio_receiver_params(can_src_param = 'audio_can_src_app', \
+      can_decoder_param = 'audio_can_decoder_vorbis', recv_tee_param = 'audio_recv_tee_def', \
+      phones_param = 'audio_phones_auto')
+
+      # getting from setup (will be feature)
+      can_src     = PandoraGUI.get_param(can_src_param)
+      can_decoder = PandoraGUI.get_param(can_decoder_param)
+      recv_tee    = PandoraGUI.get_param(recv_tee_param)
+      phones      = PandoraGUI.get_param(phones_param)
+
+      # default param (temporary)
+      #can_src = 'appsrc emit-signals=false'
+      #can_decoder = 'vorbisdec'
+      #recv_tee = 'audioconvert ! tee'
+      #phones = 'autoaudiosink'
+
+      [can_src, can_decoder, recv_tee, phones]
     end
 
     def init_audio_receiver(start=true, can_play=true, init=true)
@@ -8071,14 +8163,15 @@ module PandoraGUI
         if (not recv_media_pipeline[0]) #and init
           begin
             Gst.init
+            winos = (os_family == 'windows')
             @recv_media_queue[0] ||= PandoraGUI.init_empty_queue
             dialog_id = '_a'+PandoraKernel.bytes_to_hex(room_id[0,4])
             @recv_media_pipeline[0] = Gst::Pipeline.new('rpipe'+dialog_id)
             audpipe = @recv_media_pipeline[0]
 
-            audio_can_src = 'appsrc emit-signals=false'
+            ##audio_can_src = 'appsrc emit-signals=false'
             #audio_can_src = 'appsrc'
-            audio_can_decoder = 'vorbisdec'
+            ##audio_can_decoder = 'vorbisdec'
             #audio_can_decoder = 'mulawdec'
             #audio_can_decoder = 'speexdec'
             #audio_can_decoder = 'decodebin'
@@ -8091,10 +8184,23 @@ module PandoraGUI
             #audio_can_decoder = 'faad'
             #audio_can_decoder = 'ffdec_nellymoser'
             #audio_can_decoder = 'flacdec'
-            audio_recv_tee = 'audioconvert ! tee'
+            ##audio_recv_tee = 'audioconvert ! tee'
             #audio_phones = 'alsasink'
-            audio_phones = 'autoaudiosink'
+            ##audio_phones = 'autoaudiosink'
             #audio_phones = 'pulsesink'
+
+            can_src_param = 'audio_can_src_app'
+            can_decoder_param = PandoraGUI.get_param('audio_can_decoder')
+            recv_tee_param = 'audio_recv_tee_def'
+            phones_param = PandoraGUI.get_param('audio_phones')
+
+            audio_can_src, audio_can_decoder, audio_recv_tee, audio_phones \
+              = get_audio_receiver_params(can_src_param, can_decoder_param, recv_tee_param, phones_param)
+
+            if winos
+              audio_phones = PandoraGUI.get_param('audio_phones_win')
+              audio_phones ||= 'autoaudiosink'
+            end
 
             @appsrcs[0], pad = add_elem_to_pipe(audio_can_src, audpipe, nil, nil, dialog_id)
             auddec, pad = add_elem_to_pipe(audio_can_decoder, audpipe, appsrcs[0], pad, dialog_id)
