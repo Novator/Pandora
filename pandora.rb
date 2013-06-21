@@ -7929,16 +7929,6 @@ module PandoraGUI
 
     def init_video_receiver(start=true, can_play=true, init=true)
       if not start
-        #recv_media_pipeline.pause if recv_media_pipeline
-        #recv_media_pipeline.stop if recv_media_pipeline
-        pipeline = @recv_media_pipeline[1]
-        #if pipeline and (pipeline.get_state == Gst::STATE_PLAYING)
-        #  if can_play
-        #    pipeline.pause
-        #  else
-        #    pipeline.stop
-        #  end
-        #end
         if ximagesink and (ximagesink.get_state == Gst::STATE_PLAYING)
           if can_play
             ximagesink.pause
@@ -7950,7 +7940,6 @@ module PandoraGUI
           area_recv.signal_handler_disconnect(recv_display_handler)
           @recv_display_handler = nil
         end
-        #p ':::%%--R_PAUSE_STOP'
       elsif (not self.destroyed?) and area_recv and (not area_recv.destroyed?)
         if (not recv_media_pipeline[1]) and init
           begin
@@ -8005,7 +7994,6 @@ module PandoraGUI
             log_message(LM_Warning, _(mes))
             puts mes+': '+err.message
             vid_button.active = false
-            #Thread.pass
           end
         end
         if recv_media_pipeline[1] and can_play
@@ -8014,7 +8002,6 @@ module PandoraGUI
           end
           recv_media_pipeline[1].play if (recv_media_pipeline[1].get_state != Gst::STATE_PLAYING)
           ximagesink.play if (ximagesink.get_state != Gst::STATE_PLAYING)
-          #p '::::R_PLAY'
         end
       end
     end
