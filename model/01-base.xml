@@ -322,13 +322,15 @@
 
     <video_src_v4l2 desc="Video source V2L2" type="String" section="media" setting="v4l2src decimate=3" />
     <video_src_win desc="Video source Windows" type="String" section="media" setting="dshowvideosrc" />
-    <video_src desc="Video source" type="String" section="media" setting="video_src_v4l2" />
+    <video_src_auto desc="Video source auto" type="String" section="media" setting="autovideosrc" />
+    <video_src desc="Video source" type="String" section="media" setting="video_src_auto" />
     <video_send_caps_raw_320x240 desc="Video format raw 320x240" type="String" section="media" setting='"video/x-raw-rgb,width=320,height=240"' />
     <video_send_caps_raw_640x480 desc="Video format raw 640x480" type="String" section="media" setting='"video/x-raw-rgb,width=640,height=480"' />
     <video_send_caps_yuv_320x240 desc="Video format yuv 320x240" type="String" section="media" setting='"video/x-raw-yuv,width=320,height=240"' />
     <video_send_caps_yuv_640x480 desc="Video format yuv 640x480" type="String" section="media" setting='"video/x-raw-yuv,width=640,height=480"' />
     <video_send_caps desc="Video format" type="String" section="media" setting="video_send_caps_raw_320x240" />
     <video_send_tee_def desc="Video T-sender" type="String" section="media" setting="ffmpegcolorspace ! tee name=vidtee" />
+    <video_view1_auto desc="Video sending auto" type="String" section="media" setting="queue ! autovideosink" />
     <video_view1_x desc="Video sending X view" type="String" section="media" setting="queue ! ximagesink sync=false" />
     <video_view1_xv desc="Video sending Xv view" type="String" section="media" setting="queue ! xvimagesink force-aspect-ratio=true" />
     <video_view1_win desc="Video sending Win view" type="String" section="media" setting="queue ! directdrawsink" />
@@ -351,6 +353,7 @@
     <video_can_decoder_h263 desc="Video cannel h264 decoder" type="String" section="media" setting="h264dec" />
     <video_can_decoder desc="Video cannel decoder" type="String" section="media" setting="video_can_decoder_vp8" />
     <video_recv_tee_def desc="Video T-receiver" type="String" section="media" setting="ffmpegcolorspace ! tee" />
+    <video_view2_auto desc="Video receiving auto" type="String" section="media" setting="queue ! autovideosink" />
     <video_view2_x desc="Video receiving X" type="String" section="media" setting="ximagesink sync=false" />
     <video_view2_xv desc="Video receiving Xv" type="String" section="media" setting="xvimagesink force-aspect-ratio=true" />
     <video_view2_win desc="Video receiving Win" type="String" section="media" setting="queue ! directdrawsink" />

@@ -7685,42 +7685,43 @@ module PandoraGUI
     end
 
     def link_sink_to_area(sink, area, pipeline=nil)
+      def set_xid(area, sink)
+        if (not area.destroyed?) and area.window and sink and (sink.class.method_defined? 'set_xwindow_id')
+          win_id = nil
+          if os_family=='windows'
+            win_id = area.window.handle
+          else
+            win_id = area.window.xid
+          end
+          sink.set_property('force-aspect-ratio', true)
+          sink.set_xwindow_id(win_id)
+        end
+      end
+
       res = nil
-      if pipeline and (not pipeline.destroyed?)
-        if area and (not area.destroyed?) and (not area.window)
+      if area and (not area.destroyed?)
+        if (not area.window) and pipeline
           area.realize
           Gtk.main_iteration
         end
-        sink.xwindow_id = area.window.xid
-        #p '---------'
-        #p pipeline.bus
-        #p pipeline.bus.methods
-        #asd = sfas / 0
+        set_xid(area, sink)
+      end
+      if pipeline and (not pipeline.destroyed?)
         pipeline.bus.add_watch do |bus, message|
           if (message and message.structure and message.structure.name \
           and (message.structure.name == 'prepare-xwindow-id'))
-            #Gdk::Threads.enter
             Gdk::Threads.synchronize do
               Gdk::Display.default.sync
-              if not area.destroyed? and area.window
-                win_id = nil
-                if os_family=='windows'
-                  win_id = area.window.handle
-                else
-                  win_id = area.window.xid
-                end
-                imagesink = message.src
-                #imagesink.set_property("force-aspect-ratio", true)
-                imagesink.set_xwindow_id(win_id)
-              end
+              asink = message.src
+              set_xid(area, asink)
             end
-            #Gdk::Threads.leave
           end
           true
         end
-      end
-      res = area.signal_connect('expose-event') do |*args|
-        sink.xwindow_id = area.window.xid if not area.destroyed? and area.window
+
+        res = area.signal_connect('expose-event') do |*args|
+          set_xid(area, sink)
+        end
       end
       res
     end
@@ -7769,7 +7770,8 @@ module PandoraGUI
           tsw = PandoraGUI.find_active_sender(self)
           if $webcam_xvimagesink and (not $webcam_xvimagesink.destroyed?) and tsw \
           and tsw.area_send and tsw.area_send.window
-            $webcam_xvimagesink.xwindow_id = tsw.area_send.window.xid
+            link_sink_to_area($webcam_xvimagesink, tsw.area_send)
+            #$webcam_xvimagesink.xwindow_id = tsw.area_send.window.xid
             #p 'RECONN tsw.title='+PandoraGUI.consctruct_room_title(connset[CSI_Persons]).inspect
           end
           #p '--LEAVE'
@@ -7868,8 +7870,9 @@ module PandoraGUI
         end
 
         if video_pipeline
-          if $webcam_xvimagesink and area_send and area_send.window
-            $webcam_xvimagesink.xwindow_id = area_send.window.xid
+          if $webcam_xvimagesink and area_send #and area_send.window
+            #$webcam_xvimagesink.xwindow_id = area_send.window.xid
+            link_sink_to_area($webcam_xvimagesink, area_send)
           end
           if not just_upd_area
             video_pipeline.stop if (video_pipeline.get_state != Gst::STATE_NULL)
@@ -7879,10 +7882,11 @@ module PandoraGUI
             end
           end
           if not send_display_handler
-            @send_display_handler = link_sink_to_area($webcam_xvimagesink, area_send,  video_pipeline)
+            @send_display_handler = link_sink_to_area($webcam_xvimagesink, area_send, video_pipeline)
           end
           if $webcam_xvimagesink and area_send and area_send.window
-            $webcam_xvimagesink.xwindow_id = area_send.window.xid
+            #$webcam_xvimagesink.xwindow_id = area_send.window.xid
+            link_sink_to_area($webcam_xvimagesink, area_send)
           end
           if just_upd_area
             video_pipeline.play if (video_pipeline.get_state != Gst::STATE_PLAYING)
@@ -7927,15 +7931,22 @@ module PandoraGUI
       if not start
         #recv_media_pipeline.pause if recv_media_pipeline
         #recv_media_pipeline.stop if recv_media_pipeline
+        pipeline = @recv_media_pipeline[1]
+        #if pipeline and (pipeline.get_state == Gst::STATE_PLAYING)
+        #  if can_play
+        #    pipeline.pause
+        #  else
+        #    pipeline.stop
+        #  end
+        #end
         if ximagesink and (ximagesink.get_state == Gst::STATE_PLAYING)
           if can_play
             ximagesink.pause
           else
             ximagesink.stop
-            #ximagesink.xwindow_id = 0
           end
         end
-        if recv_display_handler
+        if recv_display_handler and (not can_play)
           area_recv.signal_handler_disconnect(recv_display_handler)
           @recv_display_handler = nil
         end
@@ -7998,8 +8009,8 @@ module PandoraGUI
           end
         end
         if recv_media_pipeline[1] and can_play
-          if not recv_display_handler and ximagesink
-            @recv_display_handler = link_sink_to_area(ximagesink, area_recv,  recv_media_pipeline[1])
+          if not recv_display_handler and @ximagesink
+            @recv_display_handler = link_sink_to_area(@ximagesink, area_recv,  recv_media_pipeline[1])
           end
           recv_media_pipeline[1].play if (recv_media_pipeline[1].get_state != Gst::STATE_PLAYING)
           ximagesink.play if (ximagesink.get_state != Gst::STATE_PLAYING)
