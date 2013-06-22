@@ -180,3 +180,4 @@ Symbols=>Символы
 Length=>Длина
 Kind=>Тип
 Lang=>Язык
+Message=>Сообщение

@@ -1927,16 +1927,39 @@ module PandoraGUI
     end
   end
 
+  # ToggleToolButton with safety "active" switching
+  # ToggleToolButton с безопасным переключением "active"
+  class GoodToggleToolButton < Gtk::ToggleToolButton
+    def good_signal_clicked
+      @clicked_signal = self.signal_connect('clicked') do |*args|
+        yield(*args) if block_given?
+      end
+    end
+    def good_set_active(an_active)
+      if @clicked_signal
+        self.signal_handler_block(@clicked_signal) do
+          self.active = an_active
+        end
+      end
+    end
+  end
+
   # Add button to toolbar
   # RU: Добавить кнопку на панель инструментов
   def self.add_tool_btn(toolbar, stock, title, toggle=nil)
     btn = nil
     if toggle != nil
-      btn = Gtk::ToggleToolButton.new(stock)
-      btn.active = toggle
+      btn = GoodToggleToolButton.new(stock)
+      btn.good_signal_clicked do |*args|
+        yield(*args) if block_given?
+      end
+      btn.active = toggle if toggle
     else
       image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
       btn = Gtk::ToolButton.new(image, _(title))
+      btn.signal_connect('clicked') do |*args|
+        yield(*args) if block_given?
+      end
     end
     new_api = false
     begin
@@ -1944,15 +1967,12 @@ module PandoraGUI
       new_api = true
     rescue
     end
-    btn.signal_connect('clicked') do |*args|
-      yield(*args) if block_given?
-    end
-
     if new_api
       toolbar.add(btn)
     else
       toolbar.append(btn, btn.label, btn.label)
     end
+    btn
   end
 
   # Entry with allowed symbols of mask
@@ -3363,12 +3383,17 @@ module PandoraGUI
     $status_fields[index] = btn
   end
 
-  def self.set_status_field(index, text, enabled=nil)
+  $toggle_buttons = []
+
+  def self.set_status_field(index, text, enabled=nil, toggle=nil)
     btn = $status_fields[index]
     if btn
       btn.label = _(text) if $status_fields[index]
       if (enabled != nil)
         btn.sensitive = enabled
+      end
+      if (toggle != nil) and $toggle_buttons[index]
+        $toggle_buttons[index].good_set_active(toggle)
       end
     end
   end
@@ -3519,7 +3544,7 @@ module PandoraGUI
 
   def self.reset_current_key
     self.the_current_key = deactivate_key(self.the_current_key)
-    set_status_field(SF_Auth, 'Not logged')
+    set_status_field(SF_Auth, 'Not logged', nil, false)
     self.the_current_key
   end
 
@@ -3698,7 +3723,7 @@ module PandoraGUI
           #p 'key_vec='+key_vec.inspect
           if key_vec and key_vec[KV_Obj]
             self.the_current_key = key_vec
-            set_status_field(SF_Auth, 'Logged')
+            set_status_field(SF_Auth, 'Logged', nil, true)
           elsif last_auth_key
             dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
               Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
@@ -4631,7 +4656,6 @@ module PandoraGUI
       end
     end
     panobject = panobject_class.new
-    p 'panobject.sort='+panobject.sort.inspect
     sel = panobject.select(nil, false, nil, panobject.sort)
     store = Gtk::ListStore.new(Integer)
     param_view_col = nil
@@ -6709,7 +6733,7 @@ module PandoraGUI
     if not $listen_thread
       user = current_user_or_key(true)
       if user
-        set_status_field(SF_Listen, 'Listening')
+        set_status_field(SF_Listen, 'Listening', nil, true)
         $port = get_param('tcp_port')
         $host = get_param('local_host')
         $listen_thread = Thread.new do
@@ -6785,7 +6809,7 @@ module PandoraGUI
           end
           server.close if server and not server.closed?
           log_message(LM_Info, 'Слушатель остановлен '+addr_str) if server
-          set_status_field(SF_Listen, 'Not listen')
+          set_status_field(SF_Listen, 'Not listen', nil, false)
           $listen_thread = nil
         end
       end
@@ -6941,7 +6965,7 @@ module PandoraGUI
       user = current_user_or_key(true)
       if user
         $hunter_thread = Thread.new do
-          set_status_field(SF_Hunt, 'Hunting')
+          set_status_field(SF_Hunt, 'Hunting', nil, true)
           node_model = PandoraModel::Node.new
           while round_count>0
             sel = node_model.select('addr<>"" OR domain<>""', false, 'id, addr, domain, tport')
@@ -6965,7 +6989,7 @@ module PandoraGUI
             sleep 3 if round_count>0
           end
           $hunter_thread = nil
-          set_status_field(SF_Hunt, 'No hunt')
+          set_status_field(SF_Hunt, 'No hunt', nil, false)
         end
       end
     end
@@ -7180,7 +7204,7 @@ module PandoraGUI
       bbox.pack_start(online_button, false, false, 0)
 
       @snd_button = Gtk::CheckButton.new(_('Sound'), true)
-      snd_button.signal_connect('toggled') do |widget|
+      snd_button.signal_connect('clicked') do |widget|
         if widget.active?
           if init_audio_sender(true)
             online_button.active = true
@@ -7442,24 +7466,30 @@ module PandoraGUI
       res
     end
 
+    $statusicon = nil
+
     # Update tab color when received new data
     # RU: Обновляет цвет закладки при получении новых данных
     def update_state(received=true, curpage=nil)
       tab_widget = $notebook.get_tab_label(self)
       if tab_widget
         curpage ||= $notebook.get_nth_page($notebook.page)
+        # interrupt reading thread (if exists)
         if $last_page and ($last_page.is_a? TalkScrolledWindow) \
         and $last_page.read_thread and (curpage != $last_page)
           $last_page.read_thread.exit
           $last_page.read_thread = nil
         end
+        # set self dialog as unread
         if received
           color = Gdk::Color.parse($tab_color)
           tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
           tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
+          $statusicon.set_message(_('Message')+' ['+tab_widget.label.text+']')
         end
+        # run reading thread
         timer_setted = false
-        if (not self.read_thread) and (curpage == self)
+        if (not self.read_thread) and (curpage == self) and $window.visible? #and $window.active?
           color = $window.modifier_style.text(Gtk::STATE_NORMAL)
           curcolor = tab_widget.label.modifier_style.fg(Gtk::STATE_ACTIVE)
           if curcolor and (color != curcolor)
@@ -7469,19 +7499,25 @@ module PandoraGUI
               if (not curpage.destroyed?) and (not curpage.editbox.destroyed?)
                 curpage.editbox.grab_focus
               end
-              read_sec = $read_time-0.3
-              if read_sec >= 0
-                sleep(read_sec)
+              if $window.visible? #and $window.active?
+                read_sec = $read_time-0.3
+                if read_sec >= 0
+                  sleep(read_sec)
+                end
+                if $window.visible? #and $window.active?
+                  if (not self.destroyed?) and (not tab_widget.destroyed?) \
+                  and (not tab_widget.label.destroyed?)
+                    tab_widget.label.modify_fg(Gtk::STATE_NORMAL, nil)
+                    tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, nil)
+                    $statusicon.set_message(nil)
+                  end
+                end
               end
-              if (not self.destroyed?) and (not tab_widget.destroyed?) \
-              and (not tab_widget.label.destroyed?)
-                tab_widget.label.modify_fg(Gtk::STATE_NORMAL, nil)
-                tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, nil)
-                self.read_thread = nil
-              end
+              self.read_thread = nil
             end
           end
         end
+        # set focus to editbox
         if curpage and (curpage.is_a? TalkScrolledWindow) and curpage.editbox
           if not timer_setted
             Thread.new do
@@ -8270,6 +8306,142 @@ module PandoraGUI
     sw
   end
 
+  class PandoraStatusIcon < Gtk::StatusIcon
+    attr_accessor :main_icon
+
+    def initialize
+      super
+
+      @main_icon = nil
+      if $window.icon
+        @main_icon = $window.icon
+      else
+        @main_icon = $window.render_icon(Gtk::Stock::HOME, Gtk::IconSize::LARGE_TOOLBAR)
+      end
+
+      begin
+        @message_icon = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'message.ico'))
+      rescue Exception
+      end
+      if not @message_icon
+        @message_icon = $window.render_icon(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::LARGE_TOOLBAR)
+      end
+
+      @message = nil
+      @flash_on_mes = false
+      @update_main_icon = false
+      @flash = false
+      @flash_status = 0
+      update_icon
+
+      title = $window.title
+      tooltip = $window.title
+
+      #set_blinking(true)
+      signal_connect('activate') do
+        icon_activated
+      end
+
+      signal_connect('popup-menu') do |widget, button, activate_time|
+        p 'widget, button, activate_time='+[widget, button, activate_time].inspect
+        menu = Gtk::Menu.new
+        checkmenuitem = Gtk::CheckMenuItem.new('Blink')
+        checkmenuitem.signal_connect('activate') do |w|
+          if @message
+            set_message
+          else
+            set_message('Иван Петров, сообщение')
+          end
+        end
+        menu.append(checkmenuitem)
+
+        menuitem = Gtk::MenuItem.new(_('_Quit'))
+        menuitem.signal_connect("activate") do
+          widget.set_visible(false)
+          Gtk.main_quit
+        end
+        menu.append(menuitem)
+        menu.show_all
+        menu.popup(nil, nil, button, activate_time)
+      end
+    end
+
+    def set_message(message=nil)
+      if (message.is_a? String) and (message.size>0)
+        @message = message
+        set_tooltip(message)
+        set_flash(true) if @flash_on_mes
+      else
+        @message = nil
+        set_tooltip($window.title)
+        set_flash(false)
+      end
+      update_icon
+    end
+
+    def set_flash(flash=true)
+      @flash = flash
+      if flash and (not @timer)
+        @flash_status = 1
+        update_icon
+        timeout_func
+      end
+    end
+
+    def update_icon
+      if @message and ((not @flash) or (@flash_status==1))
+        self.pixbuf = @message_icon
+      else
+        self.pixbuf = @main_icon
+      end
+      $window.icon = self.pixbuf if (@update_main_icon and $window.visible?)
+    end
+
+    def timeout_func
+      @timer = GLib::Timeout.add(800) do
+        next_step = true
+        if @flash_status == 0
+          @flash_status = 1
+        else
+          @flash_status = 0
+          next_step = false if not @flash
+        end
+        update_icon
+        @timer = nil if not next_step
+        next_step
+      end
+    end
+
+    def icon_activated
+      #$window.skip_taskbar_hint = false
+      if $window.visible?
+        if $window.active?
+          $window.hide
+        else
+          $window.present
+        end
+      else
+        $window.deiconify
+        $window.show_all
+        #$statusicon.visible = false
+        $window.present
+        update_icon if @update_main_icon
+        if @message
+          page = $notebook.page
+          if (page >= 0)
+            cur_page = $notebook.get_nth_page(page)
+            if cur_page.is_a? PandoraGUI::TalkScrolledWindow
+              cur_page.update_state(false, cur_page)
+            end
+          else
+            set_message(nil) if ($notebook.n_pages == 0)
+          end
+        end
+      end
+    end
+
+  end
+
   # Menu event handler
   # RU: Обработчик события меню
   def self.do_menu_act(command)
@@ -8383,97 +8555,103 @@ module PandoraGUI
   # RU: Структура меню
   def self.menu_items
     [
-    [nil, nil, _('_World')],
-    ['Person', Gtk::Stock::ORIENTATION_PORTRAIT, _('People')],
-    ['Community', nil, _('Communities')],
+    [nil, nil, '_World'],
+    ['Person', Gtk::Stock::ORIENTATION_PORTRAIT, 'People'],
+    ['Community', nil, 'Communities'],
     ['-', nil, '-'],
-    ['Article', Gtk::Stock::DND, _('Articles')],
-    ['Blob', Gtk::Stock::HARDDISK, _('Files')], #Gtk::Stock::FILE
+    ['Article', Gtk::Stock::DND, 'Articles'],
+    ['Blob', Gtk::Stock::HARDDISK, 'Files'], #Gtk::Stock::FILE
     ['-', nil, '-'],
-    ['Country', nil, _('States')],
-    ['City', nil, _('Towns')],
-    ['Street', nil, _('Streets')],
-    ['Thing', nil, _('Things')],
-    ['Activity', nil, _('Activities')],
-    ['Word', Gtk::Stock::SPELL_CHECK, _('Words')],
-    ['Language', nil, _('Languages')],
-    ['Address', nil, _('Addresses')],
-    ['Contact', nil, _('Contacts')],
-    ['Document', nil, _('Documents')],
+    ['Country', nil, 'States'],
+    ['City', nil, 'Towns'],
+    ['Street', nil, 'Streets'],
+    ['Thing', nil, 'Things'],
+    ['Activity', nil, 'Activities'],
+    ['Word', Gtk::Stock::SPELL_CHECK, 'Words'],
+    ['Language', nil, 'Languages'],
+    ['Address', nil, 'Addresses'],
+    ['Contact', nil, 'Contacts'],
+    ['Document', nil, 'Documents'],
     ['-', nil, '-'],
-    ['Relation', nil, _('Relations')],
-    ['Opinion', nil, _('Opinions')],
-    [nil, nil, _('_Bussiness')],
-    ['Partner', nil, _('Partners')],
-    ['Company', nil, _('Companies')],
+    ['Relation', nil, 'Relations'],
+    ['Opinion', nil, 'Opinions'],
+    [nil, nil, '_Bussiness'],
+    ['Partner', nil, 'Partners'],
+    ['Company', nil, 'Companies'],
     ['-', nil, '-'],
-    ['Ad', nil, _('Ads')],
-    ['Order', nil, _('Orders')],
-    ['Deal', nil, _('Deals')],
-    ['Waybill', nil, _('Waybills')],
-    ['Debt', nil, _('Debts')],
-    ['Guaranty', nil, _('Guaranties')],
+    ['Ad', nil, 'Ads'],
+    ['Order', nil, 'Orders'],
+    ['Deal', nil, 'Deals'],
+    ['Waybill', nil, 'Waybills'],
+    ['Debt', nil, 'Debts'],
+    ['Guaranty', nil, 'Guaranties'],
     ['-', nil, '-'],
-    ['Storage', nil, _('Storages')],
-    ['Product', nil, _('Products')],
-    ['Service', nil, _('Services')],
-    ['Currency', nil, _('Currency')],
-    ['Contract', nil, _('Contracts')],
-    ['Report', nil, _('Reports')],
-    [nil, nil, _('_Region')],
-    ['Citizen', nil, _('Citizens')],
-    ['Union', nil, _('Unions')],
+    ['Storage', nil, 'Storages'],
+    ['Product', nil, 'Products'],
+    ['Service', nil, 'Services'],
+    ['Currency', nil, 'Currency'],
+    ['Contract', nil, 'Contracts'],
+    ['Report', nil, 'Reports'],
+    [nil, nil, '_Region'],
+    ['Citizen', nil, 'Citizens'],
+    ['Union', nil, 'Unions'],
     ['-', nil, '-'],
-    ['Project', nil, _('Projects')],
-    ['Resolution', nil, _('Resolutions')],
-    ['Law', nil, _('Laws')],
+    ['Project', nil, 'Projects'],
+    ['Resolution', nil, 'Resolutions'],
+    ['Law', nil, 'Laws'],
     ['-', nil, '-'],
-    ['Contribution', nil, _('Contributions')],
-    ['Expenditure', nil, _('Expenditures')],
+    ['Contribution', nil, 'Contributions'],
+    ['Expenditure', nil, 'Expenditures'],
     ['-', nil, '-'],
-    ['Offense', nil, _('Offenses')],
-    ['Punishment', nil, _('Punishments')],
+    ['Offense', nil, 'Offenses'],
+    ['Punishment', nil, 'Punishments'],
     ['-', nil, '-'],
-    ['Resource', nil, _('Resources')],
-    ['Delegation', nil, _('Delegations')],
-    [nil, nil, _('_Pandora')],
-    ['Parameter', Gtk::Stock::PREFERENCES, _('Parameters')],
+    ['Resource', nil, 'Resources'],
+    ['Delegation', nil, 'Delegations'],
+    [nil, nil, '_Pandora'],
+    ['Parameter', Gtk::Stock::PREFERENCES, 'Parameters'],
     ['-', nil, '-'],
-    ['Key', Gtk::Stock::DIALOG_AUTHENTICATION, _('Keys')],
-    ['Sign', nil, _('Signs')],
-    ['Node', Gtk::Stock::NETWORK, _('Nodes')],
-    ['Message', nil, _('Messages')],
-    ['Patch', nil, _('Patches')],
-    ['Event', nil, _('Events')],
-    ['Fishhook', nil, _('Fishhooks')],
+    ['Key', Gtk::Stock::DIALOG_AUTHENTICATION, 'Keys'],
+    ['Sign', nil, 'Signs'],
+    ['Node', Gtk::Stock::NETWORK, 'Nodes'],
+    ['Message', nil, 'Messages'],
+    ['Patch', nil, 'Patches'],
+    ['Event', nil, 'Events'],
+    ['Fishhook', nil, 'Fishhooks'],
     ['-', nil, '-'],
-    ['Authorize', nil, _('Authorize')],
-    ['Listen', Gtk::Stock::CONNECT, _('Listen')],
-    ['Hunt', Gtk::Stock::REFRESH, _('Hunt')],
-    ['Search', Gtk::Stock::FIND, _('Search')],
+    ['Authorize', nil, 'Authorize', '<control>I'],
+    ['Listen', Gtk::Stock::CONNECT, 'Listen', '<control>L', :check],
+    ['Hunt', Gtk::Stock::REFRESH, 'Hunt', '<control>H', :check],
+    ['Search', Gtk::Stock::FIND, 'Search'],
     ['-', nil, '-'],
-    ['Profile', Gtk::Stock::HOME, _('Profile')],
-    ['Wizard', Gtk::Stock::PROPERTIES, _('Wizards')],
+    ['Profile', Gtk::Stock::HOME, 'Profile'],
+    ['Wizard', Gtk::Stock::PROPERTIES, 'Wizards'],
     ['-', nil, '-'],
-    ['Quit', Gtk::Stock::QUIT, _('_Quit'), '<control>Q', 'Do quit'],
-    ['Close', Gtk::Stock::CLOSE, _('_Close'), '<control>W', 'Close tab'],
+    ['Quit', Gtk::Stock::QUIT, '_Quit', '<control>Q'],
+    ['Close', Gtk::Stock::CLOSE, '_Close', '<control>W'],
     ['-', nil, '-'],
-    ['About', Gtk::Stock::ABOUT, _('_About'), nil, 'About']
+    ['About', Gtk::Stock::ABOUT, '_About']
     ]
   end
 
   # Creating menu item from its description
   # RU: Создание пункта меню по его описанию
   def self.create_menu_item(mi)
+    menuitem = nil
     if mi[0] == '-'
       menuitem = Gtk::SeparatorMenuItem.new
     else
-      if not mi[1]
-        menuitem = Gtk::MenuItem.new(mi[2])
-      else
+      text = _(mi[2])
+      #if (mi[4] == :check)
+      #  menuitem = Gtk::CheckMenuItem.new(mi[2])
+      #  label = menuitem.children[0]
+      #  #label.set_text(mi[2], true)
+      if mi[1]
         menuitem = Gtk::ImageMenuItem.new(mi[1])
         label = menuitem.children[0]
-        label.set_text(mi[2], true)
+        label.set_text(text, true)
+      else
+        menuitem = Gtk::MenuItem.new(text)
       end
       if mi[3]
         key, mod = Gtk::Accelerator.parse(mi[3])
@@ -8485,26 +8663,53 @@ module PandoraGUI
     menuitem
   end
 
-  def self.add_buttons_from_menu_to_toolbar(menu, toolbar)
-    if menu
-      menu.each do |child|
-        if child.submenu
-          add_buttons_from_menu_to_toolbar(child.submenu, toolbar)
-        elsif child.is_a? Gtk::ImageMenuItem
-          label = child.children[0]
-          image = Gtk::Image.new(child.image.stock, child.image.icon_size)
-          btn = Gtk::ToolButton.new(image, label.text)
-          new_api = false
-          begin
-            btn.tooltip_text = btn.label
-            new_api = true
-          rescue Exception
+  def self.fill_menubar(menubar)
+    $group = Gtk::AccelGroup.new
+    menu = nil
+    menu_items.each do |mi|
+      if mi[0]==nil or menu==nil
+        menuitem = Gtk::MenuItem.new(_(mi[2]))
+        menubar.append(menuitem)
+        menu = Gtk::Menu.new
+        menuitem.set_submenu(menu)
+      else
+        menuitem = create_menu_item(mi)
+        menu.append(menuitem)
+      end
+    end
+    $window.add_accel_group($group)
+  end
+
+  def self.fill_toolbar(toolbar)
+    menu_items.each do |mi|
+      stock = mi[1]
+      if stock
+        command = mi[0]
+        label = mi[2]
+        if command and (command != '-') and label and (label != '-')
+          toggle = nil
+          toggle = false if mi[4]
+          btn = PandoraGUI.add_tool_btn(toolbar, stock, label, toggle) do |widget, *args|
+            do_menu_act(widget)
           end
-          btn.signal_connect('clicked') { |*args| child.activate }
-          if new_api
-            toolbar.add(btn)
-          else
-            toolbar.append(btn, btn.label, btn.label)
+          btn.name = command
+          if (toggle != nil)
+            index = nil
+            case command
+              when 'Listen'
+                index = SF_Listen
+              when 'Hunt'
+                index = SF_Hunt
+            end
+            if index
+              $toggle_buttons[index] = btn
+              #btn.signal_emit_stop('clicked')
+              #btn.signal_emit_stop('toggled')
+              #btn.signal_connect('clicked') do |*args|
+              #  p args
+              #  true
+              #end
+            end
           end
         end
       end
@@ -8515,34 +8720,27 @@ module PandoraGUI
   # RU: Показать главное окно Gtk
   def self.show_main_window
     $window = Gtk::Window.new('Pandora')
+    main_icon = nil
     begin
-      $window.icon = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.ico'))
-      Gtk::Window.default_icon = $window.icon
+      main_icon = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.ico'))
     rescue Exception
+    end
+    if not main_icon
+      main_icon = $window.render_icon(Gtk::Stock::HOME, Gtk::IconSize::LARGE_TOOLBAR)
+    end
+    if main_icon
+      $window.icon = main_icon
+      Gtk::Window.default_icon = $window.icon
     end
 
     menubar = Gtk::MenuBar.new
-    $group = Gtk::AccelGroup.new
-    menu = nil
-    menu_items.each do |mi|
-      if mi[0]==nil or menu==nil
-        menuitem = Gtk::MenuItem.new(mi[2])
-        menubar.append(menuitem)
-        menu = Gtk::Menu.new
-        menuitem.set_submenu(menu)
-      else
-        menuitem = create_menu_item(mi)
-        menu.append(menuitem)
-      end
-    end
-    $window.add_accel_group($group)
+    fill_menubar(menubar)
 
     toolbar = Gtk::Toolbar.new
     toolbar.toolbar_style = Gtk::Toolbar::Style::ICONS
-    add_buttons_from_menu_to_toolbar(menubar, toolbar)
+    fill_toolbar(toolbar)
 
     $notebook = Gtk::Notebook.new
-
     $notebook.signal_connect('switch-page') do |widget, page, page_num|
     #$notebook.signal_connect('change-current-page') do |widget, page_num|
       cur_page = $notebook.get_nth_page(page_num)
@@ -8613,19 +8811,12 @@ module PandoraGUI
     $window.show_all
 
     $window.signal_connect('delete-event') do |*args|
-      reset_current_key
-      #if $notebook and (not $notebook.destroyed?)
-      #  i = $notebook.children.size
-      #  while (i>0)
-      #    i -= 1
-      #    child = $notebook.children[i]
-      #    child.destroy if child and (not child.destroyed?)
-      #  end
-      #end
-      false
+      $window.hide
+      true
     end
 
     $window.signal_connect('destroy') do |window|
+      reset_current_key
       Gtk.main_quit
     end
 
@@ -8639,7 +8830,7 @@ module PandoraGUI
       false
     end
 
-    @statusicon = nil
+    $statusicon = PandoraGUI::PandoraStatusIcon.new
 
     $window.signal_connect('window-state-event') do |widget, event_window_state|
       if (event_window_state.changed_mask == Gdk::EventWindowState::ICONIFIED) \
@@ -8655,24 +8846,6 @@ module PandoraGUI
         if widget.visible? and widget.active?
           $window.hide
           #$window.skip_taskbar_hint = true
-          if not @statusicon
-            @statusicon = Gtk::StatusIcon.new!({'visible'=>false})
-            if not $window.icon
-              @statusicon.set_icon_name(Gtk::Stock::DIALOG_INFO)
-            else
-              @statusicon.pixbuf = $window.icon
-            end
-            @statusicon.title = $window.title
-            @statusicon.tooltip = $window.title
-            @statusicon.signal_connect('activate') do |*args|
-              #$window.skip_taskbar_hint = false
-              $window.deiconify
-              $window.show_all
-              $window.present
-              @statusicon.visible = false
-            end
-          end
-          @statusicon.visible = true
         end
       end
     end
