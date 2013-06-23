@@ -195,6 +195,8 @@
       <addr name.ru="Адрес" />
       <tport name.ru="Порт TCP" />
       <uport name.ru="Порт UDP" />
+      <addr_type name.ru="Тип адреса" />
+      <addr_from_type name.ru="Тип входящего" />
       <city name.ru="Город" />
       <home name.ru="Дом" />
       <coord name.ru="Коорд" />

@@ -3642,11 +3642,11 @@ module PandoraGUI
           vbox = Gtk::VBox.new
           dialog.viewport.add(vbox)
 
-          creator = PandoraKernel.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
-          label = Gtk::Label.new(_('Creator'))
+          #creator = PandoraKernel.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
+          label = Gtk::Label.new(_('Your panhash'))
           vbox.pack_start(label, false, false, 2)
           user_entry = Gtk::Entry.new
-          user_entry.text = PandoraKernel.bytes_to_hex(creator)
+          #user_entry.text = PandoraKernel.bytes_to_hex(creator)
           vbox.pack_start(user_entry, false, false, 2)
 
           rights = KR_Exchange | KR_Sign
@@ -3664,57 +3664,68 @@ module PandoraGUI
           dialog.def_widget = pass_entry
 
           dialog.run do
-            #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
-            cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
-            cipher_key = pass_entry.text
             creator = PandoraKernel.hex_to_bytes(user_entry.text)
-            rights = rights_entry.text.to_i
+            if creator.size==22
+              #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
+              cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
+               cipher_key = pass_entry.text
+              rights = rights_entry.text.to_i
 
-            #p 'cipher_hash='+cipher_hash.to_s
-            type_klen = KT_Rsa | KL_bit2048
+              #p 'cipher_hash='+cipher_hash.to_s
+              type_klen = KT_Rsa | KL_bit2048
 
-            key_vec = generate_key(type_klen, cipher_hash, cipher_key)
+              key_vec = generate_key(type_klen, cipher_hash, cipher_key)
 
-            #p 'key_vec='+key_vec.inspect
+              #p 'key_vec='+key_vec.inspect
 
-            pub  = key_vec[KV_Key1]
-            priv = key_vec[KV_Key2]
-            type_klen = key_vec[KV_Kind]
-            cipher_hash = key_vec[KV_Ciph]
-            cipher_key = key_vec[KV_Pass]
+              pub  = key_vec[KV_Key1]
+              priv = key_vec[KV_Key2]
+              type_klen = key_vec[KV_Kind]
+              cipher_hash = key_vec[KV_Ciph]
+              cipher_key = key_vec[KV_Pass]
 
-            key_vec[KV_Creator] = creator
+              key_vec[KV_Creator] = creator
 
-            time_now = Time.now
+              time_now = Time.now
 
-            vals = time_now.to_a
-            y, m, d = [vals[5], vals[4], vals[3]]  #current day
-            expire = Time.local(y+5, m, d).to_i
+              vals = time_now.to_a
+              y, m, d = [vals[5], vals[4], vals[3]]  #current day
+              expire = Time.local(y+5, m, d).to_i
 
-            time_now = time_now.to_i
+              time_now = time_now.to_i
 
-            panstate = PSF_Support
+              panstate = PSF_Support
 
-            values = {:panstate=>panstate, :kind=>type_klen, :rights=>rights, :expire=>expire, \
-              :creator=>creator, :created=>time_now, :cipher=>0, :body=>pub, :modified=>time_now}
-            panhash = key_model.panhash(values, rights)
-            values['panhash'] = panhash
-            key_vec[KV_Panhash] = panhash
+              values = {:panstate=>panstate, :kind=>type_klen, :rights=>rights, :expire=>expire, \
+                :creator=>creator, :created=>time_now, :cipher=>0, :body=>pub, :modified=>time_now}
+              panhash = key_model.panhash(values, rights)
+              values['panhash'] = panhash
+              key_vec[KV_Panhash] = panhash
 
-            #p '========================'
-            #p values
-            res = key_model.update(values, nil, nil)
-            if res
-              values[:kind] = KT_Priv
-              values[:body] = priv
-              values[:cipher] = cipher_hash
               res = key_model.update(values, nil, nil)
               if res
-                #p 'last_auth_key='+panhash.inspect
-                set_param('last_auth_key', panhash)
+                values[:kind] = KT_Priv
+                values[:body] = priv
+                values[:cipher] = cipher_hash
+                res = key_model.update(values, nil, nil)
+                if res
+                  #p 'last_auth_key='+panhash.inspect
+                  set_param('last_auth_key', panhash)
+                end
               end
+            else
+              dialog = Gtk::MessageDialog.new($window, \
+                Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
+                Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
+                _('Panhash must consist of 44 symbols'))
+              dialog.title = _('Note')
+              dialog.default_response = Gtk::Dialog::RESPONSE_OK
+              dialog.icon = $window.icon
+              if (dialog.run == Gtk::Dialog::RESPONSE_OK)
+                PandoraGUI.do_menu_act('Person')
+              end
+              dialog.destroy
             end
-            #p '------------------------'
           end
         end
         try = false
@@ -3731,7 +3742,7 @@ module PandoraGUI
             dialog.title = _('Key init')
             dialog.default_response = Gtk::Dialog::RESPONSE_OK
             dialog.icon = $window.icon
-            try = dialog.run == Gtk::Dialog::RESPONSE_OK
+            try = (dialog.run == Gtk::Dialog::RESPONSE_OK)
             dialog.destroy
             key_vec = deactivate_key(key_vec) if (not try)
           end
@@ -3812,7 +3823,7 @@ module PandoraGUI
         rubyobj.each do |a|
           data << rubyobj_to_pson_elem(a)
         end
-        elem_size = rubyobj.bytesize
+        elem_size = rubyobj.size
         type, count = encode_pson_type(PT_Array, elem_size)
       when Hash
         rubyobj = rubyobj.sort_by {|k,v| k.to_s}
@@ -5348,7 +5359,7 @@ module PandoraGUI
       :send_models, :recv_models, \
       :read_req, :send_mes, :send_media, :send_req, :sindex, :rindex, :read_queue, :send_queue, :params,
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :last_scmd, :log_mes, :skey, :rkey, :s_encode, :r_encode,
-      :media_send, :node_id, :node_panhash
+      :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw
 
     def initialize(ahost_name, ahost_ip, aport, aproto, node, aconn_mode=0, aconn_state=CS_Disconnected, \
     anode_id=nil)
@@ -5945,94 +5956,30 @@ module PandoraGUI
                   err_scmd('Cannot init your key')
                 end
               elsif (rcode==ECC_Init_Captcha) and ((stage==ST_Protocol) or (stage==ST_Greeting))
-                #p log_mes+'CAPTCHA!!!  ' #+params.inspect
+                p log_mes+'CAPTCHA!!!  ' #+params.inspect
                 if ((conn_mode & CM_Hunter) == 0)
                   err_scmd('Captcha for listener is denied')
                 else
                   clue_length = rdata[0].ord
                   clue_text = rdata[1,clue_length]
                   captcha_buf = rdata[clue_length+1..-1]
-                  pixbuf_loader = Gdk::PixbufLoader.new
-                  pixbuf_loader.last_write(captcha_buf)
 
-                  capdialog = AdvancedDialog.new(_('Human check'))
-                  capdialog.set_default_size(400, 350)
-
-                  vbox = Gtk::VBox.new
-                  capdialog.viewport.add(vbox)
-
-                  label = Gtk::Label.new(_('Far node'))
-                  vbox.pack_start(label, false, false, 2)
-                  entry = Gtk::Entry.new
-                  node_text = PandoraKernel.bytes_to_hex(params['srckey'])
-                  node_text = @node if (not node_text) or (node_text=='')
-                  entry.text = node_text
-                  entry.editable = false
-                  vbox.pack_start(entry, false, false, 2)
-
-                  image = Gtk::Image.new(pixbuf_loader.pixbuf)
-                  vbox.pack_start(image, false, false, 2)
-
-                  clue, length, symbols = clue_text.split('|')
-                  #p log_mes+'    [clue, length, symbols]='+[clue, length, symbols].inspect
-                  len = 0
-                  begin
-                    len = length.to_i if length
-                  rescue
-                  end
-
-                  label = Gtk::Label.new(_('Enter text from picture'))
-                  vbox.pack_start(label, false, false, 2)
-                  entry = PandoraGUI::MaskEntry.new
-                  entry.max_length = len
-                  mask = symbols.downcase+symbols.upcase
-                  entry.mask = mask
-
-                  ew = 150
-                  if len>0
-                    str = label.text
-                    label.text = 'W'*(len+1)
-                    ew,lh = label.size_request
-                    label.text = str
-                  end
-
-                  entry.width_request = ew
-                  align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
-                  align.add(entry)
-                  vbox.pack_start(align, false, false, 2)
-                  capdialog.def_widget = entry
-
-                  if clue
-                    label = Gtk::Label.new(_(clue))
-                    vbox.pack_start(label, false, false, 2)
-                  end
-                  if length
-                    label = Gtk::Label.new(_('Length')+'='+length.to_s)
-                    vbox.pack_start(label, false, false, 2)
-                  end
-                  if symbols
-                    sym_text = _('Symbols')+': '+symbols.to_s
-                    i = 30
-                    while i<sym_text.size do
-                      sym_text = sym_text[0,i]+"\n"+sym_text[i+1..-1]
-                      i += 31
+                  @entered_captcha = nil
+                  if (not $cvpaned.csw)
+                    $cvpaned.show_captcha(params['srckey'],
+                    @captcha_sw = captcha_buf, clue_text, @node) do |res|
+                      @entered_captcha = res
                     end
-                    label = Gtk::Label.new(sym_text)
-                    vbox.pack_start(label, false, false, 2)
+                    while @entered_captcha.nil?
+                      Thread.pass
+                    end
                   end
 
-                  entered = false
-                  capdialog.show_all
-                  Thread.pass
-                  capdialog.run(true) do
-                    Thread.pass
-                    captcha = entry.text
+                  if @entered_captcha
                     @scmd = EC_Init
                     @scode = ECC_Init_Answer
-                    @sbuf = captcha
-                    entered = true
-                  end
-                  if not entered
+                    @sbuf = entered_captcha
+                  else
                     err_scmd('Captcha enter canceled')
                   end
                 end
@@ -6726,6 +6673,11 @@ module PandoraGUI
 
   $listen_thread = nil
 
+  def self.correct_lis_btn_state
+    tool_btn = $toggle_buttons[SF_Listen]
+    tool_btn.good_set_active($listen_thread != nil) if tool_btn
+  end
+
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen
@@ -6812,6 +6764,8 @@ module PandoraGUI
           set_status_field(SF_Listen, 'Not listen', nil, false)
           $listen_thread = nil
         end
+      else
+        correct_lis_btn_state
       end
     else
       p server = $listen_thread[:listen_server_socket]
@@ -6819,6 +6773,7 @@ module PandoraGUI
       #server.close if not server.closed?
       #$listen_thread.join(2) if $listen_thread
       #$listen_thread.exit if $listen_thread
+      correct_lis_btn_state
     end
   end
 
@@ -6955,42 +6910,74 @@ module PandoraGUI
 
   $hunter_thread = nil
 
+  def self.correct_hunt_btn_state
+    tool_btn = $toggle_buttons[SF_Hunt]
+    tool_btn.good_set_active($hunter_thread != nil) if tool_btn
+  end
+
   # Start hunt
   # RU: Начать охоту
   def self.hunt_nodes(round_count=1)
     if $hunter_thread
       $hunter_thread.exit
       $hunter_thread = nil
+      correct_hunt_btn_state
     else
       user = current_user_or_key(true)
       if user
-        $hunter_thread = Thread.new do
-          set_status_field(SF_Hunt, 'Hunting', nil, true)
-          node_model = PandoraModel::Node.new
-          while round_count>0
-            sel = node_model.select('addr<>"" OR domain<>""', false, 'id, addr, domain, tport')
-            if sel and sel.size>0
-              sel.each do |row|
-                node_id = row[0]
-                addr   = row[1]
-                domain = row[2]
-                tport = 0
-                begin
-                  tport = row[3].to_i
-                rescue
+        node_model = PandoraModel::Node.new
+        filter = 'addr<>"" OR domain<>""'
+        flds = 'id, addr, domain, tport'
+        sel = node_model.select(filter, false, flds)
+        if sel and sel.size>0
+          $hunter_thread = Thread.new(node_model, filter, flds, sel) \
+          do |node_model, filter, flds, sel|
+            set_status_field(SF_Hunt, 'Hunting', nil, true)
+            while round_count>0
+              if sel and sel.size>0
+                sel.each do |row|
+                  node_id = row[0]
+                  addr   = row[1]
+                  domain = row[2]
+                  tport = 0
+                  begin
+                    tport = row[3].to_i
+                  rescue
+                  end
+                  tport = $port if (not tport) or (tport==0) or (tport=='')
+                  domain = addr if ((not domain) or (domain == ''))
+                  node = encode_node(domain, tport, 'tcp')
+                  connection = find_or_start_connection(node, nil, nil, node_id)
                 end
-                tport = $port if (not tport) or (tport==0) or (tport=='')
-                domain = addr if ((not domain) or (domain == ''))
-                node = encode_node(domain, tport, 'tcp')
-                connection = find_or_start_connection(node, nil, nil, node_id)
+                round_count -= 1
+                if round_count>0
+                  sleep 3
+                  sel = node_model.select(filter, false, flds)
+                end
+              else
+                round_count = 0
               end
             end
-            round_count -= 1
-            sleep 3 if round_count>0
+            $hunter_thread = nil
+            set_status_field(SF_Hunt, 'No hunt', nil, false)
           end
-          $hunter_thread = nil
-          set_status_field(SF_Hunt, 'No hunt', nil, false)
+        else
+          correct_hunt_btn_state
+          dialog = Gtk::MessageDialog.new($window, \
+            Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
+            Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
+            _('Enter at least one node'))
+          dialog.title = _('Note')
+          dialog.default_response = Gtk::Dialog::RESPONSE_OK
+          dialog.icon = $window.icon
+          try = (dialog.run == Gtk::Dialog::RESPONSE_OK)
+          if try
+            do_menu_act('Node')
+          end
+          dialog.destroy
         end
+      else
+        correct_hunt_btn_state
       end
     end
   end
@@ -7107,6 +7094,18 @@ module PandoraGUI
       end
     end
     res
+  end
+
+  # Correct bug with dissapear Enter press event
+  # RU: Исправляет баг с исчезновением нажатия Enter
+  def self.hack_enter_bug(enterbox)
+    # because of bug - doesnt work Enter at 'key-press-event'
+    enterbox.signal_connect('key-release-event') do |widget, event|
+      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+        widget.signal_emit('key-press-event', event)
+        false
+      end
+    end
   end
 
   $you_color = 'blue'
@@ -7253,14 +7252,6 @@ module PandoraGUI
 
       editbox.grab_focus
 
-      # because of bug - doesnt work Enter at 'key-press-event'
-      editbox.signal_connect('key-release-event') do |widget, event|
-        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-          widget.signal_emit('key-press-event', event)
-          false
-        end
-      end
-
       talksw = Gtk::ScrolledWindow.new(nil, nil)
       talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       talksw.add(talkview)
@@ -7293,6 +7284,8 @@ module PandoraGUI
           false
         end
       end
+
+      PandoraGUI.hack_enter_bug(editbox)
 
       hpaned2 = Gtk::HPaned.new
       @area_send = Gtk::DrawingArea.new
@@ -8540,6 +8533,12 @@ module PandoraGUI
         #p hash = pson_to_namehash(pson)
 
         #p get_param('base_id')
+      when 'Profile'
+        p '1cc'
+        $cvpaned.show_captcha('abc123', $window.icon.save_to_buffer('jpeg')) do |text|
+          p 'cap_text='+text.inspect
+        end
+        p '2cc'
       else
         panobj_id = command
         if PandoraModel.const_defined? panobj_id
@@ -8716,6 +8715,152 @@ module PandoraGUI
     end
   end
 
+  $cvpaned = nil
+
+  class CaptchaHPaned < Gtk::HPaned
+    attr_accessor :csw
+
+    def initialize(first_child)
+      super()
+      @first_child = first_child
+      self.pack1(@first_child, true, true)
+      @csw = nil
+    end
+
+    def show_captcha(srckey, captcha_buf=nil, clue_text=nil, node=nil)
+      res = nil
+      if captcha_buf
+        @vbox = Gtk::VBox.new
+        vbox = @vbox
+
+        @csw = Gtk::ScrolledWindow.new(nil, nil)
+        csw = @csw
+        csw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+        csw.shadow_type = Gtk::SHADOW_IN
+        csw.add(vbox)
+        csw.border_width = 1;
+
+        pixbuf_loader = Gdk::PixbufLoader.new
+        pixbuf_loader.last_write(captcha_buf) if captcha_buf
+
+        label = Gtk::Label.new(_('Far node'))
+        vbox.pack_start(label, false, false, 2)
+        entry = Gtk::Entry.new
+        node_text = PandoraKernel.bytes_to_hex(srckey)
+        node_text = node if (not node_text) or (node_text=='')
+        node_text ||= ''
+        entry.text = node_text
+        entry.editable = false
+        vbox.pack_start(entry, false, false, 2)
+
+        image = Gtk::Image.new(pixbuf_loader.pixbuf)
+        vbox.pack_start(image, false, false, 2)
+
+        clue_text ||= ''
+        clue, length, symbols = clue_text.split('|')
+        #p '    [clue, length, symbols]='+[clue, length, symbols].inspect
+
+        len = 0
+        begin
+          len = length.to_i if length
+        rescue
+        end
+
+        label = Gtk::Label.new(_('Enter text from picture'))
+        vbox.pack_start(label, false, false, 2)
+
+        captcha_entry = PandoraGUI::MaskEntry.new
+        captcha_entry.max_length = len
+        if symbols
+          mask = symbols.downcase+symbols.upcase
+          captcha_entry.mask = mask
+        end
+
+        okbutton = Gtk::Button.new(Gtk::Stock::OK)
+        okbutton.signal_connect('clicked') do
+          text = captcha_entry.text
+          yield(text) if block_given?
+          show_captcha(srckey)
+        end
+
+        cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
+        cancelbutton.signal_connect('clicked') do
+          yield(false) if block_given?
+          show_captcha(srckey)
+        end
+
+        captcha_entry.signal_connect('key-press-event') do |widget, event|
+          if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+            okbutton.activate
+            true
+          elsif (Gdk::Keyval::GDK_Escape==event.keyval)
+            captcha_entry.text = ''
+            cancelbutton.activate
+            false
+          else
+            false
+          end
+        end
+        PandoraGUI.hack_enter_bug(captcha_entry)
+
+        ew = 150
+        if len>0
+          str = label.text
+          label.text = 'W'*(len+1)
+          ew,lh = label.size_request
+          label.text = str
+        end
+
+        captcha_entry.width_request = ew
+        align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+        align.add(captcha_entry)
+        vbox.pack_start(align, false, false, 2)
+        #capdialog.def_widget = entry
+
+        hbox = Gtk::HBox.new
+        hbox.pack_start(okbutton, true, true, 2)
+        hbox.pack_start(cancelbutton, true, true, 2)
+
+        vbox.pack_start(hbox, false, false, 2)
+
+        if clue
+          label = Gtk::Label.new(_(clue))
+          vbox.pack_start(label, false, false, 2)
+        end
+        if length
+          label = Gtk::Label.new(_('Length')+'='+length.to_s)
+          vbox.pack_start(label, false, false, 2)
+        end
+        if symbols
+          sym_text = _('Symbols')+': '+symbols.to_s
+          i = 30
+          while i<sym_text.size do
+            sym_text = sym_text[0,i]+"\n"+sym_text[i+1..-1]
+            i += 31
+          end
+          label = Gtk::Label.new(sym_text)
+          vbox.pack_start(label, false, false, 2)
+        end
+
+        csw.border_width = 1;
+        csw.set_size_request(250, -1)
+        self.border_width = 2
+        self.pack2(csw, true, true)  #hpaned3                                      9
+        csw.show_all
+        full_width = $window.allocation.width
+        self.position = full_width-250 #self.max_position #@csw.width_request
+        captcha_entry.grab_focus
+        res = csw
+      else
+        #@csw.width_request = @csw.allocation.width
+        @csw.destroy
+        @csw = nil
+        self.position = 0
+      end
+      res
+    end
+  end
+
   # Show main Gtk window
   # RU: Показать главное окно Gtk
   def self.show_main_window
@@ -8762,6 +8907,21 @@ module PandoraGUI
     $view.receives_default = true
     $view.border_width = 0
 
+    sw = Gtk::ScrolledWindow.new(nil, nil)
+    sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+    sw.shadow_type = Gtk::SHADOW_IN
+    sw.add($view)
+    sw.border_width = 1;
+    sw.set_size_request(-1, 40)
+
+    vpaned = Gtk::VPaned.new
+    vpaned.border_width = 2
+    vpaned.pack1($notebook, true, true)
+    vpaned.pack2(sw, false, true)
+
+    $cvpaned = CaptchaHPaned.new(vpaned)
+    $cvpaned.position = $cvpaned.max_position
+
     $statusbar = Gtk::Statusbar.new
     PandoraGUI.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
 
@@ -8781,27 +8941,10 @@ module PandoraGUI
       do_menu_act('Node')
     end
 
-    sw = Gtk::ScrolledWindow.new(nil, nil)
-    sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-    sw.shadow_type = Gtk::SHADOW_IN
-    sw.add($view)
-    sw.border_width = 1;
-    sw.set_size_request(-1, 40)
-
-    #frame = Gtk::Frame.new('Статус')
-    #frame.border_width = 0
-    #frame.add(sw)
-    #frame.set_size_request(-1, 60)
-
-    vpaned = Gtk::VPaned.new
-    vpaned.border_width = 2
-    vpaned.pack1($notebook, true, true)
-    vpaned.pack2(sw, false, true)
-
     vbox = Gtk::VBox.new
     vbox.pack_start(menubar, false, false, 0)
     vbox.pack_start(toolbar, false, false, 0)
-    vbox.pack_start(vpaned, true, true, 0)
+    vbox.pack_start($cvpaned, true, true, 0)
     vbox.pack_start($statusbar, false, false, 0)
 
     $window.add(vbox)
