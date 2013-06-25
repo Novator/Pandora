@@ -497,7 +497,30 @@ module PandoraKernel
       tfd = db.table_info(table_name)
       tfd.collect { |x| [x['name'], x['type']] }
     end
-    def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil)
+    def escape_like_mask(mask)
+      #SELECT * FROM mytable WHERE myblob LIKE X'0025';
+      #SELECT * FROM mytable WHERE quote(myblob) LIKE 'X''00%';     end
+      #Is it possible to pre-process your 10 bytes and insert e.g. symbol '\'
+      #before any '\', '_' and '%' symbol? After that you can query
+      #SELECT * FROM mytable WHERE myblob LIKE ? ESCAPE '\'
+      #SELECT * FROM mytable WHERE substr(myblob, 1, 1) = X'00';
+      #SELECT * FROM mytable WHERE substr(myblob, 1, 10) = ?;
+      if mask.is_a? String
+        mask.gsub!('$', '$$')
+        mask.gsub!('_', '$_')
+        mask.gsub!('%', '$%')
+        #query = AsciiString.new(query)
+        #i = query.size
+        #while i>0
+        #  if ['$', '_', '%'].include? query[i]
+        #    query = query[0,i+1]+'$'+query[i+1..-1]
+        #  end
+        #  i -= 1
+        #end
+      end
+      mask
+    end
+    def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil, like_filter=nil)
       connect
       tfd = fields_table(table_name)
       if (not tfd) or (tfd == [])
@@ -515,10 +538,28 @@ module PandoraKernel
           end
           filter = sql2
         end
+        if like_filter.is_a? Hash
+          sql2 = ''
+          like_filter.each do |n,v|
+            if n
+              sql2 = sql2 + ' AND ' if sql2 != ''
+              sql2 = sql2 + n.to_s + 'LIKE ?'
+              sql_values << v
+            end
+          end
+          like_filter = sql2
+        end
         fields ||= '*'
         sql = 'SELECT '+fields+' FROM '+table_name
-        if filter and (filter > '')
-          sql = sql + ' WHERE '+filter
+        filter = nil if (filter and (filter == ''))
+        like_filter = nil if (like_filter and (like_filter == ''))
+        if filter or like_filter
+          sql = sql + ' WHERE'
+          sql = sql + ' ' + filter if filter
+          if like_filter
+            sql = sql + ' AND' if filter
+            sql = sql + ' ' + like_filter
+          end
         end
         if sort and (sort > '')
           sql = sql + ' ORDER BY '+sort
@@ -6389,9 +6430,9 @@ module PandoraGUI
                     nextreadmode = RM_SegLenN
                     waitlen = 7    #index + segindex + rseglen (1+4+2)
                   end
+                  rsegcrc32 = rbuf[processedlen-4, 4].unpack('N')[0]
                   rseg = AsciiString.new(rbuf[0, processedlen-4])
                   #p log_mes+'rseg=['+rseg+']'
-                  rsegcrc32 = rbuf[processedlen-4, 4].unpack('N')[0]
                   fsegcrc32 = Zlib.crc32(rseg)
                   if fsegcrc32 == rsegcrc32
                     @rdata << rseg
@@ -8958,8 +8999,11 @@ module PandoraGUI
       true
     end
 
+    $statusicon = PandoraGUI::PandoraStatusIcon.new
+
     $window.signal_connect('destroy') do |window|
       reset_current_key
+      $statusicon.visible = false if ($statusicon and (not $statusicon.destroyed?))
       Gtk.main_quit
     end
 
@@ -8967,13 +9011,10 @@ module PandoraGUI
       if ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
         ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
       then
-        #$window.destroy
         Gtk.main_quit
       end
       false
     end
-
-    $statusicon = PandoraGUI::PandoraStatusIcon.new
 
     $window.signal_connect('window-state-event') do |widget, event_window_state|
       if (event_window_state.changed_mask == Gdk::EventWindowState::ICONIFIED) \

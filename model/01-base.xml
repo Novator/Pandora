@@ -24,11 +24,11 @@
       <birth_place name="Birth place" type="Panhash(City)" hash="4:panhash(4)" />
       <father_name name="Father name" type="String" size="35" hash="5:hash(2)" />
       <mother_name name="Mother name" type="String" size="35" hash="6:hash(2)" />
-      <sex name="Sex" type="Combo(sex)" />
+      <sex name="Sex" type="Byte" />
       <exit_day name="Exit day" type="Date" optional="yes" />
     </Person>
 
-    <Community parent="Created" name="Community|Communities" kind="2" table="communities">
+    <Community parent="Created" name="Community|Communities" table="communities" kind="11">
       <name name="Name" type="String" size="128" hash="1:hash(4)" />
       <origin_place name="Origin place" type="Panhash(City)" hash="2:panhash(4)" />
       <creator hash="3:panhash(4)" />
@@ -36,74 +36,76 @@
       <RELATIONS name="Состав" kind="Person" default="3" />
     </Community>
 
-    <Language name="Language|Languages"  kind="3">
-      <code name="Code" type="String" size="2" />
-      <pancode name="Pancode" type="Word" />
-      <name name="Name" type="String" size="64" />
-    </Language>
-
-    <Country name="Country|Countries" kind="4">
-      <code name="Code" type="String" size="2" />
-      <name name="Name" type="String" size="128" />
-    </Country>
-
-    <City name="City|Cities" kind="5">
+    <City name="City|Cities" kind="4">
       <name name="Name" type="String" size="96" />
-      <country name="Country" type="Panhash(Country)" />
       <coord name="Coordinates" type="Coord" hash="1:integer(4)" />
     </City>
 
-    <Street name="Street|Streets" kind="6">
+    <Language name="Language|Languages" sort="pancode" kind="2">
+      <name name="Name" type="String" size="64" />
+      <alfa2 name="Alfa-2" type="String" size="2" />
+      <alfa3 name="Alfa-3" type="String" size="3" />
+      <pancode name="Pancode" type="Byte" />
+    </Language>
+
+    <Country name="Country|Countries" kind="3">
+      <name name="Name" type="String" size="128" />
+      <alfa2 name="Alfa-2" type="String" size="2" />
+      <alfa3 name="Alfa-3" type="String" size="3" />
+    </Country>
+
+    <Street name="Street|Streets" kind="5">
       <name name="Name" type="String" size="128" />
       <city name="City" type="Panhash(City)" />
     </Street>
 
-    <Address name="Address|Addresses" kind="7">
+    <Address name="Address|Addresses" kind="6">
       <street name="Street" type="Panhash(Street)" />
       <building name="Building"  type="String" size="16" />
       <appartment name="Appartment"  type="String" size="16" />
     </Address>
 
-    <Contact name="Contact|Contacts" kind="8">
+    <Contact name="Contact|Contacts" parent="Created" kind="7">
+      <creator name="Owner" />
       <type name="Type" type="String" size="16" />
       <value name="Value" type="String" size="96" />
     </Contact>
 
-    <Activity name="Activity" kind="11">
-      <name name="Name" />
-      <description name="Description" />
+    <Activity name="Activity" kind="8">
+      <name name="Name" type="String" size="96" />
+      <description name="Description" type="Text" />
     </Activity>
 
-    <Thing name="Thing|Things" kind="12">
-      <name name="Name" />
-      <desc name="Description" />
+    <Thing name="Thing|Things" kind="9">
+      <name name="Name" type="String" size="96" />
+      <desc name="Description" type="Text" />
     </Thing>
 
-    <Word name="Word|Words" kind="13">
-      <name name="Name" />
-      <description name="Description" />
+    <Word name="Word|Words" kind="10">
+      <name name="Name" type="String" size="64" />
+      <description name="Description" type="Text" />
     </Word>
 
-    <Article name="Article" kind="14" parent="Created">
-      <name name="Name" type="String" size="512" hash="1:hash(18)" />
+    <Article name="Article" parent="Created" kind="12">
+      <name name="Name" type="String" size="512" hash="1:hash(8)" />
       <type name="Type" type="Word" hash="2:word(2)" />
-      <text name="Text" type="Text" gist="1" />
-      <hash name="SHA1" type="String" size="20" />
+      <body name="Text" type="Text" hash="2:hash(10)" />
+      <hash name="Hash" type="String" size="65" />
       <size name="Size" type="Integer" />
     </Article>
 
-    <Blob name="File" kind="15" parent="Article">
+    <Blob name="File" parent="Article" kind="13">
       <path name="Path" type="String" size="1024" />
-      <text name="Blob" />
+      <body name="Blob" />
     </Blob>
 
-    <Relation name="Relation" kind="16" lang="no">
+    <Relation name="Relation" lang="no" kind="14">
       <first name="First object" type="Panhash" hash="1:hash(9)" />
       <second name="Second object" type="Panhash" hash="2:hash(9)" />
       <kind name="Kind" type="Byte" hash="2:byte(1)" />
     </Relation>
 
-    <Opinion name="Opinion" kind="17">
+    <Opinion name="Opinion" kind="15">
       <object name="Object" />
       <creator name="Creator" />
       <date name="Date" type="Date" />
@@ -123,46 +125,84 @@
     <Storage parent="Address" kind="75">
     </Storage>
 
-    <Product parent="Thing">
+    <Product parent="Thing" kind="76">
     </Product>
 
-    <Service parent="Activity">
+    <Service parent="Activity" kind="77">
     </Service>
 
-    <Ad parent="Article">
-    </Ad>
-
-    <Order parent="Created">
-      <ad name="Ad" type="String" size="32" />
-      <list name="List" type="Text" />
-      <sum name="Sum" type="Real" />
-    </Order>
-
-    <Deal parent="Created">
-    </Deal>
-
-    <Waybill parent="Created">
-    </Waybill>
-
-    <Debt parent="Created">
-    </Debt>
-
-    <Guaranty parent="Created">
-    </Guaranty>
-
-    <Contract parent="Article">
-      <number name="Number" />
-      <city name="City" />
-    </Contract>
-
-    <Currency name="Currency|Currency" kind="10">
+    <Currency name="Currency|Currency" kind="88">
       <name name="Name" />
       <code name="Code" />
       <country name="Country" />
       <issuer name="Issuer" />
     </Currency>
 
-    <Report parent="Article">
+    <Contract parent="Article" kind="87">
+    </Contract>
+
+    <Advertisement parent="Article" kind="80">
+      <body name="Goods" type="Text" />
+    </Advertisement>
+
+    <Order parent="Created" kind="81">
+      <advertisement name="Advertisement" type="Panhash(Advertisement)" />
+      <goods name="Goods" type="Text" />
+      <currency name="Currency" type="Panhash(Currency)" />
+      <sum name="Sum" type="Real" />
+    </Order>
+
+    <Deal parent="Created" kind="82">
+      <creator name="Originator" type="Panhash(Partner, Company)" />
+      <recipient name="Recipient" type="Panhash(Partner, Company)" />
+      <contract name="Contract" type="Panhash(Contract)" />
+      <body name="Body" type="Text" />
+      <currency name="Currency" type="Panhash(Currency)" />
+      <sum name="Sum" type="Real" />
+    </Deal>
+
+    <Debenture parent="Deal" kind="83">
+      <creator name="Issuer" />
+      <created name="Issued" />
+    </Debenture>
+
+    <Transfer parent="Created" kind="84">
+      <creator name="Payer" />
+      <debenture name="Debenture" type="Panhash(Debenture)" />
+      <deal name="Deal" type="Panhash(Deal)" />
+      <currency name="Currency" type="Panhash(Currency)" />
+      <sum name="Sum" type="Real" />
+    </Transfer>
+
+    <Deposit parent="Created" kind="86">
+      <creator name="Mortgagor" type="Panhash(Partner, Company)" />
+      <contract name="Contract" type="Panhash(Contract)" />
+      <body name="Body" type="Text" />
+      <currency name="Currency" type="Panhash(Currency)" />
+      <sum name="Sum" type="Real" />
+    </Deposit>
+
+    <Guarantee parent="Created" kind="86">
+      <creator name="Guardian" />
+      <obligor name="Obligator" />
+      <contract name="Contract" type="Panhash(Contract)" />
+      <currency name="Currency" type="Panhash(Currency)" />
+      <sum name="Sum" type="Real" />
+    </Guarantee>
+
+    <Insurer parent="Company" kind="86">
+      <creator name="Founder" />
+      <contract name="Contract" type="Panhash(Contract)" />
+    </Insurer>
+
+    <Waybill parent="Created" kind="85">
+      <deal name="Deal" type="Panhash(Deal)" />
+      <goods name="Goods" type="Text" />
+      <currency name="Currency" type="Panhash(Currency)" />
+      <sum name="Sum" type="Real" />
+    </Waybill>
+
+    <Report parent="Article" kind="89">
     </Report>
 
   </Business>
@@ -174,11 +214,31 @@
     <Union parent="Company" table="communities">
     </Union>
 
-    <Law name="Low|Lows" parent="Article" kind="150">
+    <Project parent="Article" kind="150">
+      <number name="Number" />
+    </Project>
+
+    <Resolution name="Low|Lows" parent="Article" kind="151">
+      <number name="Number" />
+    </Resolution>
+
+    <Law name="Low|Lows" parent="Article" kind="154">
       <number name="Number" />
     </Law>
 
-    <Delegation parent="Created">
+    <Contribution parent="Debenture" kind="155">
+    </Contribution>
+
+    <Expenditure parent="Debenture" kind="156">
+    </Expenditure>
+
+    <Offense parent="Created" kind="157">
+    </Offense>
+
+    <Punishment parent="Created" kind="158">
+    </Punishment>
+
+    <Delegation parent="Created" kind="159">
       <delegate name="Delegate" type="Panhash(Person)" hash="2:panhash(5)" />
       <target name="Target" type="Panhash" hash="3:panhash(5)" />
       <creator hash="1:panhash(5)" />
@@ -186,15 +246,16 @@
       <expire name="Expire" type="Time" />
     </Delegation>
 
-    <Document name="Document">
+    <Document name="Document" kind="160">
       <type name="Type" type="String" size="16" />
-      <code name="Number" type="String" size="128" />
+      <number name="Number" type="String" size="128" />
+      <issued name="Expire" type="Time" />
     </Document>
 
   </Region>
   <Pandora lang="no">
 
-    <Parameter name="Parameter" kind="220" parent="Created">
+    <Parameter name="Parameter" parent="Created" kind="220">
       <name name="Name" type="String" size="96" hash="1:hash(18)" />
       <desc name="Description" type="String" size="128" />
       <value name="Value" type="Blob" />
@@ -203,7 +264,7 @@
       <setting name="Setting" type="Blob" />
     </Parameter>
 
-    <Key name="Key" kind="221" parent="Created">
+    <Key name="Key" parent="Created" kind="221">
       <kind name="Kind" type="Byte" />
       <rights name="Rights" type="Byte" />
       <expire name="Expire" type="Time" />
@@ -213,7 +274,7 @@
       <body name="Body" type="Blob" hash="3:crc32(4)" />
     </Key>
 
-    <Sign name="Sign" kind="222" parent="Created">
+    <Sign name="Sign" parent="Created" kind="222">
       <obj_hash name="Object panhash" type="Panhash" />
       <key_hash name="Key panhash" type="Panhash(Key)" />
       <pack name="Data pack" type="Byte" />
@@ -223,7 +284,7 @@
       <sign name="Sign" type="Blob" hash="3:crc32(4)" />
     </Sign>
 
-    <Node name="Node" kind="223" parent="Created">
+    <Node name="Node" parent="Created" kind="223">
       <addr name="Address" type="String" size="20" />
       <tport name="TCP port" type="Word" />
       <uport name="UDP port" type="Word" />
@@ -275,7 +336,7 @@
       <place name="Place" type="Blob" />
     </Repository>
 
-    <Message name="Message" kind="227" parent="Created">
+    <Message name="Message" parent="Created" kind="227">
       <creator hash="1:phash(12)" />
       <created hash="2:integer(4)" />
       <destination name="Destination" type="Panhash" />
@@ -283,7 +344,7 @@
       <text name="Text" type="Text" hash="3:crc32(4)" />
     </Message>
 
-    <Fishhook name="Fishhook|Fishhooks" kind="228" parent="Created">
+    <Fishhook name="Fishhook|Fishhooks" parent="Created" kind="228">
       <creator name="Fisher" />
       <catch name="Catch" type="String" size="32" />
       <expire name="Expire" type="Time" />

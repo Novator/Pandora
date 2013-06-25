@@ -33,19 +33,20 @@
     </Community>
 
     <Language name.ru="Язык|Языки">
-      <code name.ru="Код" />
-      <pancode name.ru="Панкод" />
       <name name.ru="Название" />
+      <alfa2 name.ru="Альфа-2" />
+      <alfa3 name.ru="Альфа-3" />
+      <pancode name.ru="Панкод" />
     </Language>
 
     <Country name.ru="Страна|Страны">
-      <code name.ru="Код" />
       <name name.ru="Название" />
+      <alfa2 name.ru="Альфа-2" />
+      <alfa3 name.ru="Альфа-3" />
     </Country>
 
     <City name.ru="Город|Города">
       <name name.ru="Название" />
-      <country name.ru="Страна" />
       <coord name.ru="Координата" />
     </City>
 
@@ -65,11 +66,6 @@
       <value name.ru="Значение" />
     </Contact>
 
-    <Document name.ru="Документ|Документы">
-      <type name.ru="Тип" />
-      <code name.ru="Номер" />
-    </Document>
-
     <Activity name.ru="Деятельность|Увлечения">
       <name name.ru="Название" />
       <description name.ru="Описание" />
@@ -87,7 +83,7 @@
 
     <Article name.ru="Статья|Статьи">
       <name name.ru="Название" />
-      <text name.ru="Текст" />
+      <body name.ru="Текст" />
       <type name.ru="Тип" />
     </Article>
 
@@ -121,14 +117,13 @@
     </Store>
 
     <Order name.ru="Заказ|Заказы">
-      <ad name.ru="Объявление" />
-      <list name.ru="Список" />
+      <advertisement name.ru="Объявление" />
+      <goods name.ru="Блага" />
+      <currency name.ru="Валюта" />
       <sum name.ru="Сумма" />
     </Order>
 
     <Contract name.ru="Договор|Договоры">
-      <number name.ru="Номер" />
-      <city name.ru="Город" />
     </Contract>
 
     <Product name.ru="Товар|Товары">
@@ -159,6 +154,11 @@
       <target name.ru="Цель" />
       <expire name.ru="Истекает" />
     </Delegation>
+
+    <Document name.ru="Документ|Документы">
+      <type name.ru="Тип" />
+      <number name.ru="Номер" />
+    </Document>
 
   </Region>
   <Pandora name.ru="Узел Пандоры">
