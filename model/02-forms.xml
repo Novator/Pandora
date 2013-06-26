@@ -21,7 +21,7 @@
     <Article>
       <name pos="|" />
       <type pos="|" />
-      <text view="text" />
+      <body view="text" />
       <hash view="hex" />
     </Article>
 

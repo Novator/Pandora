@@ -4870,14 +4870,20 @@ module PandoraGUI
 
   def self.add_connection(conn)
     if not $connections.include?(conn)
+      #Thread.critical = true
       $connections << conn
+      #Thread.critical = false
       update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, 1)
     end
   end
 
   def self.del_connection(conn)
+    #Thread.critical = true
     if $connections.delete(conn)
+      #Thread.critical = false
       update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, -1)
+    else
+      #Thread.critical = false
     end
   end
 
@@ -5329,7 +5335,6 @@ module PandoraGUI
 
   ECC_More_NoRecord     = 1
 
-  ECC_Bye_HelloError    = 0
   ECC_Bye_Exit          = 200
   ECC_Bye_Unknown       = 201
   ECC_Bye_BadCommCRC    = 202
@@ -5518,7 +5523,8 @@ module PandoraGUI
       #end
       begin
         if socket and not socket.closed?
-          sended = socket.write(buf)
+          #sended = socket.write(buf)
+          sended = socket.send(buf, 0)
         else
           sended = -1
         end
@@ -5546,7 +5552,8 @@ module PandoraGUI
         buf = comm + buf
         begin
           if socket and not socket.closed?
-            sended = socket.write(buf)
+            #sended = socket.write(buf)
+            sended = socket.send(buf, 0)
           else
             sended = -1
           end
@@ -5568,17 +5575,23 @@ module PandoraGUI
     # compose error command and add log message
     def err_scmd(mes=nil, code=nil, buf=nil)
       @scmd = EC_Bye
-      @scode = rcmd
-      logmes = ''
       if code
         @scode = code
-        logmes = ' err=' + scode.to_s
+      else
+        @scode = rcmd
       end
-      logmes = '(rcmd=' + rcmd.to_s + '/' + rcode.to_s + ' stage=' + stage.to_s + logmes + ')'
-      logmes = _(mes)+' '+logmes if mes and (mes.bytesize>0)
-      log_message(LM_Warning, logmes)
-      @sbuf = buf
-      @sbuf ||= logmes
+      if buf
+        @sbuf = buf
+      elsif buf==false
+        @sbuf = nil
+      else
+        logmes = '(rcmd=' + rcmd.to_s + '/' + rcode.to_s + ' stage=' + stage.to_s + ')'
+        logmes = _(mes) + ' ' + logmes if mes and (mes.bytesize>0)
+        @sbuf = logmes
+        mesadd = ''
+        mesadd = ' err=' + code.to_s if code
+        log_message(LM_Warning, logmes+mesadd)
+      end
     end
 
     # Add segment (chunk, grain, phrase) to pack and send when it's time
@@ -6295,20 +6308,14 @@ module PandoraGUI
           end
         when EC_Bye
           if rcode != ECC_Bye_Exit
-            log_message(LM_Error, 'Ошибка на другой стороне ErrCode='+rcode.to_s)
+            mes = rdata
+            mes ||= ''
+            log_message(LM_Error, _('Error at other side')+' ErrCode='+rcode.to_s+' "'+mes+'"')
           end
-          @scmd = EC_Bye
-          @scode = ECC_Bye_Exit
-          @sbuf = nil
-
-          p 'Ошибка на сервере ErrCode='+rcode.to_s
-
+          err_scmd(nil, ECC_Bye_Exit, false)
           @conn_state = CS_Stoping
         else
-          @scmd = EC_Bye
-          @scode = ECC_Bye_Unknown
-          @sbuf = nil
-          log_message(LM_Error, 'Получена неизвестная команда='+rcmd.to_s)
+          err_scmd('Unknown command is recieved '+rcmd.to_s, ECC_Bye_Unknown)
           @conn_state = CS_Stoping
       end
       #[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd]
@@ -6361,14 +6368,15 @@ module PandoraGUI
       # Read cicle
       # RU: Цикл приёма
       if not read_thread
-        read_thread = Thread.new do
-          read_thread = Thread.current
+        @read_thread = Thread.new do
+          #read_thread = Thread.current
 
           sindex = 0
           rindex = 0
           readmode = RM_Comm
           nextreadmode = RM_Comm
           waitlen = CommSize
+          rdatasize = 0
 
           @scmd = EC_More
           @sbuf = ''
@@ -6496,8 +6504,8 @@ module PandoraGUI
           end
           p log_mes+"Цикл ЧТЕНИЯ конец!"
           #socket.close if not socket.closed?
-          @conn_state = CS_Disconnected
-          read_thread = nil
+          #@conn_state = CS_Disconnected
+          @read_thread = nil
         end
       end
 
@@ -6512,7 +6520,7 @@ module PandoraGUI
       message_model = PandoraGUI.model_gui('Message', @send_models)
 
       p log_mes+'ЦИКЛ ОТПРАВКИ начало'
-      while conn_state != CS_Disconnected
+      while (conn_state != CS_Disconnected)
         # отправка сформированных сегментов и их удаление
         if (conn_state != CS_Disconnected)
           send_segment = PandoraGUI.get_block_from_queue(@send_queue)
@@ -6527,10 +6535,13 @@ module PandoraGUI
             if (scmd==EC_Sync) and (scode==EСC_Sync10_Encode)
               @s_encode = true
             end
-            if (scmd==EC_Bye)
+            if (@scmd==EC_Bye)
               p log_mes+'SEND BYE!!!!!!!!!!!!!!!'
               send_segment = nil
-              socket.close if not socket.closed?
+              #if not socket.closed?
+              #  socket.close_write
+              #  socket.close
+              #end
               @conn_state = CS_Disconnected
             else
               send_segment = PandoraGUI.get_block_from_queue(@send_queue)
@@ -6540,7 +6551,7 @@ module PandoraGUI
 
         # выполнить несколько заданий почемучки по его шагам
         processed = 0
-        while (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Exchange) \
+        while (conn_state == CS_Connected) and (stage>=ST_Exchange) \
         and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$inquire_block_count) \
         and (inquirer_step<IS_Finished)
           case inquirer_step
@@ -6566,7 +6577,7 @@ module PandoraGUI
         # разгрузка принятых буферов в gstreamer
         processed = 0
         cannel = 0
-        while (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Exchange) \
+        while (conn_state == CS_Connected) and (stage>=ST_Exchange) \
         and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
         and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size)
           if dialog.recv_media_pipeline[cannel] and dialog.appsrcs[cannel]
@@ -6594,7 +6605,7 @@ module PandoraGUI
         processed = 0
         #p log_mes+'----------send_state1='+send_state.inspect
         #sleep 1
-        if (conn_state != CS_Disconnected) and (stage>=ST_Exchange) \
+        if (conn_state == CS_Connected) and (stage>=ST_Exchange) \
         and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
           @send_state = (send_state & (~CSF_Message))
           if @skey and @skey[KV_Creator]
@@ -6604,7 +6615,7 @@ module PandoraGUI
               @send_state = (send_state | CSF_Messaging)
               i = 0
               while sel and (i<sel.size) and (processed<$mes_block_count) \
-              and (conn_state != CS_Disconnected)
+              and (conn_state == CS_Connected)
                 processed += 1
                 id = sel[i][0]
                 text = sel[i][1]
@@ -6617,7 +6628,7 @@ module PandoraGUI
                   log_message(LM_Error, 'Ошибка отправки сообщения text='+text)
                 end
                 i += 1
-                if (i>=sel.size) and (processed<$mes_block_count) and (conn_state != CS_Disconnected)
+                if (i>=sel.size) and (processed<$mes_block_count) and (conn_state == CS_Connected)
                   #sel = message_model.select('destination="'+node.to_s+'" AND state=0', \
                   #  false, 'id, text', 'created', $mes_block_count)
                   sel = message_model.select(filter, false, 'id, text', 'created', $mes_block_count)
@@ -6638,7 +6649,7 @@ module PandoraGUI
 
         # пакетирование медиа буферов
         if ($send_media_queue.size>0) and $send_media_rooms \
-        and (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) and (stage>=ST_Exchange) \
+        and (conn_state == CS_Connected) and (stage>=ST_Exchange) \
         and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
         and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
         or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
@@ -6646,7 +6657,7 @@ module PandoraGUI
           pointer_ind = PandoraGUI.set_send_ptrind_by_room(dialog.room_id)
           processed = 0
           cannel = 0
-          while (conn_state != CS_Disconnected) and (conn_state != CS_Stoping) \
+          while (conn_state == CS_Connected) \
           and ((send_state & CSF_Message) == 0) and (processed<$media_block_count) \
           and (cannel<$send_media_queue.size) \
           and dialog and (not dialog.destroyed?) \
@@ -6671,8 +6682,8 @@ module PandoraGUI
 
         if socket.closed?
           @conn_state = CS_Disconnected
-        elsif conn_state == CS_Stoping
-          add_send_segment(EC_Bye, true)
+        #elsif conn_state == CS_Stoping
+        #  add_send_segment(EC_Bye, true)
         end
         Thread.pass
       end
@@ -6682,10 +6693,17 @@ module PandoraGUI
       #Thread.critical = true
       PandoraGUI.del_connection(self)
       #Thread.critical = false
-      socket.close if not socket.closed?
+      if not socket.closed?
+        socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+        socket.flush
+        socket.print('\000')
+        sleep(0.05)
+        socket.close_write
+        socket.close
+      end
       @conn_state = CS_Disconnected
-      socket = nil
-      send_thread = nil
+      @socket = nil
+      @send_thread = nil
 
       if dialog and (not dialog.destroyed?) and (not dialog.online_button.destroyed?)
         dialog.online_button.active = false
@@ -6775,7 +6793,8 @@ module PandoraGUI
                       rescue
                         buf = ''
                       end
-                      socket.write(buf) if (not socket.closed? and buf and (buf.bytesize>0))
+                      #socket.write(buf)
+                      socket.send(buf, 0) if (not socket.closed? and buf and (buf.bytesize>0))
                       connection = connection_of_node(node)
                     end
                   else
@@ -6915,13 +6934,13 @@ module PandoraGUI
     host ||= ''
     port ||= ''
     proto ||= ''
-    node = host+':'+port.to_s+proto
+    node = host+'='+port.to_s+proto
   end
 
   # Unpack node marker
   # RU: Распаковать маркер узла
   def self.decode_node(node)
-    i = node.index(':')
+    i = node.index('=')
     if i
       host = node[0, i]
       port = node[i+1, node.size-4-i].to_i
