@@ -33,6 +33,36 @@
 
   </World>
 
+  <Bussiness>
+
+    <Deposit>
+      <creator pos="1" />
+      <condition pos="|2" />
+      <content pos="3" />
+      <currency pos="|4" />
+      <sum pos="5" />
+      <created pos="|100" />
+    </Deposit>
+
+    <Guarantee>
+      <creator pos="1" />
+      <obligor pos="|2" />
+      <condition pos="|3" />
+      <currency pos="|4" />
+      <sum pos="5" />
+      <created pos="|100" />
+    </Guarantee>
+
+    <Insurer>
+      <creator pos="1" />
+      <condition pos="2" />
+    </Insurer>
+
+  </Bussiness>
+
+  <Region>
+  </Region>
+
   <Pandora name="Pandora Node">
 
     <Panobject>

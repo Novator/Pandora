@@ -73,7 +73,7 @@ while (ARGV.length>0) or next_arg
       puts runit+'-h localhost   - set listen address'
       puts runit+'-p 5577        - set listen port'
       puts runit+'-bi 0          - set index of database'
-      Thread.exit
+      Thread.current.exit
   end
   val = nil
 end
@@ -81,22 +81,27 @@ end
 # Prevent second execution
 # RU: Предотвратить второй запуск
 if not $poly_launch
-  if os_family=='unix'
-    res = `ps -few | grep pandora.rb | grep -v grep`
-    res = res.scan("\n").count if res
-    if res>1
-      Thread.exit
+  #begin
+    if os_family=='unix'
+      res = `ps -few | grep pandora.rb | grep -v grep`
+      res = res.scan("\n").count if res
+      if res>1
+        Thread.current.exit
+      end
+    elsif os_family=='windows'
+      require 'Win32API'
+      FindWindow = Win32API.new('user32', 'FindWindowA', ['P', 'P'], 'L')
+      win_handle = FindWindow.call(nil, 'Pandora')
+      if win_handle != 0
+        SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
+        SetForegroundWindow.call(win_handle)
+        ShowWindow = Win32API.new('user32', 'ShowWindow', 'L', 'V')
+        ShowWindow.call(win_handle, 5)  #WM_SHOW
+        Thread.current.exit
+      end
     end
-  elsif os_window=='windows'
-    require 'Win32API'
-    FindWindow = Win32API.new('user32', 'FindWindowA', ['P', 'P'], 'L')
-    win_handle = FindWindow.call(nil, 'Pandora 0.1')
-    if win_handle != 0
-      SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
-      SetForegroundWindow.call(win_handle)
-      Thread.exit
-    end
-  end
+  #rescue Exception
+  #end
 end
 
 if RUBY_VERSION<'1.9'
@@ -1691,6 +1696,7 @@ module PandoraModel
 
             # fill fields
             element.elements.each('*') do |sub_elem|
+              #p panobj_id+':'+[sub_elem, sub_elem.name].inspect
               seu = sub_elem.name.upcase
               if seu==sub_elem.name  #elem name has BIG latters
                 # This is a function
@@ -5353,8 +5359,6 @@ module PandoraGUI
 
   $base_id = ''
 
-  MaxPackSize = 1500
-  MaxSegSize  = 1200
   CommSize = 6
   CommExtSize = 10
 
@@ -5363,7 +5367,8 @@ module PandoraGUI
   ECC_Init_Phrase      = 2
   ECC_Init_Sign        = 3
   ECC_Init_Captcha     = 4
-  ECC_Init_Answer      = 5
+  ECC_Init_Simple      = 5
+  ECC_Init_Answer      = 6
 
   ECC_Query0_Kinds      = 0
   ECC_Query255_AllChanges =255
@@ -5418,6 +5423,16 @@ module PandoraGUI
   ST_Captcha      = 6
   ST_Greeting     = 7
   ST_Exchange     = 8
+
+  # Max recv pack size for stadies
+  # RU: Максимально допустимые порции для стадий
+  MPS_Proto     = 150
+  MPS_Puzzle    = 300
+  MPS_Sign      = 500
+  MPS_Captcha   = 3000
+  MPS_Exchange  = 4000
+  # Max send segment size
+  MaxSegSize  = 1200
 
   # Connection state flags
   # RU: Флаги состояния соединения
@@ -5781,6 +5796,21 @@ module PandoraGUI
         #p params['srckey']
       end
 
+      def set_max_pack_size(stage)
+        case stage
+          when ST_Protocol
+            @max_pack_size = MPS_Proto
+          when ST_Puzzle
+            @max_pack_size = MPS_Puzzle
+          when ST_Sign
+            @max_pack_size = MPS_Sign
+          when ST_Captcha
+            @max_pack_size = MPS_Captcha
+          when ST_Exchange
+            @max_pack_size = MPS_Exchange
+        end
+      end
+
       def init_skey_or_error(first=true)
         def get_sphrase(init=false)
           phrase = params['sphrase'] if not init
@@ -5804,17 +5834,20 @@ module PandoraGUI
             @scmd  = EC_Init
             @sbuf = phrase
             params['puzzle_start'] = Time.now.to_i
+            set_max_pack_size(ST_Puzzle)
           else
             @skey = PandoraGUI.open_key(skey_panhash, @recv_models, false)
             # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
             # or just 4? other later!
             if (@skey.is_a? Integer) and (@skey==0)
               set_request(skey_panhash)
+              set_max_pack_size(ST_Exchange)
             elsif @skey
               #phrase = PandoraKernel.bigint_to_bytes(phrase)
               @stage = ST_Sign
               @scode = ECC_Init_Phrase
               @scmd  = EC_Init
+              set_max_pack_size(ST_Sign)
               phrase, init = get_sphrase(false)
               p log_mes+'send phrase len='+phrase.bytesize.to_s
               if init
@@ -5844,6 +5877,7 @@ module PandoraGUI
           clue_text = clue_text[0,255]
           @sbuf = [clue_text.bytesize].pack('C')+clue_text+buf
           @stage = ST_Captcha
+          set_max_pack_size(ST_Captcha)
         else
           err_scmd('Captcha attempts is exhausted')
         end
@@ -5964,6 +5998,20 @@ module PandoraGUI
         res = node_model.update(values, nil, filter)
       end
 
+      def get_simple_answer_to_node
+        password = nil
+        if @node_id
+          node_model = PandoraGUI.model_gui('Node', @recv_models)
+          filter = {:id=>@node_id}
+          sel = node_model.select(filter, false, 'password', nil, 1)
+          if sel and sel.size>0
+            row = sel[0]
+            password = row[0]
+          end
+        end
+        password
+      end
+
       case rcmd
         when EC_Init
           if stage<=ST_Greeting
@@ -6018,7 +6066,10 @@ module PandoraGUI
                     len = 255 if len>255
                     @sbuf = [len].pack('C')+$base_id[0,len]+sign
                     @scode = ECC_Init_Sign
-                    @stage = ST_Exchange if @stage == ST_Greeting
+                    if @stage == ST_Greeting
+                      @stage = ST_Exchange
+                      set_max_pack_size(ST_Exchange)
+                    end
                   end
                   @scmd = EC_Init
                   #@stage = ST_Check
@@ -6073,8 +6124,10 @@ module PandoraGUI
                         if (conn_mode & CM_Hunter) == 0
                           @stage = ST_Greeting
                           add_send_segment(EC_Init, true)
+                          set_max_pack_size(ST_Sign)
                         else
                           @stage = ST_Exchange
+                          set_max_pack_size(ST_Exchange)
                         end
                         @scmd = EC_Data
                         @scode = 0
@@ -6090,6 +6143,20 @@ module PandoraGUI
                   end
                 else
                   err_scmd('Cannot init your key')
+                end
+              elsif (rcode==ECC_Init_Simple) and (stage==ST_Protocol)
+                p 'ECC_Init_Simple!'
+                rphrase = rdata
+                p 'rphrase='+rphrase.inspect
+                p password = get_simple_answer_to_node
+                if (password.is_a? String) and (password.bytesize>0)
+                  p password_hash = OpenSSL::Digest::SHA256.digest(password)
+                  p answer = OpenSSL::Digest::SHA256.digest(rphrase+password_hash)
+                  @scmd = EC_Init
+                  @scode = ECC_Init_Answer
+                  @sbuf = answer
+                else
+                  err_scmd('There is no password')
                 end
               elsif (rcode==ECC_Init_Captcha) and ((stage==ST_Protocol) or (stage==ST_Greeting))
                 p log_mes+'CAPTCHA!!!  ' #+params.inspect
@@ -6441,9 +6508,11 @@ module PandoraGUI
       # Sending thread
       @send_thread = a_send_thread
 
+      @max_pack_size = MPS_Proto
       @log_mes = 'LIS: '
       if (conn_mode & CM_Hunter)>0
         @log_mes = 'HUN: '
+        @max_pack_size = MPS_Captcha
         add_send_segment(EC_Init, true)
       end
 
@@ -6472,7 +6541,7 @@ module PandoraGUI
           p log_mes+"Цикл ЧТЕНИЯ начало"
           # Цикл обработки команд и блоков данных
           while (conn_state != CS_Disconnected) and (conn_state != CS_StopRead) \
-          and (not socket.closed?) and (recieved = socket_recv(MaxPackSize))
+          and (not socket.closed?) and (recieved = socket_recv(@max_pack_size))
             #p log_mes+"recieved=["+recieved+']  '+socket.closed?.to_s+'  sok='+socket.inspect
             rbuf << AsciiString.new(recieved)
             processedlen = 0
@@ -8736,12 +8805,16 @@ module PandoraGUI
     ['Partner', nil, 'Partners'],
     ['Company', nil, 'Companies'],
     ['-', nil, '-'],
-    ['Ad', nil, 'Ads'],
+    ['Advertisement', nil, 'Advertisements'],
     ['Order', nil, 'Orders'],
     ['Deal', nil, 'Deals'],
     ['Waybill', nil, 'Waybills'],
-    ['Debt', nil, 'Debts'],
-    ['Guaranty', nil, 'Guaranties'],
+    ['Debenture', nil, 'Debentures'],
+    ['Transfer', nil, 'Transfers'],
+    ['-', nil, '-'],
+    ['Deposit', nil, 'Deposits'],
+    ['Guarantee', nil, 'Guarantees'],
+    ['Insurer', nil, 'Insurers'],
     ['-', nil, '-'],
     ['Storage', nil, 'Storages'],
     ['Product', nil, 'Products'],

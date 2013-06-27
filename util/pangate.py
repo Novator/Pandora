@@ -8,7 +8,7 @@
 # 2012 (c) Michael Galyuk
 # RU: 2012 (c) Михаил Галюк
 
-import termios, fcntl, sys, os, socket, threading, struct, binascii, time
+import termios, fcntl, sys, os, socket, threading, struct, binascii, time, hashlib
 
 # Preparation for key capturing
 fd = sys.stdin.fileno()
@@ -25,6 +25,8 @@ fcntl.fcntl(fd, fcntl.F_SETFL, oldflags | os.O_NONBLOCK)
 TCP_IP = '127.0.0.1'
 TCP_PORT = 5577
 MAX_CONNECTIONS = 10
+PASSWORD_HASH = hashlib.sha256('1234567890').digest()
+OWNER_KEY_PANHASH = 'dd032ec783d34331de1d39006fc851c7e7934141d3aa'.decode('hex')
 
 # Internal constants
 MaxPackSize = 1500
@@ -57,8 +59,8 @@ ECC_Init_Puzzle      = 1
 ECC_Init_Phrase      = 2
 ECC_Init_Sign        = 3
 ECC_Init_Captcha     = 4
-ECC_Init_Answer      = 5
-ECC_Init_Password    = 6
+ECC_Init_Simple      = 5
+ECC_Init_Answer      = 6
 
 ECC_Query0_Kinds      = 0
 ECC_Query255_AllChanges = 255
@@ -133,11 +135,15 @@ IS_Finished      = 255
 
 LONG_SEG_SIGN   = 0xFFFF
 
+
 class ClientThread(threading.Thread):
-  def __init__ (self, client, addr):
+  def __init__ (self, listener, client, addr):
     self.client = client
     self.addr = addr
     self._stop = threading.Event()
+    self.listener = listener
+    self.pipe_number = None
+    self.pipe_client = None
     threading.Thread.__init__(self)
 
   def unpack_comm(self, comm):
@@ -288,15 +294,52 @@ class ClientThread(threading.Thread):
       if code: mesadd = ' err=' + str(code)
       print('Our error: ', logmes+mesadd)
 
+  def open_pipe_number(self, fisher):
+    number = 1
+    return number
+
+  def send_to_collector(self):
+    if self.pipe_client:
+      #pipebuf = EC_Pipe + index + self.rcmd + self.rcode + self.rdata
+      pipebuf = '0000000000000000000000000000000000000000'
+      print('PIPING!', self.pipe_client, pipebuf)
+      self.pipe_client.send(pipebuf)
+
   # Accept received segment
   # RU: Принять полученный сегмент
   def accept_segment(self):
     print('accept_segment:  self.rcmd, self.rcode, self.stage', self.rcmd, self.rcode, self.stage)
     if (self.rcmd==EC_Init):
       if (self.rcode==ECC_Init_Hello) and (self.stage==ST_Protocol):
-        self.scmd = EC_Init
-        self.scode = ECC_Init_Password
-        self.sbuf = None
+        print('self.rdata: ',self.rdata)
+        if self.listener.collector:
+          #self.err_scmd('Collector is still not ready!!!')
+          self.pipe_number = self.listener.collector.open_pipe_number(self)
+          self.pipe_client = self.listener.collector.client
+          self.send_to_collector()
+        else:
+          i = self.rdata.find('mykey')
+          if i>0:
+            key_panhash = self.rdata[i+7: i+7+22]
+            print('key_panhash', key_panhash, len(key_panhash), len(OWNER_KEY_PANHASH))
+            if key_panhash == OWNER_KEY_PANHASH:
+              self.scmd = EC_Init
+              self.scode = ECC_Init_Simple
+              self.sphrase = str(os.urandom(256))
+              self.sbuf = self.sphrase
+            else:
+              self.err_scmd('Owner is offline')
+          else:
+            self.err_scmd('Bad hello')
+      elif (self.rcode==ECC_Init_Answer) and (self.stage==ST_Protocol):
+        sanswer = self.rdata
+        fanswer = hashlib.sha256(self.sphrase+PASSWORD_HASH).digest()
+        print(self.sphrase, PASSWORD_HASH, fanswer)
+        if sanswer == fanswer:
+          self.listener.collector = self
+          print('COLLECTOR SETTED!!!!')
+        else:
+          self.err_scmd('Answer is wrong')
       else:
         self.err_scmd('Wrong stage for rcode')
     elif (self.rcmd==EC_Bye):
@@ -332,6 +375,7 @@ class ClientThread(threading.Thread):
     last_scmd = self.scmd
     self.conn_state = CS_Connected
     rdatasize = 0
+    self.sphrase = None
 
     while (self.conn_state != CS_StopRead) and (self.conn_state != CS_Disconnected):
       try:
@@ -467,6 +511,7 @@ class AcceptThread(threading.Thread):
     self.server = a_server
     self.listening = True
     self.threads = []
+    self.collector = None
     threading.Thread.__init__(self)
 
   def run(self):
@@ -474,7 +519,7 @@ class AcceptThread(threading.Thread):
       try:
         client, addr = self.server.accept()
         print('Connect from: ', addr)
-        client_tread = ClientThread(client, addr)
+        client_tread = ClientThread(self, client, addr)
         self.threads.append(client_tread)
         client_tread.start()
       except IOError: pass

@@ -136,6 +136,27 @@
       <issuer name.ru="Эммитент" />
     </Currency>
 
+    <Deposit name.ru="Залог|Залоги">
+      <creator name.ru="Залогодатель" />
+      <condition name.ru="Условия" />
+      <content name.ru="Содержимое" />
+      <currency name.ru="Валюта" />
+      <sum name.ru="Сумма" />
+    </Deposit>
+
+    <Guarantee name.ru="Поручительство|Поручительства">
+      <creator name.ru="Поручитель" />
+      <obligor name.ru="Подопечный" />
+      <condition name.ru="Условия" />
+      <currency name.ru="Валюта" />
+      <sum name.ru="Сумма" />
+    </Guarantee>
+
+    <Insurer name.ru="Страховая|Страховые">
+      <creator name.ru="Основатель" />
+      <condition name.ru="Условия" />
+    </Insurer>
+
   </Business>
   <Region name.ru="Регион">
 
