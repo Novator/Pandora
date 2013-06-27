@@ -169,12 +169,18 @@ class ClientThread(threading.Thread):
     if not data:
       data = ''
     datasize = len(data)
-    if datasize <= MaxSegSize:
-      segsign = datasize
-      segsize = datasize
-    else:
-      segsign = LONG_SEG_SIGN
-      segsize = MaxSegSize
+    segsign, segdata, segsize = datasize, datasize, datasize
+    if datasize>0:
+      if cmd != EC_Media:
+        segsize += 4           #for crc32
+        segsign = segsize
+      if segsize > MaxSegSize:
+        segsign = LONG_SEG_SIGN
+        segsize = MaxSegSize
+        if cmd == EC_Media:
+          segdata = segsize
+        else:
+          segdata = segsize-4  #for crc32
     crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
     comm = struct.pack('!BBBHB', index, cmd, code, segsign, crc8)
     print('>send comm/data=', comm, len(comm), data)
@@ -185,17 +191,16 @@ class ClientThread(threading.Thread):
     buf = ''
     if datasize>0:
       if segsign == LONG_SEG_SIGN:
-        fullcrc32 = binascii.crc32(data)
         # если пакетов много, то добавить еще 4+4+2= 10 байт
+        fullcrc32 = 0
+        if cmd != EC_Media: fullcrc32 = binascii.crc32(data)
         comm = comm + struct.pack('!IiH', datasize, fullcrc32, segsize)
-        buf = buf + data[0, segsize-1]
+        buf = data[0: segdata]
       else:
         buf = data
-      segcrc32 = binascii.crc32(buf)
-      print('segcrc32=',segcrc32)
-
-      # в конце всегда CRC сегмента - 4 байта
-      buf = buf + struct.pack('!i', segcrc32)
+      if cmd != EC_Media:
+        segcrc32 = binascii.crc32(buf)
+        buf = buf + struct.pack('!i', segcrc32)
     buf = comm + buf
     #if (not @media_send) and (cmd == EC_Media)
     #  @media_send = true
@@ -215,7 +220,6 @@ class ClientThread(threading.Thread):
         sended = -1
     except: #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
       sended = -1
-
     if sended == len(buf):
       res = index
     elif sended != -1:
@@ -223,8 +227,17 @@ class ClientThread(threading.Thread):
     segindex = 0
     i = segsize
     while res and ((datasize-i)>0):
-      segsize = datasize-i
-      if segsize>MaxSegSize: segsize = MaxSegSize
+      segdata = datasize-i
+      segsize = segdata
+      if cmd != EC_Media:
+        segsize += 4           #for crc32
+      if segsize > MaxSegSize:
+        segsize = MaxSegSize
+        if cmd == EC_Media:
+          segdata = segsize
+        else:
+          segdata = segsize-4  #for crc32
+
       if segindex<0xFFFFFFFF:
         segindex += 1
       else:
@@ -234,8 +247,11 @@ class ClientThread(threading.Thread):
         index += 1
       else:
         index = 0
-      buf = data[i, segsize]
-      buf = buf + struct.pack('!I', binascii.crc32(buf))
+
+      buf = data[i: segdata]
+      if cmd != EC_Media:
+        segcrc32 = binascii.crc32(buf)
+        buf = buf + struct.pack('!I', segcrc32)
       buf = comm + buf
       try:
         if self.client: # and not socket.closed?:
@@ -250,7 +266,7 @@ class ClientThread(threading.Thread):
       elif sended != -1:
         res = nil
         print('Не все данные отправлены2 ', sended)
-      i += segsize
+      i += segdata
     return res
 
   # compose error command and add log message
@@ -300,8 +316,12 @@ class ClientThread(threading.Thread):
     readmode = RM_Comm
     nextreadmode = RM_Comm
     waitlen = CommSize
-    self.stage = ST_Protocol
+    rdatasize = 0
+    fullcrc32 = None
+    rdatasize = None
 
+
+    self.stage = ST_Protocol
     self.scmd = EC_More
     self.scode = 0
     self.sbuf = ''
@@ -331,7 +351,9 @@ class ClientThread(threading.Thread):
 
         # Определимся с данными по режиму чтения
         if readmode==RM_Comm:
-          comm = rbuf[0:processedlen]
+          fullcrc32 = None
+          rdatasize = None
+          comm = rbuf[0: processedlen]
           rindex, self.rcmd, self.rcode, rsegsign, errcode = self.unpack_comm(comm)
           print(' RM_Comm: rindex, rcmd, rcode, segsign, errcode: ', rindex, self.rcmd, self.rcode, rsegsign, errcode)
           if errcode == 0:
@@ -340,8 +362,8 @@ class ClientThread(threading.Thread):
               waitlen = CommExtSize
             elif rsegsign > 0:
               nextreadmode = RM_SegmentS
-              waitlen = rsegsign+4  #+CRC32
-              rdatasize, rsegsize = rsegsign, rsegsign
+              waitlen, rdatasize = rsegsign, rsegsign
+              if (self.rcmd != EC_Media): rdatasize -=4
           elif errcode == 1:
             self.err_scmd('Wrong CRC of recieved command', ECC_Bye_BadCommCRC)
           elif errcode == 2:
@@ -349,39 +371,46 @@ class ClientThread(threading.Thread):
           else:
             self.err_scmd('Wrong recieved command', ECC_Bye_Unknown)
         elif readmode==RM_CommExt:
-          comm = rbuf[0:processedlen]
+          comm = rbuf[0: processedlen]
           rdatasize, fullcrc32, rsegsize = unpack_comm_ext(comm)
           print(' RM_CommExt: rdatasize, fullcrc32, rsegsize ', rdatasize, fullcrc32, rsegsize)
           nextreadmode = RM_Segment1
-          waitlen = rsegsize+4   #+CRC32
+          waitlen = rsegsize
         elif readmode==RM_SegLenN:
-          comm = rbuf[0:processedlen]
+          comm = rbuf[0: processedlen]
           rindex, rsegindex, rsegsize = struct.unpack('!BIH', comm)
           print(' RM_SegLenN: ', rindex, rsegindex, rsegsize)
           nextreadmode = RM_SegmentN
-          waitlen = rsegsize+4   #+CRC32
+          waitlen = rsegsize
         elif (readmode==RM_SegmentS) or (readmode==RM_Segment1) or (readmode==RM_SegmentN):
           print(' RM_SegLen? [mode, buf.len] ', readmode, len(rbuf))
           if (readmode==RM_Segment1) or (readmode==RM_SegmentN):
             nextreadmode = RM_SegLenN
             waitlen = 7    #index + segindex + rseglen (1+4+2)
-          rsegcrc32str = rbuf[processedlen-4:processedlen]
-          print('rsegcrc32str=',rsegcrc32str,len(rsegcrc32str))
-          rsegcrc32 = struct.unpack('!i', rsegcrc32str)[0]
-          rseg = rbuf[0:processedlen-4]
-          print('rseg',rseg)
-          fsegcrc32 = binascii.crc32(rseg)
-          print('fsegcrc32<=>rsegcrc32 = ', fsegcrc32, rsegcrc32)
-          if fsegcrc32 == rsegcrc32:
-            self.rdata = self.rdata + rseg
+          if self.rcmd == EC_Media:
+            self.rdata << rbuf[0, processedlen]
           else:
-            self.err_scmd('Wrong CRC of received segment', ECC_Bye_BadCRC)
+            rseg = rbuf[0: processedlen-4]
+            print('rseg',rseg)
+            rsegcrc32str = rbuf[processedlen-4: processedlen]
+            print('rsegcrc32str=',rsegcrc32str,len(rsegcrc32str))
+            rsegcrc32 = struct.unpack('!i', rsegcrc32str)[0]
+            fsegcrc32 = binascii.crc32(rseg)
+            if fsegcrc32 == rsegcrc32:
+              self.rdata = self.rdata + rseg
+              if fullcrc32:
+                if fullcrc32 != binascii.crc32(self.rdta):
+                  self.err_scmd('Wrong CRC of received block', ECC_Bye_BadCRC)
+            else:
+              self.err_scmd('Wrong CRC of received segment', ECC_Bye_BadCRC)
           print('RM_Segment?: data', self.rdata, len(self.rdata), rdatasize)
+
           if len(self.rdata) == rdatasize:
             nextreadmode = RM_Comm
             waitlen = CommSize
           elif len(self.rdata) > rdatasize:
-            self.err_scmd('Too much received data', ECC_Bye_DataTooLong)
+            self.err_scmd('Too match received data ('+rdata.bytesize.to_s+'>'+rdatasize.to_s+')', \
+              ECC_Bye_DataTooLong)
 
         # Очистим буфер от определившихся данных
         rbuf = rbuf[processedlen:]

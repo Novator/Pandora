@@ -355,12 +355,15 @@
 
   <Defaults>
     <section_common desc="Common" type="Word" section="0" setting="1" />
-    <section_update desc="Update" type="Word" section="0" setting="2" />
-    <section_net desc="Network" type="Word" section="0" setting="3" />
-    <section_crypto desc="Crypto" type="Word" section="0" setting="4" />
-    <section_media desc="Media" type="Word" section="0" setting="5" />
+    <section_view desc="View" type="Word" section="0" setting="2" />
+    <section_update desc="Update" type="Word" section="0" setting="3" />
+    <section_net desc="Network" type="Word" section="0" setting="4" />
+    <section_crypto desc="Crypto" type="Word" section="0" setting="5" />
+    <section_media desc="Media" type="Word" section="0" setting="6" />
 
     <base_id desc="Base ID" type="String" section="common" setting="[create_base_id],hex" />
+
+    <hide_on_minimize desc="Hide on minimize" type="Boolean" section="update" setting="true" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
     <check_interval desc="Сheck interval (days)" type="Integer" section="update" setting="2" />

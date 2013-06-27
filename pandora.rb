@@ -10,36 +10,6 @@
 # 2012 (c) Michael Galyuk
 # RU: 2012 (c) Михаил Галюк
 
-$ruby_low19 = RUBY_VERSION<'1.9'
-if $ruby_low19
-  $KCODE='UTF-8'
-  begin
-    require 'jcode'
-    $jcode_on = true
-  rescue Exception
-    $jcode_on = false
-  end
-  if (RUBY_VERSION<'1.8.7')
-    puts 'The Pandora needs Ruby 1.8.7 or higher (current '+RUBY_VERSION+')'
-    exit(10)
-  end
-  require 'iconv'
-  class AsciiString < String
-    def force_encoding(enc)
-      self
-    end
-  end
-else
-  class AsciiString < String
-    def initialize(*args)
-      super(*args)
-      force_encoding('ASCII-8BIT')
-    end
-  end
-  Encoding.default_external = 'UTF-8'
-  Encoding.default_internal = 'UTF-8' #BINARY ASCII-8BIT UTF-8
-end
-
 # Platform detection
 # RU: Определение платформы
 def os_family
@@ -51,6 +21,96 @@ def os_family
     else
       'other'
   end
+end
+
+# Default values of variables
+# RU: Значения переменных по умолчанию
+$host = '127.0.0.1'
+$port = 5577
+$base_index = 0
+$poly_launch = false
+$pandora_parameters = []
+
+# Expand the arguments of command line
+# RU: Разобрать аргументы командной строки
+arg = nil
+val = nil
+next_arg = nil
+while (ARGV.length>0) or next_arg
+  if next_arg
+    arg = next_arg
+    next_arg = nil
+  else
+    arg = ARGV.shift
+  end
+  if arg.is_a? String and (arg[0,1]=='-')
+    if ARGV.length>0
+      next_arg = ARGV.shift
+    end
+    if next_arg and next_arg.is_a? String and (next_arg[0,1] != '-')
+      val = next_arg
+      next_arg = nil
+    end
+  end
+  case arg
+    when '-h','--host'
+      $host = val if val
+    when '-p','--port'
+      $port = val.to_i if val
+    when '-bi'
+      $base_index = val.to_i if val
+    when '-pl', '--poly', '--poly-launch'
+      $poly_launch = true
+    when '--shell', '--help', '/?', '-?'
+      runit = '  '
+      if arg=='--shell' then
+        runit += 'pandora.sh'
+      else
+        runit += 'ruby pandora.rb'
+      end
+      runit += ' '
+      puts 'Оriginal Pandora params for examples:'
+      puts runit+'-h localhost   - set listen address'
+      puts runit+'-p 5577        - set listen port'
+      puts runit+'-bi 0          - set index of database'
+      Thread.exit
+  end
+  val = nil
+end
+
+# Prevent second execution
+# RU: Предотвратить второй запуск
+if not $poly_launch
+  if os_family=='unix'
+    res = `ps -few | grep pandora.rb | grep -v grep`
+    res = res.scan("\n").count if res
+    if res>1
+      Thread.exit
+    end
+  elsif os_window=='windows'
+    require 'Win32API'
+    FindWindow = Win32API.new('user32', 'FindWindowA', ['P', 'P'], 'L')
+    win_handle = FindWindow.call(nil, 'Pandora 0.1')
+    if win_handle != 0
+      SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
+      SetForegroundWindow.call(win_handle)
+      Thread.exit
+    end
+  end
+end
+
+if RUBY_VERSION<'1.9'
+  puts 'The Pandora needs Ruby 1.9 or higher (current '+RUBY_VERSION+')'
+  exit(10)
+else
+  class AsciiString < String
+    def initialize(*args)
+      super(*args)
+      force_encoding('ASCII-8BIT')
+    end
+  end
+  Encoding.default_external = 'UTF-8'
+  Encoding.default_internal = 'UTF-8' #BINARY ASCII-8BIT UTF-8
 end
 
 # Paths and files  ('join' gets '/' for Linux and '\' for Windows)
@@ -144,59 +204,6 @@ if (lang.is_a? String) and (lang.size>1)
   $lang = lang[0, 2].downcase
 end
 #$lang = 'en'
-
-# Default values of variables
-# RU: Значения переменных по умолчанию
-$host = '127.0.0.1'
-$port = 5577
-$base_index = 0
-$pandora_parameters = []
-
-# Expand the arguments of command line
-# RU: Разобрать аргументы командной строки
-
-arg = nil
-val = nil
-next_arg = nil
-while (ARGV.length>0) or next_arg
-  if next_arg
-    arg = next_arg
-    next_arg = nil
-  else
-    arg = ARGV.shift
-  end
-  if arg.is_a? String and (arg[0,1]=='-')
-    if ARGV.length>0
-      next_arg = ARGV.shift
-    end
-    if next_arg and next_arg.is_a? String and (next_arg[0,1] != '-')
-      val = next_arg
-      next_arg = nil
-    end
-  end
-  case arg
-    when '-h','--host'
-      $host = val if val
-    when '-p','--port'
-      $port = val.to_i if val
-    when '-bi'
-      $base_index = val.to_i if val
-    when '--shell', '--help', '/?', '-?'
-      runit = '  '
-      if arg=='--shell' then
-        runit += 'pandora.sh'
-      else
-        runit += 'ruby pandora.rb'
-      end
-      runit += ' '
-      puts 'Оriginal Pandora params for examples:'
-      puts runit+'-h localhost   - set listen address'
-      puts runit+'-p 5577        - set listen port'
-      puts runit+'-bi 0          - set index of database'
-      Thread.exit
-  end
-  val = nil
-end
 
 # GStreamer is a media library
 # RU: Обвязка для медиа библиотеки GStreamer
@@ -2471,11 +2478,7 @@ module PandoraGUI
         field[FI_LabW] = lw
         field[FI_LabH] = lh
         texts_width += lw
-        if $jcode_on
-          texts_chars += atext.jlength
-        else
-          texts_chars += atext.length
-        end
+        texts_chars += atext.length
         #texts_chars += atext.length
         labels_width += lw
         max_label_height = lh if max_label_height < lh
@@ -3296,6 +3299,33 @@ module PandoraGUI
     res
   end
 
+  def self.any_value_to_boolean(val)
+    val = ((val.is_a? String) and (val.downcase != 'false') and (val != '0')) \
+      or ((val.is_a? Integer) and (val != 0))
+    val
+  end
+
+  def self.normalize_param_value(val, type)
+    type = string_to_pantype(type) if type.is_a? String
+    case type
+      when PT_Int
+        if val
+          val = val.to_i
+        else
+          val = 0
+        end
+      when PT_Bool
+        val = any_value_to_boolean(val)
+      when PT_Time
+        if val
+          val = Time.parse(val)  #Time.strptime(defval, '%d.%m.%Y')
+        else
+          val = 0
+        end
+    end
+    val
+  end
+
   def self.create_default_param(type, setting)
     value = nil
     if setting
@@ -3306,26 +3336,7 @@ module PandoraGUI
         i ||= defval.size
         value = self.send(defval[1,i-1])
       else
-        type = string_to_pantype(type) if type.is_a? String
-        case type
-          when PT_Int
-            if defval
-              value = defval.to_i
-            else
-              value = 0
-            end
-          when PT_Bool
-            value = (defval and ((defval.downcase=='true') or (defval=='1')))
-          when PT_Time
-            if defval
-              value = Time.parse(defval)  #Time.strptime(defval, '%d.%m.%Y')
-            else
-              value = 0
-            end
-          else
-            value = defval
-            value ||= ''
-        end
+        value = normalize_param_value(defval, type)
       end
     end
     value
@@ -3357,7 +3368,7 @@ module PandoraGUI
     value = nil
     id = nil
     param_model = model_gui('Parameter')
-    sel = param_model.select({'name'=>name}, false, 'value, id')
+    sel = param_model.select({'name'=>name}, false, 'value, id, type')
     if not sel[0]
       # parameter was not found
       ind = $pandora_parameters.index{ |row| row[PF_Name]==name }
@@ -3375,12 +3386,14 @@ module PandoraGUI
         panhash = param_model.panhash(values)
         values['panhash'] = panhash
         param_model.update(values, nil, nil)
-        sel = param_model.select({'name'=>name}, false, 'value, id')
+        sel = param_model.select({'name'=>name}, false, 'value, id, type')
       end
     end
     if sel[0]
       # value exists
       value = sel[0][0]
+      type = sel[0][2]
+      value = normalize_param_value(value, type)
       id = sel[0][1] if get_id
     end
     value = [value, id] if get_id
@@ -4286,7 +4299,7 @@ module PandoraGUI
         end
       elsif view=='base64'
         val = val.to_s
-        if $ruby_low19 or (not type) or (type=='text')
+        if (not type) or (type=='text')
           val = Base64.encode64(val)
         else
           val = Base64.strict_encode64(val)
@@ -4317,6 +4330,14 @@ module PandoraGUI
         val = PandoraKernel.bytes_to_hex(val)
         #end
         color = 'dark blue'
+      elsif view=='boolean'
+        if not val.is_a? String
+          if ((val.is_a? Integer) and (val != 0)) or (val.is_a? TrueClass)
+            val = 'true'
+          else
+            val = 'false'
+          end
+        end
       elsif not can_edit and (view=='text')
         val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
         val = val.rstrip
@@ -4341,7 +4362,7 @@ module PandoraGUI
             val = 0
           end
         when 'base64'
-          if $ruby_low19 or (not type) or (type=='Text')
+          if (not type) or (type=='Text')
             val = Base64.decode64(val)
           else
             val = Base64.strict_decode64(val)
@@ -4355,6 +4376,8 @@ module PandoraGUI
           else
             val = val.to_i(16)
           end
+        when 'boolean'
+          val = any_value_to_boolean(val)
       end
     end
     val
@@ -4455,11 +4478,19 @@ module PandoraGUI
         formfields.each do |field|
           val = nil
           fid = field[FI_Id]
-          col = tab_flds.index{ |tf| tf[0] == fid }
-
-          val = sel[0][col] if col and sel and sel[0].is_a? Array
           type = field[FI_Type]
           view = field[FI_View]
+          col = tab_flds.index{ |tf| tf[0] == fid }
+          if col and sel and (sel[0].is_a? Array)
+            val = sel[0][col]
+            if (panobject.ider=='Parameter') and (fid=='value')
+              type = panobject.field_val('type', sel[0])
+              setting = panobject.field_val('setting', sel[0])
+              ps = decode_param_setting(setting)
+              view = ps['view']
+              view ||= pantype_to_view(type)
+            end
+          end
 
           val, color = val_to_view(val, type, view, true)
           field[FI_Value] = val
@@ -4546,6 +4577,14 @@ module PandoraGUI
             type = field[FI_Type]
             view = field[FI_View]
             val = field[FI_Value]
+
+            if (panobject.ider=='Parameter') and (field[FI_Id]=='value')
+              type = panobject.field_val('type', sel[0])
+              setting = panobject.field_val('setting', sel[0])
+              ps = decode_param_setting(setting)
+              view = ps['view']
+              view ||= pantype_to_view(type)
+            end
 
             val = view_to_val(val, type, view)
             flds_hash[field[FI_Id]] = val
@@ -4717,9 +4756,8 @@ module PandoraGUI
       id = row[0].to_i
       iter[0] = id
       if param_view_col
-        sel2 = panobject.select('id='+id.to_s, false, 'type, setting')
-        type = sel2[0][0]
-        setting = sel2[0][1]
+        type = panobject.field_val('type', row)
+        setting = panobject.field_val('setting', row)
         ps = decode_param_setting(setting)
         view = ps['view']
         view ||= pantype_to_view(type)
@@ -4780,11 +4818,7 @@ module PandoraGUI
             else
               val = val.to_s
             end
-            if $jcode_on
-              val = val[/.{0,#{45}}/m]
-            else
-              val = val[0,45]
-            end
+            val = val[0,45]
           else
             val = ''
           end
@@ -5250,6 +5284,17 @@ module PandoraGUI
     $trust_for_listener  = PandoraGUI.get_param('trust_for_listener')
   end
 
+  $hide_on_minimize = true
+
+  def self.get_view_params
+    $hide_on_minimize = PandoraGUI.get_param('hide_on_minimize')
+  end
+
+  def self.get_main_params
+    get_exchage_params
+    get_view_params
+  end
+
   PK_Key    = 221
 
   def self.get_record_by_panhash(kind, panhash, with_kind=true, models=nil, get_pson=true)
@@ -5472,12 +5517,21 @@ module PandoraGUI
       data ||= ''
       data = AsciiString.new(data)
       datasize = data.bytesize
-      if datasize <= MaxSegSize
-        segsign = datasize
-        segsize = datasize
-      else
-        segsign = LONG_SEG_SIGN
-        segsize = MaxSegSize
+      segsign, segdata, segsize = datasize, datasize, datasize
+      if datasize>0
+        if cmd != EC_Media
+          segsize += 4           #for crc32
+          segsign = segsize
+        end
+        if segsize > MaxSegSize
+          segsign = LONG_SEG_SIGN
+          segsize = MaxSegSize
+          if cmd == EC_Media
+            segdata = segsize
+          else
+            segdata = segsize-4  #for crc32
+          end
+        end
       end
       crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
       # Команда как минимум равна 1+1+1+2+1= 6 байт (CommSize)
@@ -5487,16 +5541,18 @@ module PandoraGUI
       buf = AsciiString.new
       if datasize>0
         if segsign == LONG_SEG_SIGN
-          fullcrc32 = Zlib.crc32(data)
           # если пакетов много, то добавить еще 4+4+2= 10 байт
+          fullcrc32 = 0
+          fullcrc32 = Zlib.crc32(data) if cmd != EC_Media
           comm << [datasize, fullcrc32, segsize].pack('NNn')
-          buf << data[0, segsize]
+          buf << data[0, segdata]
         else
           buf << data
         end
-        segcrc32 = Zlib.crc32(buf)
-        # в конце всегда CRC сегмента - 4 байта
-        buf << [segcrc32].pack('N')
+        if cmd != EC_Media
+          segcrc32 = Zlib.crc32(buf)
+          buf << [segcrc32].pack('N')
+        end
       end
       buf = comm + buf
       #p "!SEND: ("+buf+')'
@@ -5505,14 +5561,25 @@ module PandoraGUI
       # tos_video  af41  0x88  0x22
       # tos_xxx    cs5   0xA0  0x28
       # tos_audio  ef    0xB8  0x2E
-      if (not @media_send) and (cmd == EC_Media)
-        @media_send = true
-        socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
-        p '@media_send = true'
-      elsif @media_send and (cmd != EC_Media)
-        @media_send = false
-        socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0)
-        p '@media_send = false'
+      if cmd == EC_Media
+        if not @media_send
+          @media_send = true
+          socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+          socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
+          p '@media_send = true'
+        end
+      else
+        nodelay = nil
+        if @media_send
+          socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0)
+          nodelay = 0
+          @media_send = false
+          p '@media_send = false'
+        end
+        nodelay = 1 if (cmd == EC_Bye)
+        if nodelay
+          socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, nodelay)
+        end
       end
       #if cmd == EC_Media
       #  if code==0
@@ -5540,15 +5607,30 @@ module PandoraGUI
         log_message(LM_Error, 'Не все данные отправлены '+sended.to_s)
       end
       segindex = 0
-      i = segsize
+      i = segdata
       while res and ((datasize-i)>0)
-        segsize = datasize-i
-        segsize = MaxSegSize if segsize>MaxSegSize
+        segdata = datasize-i
+        segsize = segdata
+        if cmd != EC_Media
+          segsize += 4           #for crc32
+        end
+        if segsize > MaxSegSize
+          segsize = MaxSegSize
+          if cmd == EC_Media
+            segdata = segsize
+          else
+            segdata = segsize-4  #for crc32
+          end
+        end
         if segindex<0xFFFFFFFF then segindex += 1 else segindex = 0 end
+        #p log_mes+'comm_ex_pack: [index, segindex, segsize]='+[index, segindex, segsize].inspect
         comm = [index, segindex, segsize].pack('CNn')
         if index<255 then index += 1 else index = 0 end
-        buf = data[i, segsize]
-        buf << [Zlib.crc32(buf)].pack('N')
+        buf = data[i, segdata]
+        if cmd != EC_Media
+          segcrc32 = Zlib.crc32(buf)
+          buf << [segcrc32].pack('N')
+        end
         buf = comm + buf
         begin
           if socket and not socket.closed?
@@ -5567,7 +5649,7 @@ module PandoraGUI
           res = nil
           log_message(LM_Error, 'Не все данные отправлены2 '+sended.to_s)
         end
-        i += segsize
+        i += segdata
       end
       res
     end
@@ -6377,6 +6459,8 @@ module PandoraGUI
           nextreadmode = RM_Comm
           waitlen = CommSize
           rdatasize = 0
+          fullcrc32 = nil
+          rdatasize = nil
 
           @scmd = EC_More
           @sbuf = ''
@@ -6401,6 +6485,8 @@ module PandoraGUI
               # Определимся с данными по режиму чтения
               case readmode
                 when RM_Comm
+                  fullcrc32 = nil
+                  rdatasize = nil
                   comm = rbuf[0, processedlen]
                   rindex, @rcmd, @rcode, rsegsign, errcode = unpack_comm(comm)
                   if errcode == 0
@@ -6410,8 +6496,8 @@ module PandoraGUI
                       waitlen = CommExtSize
                     elsif rsegsign > 0
                       nextreadmode = RM_SegmentS
-                      waitlen = rsegsign+4  #+CRC32
-                      rdatasize, rsegsize = rsegsign
+                      waitlen, rdatasize = rsegsign, rsegsign
+                      rdatasize -=4 if (@rcmd != EC_Media)
                     end
                   elsif errcode == 1
                     err_scmd('Wrong CRC of recieved command', ECC_Bye_BadCommCRC)
@@ -6425,34 +6511,46 @@ module PandoraGUI
                   rdatasize, fullcrc32, rsegsize = unpack_comm_ext(comm)
                   #p log_mes+' RM_CommExt: '+[rdatasize, fullcrc32, rsegsize].inspect
                   nextreadmode = RM_Segment1
-                  waitlen = rsegsize+4   #+CRC32
+                  waitlen = rsegsize
                 when RM_SegLenN
                   comm = rbuf[0, processedlen]
                   rindex, rsegindex, rsegsize = comm.unpack('CNn')
                   #p log_mes+' RM_SegLenN: '+[rindex, rsegindex, rsegsize].inspect
                   nextreadmode = RM_SegmentN
-                  waitlen = rsegsize+4   #+CRC32
+                  waitlen = rsegsize
                 when RM_SegmentS, RM_Segment1, RM_SegmentN
-                  #p log_mes+' RM_SegLenX['+readmode.to_s+']  rbuf=['+rbuf+']'
+                  #p log_mes+' RM_SegLen?['+readmode.to_s+']  rbuf.size=['+rbuf.bytesize.to_s+']'
                   if (readmode==RM_Segment1) or (readmode==RM_SegmentN)
                     nextreadmode = RM_SegLenN
                     waitlen = 7    #index + segindex + rseglen (1+4+2)
                   end
-                  rsegcrc32 = rbuf[processedlen-4, 4].unpack('N')[0]
-                  rseg = AsciiString.new(rbuf[0, processedlen-4])
-                  #p log_mes+'rseg=['+rseg+']'
-                  fsegcrc32 = Zlib.crc32(rseg)
-                  if fsegcrc32 == rsegcrc32
-                    @rdata << rseg
+                  if @rcmd == EC_Media
+                    @rdata << rbuf[0, processedlen]
                   else
-                    err_scmd('Wrong CRC of received segment', ECC_Bye_BadCRC)
+                    rseg = AsciiString.new(rbuf[0, processedlen-4])
+                    #p log_mes+'rseg=['+rseg+']'
+                    rsegcrc32str = rbuf[processedlen-4, 4]
+                    rsegcrc32 = rsegcrc32str.unpack('N')[0]
+                    fsegcrc32 = Zlib.crc32(rseg)
+                    if fsegcrc32 == rsegcrc32
+                      @rdata << rseg
+                      if fullcrc32
+                        if fullcrc32 != Zlib.crc32(@rdta)
+                          err_scmd('Wrong CRC of received block', ECC_Bye_BadCRC)
+                        end
+                      end
+                    else
+                      err_scmd('Wrong CRC of received segment', ECC_Bye_BadCRC)
+                    end
                   end
-                  #p log_mes+'RM_SegmentX: data['+rdata+']'+rdata.size.to_s+'/'+rdatasize.to_s
+                  #p log_mes+'RM_Segment?: data['+rdata+']'+rdata.size.to_s+'/'+rdatasize.to_s
+                  #p log_mes+'RM_Segment?: datasize='+rdatasize.to_s
                   if rdata.bytesize == rdatasize
                     nextreadmode = RM_Comm
                     waitlen = CommSize
                   elsif rdata.bytesize > rdatasize
-                    err_scmd('Too much received data', ECC_Bye_DataTooLong)
+                    err_scmd('Too match received data ('+rdata.bytesize.to_s+'>'+rdatasize.to_s+')', \
+                      ECC_Bye_DataTooLong)
                   end
               end
               # Очистим буфер от определившихся данных
@@ -6480,7 +6578,7 @@ module PandoraGUI
               if scmd != EC_Data
                 #@sbuf = '' if scmd == EC_Bye
                 #p log_mes+'add to queue [scmd, scode, sbuf]='+[scmd, scode, @sbuf].inspect
-                p log_mes+'recv/send: ='+[rcmd, rcode, rdata0.bytesize].inspect+'/'+[scmd, scode, @sbuf].inspect
+                p log_mes+'recv/send: ='+[rcmd, rcode, rdata0.bytesize].inspect+'/'+[scmd, scode, @sbuf.bytesize].inspect
                 #while PandoraGUI.get_queue_state(@send_queue) == QS_Full do
                 #  p log_mes+'get_queue_state.MAIN = '+PandoraGUI.get_queue_state(@send_queue).inspect
                 #  Thread.pass
@@ -6696,9 +6794,9 @@ module PandoraGUI
       if not socket.closed?
         socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
         socket.flush
-        socket.print('\000')
-        sleep(0.05)
+        #socket.print('\000')
         socket.close_write
+        sleep(0.05)
         socket.close
       end
       @conn_state = CS_Disconnected
@@ -9035,6 +9133,10 @@ module PandoraGUI
       false
     end
 
+    #$window.signal_connect('client-event') do |widget, event_client|
+    #  p '[widget, event_client]='+[widget, event_client].inspect
+    #end
+
     $window.signal_connect('window-state-event') do |widget, event_window_state|
       if (event_window_state.changed_mask == Gdk::EventWindowState::ICONIFIED) \
         and ((event_window_state.new_window_state & Gdk::EventWindowState::ICONIFIED)>0)
@@ -9046,7 +9148,7 @@ module PandoraGUI
             sw.init_video_receiver(false) if not sw.area_recv.destroyed?
           end
         end
-        if widget.visible? and widget.active?
+        if widget.visible? and widget.active? and $hide_on_minimize
           $window.hide
           #$window.skip_taskbar_hint = true
         end
@@ -9074,14 +9176,11 @@ module PandoraGUI
         start_updating(false)
       end
     end
-
-    PandoraGUI.get_exchage_params
-
+    PandoraGUI.get_main_params
     Gtk.main
   end
 
 end
-
 
 # ====MAIN=======================================================================
 
