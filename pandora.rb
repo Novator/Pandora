@@ -4951,17 +4951,12 @@ module PandoraGUI
   EC_News      = 5     # Пачка сортов или пачка панхэшей измененных записей
   EC_Request   = 6     # Запрос записи/патча/миниатюры
   EC_Record    = 7     # Выдача записи
-  EC_Patch     = 8     # Выдача патча
-  EC_Preview   = 9     # Выдача миниатюры
-  EC_Fishing   = 10    # Управление рыбалкой
-  EC_Pipe      = 11    # Данные канала двух рыбаков
-  EC_Sync      = 12    # Последняя команда в серии, или индикация "живости"
+  EC_Line      = 8     # Данные канала двух рыбаков
+  EC_Sync      = 9     # Последняя команда в серии, или индикация "живости"
   EC_Wait      = 250   # Временно недоступен
   EC_More      = 251   # Давай дальше
   EC_Bye       = 252   # Рассоединение
   EC_Data      = 253   # Ждем данные
-  #EC_Notice    = 5
-  #EC_Pack      = 7
 
   TExchangeCommands = {EC_Init=>'init', EC_Query=>'query', EC_News=>'news',
     EC_Patch=>'patch', EC_Request=>'request', EC_Record=>'record', EC_Pipe=>'pipe',
@@ -5334,25 +5329,28 @@ module PandoraGUI
     res
   end
 
-  def self.save_record(kind, lang, values, models=nil)
+  def self.save_record(kind, lang, values, models=nil, require_panhash=nil)
     res = false
     p '=======save_record  [kind, lang, values]='+[kind, lang, values].inspect
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
     model = model_gui(panobjectclass.ider, models)
     panhash = model.panhash(values, lang)
     p 'panhash='+panhash.inspect
-
-    filter = {'panhash'=>panhash}
-    if kind==PK_Key
-      filter['kind'] = 0x81
-    end
-    sel = model.select(filter, true, nil, nil, 1)
-    if sel and (sel.size>0)
-      res = true
+    if (not require_panhash) or (panhash==require_panhash)
+      filter = {'panhash'=>panhash}
+      if kind==PK_Key
+        filter['kind'] = 0x81
+      end
+      sel = model.select(filter, true, nil, nil, 1)
+      if sel and (sel.size>0)
+        res = true
+      else
+        values['panhash'] = panhash
+        values['modified'] = Time.now.to_i
+        res = model.update(values, nil, nil)
+      end
     else
-      values['panhash'] = panhash
-      values['modified'] = Time.now.to_i
-      res = model.update(values, nil, nil)
+      res = nil
     end
     res
   end
@@ -5419,10 +5417,11 @@ module PandoraGUI
   ST_IpCheck      = 1
   ST_Protocol     = 3
   ST_Puzzle       = 4
-  ST_Sign         = 5
-  ST_Captcha      = 6
-  ST_Greeting     = 7
-  ST_Exchange     = 8
+  ST_KeyRequest   = 5
+  ST_Sign         = 6
+  ST_Captcha      = 7
+  ST_Greeting     = 8
+  ST_Exchange     = 9
 
   # Max recv pack size for stadies
   # RU: Максимально допустимые порции для стадий
@@ -5459,17 +5458,32 @@ module PandoraGUI
   $trust_for_captchaed = true
   $trust_for_listener = true
 
+  $keep_alive = 1  #(on/off)
+  $keep_idle  = 5  #(after, sec)
+  $keep_intvl = 1  #(every, sec)
+  $keep_cnt   = 4  #(count)
+
+
   class Connection
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
-      :send_thread, :read_thread, :socket, :read_state, :send_state, :read_mes, :read_media,
+      :send_thread, :read_thread, :socket, :read_state, :send_state,
       :send_models, :recv_models, \
-      :read_req, :send_mes, :send_media, :send_req, :sindex, :rindex, :read_queue, :send_queue, :params,
+      #:read_req, :send_mes, :send_media, :send_req, :read_mes, :read_media,
+      :sindex, :rindex, :read_queue, :send_queue, :params,
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :last_scmd, :log_mes, :skey, :rkey, :s_encode, :r_encode,
       :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw
 
-    def initialize(ahost_name, ahost_ip, aport, aproto, node, aconn_mode=0, aconn_state=CS_Disconnected, \
+    def set_keepalive(client)
+      client.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, $keep_alive)
+      client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPIDLE, $keep_idle)
+      client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPINTVL, $keep_intvl)
+      client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPCNT, $keep_cnt)
+    end
+
+    def initialize(asocket, ahost_name, ahost_ip, aport, aproto, node, aconn_mode=0, aconn_state=CS_Disconnected, \
     anode_id=nil)
       super()
+      @socket = asocket
       @stage         = ST_Protocol  #ST_IpCheck
       @host_name     = ahost_name
       @host_ip       = ahost_ip
@@ -5478,16 +5492,17 @@ module PandoraGUI
       @node          = node
       @conn_mode     = aconn_mode
       @conn_state    = aconn_state
+      @conn_state    ||= CS_Connecting
       @read_state     = 0
       @send_state     = 0
       @sindex         = 0
       @rindex         = 0
-      @read_mes       = PandoraGUI.init_empty_queue
-      @read_media     = PandoraGUI.init_empty_queue
-      @read_req       = PandoraGUI.init_empty_queue
-      @send_mes       = PandoraGUI.init_empty_queue
-      @send_media     = PandoraGUI.init_empty_queue
-      @send_req       = PandoraGUI.init_empty_queue
+      #@read_mes       = PandoraGUI.init_empty_queue
+      #@read_media     = PandoraGUI.init_empty_queue
+      #@read_req       = PandoraGUI.init_empty_queue
+      #@send_mes       = PandoraGUI.init_empty_queue
+      #@send_media     = PandoraGUI.init_empty_queue
+      #@send_req       = PandoraGUI.init_empty_queue
       @read_queue     = PandoraGUI.init_empty_queue
       @send_queue     = PandoraGUI.init_empty_queue
       @send_models    = {}
@@ -5499,6 +5514,9 @@ module PandoraGUI
       #Thread.critical = true
       PandoraGUI.add_connection(self)
       #Thread.critical = false
+      if @socket
+        set_keepalive(@socket)
+      end
     end
 
     def unpack_comm(comm)
@@ -5706,7 +5724,9 @@ module PandoraGUI
             key_hash = @rkey[KV_Panhash]
             scode = EC_Init
             scode = ECC_Init_Hello
-            hparams = {:version=>0, :mode=>0, :mykey=>key_hash, :tokey=>nil}
+            params['mykey'] = key_hash
+            params['tokey'] = param
+            hparams = {:version=>0, :mode=>0, :mykey=>key_hash, :tokey=>param}
             hparams[:addr] = $incoming_addr if $incoming_addr and (not ($incoming_addr != ''))
             sbuf = PandoraGUI.namehash_to_pson(hparams)
           else
@@ -5793,7 +5813,6 @@ module PandoraGUI
           params['dstkey']   = hash['tokey']
         end
         p log_mes+'RECOGNIZE_params: '+hash.inspect
-        #p params['srckey']
       end
 
       def set_max_pack_size(stage)
@@ -5823,7 +5842,7 @@ module PandoraGUI
         end
         skey_panhash = params['srckey']
         #p log_mes+'     skey_panhash='+skey_panhash.inspect
-        if skey_panhash.is_a? String and (skey_panhash.bytesize>0)
+        if (skey_panhash.is_a? String) and (skey_panhash.bytesize>0)
           if first and (stage == ST_Protocol) and $puzzle_bit_length \
           and ($puzzle_bit_length>0) and ((conn_mode & CM_Hunter) == 0)
             phrase, init = get_sphrase(true)
@@ -5841,6 +5860,7 @@ module PandoraGUI
             # or just 4? other later!
             if (@skey.is_a? Integer) and (@skey==0)
               set_request(skey_panhash)
+              @stage = ST_KeyRequest
               set_max_pack_size(ST_Exchange)
             elsif @skey
               #phrase = PandoraKernel.bigint_to_bytes(phrase)
@@ -5885,21 +5905,26 @@ module PandoraGUI
 
       def update_node(skey_panhash=nil, sbase_id=nil, trust=nil, session_key=nil)
         node_model = PandoraGUI.model_gui('Node', @recv_models)
-        state = 0
-        sended = 0
-        received = 0
-        one_ip_count = 0
-        bad_attempts = 0
-        ban_time = 0
         time_now = Time.now.to_i
-        panhash = nil
-        key_hash = nil
-        base_id = nil
-        creator = nil
-        created = nil
+        astate = 0
+        asended = 0
+        areceived = 0
+        aone_ip_count = 0
+        abad_attempts = 0
+        aban_time = 0
+        apanhash = nil
+        akey_hash = nil
+        abase_id = nil
+        acreator = nil
+        acreated = nil
+        aaddr = nil
+        adomain = nil
+        atport = nil
+        auport = nil
+        anode_id = nil
 
         readflds = 'id, state, sended, received, one_ip_count, bad_attempts,' \
-           +'ban_time, panhash, key_hash, base_id, creator, created'
+           +'ban_time, panhash, key_hash, base_id, creator, created, addr, domain, tport, uport'
 
         #trusted = ((trust.is_a? Float) and (trust>0))
         filter = {:key_hash=>skey_panhash, :base_id=>sbase_id}
@@ -5914,82 +5939,94 @@ module PandoraGUI
 
         if sel and sel.size>0
           row = sel[0]
-          node_id = row[0]
-          state = row[1]
-          sended = row[2]
-          received = row[3]
-          one_ip_count = row[4]
-          one_ip_count ||= 0
-          bad_attempts = row[5]
-          ban_time = row[6]
-          panhash = row[7]
-          key_hash = row[8]
-          base_id = row[9]
-          creator = row[10]
-          created = row[11]
+          anode_id = row[0]
+          astate = row[1]
+          asended = row[2]
+          areceived = row[3]
+          aone_ip_count = row[4]
+          aone_ip_count ||= 0
+          abad_attempts = row[5]
+          aban_time = row[6]
+          apanhash = row[7]
+          akey_hash = row[8]
+          abase_id = row[9]
+          acreator = row[10]
+          acreated = row[11]
+          aaddr = row[12]
+          adomain = row[13]
+          atport = row[14]
+          auport = row[15]
         else
           filter = nil
         end
 
         values = {}
-        if (not creator) or (not created)
-          creator ||= PandoraGUI.current_user_or_key(true)
-          values[:creator] = creator
+        if (not acreator) or (not acreated)
+          acreator ||= PandoraGUI.current_user_or_key(true)
+          values[:creator] = acreator
           values[:created] = time_now
         end
-        if (not base_id) or (base_id=='')
-          base_id = sbase_id
-        end
-        if (not key_hash) or (key_hash=='')
-          key_hash = skey_panhash
-        end
-        values[:base_id] = base_id
-        values[:key_hash] = key_hash
+        abase_id = sbase_id if (not abase_id) or (abase_id=='')
+        akey_hash = skey_panhash if (not akey_hash) or (akey_hash=='')
 
-        values[:addr_from] = host_ip
+        adomain = @host_name if (not adomain) or (adomain=='')
+        adomain = aaddr if (not adomain) or (adomain=='')
+        aaddr = @host_ip if (not aaddr) or (aaddr=='')
+        adomain = @host_ip if (not adomain) or (adomain=='')
+
+        values[:base_id] = abase_id
+        values[:key_hash] = akey_hash
+
+        values[:addr_from] = @host_ip
         values[:addr_from_type] = AT_Ip4
-        values[:state]        = state
-        values[:sended]       = sended
-        values[:received]     = received
-        values[:one_ip_count] = one_ip_count+1
-        values[:bad_attempts] = bad_attempts
-        values[:session_key]  = session_key
-        values[:ban_time]     = ban_time
-        values[:modified] = time_now
+        values[:state]        = astate
+        values[:sended]       = asended
+        values[:received]     = areceived
+        values[:one_ip_count] = aone_ip_count+1
+        values[:bad_attempts] = abad_attempts
+        values[:session_key]  = @session_key
+        values[:ban_time]     = aban_time
+        values[:modified]     = time_now
 
-        addr = params['addr']
-        if addr and (addr != '')
-          host, port, proto = PandoraGUI.decode_node(addr)
+        inaddr = params['addr']
+        if inaddr and (inaddr != '')
+          host, port, proto = PandoraGUI.decode_node(inaddr)
           #p log_mes+'ADDR [addr, host, port, proto]='+[addr, host, port, proto].inspect
           if (host and (host != '')) and (port and (port != 0))
-            host = host_ip if (not host) or (host=='')
+            host = @host_ip if (not host) or (host=='')
             port = 5577 if (not port) or (port==0)
             values[:domain] = host
             proto ||= ''
             values[:tport] = port if (proto != 'udp')
             values[:uport] = port if (proto != 'tcp')
-            values[:addr_type] = AT_Ip4
+            #values[:addr_type] = AT_Ip4
           end
         end
 
-        if @node_id and (@node_id != 0) and (@node_id != node_id)
+        if @node_id and (@node_id != 0) and ((not anode_id) or (@node_id != anode_id))
           filter2 = {:id=>@node_id}
           @node_id = nil
           sel = node_model.select(filter2, false, 'addr, domain, tport, uport, addr_type', nil, 1)
           if sel and sel.size>0
-            addr = sel[0][0]
-            domain = sel[0][1]
-            tport = sel[0][2]
-            uport = sel[0][3]
-            addr_type = sel[0][4]
-            values[:addr] ||= addr
-            values[:domain] ||= domain
-            values[:tport] ||= tport
-            values[:uport] ||= uport
-            values[:addr_type] ||= addr_type
+            baddr = sel[0][0]
+            bdomain = sel[0][1]
+            btport = sel[0][2]
+            buport = sel[0][3]
+            baddr_type = sel[0][4]
+
+            adomain = bdomain if (not bdomain) or (bdomain=='')
+            aaddr = baddr if (not baddr) or (baddr=='')
+            adomain = baddr if (not adomain) or (adomain=='')
+
+            values[:addr_type] ||= baddr_type
             node_model.update(nil, nil, filter2)
           end
         end
+
+        values[:addr] = aaddr
+        values[:domain] = adomain
+        values[:tport] = atport
+        values[:uport] = auport
 
         panhash = node_model.panhash(values)
         values[:panhash] = panhash
@@ -6123,7 +6160,7 @@ module PandoraGUI
                       if trust>0.0
                         if (conn_mode & CM_Hunter) == 0
                           @stage = ST_Greeting
-                          add_send_segment(EC_Init, true)
+                          add_send_segment(EC_Init, true, params['srckey'])
                           set_max_pack_size(ST_Sign)
                         else
                           @stage = ST_Exchange
@@ -6200,7 +6237,7 @@ module PandoraGUI
                   end
                   p 'Captcha is GONE!'
                   if (conn_mode & CM_Hunter) == 0
-                    add_send_segment(EC_Init, true)
+                    add_send_segment(EC_Init, true, params['srckey'])
                   end
                   @scmd = EC_Data
                   @scode = 0
@@ -6290,13 +6327,23 @@ module PandoraGUI
         when EC_Request
           kind = rcode
           p log_mes+'EC_Request  kind='+kind.to_s
-          if (stage==ST_Exchange) or (stage==ST_Greeting) or \
-          ((kind==1) and (stage==ST_Sign)) or ((kind==221) and (stage==ST_Protocol))
+          panhash = nil
+          if (kind==PK_Key) and (stage==ST_Protocol)
+            panhash = [kind].pack('C')+rdata
+            if kind==PK_Key
+              mykey = params['mykey']
+              if mykey and (panhash != mykey)
+                panhash = false
+              end
+            end
+          end
+          if (stage==ST_Exchange) or (stage==ST_Greeting) or panhash
             panhashes = nil
             if kind==0
               panhashes, len = PandoraKernel.pson_elem_to_rubyobj(panhashes)
             else
-              panhashes = [[kind].pack('C')+rdata]
+              panhash ||= [kind].pack('C')+rdata
+              panhashes = [panhash]
             end
             p log_mes+'panhashes='+panhashes.inspect
             if panhashes.size==1
@@ -6338,19 +6385,34 @@ module PandoraGUI
               end
             end
           else
-            err_scmd('Request ('+kind.to_s+') came on wrong stage')
+            if panhash==nil
+              err_scmd('Request ('+kind.to_s+') came on wrong stage')
+            else
+              err_scmd('Wrong key request')
+            end
           end
         when EC_Record
           p log_mes+' EC_Record: [rcode, rdata.bytesize]='+[rcode, rdata.bytesize].inspect
           if rcode>0
             kind = rcode
-            if (stage==ST_Exchange) or (kind==PK_Key)
+            if (stage==ST_Exchange) or ((kind==PK_Key) and (stage==ST_KeyRequest))
               lang = rdata[0].ord
               values = PandoraGUI.pson_to_namehash(rdata[1..-1])
-              if not PandoraGUI.save_record(kind, lang, values, @recv_models)
+              panhash = nil
+              if stage==ST_KeyRequest
+                panhash = params['srckey']
+              end
+              res = PandoraGUI.save_record(kind, lang, values, @recv_models, panhash)
+              if res
+                if stage==ST_KeyRequest
+                  stage = ST_Protocol
+                  init_skey_or_error(false)
+                end
+              elsif res==false
+                log_message(LM_Warning, 'Пришла запись с ошибочным панхэшем')
+              else
                 log_message(LM_Warning, 'Не удалось сохранить запись 1')
               end
-              init_skey_or_error(false) if stage<ST_Greeting
             else
               err_scmd('Record ('+kind.to_s+') came on wrong stage')
             end
@@ -6500,7 +6562,7 @@ module PandoraGUI
 
     # Start two exchange cicle of socket: read and send
     # RU: Запускает два цикла обмена сокета: чтение и отправка
-    def start_exchange_cicle(a_send_thread)
+    def start_exchange_cicle(a_send_thread, tokey=nil)
       #Thread.critical = true
       #PandoraGUI.add_connection(self)
       #Thread.critical = false
@@ -6513,7 +6575,7 @@ module PandoraGUI
       if (conn_mode & CM_Hunter)>0
         @log_mes = 'HUN: '
         @max_pack_size = MPS_Captcha
-        add_send_segment(EC_Init, true)
+        add_send_segment(EC_Init, true, tokey)
       end
 
       # Read cicle
@@ -6540,13 +6602,16 @@ module PandoraGUI
 
           p log_mes+"Цикл ЧТЕНИЯ начало"
           # Цикл обработки команд и блоков данных
-          while (conn_state != CS_Disconnected) and (conn_state != CS_StopRead) \
+          while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
           and (not socket.closed?) and (recieved = socket_recv(@max_pack_size))
+            if (not recieved) or (recieved == '')
+              @conn_state = CS_Stoping
+            end
             #p log_mes+"recieved=["+recieved+']  '+socket.closed?.to_s+'  sok='+socket.inspect
             rbuf << AsciiString.new(recieved)
             processedlen = 0
-            while (conn_state != CS_Disconnected) and (conn_state != CS_StopRead) \
-            and (conn_state != CS_Stoping) and (not socket.closed?) and (rbuf.bytesize>=waitlen)
+            while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
+            and (@conn_state != CS_Stoping) and (not socket.closed?) and (rbuf.bytesize>=waitlen)
               #p log_mes+'begin=['+rbuf+']  L='+rbuf.size.to_s+'  WL='+waitlen.to_s
               processedlen = waitlen
               nextreadmode = readmode
@@ -6655,7 +6720,7 @@ module PandoraGUI
                 res = PandoraGUI.add_block_to_queue(@send_queue, [scmd, scode, @sbuf])
                 if not res
                   log_message(LM_Error, 'Error while adding segment to queue')
-                  conn_state == CS_Stoping
+                  @conn_state == CS_Stoping
                 end
                 last_scmd = scmd
                 @sbuf = ''
@@ -6664,11 +6729,12 @@ module PandoraGUI
               end
               readmode = nextreadmode
             end
-            if conn_state == CS_Stoping
+            if @conn_state == CS_Stoping
               @conn_state = CS_StopRead
             end
             Thread.pass
           end
+          @conn_state = CS_StopRead if (not @conn_state) or (@conn_state < CS_StopRead)
           p log_mes+"Цикл ЧТЕНИЯ конец!"
           #socket.close if not socket.closed?
           #@conn_state = CS_Disconnected
@@ -6687,11 +6753,11 @@ module PandoraGUI
       message_model = PandoraGUI.model_gui('Message', @send_models)
 
       p log_mes+'ЦИКЛ ОТПРАВКИ начало'
-      while (conn_state != CS_Disconnected)
+      while (@conn_state != CS_Disconnected)
         # отправка сформированных сегментов и их удаление
-        if (conn_state != CS_Disconnected)
+        if (@conn_state != CS_Disconnected)
           send_segment = PandoraGUI.get_block_from_queue(@send_queue)
-          while (conn_state != CS_Disconnected) and send_segment
+          while (@conn_state != CS_Disconnected) and send_segment
             #p log_mes+' send_segment='+send_segment.inspect
             @scmd, @scode, @sbuf = send_segment
             if @sbuf and (@sbuf.bytesize>0) and @s_encode
@@ -6718,7 +6784,7 @@ module PandoraGUI
 
         # выполнить несколько заданий почемучки по его шагам
         processed = 0
-        while (conn_state == CS_Connected) and (stage>=ST_Exchange) \
+        while (@conn_state == CS_Connected) and (stage>=ST_Exchange) \
         and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$inquire_block_count) \
         and (inquirer_step<IS_Finished)
           case inquirer_step
@@ -6738,13 +6804,12 @@ module PandoraGUI
           processed += 1
         end
 
-
         # обработка принятых сообщений, их удаление
 
         # разгрузка принятых буферов в gstreamer
         processed = 0
         cannel = 0
-        while (conn_state == CS_Connected) and (stage>=ST_Exchange) \
+        while (@conn_state == CS_Connected) and (stage>=ST_Exchange) \
         and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
         and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size)
           if dialog.recv_media_pipeline[cannel] and dialog.appsrcs[cannel]
@@ -6772,7 +6837,7 @@ module PandoraGUI
         processed = 0
         #p log_mes+'----------send_state1='+send_state.inspect
         #sleep 1
-        if (conn_state == CS_Connected) and (stage>=ST_Exchange) \
+        if (@conn_state == CS_Connected) and (stage>=ST_Exchange) \
         and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
           @send_state = (send_state & (~CSF_Message))
           if @skey and @skey[KV_Creator]
@@ -6782,7 +6847,7 @@ module PandoraGUI
               @send_state = (send_state | CSF_Messaging)
               i = 0
               while sel and (i<sel.size) and (processed<$mes_block_count) \
-              and (conn_state == CS_Connected)
+              and (@conn_state == CS_Connected)
                 processed += 1
                 id = sel[i][0]
                 text = sel[i][1]
@@ -6795,7 +6860,7 @@ module PandoraGUI
                   log_message(LM_Error, 'Ошибка отправки сообщения text='+text)
                 end
                 i += 1
-                if (i>=sel.size) and (processed<$mes_block_count) and (conn_state == CS_Connected)
+                if (i>=sel.size) and (processed<$mes_block_count) and (@conn_state == CS_Connected)
                   #sel = message_model.select('destination="'+node.to_s+'" AND state=0', \
                   #  false, 'id, text', 'created', $mes_block_count)
                   sel = message_model.select(filter, false, 'id, text', 'created', $mes_block_count)
@@ -6816,7 +6881,7 @@ module PandoraGUI
 
         # пакетирование медиа буферов
         if ($send_media_queue.size>0) and $send_media_rooms \
-        and (conn_state == CS_Connected) and (stage>=ST_Exchange) \
+        and (@conn_state == CS_Connected) and (stage>=ST_Exchange) \
         and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
         and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
         or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
@@ -6824,7 +6889,7 @@ module PandoraGUI
           pointer_ind = PandoraGUI.set_send_ptrind_by_room(dialog.room_id)
           processed = 0
           cannel = 0
-          while (conn_state == CS_Connected) \
+          while (@conn_state == CS_Connected) \
           and ((send_state & CSF_Message) == 0) and (processed<$media_block_count) \
           and (cannel<$send_media_queue.size) \
           and dialog and (not dialog.destroyed?) \
@@ -6847,7 +6912,7 @@ module PandoraGUI
           end
         end
 
-        if socket.closed?
+        if socket.closed? or (@conn_state == CS_StopRead)
           @conn_state = CS_Disconnected
         #elsif conn_state == CS_Stoping
         #  add_send_segment(EC_Bye, true)
@@ -6913,11 +6978,16 @@ module PandoraGUI
       if user
         set_status_field(SF_Listen, 'Listening', nil, true)
         $port = get_param('tcp_port')
-        $host = get_param('local_host')
+        $host = get_param('listen_host')
         $listen_thread = Thread.new do
           begin
-            addr_str = $host.to_s+':'+$port.to_s
-            server = TCPServer.open($host, $port)
+            host = $host
+            if host==nil
+              host = ''
+            elsif host=='any'  #alse can be "", "0.0.0.0", "0", "0::0", "::"
+              host = Socket::INADDR_ANY
+            end
+            server = TCPServer.open(host, $port)
             addr_str = server.addr[3].to_s+(':')+server.addr[1].to_s
             log_message(LM_Info, 'Слушаю порт '+addr_str)
           rescue
@@ -6968,8 +7038,7 @@ module PandoraGUI
                     conn_state = CS_Connected
                     conn_mode = 0
                     #p "serv: conn_mode: "+ conn_mode.inspect
-                    connection = Connection.new(host_name, host_ip, port, proto, node, conn_mode, conn_state)
-                    connection.socket = socket
+                    connection = Connection.new(socket, host_name, host_ip, port, proto, node, conn_mode, conn_state)
                     #connection.post_init
                     #p "server: connection="+ connection.inspect
                     #p "server: $connections"+ $connections.inspect
@@ -7006,7 +7075,8 @@ module PandoraGUI
 
   # Find or create connection with necessary node
   # RU: Находит или создает соединение с нужным узлом
-  def self.find_or_start_connection(node, send_state_add=nil, dialog=nil, node_id=nil)
+  def self.set_connection(node, send_state_add=nil, dialog=nil, node_id=nil, tokey=nil)
+    res = nil
     send_state_add ||= 0
     connection = connection_of_node(node)
     if connection
@@ -7016,64 +7086,33 @@ module PandoraGUI
         connection.dialog.online_button.active = (connection.socket and (not connection.socket.closed?))
       end
     else
-      host, port, proto = decode_node(node)
-      connection = Connection.new(host, host, port, proto, node, CM_Hunter, CS_Disconnected, node_id)
-      Thread.new(connection) do |connection|
-        connection.conn_state  = CS_Connecting
-        p 'find1: connection.send_state='+connection.send_state.inspect
-        connection.send_state = (connection.send_state | send_state_add)
-        p 'find2: connection.send_state='+connection.send_state.inspect
-        connection.dialog = dialog
-        p "start_or_find_conn: THREAD connection="+ connection.inspect
-        #p "start_or_find_conn: THREAD $connections"+ $connections.inspect
+      Thread.new do
         host, port, proto = decode_node(node)
-        conn_state = CS_Disconnected
+        socket = nil
+        connection = nil
         begin
           socket = TCPSocket.open(host, port)
-          conn_state = CS_Connected
-          connection.host_ip = socket.addr[2]
-        rescue #IO::WaitReadable, Errno::EINTR
+          connection = Connection.new(socket, host, socket.addr[2], port, proto, node, CM_Hunter, CS_Connected, node_id)
+          connection.send_state = (connection.send_state | send_state_add)
+          connection.dialog = dialog
+        rescue
           socket = nil
-          #p "!!Conn Err!!"
           log_message(LM_Warning, "Не удается подключиться к: "+host+':'+port.to_s)
         end
-        connection.socket = socket
-        if connection.dialog and connection.dialog.online_button
-          connection.dialog.online_button.active = (connection.socket and (not connection.socket.closed?))
+        if connection and dialog and dialog.online_button
+          dialog.online_button.active = (socket and (not socket.closed?))
         end
-        connection.conn_state = conn_state
         if socket
-          #connection.post_init
           connection.node = encode_node(connection.host_ip, connection.port, connection.proto)
-          #connection.dialog.online_button.active = true if connection.dialog
-          #p "start_or_find_conn1: connection="+ connection.inspect
-          #p "start_or_find_conn1: $connections"+ $connections.inspect
-          # Вызвать активный цикл собработкой данных
           log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
-          connection.start_exchange_cicle(Thread.current)
+          connection.start_exchange_cicle(Thread.current, tokey)
           socket.close if not socket.closed?
           log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
         end
-        #connection.socket = nil
-        #connection.dialog.online_button.active = false if connection.dialog
-        p "END HUNTER CLIENT!!!!"
-        #Thread.critical = true
         del_connection(connection)
-        #Thread.critical = false
-        #connection.send_thread = nil
       end
-      #while wait_connection and connection and (connection.conn_state==CS_Connecting)
-      #  sleep 0.05
-        #Thread.pass
-        #Gtk.main_iteration
-      #  connection = connection_of_node(node)
-      #end
-      #p "start_or_find_con: THE end! CONNECTION="+ connection.to_s
-      #p "start_or_find_con: THE end! wait_connection="+wait_connection.to_s
-      #p "start_or_find_con: THE end! conn_state="+conn_state.to_s
-      connection = connection_of_node(node)
     end
-    connection
+    res
   end
 
   # Stop connection with a node
@@ -7154,7 +7193,7 @@ module PandoraGUI
       if user
         node_model = PandoraModel::Node.new
         filter = 'addr<>"" OR domain<>""'
-        flds = 'id, addr, domain, tport'
+        flds = 'id, addr, domain, tport, key_hash'
         sel = node_model.select(filter, false, flds)
         if sel and sel.size>0
           $hunter_thread = Thread.new(node_model, filter, flds, sel) \
@@ -7171,10 +7210,11 @@ module PandoraGUI
                     tport = row[3].to_i
                   rescue
                   end
+                  tokey = row[4]
                   tport = $port if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
                   node = encode_node(domain, tport, 'tcp')
-                  connection = find_or_start_connection(node, nil, nil, node_id)
+                  set_connection(node, nil, nil, node_id, tokey)
                 end
                 round_count -= 1
                 if round_count>0
@@ -7417,7 +7457,7 @@ module PandoraGUI
       online_button.signal_connect('clicked') do |widget|
         if widget.active?
           node_list.each do |node|
-            PandoraGUI.find_or_start_connection(node, 0, self)
+            PandoraGUI.set_connection(node, 0, self)
           end
         else
           node_list.each do |node|
@@ -8704,7 +8744,7 @@ module PandoraGUI
       #    treeview = sw.children[0]
       #    show_talk_dialog(panhash0)
       #    node = define_node_by_current_record(treeview)
-      #    find_or_start_connection(node)
+      #    set_connection(node)
       #  end
       when 'Hunt'
         hunt_nodes

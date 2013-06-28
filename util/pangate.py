@@ -8,25 +8,22 @@
 # 2012 (c) Michael Galyuk
 # RU: 2012 (c) Михаил Галюк
 
-import termios, fcntl, sys, os, socket, threading, struct, binascii, time, hashlib
-
-# Preparation for key capturing
-fd = sys.stdin.fileno()
-oldterm = termios.tcgetattr(fd)
-newattr = termios.tcgetattr(fd)
-newattr[3] = newattr[3] & ~termios.ICANON & ~termios.ECHO
-termios.tcsetattr(fd, termios.TCSANOW, newattr)
-oldflags = fcntl.fcntl(fd, fcntl.F_GETFL)
-fcntl.fcntl(fd, fcntl.F_SETFL, oldflags | os.O_NONBLOCK)
+import time, termios, fcntl, sys, os, socket, threading, struct, binascii, time, hashlib
 
 # Server settings
-#TCP_IP = '94.242.204.250'
-#TCP_PORT = 8080
 TCP_IP = '127.0.0.1'
 TCP_PORT = 5577
+#LOG_FILE_NAME = ''
+LOG_FILE_NAME = './pangate.log'
 MAX_CONNECTIONS = 10
 PASSWORD_HASH = hashlib.sha256('1234567890').digest()
 OWNER_KEY_PANHASH = 'dd032ec783d34331de1d39006fc851c7e7934141d3aa'.decode('hex')
+
+ROOT_PATH = os.path.abspath('.')
+KEEPALIVE = 1 #(on/off)
+KEEPIDLE = 5  #(after, sec)
+KEEPINTVL = 1 #(every, sec)
+KEEPCNT = 4   #(count)
 
 # Internal constants
 MaxPackSize = 1500
@@ -44,11 +41,8 @@ EC_Query     = 4     # Запрос пачки сортов или пачки п
 EC_News      = 5     # Пачка сортов или пачка панхэшей измененных записей
 EC_Request   = 6     # Запрос записи/патча/миниатюры
 EC_Record    = 7     # Выдача записи
-EC_Patch     = 8     # Выдача патча
-EC_Preview   = 9     # Выдача миниатюры
-EC_Fishing   = 10    # Управление рыбалкой
-EC_Pipe      = 11    # Данные канала двух рыбаков
-EC_Sync      = 12    # Последняя команда в серии, или индикация "живости"
+EC_Line      = 8     # Данные канала двух рыбаков
+EC_Sync      = 9     # Последняя команда в серии, или индикация "живости"
 EC_Wait      = 250   # Временно недоступен
 EC_More      = 251   # Давай дальше
 EC_Bye       = 252   # Рассоединение
@@ -135,16 +129,49 @@ IS_Finished      = 255
 
 LONG_SEG_SIGN   = 0xFFFF
 
+logfile = None
+
+def logmes(mes, show=True, addr=None):
+  if show: print(mes)
+  global logfile
+  if (not logfile) and (logfile != False):
+    if LOG_FILE_NAME and (len(LOG_FILE_NAME)>0):
+      filename = LOG_FILE_NAME
+      if (len(filename)>1) and (filename[0:2]=='./') and ROOT_PATH and (len(ROOT_PATH)>0):
+        filename = ROOT_PATH + filename[1:]
+      filename = os.path.abspath(filename)
+      try:
+        logfile = open(filename, 'a')
+        print('Открыт log-файл: '+filename)
+      except:
+        logfile = False
+        print('Не могу открыть log-файл: '+filename)
+    else:
+      logfile = False
+      print('Log-файл отключен.')
+  if logfile:
+    timestr = time.strftime('%Y.%m.%d %H:%M:%S')
+    addr = ''
+    if addr: addr = ' '+str(addr)
+    logfile.write(timestr+'  '+str(mes)+addr+'\n')
+
+def closelog():
+  global logfile
+  if logfile:
+    logfile.close()
 
 class ClientThread(threading.Thread):
-  def __init__ (self, listener, client, addr):
+  def __init__ (self, pool, client, addr):
     self.client = client
     self.addr = addr
     self._stop = threading.Event()
-    self.listener = listener
-    self.pipe_number = None
-    self.pipe_client = None
+    self.pool = pool
+    self.mykey = None
+    self.fishers = []
     threading.Thread.__init__(self)
+
+  def logmes(self, mes, show=True):
+    logmes(mes, show, self.addr[0])
 
   def unpack_comm(self, comm):
     print('unpack_comm self, comm, len(comm) ', self, comm, len(comm))
@@ -166,12 +193,14 @@ class ClientThread(threading.Thread):
     if len(comm) == CommExtSize:
       datasize, fullcrc32, segsize = struct.unpack('!IIH', comm)
     else:
-      print('Ошибочная длина расширения команды')
+      logmes('Ошибочная длина расширения команды')
     return datasize, fullcrc32, segsize
 
   # RU: Отправляет команду и данные, если есть !!! ДОБАВИТЬ !!! send_number!, buflen, buf
-  def send_comm_and_data(self, index, cmd, code, data=None):
+  def send_comm_and_data(self, index, cmd, code, data=None, client=None):
     res = None
+    if not client:
+      client = self.client
     if not data:
       data = ''
     datasize = len(data)
@@ -220,8 +249,8 @@ class ClientThread(threading.Thread):
     #  p '@media_send = false'
     #end
     try:
-      if self.client: #and (not socket.closed?):
-        sended = self.client.send(buf)
+      if client: #and (not socket.closed?):
+        sended = client.send(buf)
       else:
         sended = -1
     except: #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
@@ -229,7 +258,7 @@ class ClientThread(threading.Thread):
     if sended == len(buf):
       res = index
     elif sended != -1:
-      print('Не все данные отправлены ', sended)
+      self.logmes('Не все данные отправлены '+str(sended))
     segindex = 0
     i = segsize
     while res and ((datasize-i)>0):
@@ -260,8 +289,8 @@ class ClientThread(threading.Thread):
         buf = buf + struct.pack('!I', segcrc32)
       buf = comm + buf
       try:
-        if self.client: # and not socket.closed?:
-          sended = self.client.send(buf)
+        if client: # and not socket.closed?:
+          sended = client.send(buf)
         else:
           sended = -1
       except: #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
@@ -271,7 +300,7 @@ class ClientThread(threading.Thread):
         #p log_mes+'SEND_ADD: ('+buf+')'
       elif sended != -1:
         res = nil
-        print('Не все данные отправлены2 ', sended)
+        self.logmes('Не все данные отправлены2 '+str(sended))
       i += segdata
     return res
 
@@ -287,23 +316,55 @@ class ClientThread(threading.Thread):
     elif buf==False:
       self.sbuf = None
     else:
-      logmes = '(rcmd=' + str(self.rcmd) + '/' + str(self.rcode) + ' stage=' + str(self.stage) + ')'
-      if mes and (len(mes)>0): logmes = mes+' '+logmes
-      self.sbuf = logmes
+      fullmes = '(rcmd=' + str(self.rcmd) + '/' + str(self.rcode) + ' stage=' + str(self.stage) + ')'
+      if mes and (len(mes)>0): fullmes = mes+' '+fullmes
+      self.sbuf = fullmes
       mesadd = ''
       if code: mesadd = ' err=' + str(code)
-      print('Our error: ', logmes+mesadd)
+      self.logmes('Our error: '+str(fullmes+mesadd))
 
-  def open_pipe_number(self, fisher):
-    number = 1
-    return number
+  def get_hole_for_fisher(self, fisher):
+    hole = None
+    size = len(self.fishers)
+    if size>0:
+      first_nil_hole = None
+      i = 0
+      while (i<size) and (not hole):
+        if self.fishers[i]
+          if fisher == self.fishers[i]:
+            hole = i
+        else:
+          first_nil_hole = i
+        i += 1
+      if not hole:
+        if first_nil_hole:
+          hole = first_nil_hole
+        elif size<256
+          hole = size
+        if hole: self.fishers[hole] = fisher
+    else:
+      hole = 0
+      self.fishers[hole] = fisher
+    return hole
 
-  def send_to_collector(self):
-    if self.pipe_client:
-      #pipebuf = EC_Pipe + index + self.rcmd + self.rcode + self.rdata
-      pipebuf = '0000000000000000000000000000000000000000'
-      print('PIPING!', self.pipe_client, pipebuf)
-      self.pipe_client.send(pipebuf)
+  def get_fisher_by_hole(self, hole):
+    fisher = None
+    if hole: fisher = self.fishers[hole]
+    return fisher
+
+  def close_hole(self, hole):
+    if hole: self.fishers[hole] = None
+
+  def close_hole_of_fisher(self, fisher):
+    for hole in range(len(self.fishers)):
+      if self.fishers[hole] == fisher:
+        self.fishers[hole] = None
+
+  def resend_to_collector(self):
+    if self.main_line and self.pool.collector and self.pool.collector.client:
+      print('FISHING!', self.main_line)
+      data = self.rcmd + self.rcode + self.rdata
+      self.sindex = self.send_comm_and_data(self.sindex, EC_Line, self.main_line, data, self.pool.collector.client)
 
   # Accept received segment
   # RU: Принять полученный сегмент
@@ -311,12 +372,13 @@ class ClientThread(threading.Thread):
     print('accept_segment:  self.rcmd, self.rcode, self.stage', self.rcmd, self.rcode, self.stage)
     if (self.rcmd==EC_Init):
       if (self.rcode==ECC_Init_Hello) and (self.stage==ST_Protocol):
-        print('self.rdata: ',self.rdata)
-        if self.listener.collector:
-          #self.err_scmd('Collector is still not ready!!!')
-          self.pipe_number = self.listener.collector.open_pipe_number(self)
-          self.pipe_client = self.listener.collector.client
-          self.send_to_collector()
+        print('self.rdata: ', self.rdata)
+        if self.pool.collector:
+          self.main_line = self.pool.collector.open_line_for_fisher(self)
+          if self.main_line:
+            self.resend_to_collector()
+          else:
+            self.err_scmd('Temporary error')
         else:
           i = self.rdata.find('mykey')
           if i>0:
@@ -336,8 +398,11 @@ class ClientThread(threading.Thread):
         fanswer = hashlib.sha256(self.sphrase+PASSWORD_HASH).digest()
         print(self.sphrase, PASSWORD_HASH, fanswer)
         if sanswer == fanswer:
-          self.listener.collector = self
-          print('COLLECTOR SETTED!!!!')
+          if self.pool.collector:
+            self.err_scmd('Another collector is active')
+          else:
+            self.pool.collector = self
+            self.logmes('Collector seted.')
         else:
           self.err_scmd('Answer is wrong')
       else:
@@ -346,7 +411,7 @@ class ClientThread(threading.Thread):
       if self.rcode != ECC_Bye_Exit:
         mes = self.rdata
         if not mes: mes = ''
-        print('Error at other side ErrCode='+str(self.rcode)+' "'+mes+'"')
+        self.logmes('Error at other side ErrCode='+str(self.rcode)+' "'+mes+'"')
       self.err_scmd(None, ECC_Bye_Exit, False)
       self.conn_state = CS_Stoping
     else:
@@ -354,7 +419,7 @@ class ClientThread(threading.Thread):
       self.conn_state = CS_Stoping
 
   def run(self):
-    sindex = 0
+    self.sindex = 0
     rindex = 0
     readmode = RM_Comm
     nextreadmode = RM_Comm
@@ -362,7 +427,6 @@ class ClientThread(threading.Thread):
     rdatasize = 0
     fullcrc32 = None
     rdatasize = None
-
 
     self.stage = ST_Protocol
     self.scmd = EC_More
@@ -486,10 +550,9 @@ class ClientThread(threading.Thread):
           #  Thread.pass
           #end
           #res = PandoraGUI.add_block_to_queue(@send_queue, [scmd, scode, @sbuf])
-          sindex = self.send_comm_and_data(sindex, self.scmd, self.scode, self.sbuf)
-          print('sindex: ', sindex)
-          if not sindex:
-            print('Error while sending segment [scmd, scode, len(sbuf)]', self.scmd, self.scode, len(self.sbuf))
+          self.sindex = self.send_comm_and_data(self.sindex, self.scmd, self.scode, self.sbuf)
+          if not self.sindex:
+            self.logmes('Error while sending segment [scmd, scode, len(sbuf)]'+str(self.scmd, self.scode, len(self.sbuf)))
             self.conn_state == CS_Stoping
           last_scmd = self.scmd
           self.sbuf = ''
@@ -503,27 +566,31 @@ class ClientThread(threading.Thread):
     print('FINISH')
     self.client.close()
     self.conn_state = CS_Disconnected
-    print('Closed connection: '+str(self.addr[0])+':'+str(self.addr[1]))
+    addrstr = str(self.addr[0])+':'+str(self.addr[1])
+    for fisher in self.fishers:
+      fisher.close_hole_of_fisher(self)
+    if self==self.pool.collector:
+      self.pool.collector = nil
+      self.logmes('Colleactor disconnected: '+addrstr)
+    else:
+      self.logmes('Client disconnected: '+addrstr)
 
 
-class AcceptThread(threading.Thread):
-  def __init__ (self, a_server):
-    self.server = a_server
-    self.listening = True
+class PoolThread(threading.Thread):
+  def __init__ (self):
     self.threads = []
+    self.listener  = None
     self.collector = None
     threading.Thread.__init__(self)
 
   def run(self):
-    while self.listening:
-      try:
-        client, addr = self.server.accept()
-        print('Connect from: ', addr)
-        client_tread = ClientThread(self, client, addr)
-        self.threads.append(client_tread)
-        client_tread.start()
-      except IOError: pass
-    print('Finish listening.')
+    print('Pool runed.')
+
+  def get_fish_sockets(self, fisher_socket, fish_key):
+    sockets = None
+    for thread in self.threads:
+      if thread.
+    return sockets
 
   def stop_clients(self):
     print('Stopping client threads...')
@@ -535,7 +602,49 @@ class AcceptThread(threading.Thread):
           print(str(thread.getName()) + ' could not be terminated')
     print('Done.')
 
+
+class ListenerThread(threading.Thread):
+  def __init__ (self, a_server, a_pool):
+    self.server = a_server
+    self.pool = a_pool
+    self.listening = True
+    threading.Thread.__init__(self)
+
+  def set_keepalive(self, client):
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, KEEPALIVE)
+    client.setsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE, KEEPIDLE)
+    client.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, KEEPINTVL)
+    client.setsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT, KEEPCNT)
+
+  def run(self):
+    while self.listening:
+      try:
+        client, addr = self.server.accept()
+        logmes('Connect from: '+str(addr[0])+':'+str(addr[1]))
+        self.set_keepalive(client)
+        client_tread = ClientThread(self.pool, client, addr)
+        self.pool.threads.append(client_tread)
+        client_tread.start()
+      except IOError: pass
+    print('Finish server cicle.')
+
+
+# ===MAIN===
+# Preparation for key capturing
+fd = sys.stdin.fileno()
+oldterm = termios.tcgetattr(fd)
+newattr = termios.tcgetattr(fd)
+newattr[3] = newattr[3] & ~termios.ICANON & ~termios.ECHO
+termios.tcsetattr(fd, termios.TCSANOW, newattr)
+oldflags = fcntl.fcntl(fd, fcntl.F_GETFL)
+fcntl.fcntl(fd, fcntl.F_SETFL, oldflags | os.O_NONBLOCK)
+
 try:
+  print('The Pandora gate.')
+
+  pool = PoolThread()
+  pool.start()
+
   # Start server socket
   server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
@@ -543,10 +652,13 @@ try:
   server.bind((TCP_IP, TCP_PORT))
   server.listen(MAX_CONNECTIONS)
 
-  print('Listening at: ', server.getsockname())
-  listener = AcceptThread(server)
+  saddr = server.getsockname()
+  logmes('Listening at: '+str(saddr[0])+':'+str(saddr[1]))
+  listener = ListenerThread(server, pool)
+  pool.listener = listener
   listener.start()
-  print('Press Q to exit...')
+  print('Working thread is active...')
+  print('Press Q to stop server.')
   working = True
   while working:
     time.sleep(0.5)  # prevent overload cpu
@@ -555,21 +667,26 @@ try:
       if (c=='q') or (c=='Q') or (c=='x') or (c=='X') or (ord(c)==185) or (ord(c)==153):
         working = False
     except IOError: pass
-  print('Stop wait.')
+  logmes('Stop keyborad loop.')
   listener.listening = False
-  print('New listen off.')
+  print('New clients off.')
   server.shutdown(1)
   server.close()
   print('Stop server.')
-  listener.stop_clients()
+  pool.stop_clients()
   if listener.isAlive():
     try:
       listener._Thread__stop()
     except:
-      print(str(listener.getName()) + ' could not terminated listen thread')
-  print('Stop listen thread.')
+      print('Could not terminated listen thread '+str(listener.getName()))
+  if pool.isAlive():
+    try:
+      pool._Thread__stop()
+    except:
+      print('Could not terminated pool thread '+str(pool.getName()))
+  logmes('Stop listen thread.')
 finally:
   termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
   fcntl.fcntl(fd, fcntl.F_SETFL, oldflags)
+  closelog
   sys.exit()
-

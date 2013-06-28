@@ -374,8 +374,8 @@
 
     <tcp_port desc="TCP port" type="Integer" section="net" setting="5577" />
     <udp_port desc="UDP port" type="Integer" section="net" setting="5577" />
-    <local_host desc="Local host" type="String" section="net" setting="127.0.0.1" />
-    <incoming_addr desc="Incoming address" type="String" section="net" setting="," />
+    <listen_host desc="Listen host" type="String" section="net" setting="" />
+    <incoming_addr desc="Incoming address" type="String" section="net" setting="" />
     <puzzle_bit_length desc="Puzzle length (bit)" type="Byte" section="net" setting="0" />
     <puzzle_sec_delay desc="Puzzle delay (sec)" type="Byte" section="net" setting="2" />
     <captcha_length desc="Captcha length (char)" type="Byte" section="net" setting="4" />
