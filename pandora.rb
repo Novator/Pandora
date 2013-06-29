@@ -4958,20 +4958,20 @@ module PandoraGUI
   EC_Bye       = 252   # Рассоединение
   EC_Data      = 253   # Ждем данные
 
-  TExchangeCommands = {EC_Init=>'init', EC_Query=>'query', EC_News=>'news',
-    EC_Patch=>'patch', EC_Request=>'request', EC_Record=>'record', EC_Pipe=>'pipe',
-    EC_Wait=>'wait', EC_More=>'more', EC_Bye=>'bye'}
-  TExchangeCommands_invert = TExchangeCommands.invert
+  #TExchangeCommands = {EC_Init=>'init', EC_Query=>'query', EC_News=>'news',
+  #  EC_Request=>'request', EC_Record=>'record',
+  #  EC_Wait=>'wait', EC_More=>'more', EC_Bye=>'bye'}
+  #TExchangeCommands_invert = TExchangeCommands.invert
 
   # RU: Преобразует код в xml-команду
-  def self.cmd_to_text(cmd)
-    TExchangeCommands[cmd]
-  end
+  #def self.cmd_to_text(cmd)
+  #  TExchangeCommands[cmd]
+  #end
 
   # RU: Преобразует xml-команду в код
-  def self.text_to_cmd(text)
-    TExchangeCommands_invert[text.downcase]
-  end
+  #def self.text_to_cmd(text)
+  #  TExchangeCommands_invert[text.downcase]
+  #end
 
   QI_ReadInd    = 0
   QI_WriteInd   = 1
