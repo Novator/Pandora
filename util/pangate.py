@@ -160,13 +160,19 @@ def closelog():
   if logfile:
     logfile.close()
 
+def list_set(vec, ind, val):
+  if ind >= len(vec):
+    vec.extend([None]*(ind-len(vec)+1))
+  vec[ind] = val
+
 class ClientThread(threading.Thread):
   def __init__ (self, pool, client, addr):
     self.client = client
     self.addr = addr
     self._stop = threading.Event()
     self.pool = pool
-    self.mykey = None
+    self.srckey = None
+    self.authkey = None
     self.fishers = []
     threading.Thread.__init__(self)
 
@@ -330,7 +336,7 @@ class ClientThread(threading.Thread):
       first_nil_hole = None
       i = 0
       while (i<size) and (not hole):
-        if self.fishers[i]
+        if self.fishers[i]:
           if fisher == self.fishers[i]:
             hole = i
         else:
@@ -339,12 +345,12 @@ class ClientThread(threading.Thread):
       if not hole:
         if first_nil_hole:
           hole = first_nil_hole
-        elif size<256
+        elif size<256:
           hole = size
-        if hole: self.fishers[hole] = fisher
+        if hole: list_set(self.fishers, hole, fisher)
     else:
       hole = 0
-      self.fishers[hole] = fisher
+      list_set(self.fishers, hole, fisher)
     return hole
 
   def get_fisher_by_hole(self, hole):
@@ -360,11 +366,12 @@ class ClientThread(threading.Thread):
       if self.fishers[hole] == fisher:
         self.fishers[hole] = None
 
-  def resend_to_collector(self):
-    if self.main_line and self.pool.collector and self.pool.collector.client:
-      print('FISHING!', self.main_line)
-      data = self.rcmd + self.rcode + self.rdata
-      self.sindex = self.send_comm_and_data(self.sindex, EC_Line, self.main_line, data, self.pool.collector.client)
+  def resend_to_fisher_hole(self, fisher, hole):
+    if fisher and (hole != None):
+      print('FISHING!', fisher, hole)
+      comm = struct.pack('!BB', self.rcmd, self.rcode)
+      data = comm + self.rdata
+      self.sindex = self.send_comm_and_data(self.sindex, EC_Line, hole, data, fisher.client)
 
   # Accept received segment
   # RU: Принять полученный сегмент
@@ -374,17 +381,18 @@ class ClientThread(threading.Thread):
       if (self.rcode==ECC_Init_Hello) and (self.stage==ST_Protocol):
         print('self.rdata: ', self.rdata)
         if self.pool.collector:
-          self.main_line = self.pool.collector.open_line_for_fisher(self)
-          if self.main_line:
-            self.resend_to_collector()
-          else:
+          hole = self.pool.collector.get_hole_for_fisher(self)
+          print('-------------------hole', hole)
+          if hole==None:
             self.err_scmd('Temporary error')
+          else:
+            self.resend_to_fisher_hole(self.pool.collector, hole)
         else:
           i = self.rdata.find('mykey')
           if i>0:
-            key_panhash = self.rdata[i+7: i+7+22]
-            print('key_panhash', key_panhash, len(key_panhash), len(OWNER_KEY_PANHASH))
-            if key_panhash == OWNER_KEY_PANHASH:
+            self.srckey = self.rdata[i+7: i+7+22]
+            print('self.srckey', self.srckey, len(self.srckey), len(OWNER_KEY_PANHASH))
+            if self.srckey == OWNER_KEY_PANHASH:
               self.scmd = EC_Init
               self.scode = ECC_Init_Simple
               self.sphrase = str(os.urandom(256))
@@ -402,9 +410,10 @@ class ClientThread(threading.Thread):
             self.err_scmd('Another collector is active')
           else:
             self.pool.collector = self
+            self.authkey = self.srckey
             self.logmes('Collector seted.')
         else:
-          self.err_scmd('Answer is wrong')
+          self.err_scmd('Password hash is wrong')
       else:
         self.err_scmd('Wrong stage for rcode')
     elif (self.rcmd==EC_Bye):
@@ -583,13 +592,13 @@ class PoolThread(threading.Thread):
     self.collector = None
     threading.Thread.__init__(self)
 
-  def run(self):
-    print('Pool runed.')
-
   def get_fish_sockets(self, fisher_socket, fish_key):
     sockets = None
     for thread in self.threads:
-      if thread.
+      if thread.authkey and (thread.authkey==fish_key) and thread.client and (thread.client != fisher_socket):
+        if not sockets: sockets = []
+        if not thread.client in sockets:
+          sockets.append(thread.client)
     return sockets
 
   def stop_clients(self):
@@ -644,6 +653,7 @@ try:
 
   pool = PoolThread()
   pool.start()
+  print('Pool runed.')
 
   # Start server socket
   server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
