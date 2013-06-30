@@ -78,6 +78,8 @@ while (ARGV.length>0) or next_arg
   val = nil
 end
 
+MAIN_WINDOW_TITLE = 'Pandora'
+
 # Prevent second execution
 # RU: Предотвратить второй запуск
 if not $poly_launch
@@ -91,7 +93,7 @@ if not $poly_launch
     elsif os_family=='windows'
       require 'Win32API'
       FindWindow = Win32API.new('user32', 'FindWindowA', ['P', 'P'], 'L')
-      win_handle = FindWindow.call(nil, 'Pandora')
+      win_handle = FindWindow.call(nil, MAIN_WINDOW_TITLE)
       if win_handle != 0
         SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
         SetForegroundWindow.call(win_handle)
@@ -4282,7 +4284,7 @@ module PandoraNet
                     creator = PandoraCrypto.current_user_or_key(true)
                     if ((conn_mode & CM_Hunter) != 0) or (not @skey[PandoraCrypto::KV_Creator]) \
                     or (@skey[PandoraCrypto::KV_Creator] != creator)
-                      # check messages if it's not connection to myself
+                      # check messages if it's not session to myself
                       @send_state = (@send_state | CSF_Message)
                     end
                     trust = @skey[PandoraCrypto::KV_Trust]
@@ -5143,7 +5145,6 @@ module PandoraNet
               Thread.new(client) do |socket|
                 log_message(LM_Info, "Подключился клиент: "+socket.peeraddr.inspect)
 
-                #local_address
                 host_ip = socket.peeraddr[2]
 
                 if ip_is_not_banned(host_ip)
@@ -5154,30 +5155,24 @@ module PandoraNet
                   node = encode_node(host_ip, port, proto)
                   p "LISTEN: node: "+node.inspect
 
-                  connection = $window.pool.session_of_node(node)
-                  if connection
+                  session = $window.pool.session_of_node(node)
+                  if session
                     log_message(LM_Info, "Замкнутая петля: "+socket.to_s)
-                    while connection and (connection.conn_state==CS_Connected) and not socket.closed?
+                    while session and (session.conn_state==CS_Connected) and not socket.closed?
                       begin
                         buf = socket.recv(MaxPackSize) if not socket.closed?
                       rescue
                         buf = ''
                       end
-                      #socket.write(buf)
                       socket.send(buf, 0) if (not socket.closed? and buf and (buf.bytesize>0))
-                      connection = $window.pool.session_of_node(node)
+                      session = $window.pool.session_of_node(node)
                     end
                   else
                     conn_state = CS_Connected
                     conn_mode = 0
-                    #p "serv: conn_mode: "+ conn_mode.inspect
-                    connection = Session.new(socket, host_name, host_ip, port, proto, node, conn_mode, conn_state)
-                    #connection.post_init
-                    #p "server: connection="+ connection.inspect
-                    #p "server: $connections"+ $connections.inspect
-                    #p 'LIS_SOCKET: '+socket.methods.inspect
-                    connection.start_exchange_cicle(Thread.current)
-                    $window.pool.del_session(connection)
+                    session = Session.new(socket, host_name, host_ip, port, proto, node, conn_mode, conn_state)
+                    session.start_exchange_cicle(Thread.current)
+                    $window.pool.del_session(session)
                     p "END LISTEN SOKET CLIENT!!!"
                   end
                 else
@@ -5276,29 +5271,29 @@ module PandoraNet
     end
   end
 
-  # Find or create connection with necessary node
+  # Find or create session with necessary node
   # RU: Находит или создает соединение с нужным узлом
   def self.set_session(node, send_state_add=nil, dialog=nil, node_id=nil, tokey=nil)
     res = nil
     send_state_add ||= 0
-    connection = $window.pool.session_of_node(node)
-    if connection
-      connection.send_state = (connection.send_state | send_state_add)
-      connection.dialog = nil if connection.dialog and connection.dialog.destroyed?
-      connection.dialog ||= dialog
-      if connection.dialog and connection.dialog.online_button
-        connection.dialog.online_button.active = (connection.socket and (not connection.socket.closed?))
+    session = $window.pool.session_of_node(node)
+    if session
+      session.send_state = (session.send_state | send_state_add)
+      session.dialog = nil if session.dialog and session.dialog.destroyed?
+      session.dialog ||= dialog
+      if session.dialog and session.dialog.online_button
+        session.dialog.online_button.active = (session.socket and (not session.socket.closed?))
       end
     else
       Thread.new do
         host, port, proto = PandoraNet.decode_node(node)
         socket = nil
-        connection = nil
+        session = nil
         begin
           socket = TCPSocket.open(host, port)
-          connection = Session.new(socket, host, socket.addr[2], port, proto, node, CM_Hunter, CS_Connected, node_id)
-          connection.send_state = (connection.send_state | send_state_add)
-          connection.dialog = dialog
+          session = Session.new(socket, host, socket.addr[2], port, proto, node, CM_Hunter, CS_Connected, node_id)
+          session.send_state = (session.send_state | send_state_add)
+          session.dialog = dialog
         rescue
           socket = nil
           log_message(LM_Warning, "Не удается подключиться к: "+host+':'+port.to_s)
@@ -5307,35 +5302,35 @@ module PandoraNet
           dialog.online_button.active = (socket and (not socket.closed?))
         end
         if socket
-          connection.node = encode_node(connection.host_ip, connection.port, connection.proto)
+          session.node = encode_node(session.host_ip, session.port, session.proto)
           log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
-          connection.start_exchange_cicle(Thread.current, tokey)
+          session.start_exchange_cicle(Thread.current, tokey)
           socket.close if not socket.closed?
           log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
         end
-        $window.pool.del_session(connection)
+        $window.pool.del_session(session)
       end
     end
     res
   end
 
-  # Stop connection with a node
+  # Stop session with a node
   # RU: Останавливает соединение с заданным узлом
   def self.stop_session(node, wait_disconnect=true)
-    #p 'stop_connection node='+node.inspect
-    connection = $window.pool.session_of_node(node)
-    if connection and (connection.conn_state != CS_Disconnected)
-      #p 'stop_connection2 connection='+connection.inspect
-      connection.conn_state = CS_StopRead
-      while wait_disconnect and connection and (connection.conn_state != CS_Disconnected)
+    #p 'stop_session node='+node.inspect
+    session = $window.pool.session_of_node(node)
+    if session and (session.conn_state != CS_Disconnected)
+      #p 'stop_session2 session='+session.inspect
+      session.conn_state = CS_StopRead
+      while wait_disconnect and session and (session.conn_state != CS_Disconnected)
         sleep 0.05
         #Thread.pass
         #Gtk.main_iteration
-        connection = $window.pool.session_of_node(node)
+        session = $window.pool.session_of_node(node)
       end
-      connection = $window.pool.session_of_node(node)
+      session = $window.pool.session_of_node(node)
     end
-    connection and (connection.conn_state != CS_Disconnected) and wait_disconnect
+    session and (session.conn_state != CS_Disconnected) and wait_disconnect
   end
 
   # Form node marker
@@ -7314,7 +7309,7 @@ module PandoraGUI
   # RU: Диалог разговора
   class TalkScrolledWindow < Gtk::ScrolledWindow
     attr_accessor :room_id, :connset, :online_button, :snd_button, :vid_button, :talkview, \
-      :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :connection, :ximagesink, \
+      :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :send_display_handler, :recv_display_handler
 
     include PandoraGUI
@@ -7647,9 +7642,9 @@ module PandoraGUI
           res1 = model.update(values, nil, nil)
           res = (res or res1)
         end
-        connection = $window.pool.session_of_dialog(self)
-        if connection
-          connection.send_state = (connection.send_state | PandoraNet::CSF_Message)
+        session = $window.pool.session_of_dialog(self)
+        if session
+          session.send_state = (session.send_state | PandoraNet::CSF_Message)
         end
       end
       res
@@ -8846,7 +8841,7 @@ module PandoraGUI
         when 'Quit'
           $window.destroy
         when 'About'
-          show_about
+          PandoraGUI.show_about
         when 'Close'
           if notebook.page >= 0
             page = notebook.get_nth_page(notebook.page)
@@ -9227,4 +9222,4 @@ Thread.abort_on_exception = true
 #$lang = 'en'
 PandoraUtils.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
-PandoraGUI::MainWindow.new('Pandora')
+PandoraGUI::MainWindow.new(MAIN_WINDOW_TITLE)
