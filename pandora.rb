@@ -538,7 +538,7 @@ module PandoraUtils
       if (not tfd) or (tfd == [])
         @selection = [['<no>'],['<base>']]
       else
-        sql_values = []
+        sql_values = Array.new
         if filter.is_a? Hash
           sql2 = ''
           filter.each do |n,v|
@@ -587,8 +587,8 @@ module PandoraUtils
       res = false
       connect
       sql = ''
-      sql_values = []
-      sql_values2 = []
+      sql_values = Array.new
+      sql_values2 = Array.new
 
       if filter.is_a? Hash
         sql2 = ''
@@ -856,8 +856,8 @@ module PandoraUtils
         @ider = 'BasePanobject'
         @name = 'Базовый объект Пандоры'
         #@lang = true
-        @tables = []
-        @def_fields = []
+        @tables = Array.new
+        @def_fields = Array.new
         @def_fields_expanded = false
         @panhash_pattern = nil
         @panhash_ind = nil
@@ -1919,97 +1919,95 @@ module PandoraUtils
     val
   end
 
-  QI_ReadInd    = 0
-  QI_WriteInd   = 1
-  QI_QueueInd   = 2
+  class RoundQueue < Mutex
+    # Init empty queue. Poly read is possible
+    # RU: Создание пустой очереди. Возможно множественное чтение
+    attr_accessor :mutex, :queue, :write_ind, :read_ind
 
-  # Init empty queue. Poly read is possible
-  # RU: Создание пустой очереди. Возможно множественное чтение
-  def self.init_empty_queue(poly_read=false)
-    res = Array.new
-    if poly_read
-      res[QI_ReadInd] = Array.new  # will be array of read pointers
-    else
-      res[QI_ReadInd] = -1
-    end
-    res[QI_WriteInd] = -1
-    res[QI_QueueInd] = Array.new
-    res
-  end
-
-  MaxQueue = 20
-
-  # Add block to queue
-  # RU: Добавить блок в очередь
-  def self.add_block_to_queue(queue, block, max=MaxQueue)
-    res = false
-    if block
-      ind = queue[QI_WriteInd]
-      if ind<max
-        ind += 1
+    def initialize(poly_read=false)   #init_empty_queue
+      super()
+      @queue = Array.new
+      @write_ind = -1
+      if poly_read
+        @read_ind = Array.new  # will be array of read pointers
       else
-        ind = 0
+        @read_ind = -1
       end
-      queue[QI_WriteInd] = ind
-      queue[QI_QueueInd][ind] = block
-      res = true
-    else
-      puts 'add_block_to_queue: Block cannot be nil'
     end
-    res
-  end
 
-  QS_Empty     = 0
-  QS_NotEmpty  = 1
-  QS_Full      = 2
+    MaxQueue = 20
 
-  def self.get_queue_state(queue, max=MaxQueue, ptrind=nil)
-    res = QS_NotEmpty
-    ind = queue[QI_ReadInd]
-    if ptrind
-      ind = ind[ptrind]
-      ind ||= -1
-    end
-    if ind == queue[QI_WriteInd]
-      res = QS_Empty
-    else
-      if ind<max
-        ind += 1
-      else
-        ind = 0
+    # Add block to queue
+    # RU: Добавить блок в очередь
+    def add_block_to_queue(block, max=MaxQueue)
+      res = false
+      if block
+        synchronize do
+          if write_ind<max
+            @write_ind += 1
+          else
+            @write_ind = 0
+          end
+          queue[write_ind] = block
+        end
+        res = true
       end
-      res = QS_Full if ind == queue[QI_WriteInd]
+      res
     end
-    res
-  end
 
-  # Get block from queue (set "ptrind" like 0,1,2..)
-  # RU: Взять блок из очереди (задавай "ptrind" как 0,1,2..)
-  def self.get_block_from_queue(queue, max=MaxQueue, ptrind=nil)
-    block = nil
-    if queue
-      pointers = nil
-      ind = queue[QI_ReadInd]
+    QS_Empty     = 0
+    QS_NotEmpty  = 1
+    QS_Full      = 2
+
+    def get_queue_state(max=MaxQueue, ptrind=nil)
+      res = QS_NotEmpty
+      ind = read_ind
       if ptrind
-        pointers = ind
-        ind = pointers[ptrind]
+        ind = ind[ptrind]
         ind ||= -1
       end
-      if ind != queue[QI_WriteInd]
+      if ind == write_ind
+        res = QS_Empty
+      else
         if ind<max
           ind += 1
         else
           ind = 0
         end
-        block = queue[QI_QueueInd][ind]
+        res = QS_Full if ind == write_ind
+      end
+      res
+    end
+
+    # Get block from queue (set "ptrind" like 0,1,2..)
+    # RU: Взять блок из очереди (задавай "ptrind" как 0,1,2..)
+    def get_block_from_queue(max=MaxQueue, ptrind=nil)
+      block = nil
+      pointers = nil
+      synchronize do
+        ind = read_ind
         if ptrind
-          pointers[ptrind] = ind
-        else
-          queue[QI_ReadInd] = ind
+          pointers = ind
+          ind = pointers[ptrind]
+          ind ||= -1
+        end
+        #p 'get_block_from_queue:  [ptrind, ind, write_ind]='+[ptrind, ind, write_ind].inspect
+        if ind != write_ind
+          if ind<max
+            ind += 1
+          else
+            ind = 0
+          end
+          block = queue[ind]
+          if ptrind
+            pointers[ptrind] = ind
+          else
+            @read_ind = ind
+          end
         end
       end
+      block
     end
-    block
   end
 
   # Encode data type and size to PSON type and count of size in bytes (1..8)-1
@@ -2121,7 +2119,7 @@ module PandoraUtils
             vlen += int
             val = data[pos, int].to_sym if basetype == PT_Sym
           when PT_Array, PT_Hash
-            val = []
+            val = Array.new
             int *= 2 if basetype == PT_Hash
             while (data.bytesize-1-vlen>0) and (int>0)
               int -= 1
@@ -2230,7 +2228,7 @@ module PandoraModel
             panobj_id = element.name
             #p 'panobj_id='+panobj_id.inspect
             new_panobj = true
-            flds = []
+            flds = Array.new
             panobject_class = nil
             panobject_class = PandoraModel.const_get(panobj_id) if PandoraModel.const_defined? panobj_id
             #p panobject_class
@@ -2279,7 +2277,7 @@ module PandoraModel
             panobj_sort = element.attributes['sort']
             panobject_class.sort = panobj_sort if panobj_sort
             flds = panobject_class.def_fields
-            flds ||= []
+            flds ||= Array.new
             #p 'flds='+flds.inspect
             panobj_name_en = element.attributes['name']
             panobj_name = panobj_name_en if (panobj_name==panobj_id) and panobj_name_en and (panobj_name_en != '')
@@ -2308,7 +2306,7 @@ module PandoraModel
                   if fld_exists
                     fld_name = flds[i][FI_Name]
                   else
-                    flds[i] = []
+                    flds[i] = Array.new
                     flds[i][FI_Id] = sub_elem.name
                     fld_name = sub_elem.name
                   end
@@ -2358,7 +2356,7 @@ module PandoraModel
             if ind
               row = $pandora_parameters[ind]
             else
-              row = []
+              row = Array.new
               row[PandoraUtils::PF_Name] = name
               $pandora_parameters << row
               ind = $pandora_parameters.size-1
@@ -2699,7 +2697,7 @@ module PandoraCrypto
       #p 'hash='+hash.inspect
       cipher_key = hash.digest(cipher_key) if hash
       #p 'cipher_key.hash='+cipher_key.inspect
-      cipher_vec = []
+      cipher_vec = Array.new
       cipher_vec[KV_Key1] = cipher_key
       cipher_vec[KV_Kind] = ckind
       cipher_vec = init_key(cipher_vec)
@@ -3052,7 +3050,7 @@ module PandoraCrypto
             end
 
             if not try
-              key_vec = []
+              key_vec = Array.new
               key_vec[KV_Key1] = pub
               key_vec[KV_Key2] = priv
               key_vec[KV_Kind] = kind
@@ -3361,7 +3359,7 @@ module PandoraCrypto
               pub = model.field_val('body', row)
               creator = model.field_val('creator', row)
 
-              key_vec = []
+              key_vec = Array.new
               key_vec[KV_Key1] = pub
               key_vec[KV_Kind] = kind
               #key_vec[KV_Pass] = passwd
@@ -3444,7 +3442,7 @@ module PandoraNet
     def initialize(main_window)
       super()
       @window = main_window
-      @sessions = []
+      @sessions = Array.new
     end
 
     def add_session(conn)
@@ -3652,8 +3650,8 @@ module PandoraNet
       @send_state     = 0
       @sindex         = 0
       @rindex         = 0
-      @read_queue     = PandoraUtils.init_empty_queue
-      @send_queue     = PandoraUtils.init_empty_queue
+      @read_queue     = PandoraUtils::RoundQueue.new
+      @send_queue     = PandoraUtils::RoundQueue.new
       @send_models    = {}
       @recv_models    = {}
       @params         = {}
@@ -3745,7 +3743,7 @@ module PandoraNet
       if cmd == EC_Media
         if not @media_send
           @media_send = true
-          socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+          #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
           socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
           p '@media_send = true'
         end
@@ -3757,10 +3755,10 @@ module PandoraNet
           @media_send = false
           p '@media_send = false'
         end
-        nodelay = 1 if (cmd == EC_Bye)
-        if nodelay
-          socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, nodelay)
-        end
+        #nodelay = 1 if (cmd == EC_Bye)
+        #if nodelay
+        #  socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, nodelay)
+        #end
       end
       #if cmd == EC_Media
       #  if code==0
@@ -3895,7 +3893,7 @@ module PandoraNet
       #  p log_mes+'get_queue_state.EX = '+PandoraGUI.get_queue_state(@send_queue).inspect
       #  Thread.pass
       #end
-      res = PandoraUtils.add_block_to_queue(@send_queue, [scmd, scode, sbuf])
+      res = @send_queue.add_block_to_queue([scmd, scode, sbuf])
 
       if scmd != EC_Media
         sbuf ||= '';
@@ -4448,7 +4446,7 @@ module PandoraNet
           recv_buf = dialog.recv_media_queue[cannel]
           if not recv_buf
             if cannel==0
-              dialog.init_audio_receiver(true, false)
+              dialog.init_audio_receiver(true, true)
             else
               dialog.init_video_receiver(true, false)
             end
@@ -4460,10 +4458,12 @@ module PandoraNet
             if cannel==0  #audio processes quickly
               buf = Gst::Buffer.new
               buf.data = rdata
-              buf.timestamp = Time.now.to_i * Gst::NSECOND
-              dialog.appsrcs[cannel].push_buffer(buf)
+              #buf.timestamp = Time.now.to_i * Gst::NSECOND
+              appsrc = dialog.appsrcs[cannel]
+              appsrc.push_buffer(buf)
+              appsrc.play if (appsrc.get_state != Gst::STATE_PLAYING)
             else  #video puts to queue
-              PandoraUtils.add_block_to_queue(recv_buf, rdata, $media_buf_size)
+              recv_buf.add_block_to_queue(rdata, $media_buf_size)
             end
           end
         when EC_Request
@@ -4508,7 +4508,7 @@ module PandoraNet
                 @sbuf = panhash
               end
             else
-              rec_array = []
+              rec_array = Array.new
               panhashes.each do |panhash|
                 kind = PandoraUtils.kind_from_panhash(panhash)
                 record = PandoraModel.get_record_by_panhash(kind, panhash, true, @recv_models)
@@ -4830,13 +4830,13 @@ module PandoraNet
               if scmd != EC_Data
                 #@sbuf = '' if scmd == EC_Bye
                 #p log_mes+'add to queue [scmd, scode, sbuf]='+[scmd, scode, @sbuf].inspect
-                p log_mes+'recv/send: ='+[rcmd, rcode, rdata0.bytesize].inspect+'/'+[scmd, scode, @sbuf.bytesize].inspect
+                #p log_mes+'recv/send: ='+[rcmd, rcode, rdata0.bytesize].inspect+'/'+[scmd, scode, @sbuf.bytesize].inspect
                 #while PandoraGUI.get_queue_state(@send_queue) == QS_Full do
                 #  p log_mes+'get_queue_state.MAIN = '+PandoraGUI.get_queue_state(@send_queue).inspect
                 #  Thread.pass
                 #end
                 if ok1comm
-                  res = PandoraUtils.add_block_to_queue(@send_queue, [scmd, scode, @sbuf])
+                  res = @send_queue.add_block_to_queue([scmd, scode, @sbuf])
                   if not res
                     log_message(LM_Error, 'Error while adding segment to queue')
                     @conn_state = CS_Stoping
@@ -4878,7 +4878,7 @@ module PandoraNet
       while (@conn_state != CS_Disconnected)
         # отправка сформированных сегментов и их удаление
         if (@conn_state != CS_Disconnected)
-          send_segment = PandoraUtils.get_block_from_queue(@send_queue)
+          send_segment = @send_queue.get_block_from_queue
           while (@conn_state != CS_Disconnected) and send_segment
             #p log_mes+' send_segment='+send_segment.inspect
             @scmd, @scode, @sbuf = send_segment
@@ -4899,7 +4899,7 @@ module PandoraNet
               #end
               @conn_state = CS_Disconnected
             else
-              send_segment = PandoraUtils.get_block_from_queue(@send_queue)
+              send_segment = @send_queue.get_block_from_queue
             end
           end
         end
@@ -4937,8 +4937,9 @@ module PandoraNet
           if dialog.recv_media_pipeline[cannel] and dialog.appsrcs[cannel]
           #and (dialog.recv_media_pipeline[cannel].get_state == Gst::STATE_PLAYING)
             processed += 1
-            recv_media_chunk = PandoraUtils.get_block_from_queue(dialog.recv_media_queue[cannel], $media_buf_size)
-            if recv_media_chunk and (recv_media_chunk.size>0)
+            rc_queue = dialog.recv_media_queue[cannel]
+            recv_media_chunk = rc_queue.get_block_from_queue($media_buf_size) if rc_queue
+            if recv_media_chunk #and (recv_media_chunk.size>0)
               #p 'GET BUF size='+recv_media_chunk.size.to_s
               buf = Gst::Buffer.new
               buf.data = recv_media_chunk
@@ -5002,25 +5003,28 @@ module PandoraNet
         end
 
         # пакетирование медиа буферов
-        if ($send_media_queue.size>0) and $send_media_rooms \
+        if ($send_media_queues.size>0) and $send_media_rooms \
         and (@conn_state == CS_Connected) and (stage>=ST_Exchange) \
         and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
         and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
         or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
           #p 'packbuf '+cannel.to_s
-          pointer_ind = PandoraGUI.set_send_ptrind_by_room(dialog.room_id)
+          pointer_ind = PandoraGUI.get_send_ptrind_by_room(dialog.room_id)
           processed = 0
           cannel = 0
           while (@conn_state == CS_Connected) \
           and ((send_state & CSF_Message) == 0) and (processed<$media_block_count) \
-          and (cannel<$send_media_queue.size) \
+          and (cannel<$send_media_queues.size) \
           and dialog and (not dialog.destroyed?) \
           and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
           or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
             processed += 1
-            send_media_chunk = PandoraUtils.get_block_from_queue($send_media_queue[cannel], $media_buf_size, pointer_ind)
+            sc_queue = $send_media_queues[cannel]
+            send_media_chunk = nil
+            #p log_mes+'[cannel, pointer_ind]='+[cannel, pointer_ind].inspect
+            send_media_chunk = sc_queue.get_block_from_queue($media_buf_size, pointer_ind) if sc_queue and pointer_ind
             if send_media_chunk
-              #p log_mes+'send_media_chunk='+send_media_chunk.size.to_s
+              #p log_mes+'[cannel, pointer_ind, chunk.size]='+[cannel, pointer_ind, send_media_chunk.size].inspect
               @scmd = EC_Media
               @scode = cannel
               @sbuf = send_media_chunk
@@ -5709,7 +5713,7 @@ module PandoraGUI
     sel = panobject.select(nil, false, nil, panobject.sort)
     store = Gtk::ListStore.new(Integer)
     param_view_col = nil
-    param_view_col = sel[0].size if panobject.ider=='Parameter'
+    param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
     sel.each do |row|
       iter = store.append
       id = row[0].to_i
@@ -6186,7 +6190,7 @@ module PandoraGUI
       @btn_panel_height = bh
 
       # devide text fields in separate list
-      @text_fields = []
+      @text_fields = Array.new
       i = @fields.size
       while i>0 do
         i -= 1
@@ -6338,9 +6342,9 @@ module PandoraGUI
         entry.text = field[FI_Value].to_s
       end
 
-      field_matrix = []
+      field_matrix = Array.new
       mw, mh = 0, 0
-      row = []
+      row = Array.new
       row_index = -1
       rw, rh = 0, 0
       orient = :up
@@ -6409,16 +6413,16 @@ module PandoraGUI
       step = 1
       found = false
       while not found do
-        fields = []
+        fields = Array.new
         @fields.each do |field|
           fields << field.dup
         end
 
-        field_matrix = []
+        field_matrix = Array.new
         mw, mh = 0, 0
         case step
           when 1  #normal compose. change "left" to "up" when doesn't fit to width
-            row = []
+            row = Array.new
             row_index = -1
             rw, rh = 0, 0
             orient = :up
@@ -6433,7 +6437,7 @@ module PandoraGUI
                   step = 5
                   break
                 end
-                row = []
+                row = Array.new
                 rw, rh = 0, 0
               end
 
@@ -6473,7 +6477,7 @@ module PandoraGUI
           when 3
             found = true
           when 5  #need to rebuild rows by width
-            row = []
+            row = Array.new
             row_index = -1
             rw, rh = 0, 0
             orient = :up
@@ -6489,7 +6493,7 @@ module PandoraGUI
                 field_matrix << row if row != []
                 mw, mh = [mw, rw].max, mh+rh
                 #p [mh, form_height]
-                row = []
+                row = Array.new
                 rw, rh = 0, 0
               end
 
@@ -7048,11 +7052,10 @@ module PandoraGUI
 
 
   $media_buf_size = 50
-  $send_media_queue = []
-  $send_media_rooms = nil
+  $send_media_queues = []
+  $send_media_rooms = {}
 
   def self.set_send_ptrind_by_room(room_id)
-    $send_media_rooms ||= {}
     ptr = nil
     if room_id
       ptr = $send_media_rooms[room_id]
@@ -7067,15 +7070,25 @@ module PandoraGUI
     ptr
   end
 
+  def self.get_send_ptrind_by_room(room_id)
+    ptr = nil
+    if room_id
+      set_ptr = $send_media_rooms[room_id]
+      if set_ptr and set_ptr[0]
+        ptr = set_ptr[1]
+      end
+    end
+    ptr
+  end
+
   def self.nil_send_ptrind_by_room(room_id)
-    $send_media_rooms ||= {}
     if room_id
       ptr = $send_media_rooms[room_id]
       if ptr
         ptr[0] = false
       end
     end
-    res = $send_media_rooms.select{|k,v| v[0]}
+    res = $send_media_rooms.select{|room,ptr| ptr[0] }
     res.size
   end
 
@@ -7369,14 +7382,14 @@ module PandoraGUI
 
       @room_id = a_room_id
       @connset = a_connset
-      @recv_media_queue = []
-      @recv_media_pipeline = []
-      @appsrcs = []
+      @recv_media_queue = Array.new
+      @recv_media_pipeline = Array.new
+      @appsrcs = Array.new
 
       p 'TALK INIT [known_node, a_room_id, a_connset, title]='+[known_node, a_room_id, a_connset, title].inspect
 
       model = PandoraUtils.get_model('Node')
-      node_list = []
+      node_list = Array.new
       connset[CSI_Nodes].each do |nodehash|
         sel = model.select({:panhash=>nodehash}, false, 'addr, domain, tport')
         if sel and (sel.size>0)
@@ -7763,7 +7776,7 @@ module PandoraGUI
     end
 
     def parse_gst_string(text)
-      elements = []
+      elements = Array.new
       text.strip!
       elem = nil
       link = false
@@ -8117,12 +8130,12 @@ module PandoraGUI
             appsink, pad = add_elem_to_pipe(video_can_sink, video_pipeline, encoder, pad)
             $webcam_xvimagesink, pad = add_elem_to_pipe(video_view1, video_pipeline, tee, teepad)
 
-            $send_media_queue[1] ||= PandoraUtils.init_empty_queue(true)
+            $send_media_queues[1] ||= PandoraUtils::RoundQueue.new(true)
             appsink.signal_connect('new-buffer') do |appsink|
               buf = appsink.pull_buffer
               if buf
                 data = buf.data
-                PandoraUtils.add_block_to_queue($send_media_queue[1], data, $media_buf_size)
+                $send_media_queues[1].add_block_to_queue(data, $media_buf_size)
               end
             end
           rescue => err
@@ -8210,8 +8223,8 @@ module PandoraGUI
           begin
             Gst.init
             winos = (os_family == 'windows')
-            @recv_media_queue[1] ||= PandoraUtils.init_empty_queue
-            dialog_id = '_v'+PandoraUtils.bytes_to_hex(room_id[0,4])
+            @recv_media_queue[1] ||= PandoraUtils::RoundQueue.new
+            dialog_id = '_v'+PandoraUtils.bytes_to_hex(room_id[-6..-1])
             @recv_media_pipeline[1] = Gst::Pipeline.new('rpipe'+dialog_id)
             vidpipe = @recv_media_pipeline[1]
 
@@ -8366,13 +8379,13 @@ module PandoraGUI
             audenc, pad = add_elem_to_pipe(audio_can_encoder, audio_pipeline, tee, teepad)
             appsink, pad = add_elem_to_pipe(audio_can_sink, audio_pipeline, audenc, pad)
 
-            $send_media_queue[0] ||= PandoraUtils.init_empty_queue(true)
+            $send_media_queues[0] ||= PandoraUtils::RoundQueue.new(true)
             appsink.signal_connect('new-buffer') do |appsink|
               buf = appsink.pull_buffer
               if buf
                 #p 'GET AUDIO ['+buf.size.to_s+']'
                 data = buf.data
-                PandoraUtils.add_block_to_queue($send_media_queue[0], data, $media_buf_size)
+                $send_media_queues[0].add_block_to_queue(data, $media_buf_size)
               end
             end
           rescue => err
@@ -8421,14 +8434,14 @@ module PandoraGUI
         if recv_media_pipeline[0] and (recv_media_pipeline[0].get_state != Gst::STATE_NULL)
           recv_media_pipeline[0].stop
         end
-        p 'init_audio_receiver stop ???'
       elsif (not self.destroyed?)
-        if (not recv_media_pipeline[0]) #and init
+        if (not recv_media_pipeline[0]) and init
           begin
             Gst.init
             winos = (os_family == 'windows')
-            @recv_media_queue[0] ||= PandoraUtils.init_empty_queue
-            dialog_id = '_a'+PandoraUtils.bytes_to_hex(room_id[0,4])
+            @recv_media_queue[0] ||= PandoraUtils::RoundQueue.new
+            dialog_id = '_a'+PandoraUtils.bytes_to_hex(room_id[-6..-1])
+            #p 'init_audio_receiver:  dialog_id='+dialog_id.inspect
             @recv_media_pipeline[0] = Gst::Pipeline.new('rpipe'+dialog_id)
             audpipe = @recv_media_pipeline[0]
 
@@ -8476,8 +8489,9 @@ module PandoraGUI
             puts mes+': '+err.message
             snd_button.active = false
           end
+          recv_media_pipeline[0].stop if recv_media_pipeline[0]  #this is a hack, else doesn't work!
         end
-        if recv_media_pipeline[0] #and can_play
+        if recv_media_pipeline[0] and can_play
           recv_media_pipeline[0].play if (recv_media_pipeline[0].get_state != Gst::STATE_PLAYING)
         end
       end
@@ -8520,7 +8534,7 @@ module PandoraGUI
       if known_node
         creator = PandoraCrypto.current_user_or_key(true)
         if (persons.size==1) and (persons[0]==creator)
-          room_id << '!'
+          room_id[-1] = (room_id[-1].ord ^ 1).chr
         end
       end
       p 'room_id='+room_id.inspect
