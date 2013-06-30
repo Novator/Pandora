@@ -6749,7 +6749,7 @@ module PandoraGUI
         iter = store.get_iter(path)
         id = iter[0]
         sel = panobject.select('id='+id.to_s, true)
-        #p 'panobject.namesvalues='+panobject.namesvalues.inspect
+        p 'panobject.namesvalues='+panobject.namesvalues.inspect
         #p 'panobject.matter_fields='+panobject.matter_fields.inspect
         panhash0 = panobject.namesvalues['panhash']
         lang = panhash0[1].ord if panhash0 and panhash0.size>1
@@ -6789,7 +6789,7 @@ module PandoraGUI
           dialog.destroy
         end
       elsif action=='Dialog'
-        show_talk_dialog(panhash0)
+        show_talk_dialog(panhash0) if panhash0
       else  # Edit or Insert
 
         edit = ((not new_act) and (action != 'Copy'))
@@ -7182,35 +7182,71 @@ module PandoraGUI
 
   # Get person panhash by any panhash
   # RU: Получить панхэш персоны по произвольному панхэшу
-  def self.extract_connset_from_panhash(connset, panhashs)
+  def self.extract_connset_from_panhash(connset, panhashes)
     persons, keys, nodes = connset
-    panhashs = [panhashs] if not panhashs.is_a? Array
+    panhashes = [panhashes] if not panhashes.is_a? Array
     #p '--extract_connset_from_panhash  connset='+connset.inspect
-    panhashs.each do |panhash|
-      kind = PandoraUtils.kind_from_panhash(panhash)
-      panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-      if panobjectclass
-        if panobjectclass <= PandoraModel::Person
-          persons << panhash
-        elsif panobjectclass <= PandoraModel::Node
-          nodes << panhash
-        else
-          if panobjectclass <= PandoraModel::Created
-            model = PandoraUtils.get_model(panobjectclass.ider)
-            filter = {:panhash=>panhash}
-            sel = model.select(filter, false, 'creator')
-            if sel and sel.size>0
-              sel.each do |row|
-                persons << row[0]
+    panhashes.each do |panhash|
+      if (panhash.is_a? String) and (panhash.bytesize>0)
+        kind = PandoraUtils.kind_from_panhash(panhash)
+        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+        if panobjectclass
+          if panobjectclass <= PandoraModel::Person
+            persons << panhash
+          elsif panobjectclass <= PandoraModel::Node
+            nodes << panhash
+          else
+            if panobjectclass <= PandoraModel::Created
+              model = PandoraUtils.get_model(panobjectclass.ider)
+              filter = {:panhash=>panhash}
+              sel = model.select(filter, false, 'creator')
+              if sel and sel.size>0
+                sel.each do |row|
+                  persons << row[0]
+                end
               end
             end
           end
         end
       end
     end
-    #p 'connset2='+connset.inspect
     persons.uniq!
+    persons.compact!
+    if (keys.size == 0) and (nodes.size > 0)
+      nodes.uniq!
+      nodes.compact!
+      model = PandoraUtils.get_model('Node')
+      nodes.each do |node|
+        sel = model.select({:panhash=>node}, false, 'key_hash')
+        if sel and (sel.size>0)
+          sel.each do |row|
+            keys << row[0]
+          end
+        end
+      end
+    end
     keys.uniq!
+    keys.compact!
+    if (persons.size == 0) and (keys.size > 0)
+      kmodel = PandoraUtils.get_model('Key')
+      smodel = PandoraUtils.get_model('Sign')
+      keys.each do |key|
+        sel = kmodel.select({:panhash=>key}, false, 'creator', 'modified DESC', $key_watch_lim)
+        if sel and (sel.size>0)
+          sel.each do |row|
+            persons << row[0]
+          end
+        end
+        sel = smodel.select({:key_hash=>key}, false, 'creator', 'modified DESC', $sign_watch_lim)
+        if sel and (sel.size>0)
+          sel.each do |row|
+            persons << row[0]
+          end
+        end
+      end
+      persons.uniq!
+      persons.compact!
+    end
     if nodes.size == 0
       model = PandoraUtils.get_model('Key')
       persons.each do |person|
@@ -7233,6 +7269,7 @@ module PandoraGUI
         end
       end
       keys.uniq!
+      keys.compact!
       model = PandoraUtils.get_model('Node')
       keys.each do |key|
         sel = model.select({:key_hash=>key}, false, 'panhash')
@@ -7246,6 +7283,7 @@ module PandoraGUI
       #p 'connset3='+connset.inspect
     end
     nodes.uniq!
+    nodes.compact!
     nodes.size
   end
 
@@ -7266,15 +7304,22 @@ module PandoraGUI
   end
 
   def self.consctruct_room_id(persons)
-    sha1 = Digest::SHA1.new
-    persons.each do |panhash|
-      sha1.update(panhash)
+    res = nil
+    if (persons.is_a? Array) and (persons.size>0)
+      sha1 = Digest::SHA1.new
+      persons.each do |panhash|
+        sha1.update(panhash)
+      end
+      res = sha1.digest
     end
-    res = sha1.digest
+    res
   end
 
   def self.consctruct_room_title(persons)
-    res = PandoraUtils.bytes_to_hex(persons[0])[4,16]
+    res = 'unknown'
+    if (persons.is_a? Array) and (persons.size>0)
+      res = PandoraUtils.bytes_to_hex(persons[0])[4,16]
+    end
   end
 
   def self.find_active_sender(not_this=nil)
@@ -8443,11 +8488,11 @@ module PandoraGUI
   # Show conversation dialog
   # RU: Показать диалог общения
   def self.show_talk_dialog(panhashes, known_node=nil)
+    sw = nil
     p 'show_talk_dialog: [panhashes, known_node]='+[panhashes, known_node].inspect
     connset = [[], [], []]
     persons, keys, nodes = connset
-    if known_node
-      #persons |= panhashes
+    if known_node and (panhashes.is_a? String)
       persons << panhashes
       nodes << known_node
     else
@@ -8463,30 +8508,35 @@ module PandoraGUI
       list.sort!
     end
     persons.uniq!
+    persons.compact!
     keys.uniq!
+    keys.compact!
     nodes.uniq!
+    nodes.compact!
     p 'connset='+connset.inspect
 
-    room_id = consctruct_room_id(persons)
-    if known_node
-      creator = PandoraCrypto.current_user_or_key(true)
-      if (persons.size==1) and (persons[0]==creator)
-        room_id << '!'
+    if (persons.size>0) and (nodes.size>0)
+      room_id = consctruct_room_id(persons)
+      if known_node
+        creator = PandoraCrypto.current_user_or_key(true)
+        if (persons.size==1) and (persons[0]==creator)
+          room_id << '!'
+        end
       end
-    end
-    p 'room_id='+room_id.inspect
-    $window.notebook.children.each do |child|
-      if (child.is_a? TalkScrolledWindow) and (child.room_id==room_id)
-        $window.notebook.page = $window.notebook.children.index(child) if not known_node
-        child.room_id = room_id
-        child.connset = connset
-        child.online_button.active = (known_node != nil)
-        return child
+      p 'room_id='+room_id.inspect
+      $window.notebook.children.each do |child|
+        if (child.is_a? TalkScrolledWindow) and (child.room_id==room_id)
+          $window.notebook.page = $window.notebook.children.index(child) if not known_node
+          child.room_id = room_id
+          child.connset = connset
+          child.online_button.active = (known_node != nil)
+          return child
+        end
       end
-    end
 
-    title = consctruct_room_title(connset[CSI_Persons])
-    sw = TalkScrolledWindow.new(known_node, room_id, connset, title)
+      title = consctruct_room_title(connset[CSI_Persons])
+      sw = TalkScrolledWindow.new(known_node, room_id, connset, title)
+    end
     sw
   end
 
