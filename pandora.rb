@@ -187,6 +187,7 @@ end
 begin
   require 'gtk2'
   $gtk2_on = true
+  Gtk.init
 rescue Exception
   $gtk2_on = false
 end
@@ -966,9 +967,12 @@ module PandoraUtils
             when 'Word'
               view = 'word'
               len = 5
-            when 'Integer', 'Coord'
+            when 'Integer'
               view = 'integer'
-              len = 10
+              len = 14
+            when 'Coord'
+              view = 'coord'
+              len = 18
             when 'Blog'
               if not fd[FI_Size] or fd[FI_Size].to_i>25
                 view = 'base64'
@@ -981,14 +985,17 @@ module PandoraUtils
               #len = 32
             when 'Panhash'
               view = 'panhash'
-              len = 32
+              len = 44
             when 'PHash', 'Phash'
               view = 'phash'
-              len = 32
+              len = 44
+            when 'Real', 'Float', 'Double'
+              view = 'real'
+              len = 12
             else
               if type[0,7]=='Panhash'
                 view = 'phash'
-                len = 32
+                len = 44
               end
           end
         end
@@ -1092,7 +1099,8 @@ module PandoraUtils
         len = 0
         hash = ''
         if (fd.is_a? Array) and fd[FI_Type]
-          case fd[FI_Type].to_s
+          type = fd[FI_Type].to_s
+          case type
             when 'Integer', 'Time', 'Coord'
               hash = 'integer'
               len = 4
@@ -1105,10 +1113,18 @@ module PandoraUtils
             when 'Date'
               hash = 'date'
               len = 3
+            when 'Panhash', 'Phash'
+              hash = 'phash'
+              len = 10
             else
-              hash = 'hash'
-              len = fd[FI_Size]
-              len = 4 if (not len.is_a? Integer) or (len>4)
+              if type[0,7]=='Panhash'
+                hash = 'phash'
+                len = 10
+              else
+                hash = 'hash'
+                len = fd[FI_Size]
+                len = 4 if (not len.is_a? Integer) or (len>4)
+              end
           end
         end
         [len, hash]
@@ -1149,7 +1165,7 @@ module PandoraUtils
                       len = 3
                     when 'crc16', 'word'
                       len = 2
-                    when 'crc32', 'integer', 'time'
+                    when 'crc32', 'integer', 'time', 'real', 'coord'
                       len = 4
                   end
                 end
@@ -1416,7 +1432,7 @@ module PandoraUtils
         #p 'fval='+fval.inspect+'  hfor='+hfor.inspect
         hfor = 'integer' if (not hfor or hfor=='') and (fval.is_a? Integer)
         hfor = 'hash' if ((hfor=='') or (hfor=='text')) and (fval.is_a? String) and (fval.size>20)
-        if ['integer', 'word', 'byte', 'lang'].include? hfor
+        if ['integer', 'word', 'byte', 'lang', 'coord'].include? hfor
           if not (fval.is_a? Integer)
             fval = fval.to_i
           end
@@ -1917,6 +1933,142 @@ module PandoraUtils
       end
     end
     val
+  end
+
+  def self.text_coord_to_float(text)
+    res = 0
+    if text.is_a? String
+      text.strip!
+      if text.size>0
+        negative = false
+        if 'SWsw-'.include? text[0]
+          negative = true
+          text = text[1..-1]
+          text.strip!
+        end
+        if (text.size>0) and ('SWsw'.include? text[-1])
+          negative = true
+          text = text[0..-2]
+          text.strip!
+        end
+        if text.size>0
+          text.gsub!('′', "'")
+          text.gsub!('″', '"')
+          text.gsub!('"', "''")
+          text.gsub!('`', "'")
+          text.gsub!(',', ".")
+        end
+        deg = nil
+        i = text.index(" ")
+        if i
+          begin
+            deg = text[0, i].to_f
+          rescue
+            deg = 0
+          end
+          text = text[i+1..-1]
+        end
+        text = text[/[1234567890\.']*/]
+        i = text.index("'")
+        if i
+          d = 0
+          m = 0
+          s = 0
+          if deg
+            d = deg
+          else
+            prefix = text[0, i]
+            j = prefix.index(".")
+            if j
+              begin
+                d = text[0, j].to_f
+              rescue
+                d = 0
+              end
+              text = text[j+1..-1]
+              i = text.index("'")
+            else
+              d = 0
+            end
+          end
+          begin
+            a = text[0..i-1].to_f
+          rescue
+            s = 0
+          end
+          if (i<text.size-1) and (text[i+1]=="'")
+            s = a
+          else
+            m = a
+            text = text[i+1..-1].delete("'")
+            begin
+              s = text.to_f
+            rescue
+              s = 0
+            end
+          end
+          p '[d, m, s]='+[d, m, s].inspect
+          res = d + m.fdiv(60) + s.fdiv(3600)
+        else
+          begin
+            text = text.to_f
+          rescue
+            text = 0
+          end
+          if deg
+            res = deg + text.fdiv(100)
+          else
+            res = text
+          end
+        end
+        res = -(res.abs) if negative
+      end
+    else
+      begin
+        res = text.to_f
+      rescue
+        res = 0
+      end
+    end
+    res
+  end
+
+  DegX = 360
+  DegY = 180
+  MultX = 92681
+  MultY = 46340
+
+  def self.coord_to_int(y, x)
+    begin
+      x = text_coord_to_float(x)
+      while x>360
+        x = x-360.0
+      end
+      while x<(-180)
+        x = x+360.0
+      end
+      x = x + 180.0
+    rescue
+      x = 0
+    end
+    begin
+      y = text_coord_to_float(y)
+      y = y + 90.0
+    rescue
+      y = 0
+    end
+    p [x, y]
+    xp = (MultX * x.fdiv(DegX)).round
+    yp = (MultY * y.fdiv(DegY)).round
+    MultX*(yp-1)+xp
+  end
+
+  def self.int_to_coord(int)
+    h = (int.fdiv(MultX)).truncate + 1
+    s = int - (h-1)*MultX
+    x = s.fdiv(MultX)*DegX - 180.0
+    y = h.fdiv(MultY)*DegY - 90.0
+    [y.round(2), x.round(2)]
   end
 
   class RoundQueue < Mutex
@@ -4470,9 +4622,9 @@ module PandoraNet
           kind = rcode
           p log_mes+'EC_Request  kind='+kind.to_s
           panhash = nil
-          if (kind==PK_Key) and (stage==ST_Protocol)
+          if (kind==PandoraModel::PK_Key) and (stage==ST_Protocol)
             panhash = [kind].pack('C')+rdata
-            if kind==PK_Key
+            if kind==PandoraModel::PK_Key
               mykey = params['mykey']
               if mykey and (panhash != mykey)
                 panhash = false
@@ -4537,7 +4689,7 @@ module PandoraNet
           p log_mes+' EC_Record: [rcode, rdata.bytesize]='+[rcode, rdata.bytesize].inspect
           if rcode>0
             kind = rcode
-            if (stage==ST_Exchange) or ((kind==PK_Key) and (stage==ST_KeyRequest))
+            if (stage==ST_Exchange) or ((kind==PandoraModel::PK_Key) and (stage==ST_KeyRequest))
               lang = rdata[0].ord
               values = PandoraUtils.pson_to_namehash(rdata[1..-1])
               panhash = nil
@@ -5454,7 +5606,7 @@ module PandoraGUI
   # RU: Продвинутое окно диалога
   class AdvancedDialog < Gtk::Window
     attr_accessor :response, :window, :notebook, :vpaned, :viewport, :hbox, :enter_like_tab, :enter_like_ok, \
-      :panelbox, :okbutton, :cancelbutton, :def_widget
+      :panelbox, :okbutton, :cancelbutton, :def_widget, :main_sw
 
     def initialize(*args)
       super(*args)
@@ -5474,7 +5626,8 @@ module PandoraGUI
       vpaned.border_width = 2
       window.add(vpaned)
 
-      sw = Gtk::ScrolledWindow.new(nil, nil)
+      @main_sw = Gtk::ScrolledWindow.new(nil, nil)
+      sw = main_sw
       sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       @viewport = Gtk::Viewport.new(nil, nil)
       sw.add(viewport)
@@ -5515,7 +5668,7 @@ module PandoraGUI
       }
       window.signal_connect('destroy') { |*args| @response=2 }
 
-      window.signal_connect('key_press_event') do |widget, event|
+      window.signal_connect('key-press-event') do |widget, event|
         if (event.keyval==Gdk::Keyval::GDK_Tab) and enter_like_tab  # Enter works like Tab
           event.hardware_keycode=23
           event.keyval=Gdk::Keyval::GDK_Tab
@@ -5525,9 +5678,6 @@ module PandoraGUI
           [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
           and (event.state.control_mask? or (enter_like_ok and (not (self.focus.is_a? Gtk::TextView))))
         then
-          #p "=-=-=-"
-          #p self.focus
-          #p self.focus.is_a? Gtk::TextView
           okbutton.activate
           true
         elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
@@ -5602,58 +5752,268 @@ module PandoraGUI
     else
       image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
       btn = Gtk::ToolButton.new(image, _(title))
+      #btn = Gtk::ToolButton.new(stock)
       btn.signal_connect('clicked') do |*args|
         yield(*args) if block_given?
       end
+      btn.label = title
     end
-    new_api = false
-    begin
-      btn.tooltip_text = btn.label
-      new_api = true
-    rescue
-    end
-    if new_api
-      toolbar.add(btn)
-    else
-      toolbar.append(btn, btn.label, btn.label)
-    end
+    toolbar.add(btn)
+    title = _(title)
+    title.gsub!('_', '')
+    btn.tooltip_text = title
+    btn.label = title
     btn
   end
 
   # Entry with allowed symbols of mask
   # RU: Поле ввода с допустимыми символами в маске
   class MaskEntry < Gtk::Entry
-    attr_accessor :mask
+    attr_accessor :tooltip, :mask
     def initialize
       super
-      @mask_key_press_event = signal_connect('key_press_event') do |widget, event|
+      signal_connect('key-press-event') do |widget, event|
         res = false
-        if (event.keyval<60000) and (mask.is_a? String) and (mask.size>0)
-          res = (not mask.include?(event.keyval.chr))
+        if not key_event(widget, event)
+          if (not event.state.control_mask?) and (event.keyval<60000) \
+          and (mask.is_a? String) and (mask.size>0)
+            res = (not mask.include?(event.keyval.chr))
+          end
         end
         res
       end
+      @mask = nil
+      @tooltip = nil
+      init_mask
+      if (not tooltip) and mask and (mask.size>0)
+        @tooltip = '['+mask+']'
+      end
+      self.tooltip_text = tooltip if tooltip
+    end
+    def init_mask
+      #will reinit in child
+    end
+    def key_event(widget, event)
+      false
     end
   end
 
   class IntegerEntry < MaskEntry
-    def initialize
+    def init_mask
       super
       @mask = '0123456789-'
+      self.max_length = 20
     end
   end
 
-  class FloatEntry < MaskEntry
-    def initialize
+  class FloatEntry < IntegerEntry
+    def init_mask
       super
-      @mask = '0123456789.-e'
+      @mask += '.e'
+      self.max_length = 35
     end
   end
 
   class HexEntry < MaskEntry
-    def initialize
+    def init_mask
       super
       @mask = '0123456789abcdefABCDEF'
+    end
+  end
+
+  Base64chars = [*('0'..'9'), *('a'..'z'), *('A'..'Z'), '+/=-_*[]'].join
+
+  class Base64Entry < MaskEntry
+    def init_mask
+      super
+      @mask = Base64chars
+    end
+  end
+
+  class DateEntry < MaskEntry
+    def init_mask
+      super
+      @mask = '0123456789.'
+      self.max_length = 10
+      @tooltip = 'MM.DD.YYYY'
+    end
+  end
+
+  class TimeEntry < DateEntry
+    def init_mask
+      super
+      @mask += ' :'
+      self.max_length = 16
+      @tooltip = 'MM.DD.YYYY hh:mm:ss'
+    end
+  end
+
+  MaxPanhashTabs = 5
+
+  class PanhashBox < Gtk::HBox
+    attr_accessor :types, :panclasses, :entry, :button
+    def initialize(panhash_type, *args)
+      super(*args)
+      @types = panhash_type
+      @entry = HexEntry.new
+      @button = Gtk::Button.new('...')
+      @entry.instance_variable_set('@button', @button)
+      def @entry.key_event(widget, event)
+        res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
+          and (event.keyval==65364)))
+        @button.activate if res
+        false
+      end
+      self.pack_start(entry, true, true, 0)
+      align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+      align.add(@button)
+      self.pack_start(align, false, false, 1)
+      esize = entry.size_request
+      h = esize[1]-2
+      @button.set_size_request(h, h)
+
+      #if panclasses==[]
+      #  panclasses = $panobject_list
+      #end
+
+      button.signal_connect('clicked') do |*args|
+        set_classes
+        dialog = PandoraGUI::AdvancedDialog.new(_('Choose object'))
+        dialog.set_default_size(600, 400)
+        panclasses.each_with_index do |panclass, i|
+          title = _(PandoraUtils.get_name_or_names(panclass.name, true))
+          dialog.main_sw.destroy if i==0
+          image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
+          image.set_padding(2, 0)
+          label_box2 = TabLabelBox.new(image, title, nil, false, 0)
+          sw = Gtk::ScrolledWindow.new(nil, nil)
+          page = dialog.notebook.append_page(sw, label_box2)
+          PandoraGUI.show_panobject_list(panclass, nil, sw)
+          if panclasses.size>MaxPanhashTabs
+            break
+          end
+        end
+        dialog.run do
+          panhash = nil
+          p sw = dialog.notebook.get_nth_page(dialog.notebook.page)
+          treeview = sw.children[0]
+          p treeview
+          if treeview.is_a? SubjTreeView
+            path, column = treeview.cursor
+            panobject = treeview.panobject
+            p path
+            if path and panobject
+              p store = treeview.model
+              p iter = store.get_iter(path)
+              p id = iter[0]
+              p sel = panobject.select('id='+id.to_s, false, 'panhash')
+              panhash = sel[0][0] if sel and (sel.size>0)
+            end
+          end
+          @entry.text = PandoraUtils.bytes_to_hex(panhash) if (panhash.is_a? String)
+        end
+        #yield if block_given?
+      end
+    end
+    def set_classes
+      if not panclasses
+        p '=== types='+types.inspect
+        @panclasses = []
+        @types.strip!
+        if (types.is_a? String) and (types.size>0) and (@types[0, 8].downcase=='panhash(')
+          @types = @types[8..-2]
+          @types.strip!
+          @types = @types.split(',')
+          @types.each do |ptype|
+            ptype.strip!
+            if PandoraModel.const_defined? ptype
+              panclasses << PandoraModel.const_get(ptype)
+            end
+          end
+        end
+        p 'panclasses='+panclasses.inspect
+      end
+    end
+    def max_length=(maxlen)
+      entry.max_length = maxlen
+    end
+    def text=(text)
+      entry.text = text
+    end
+    def text
+      entry.text
+    end
+    def width_request=(wr)
+      entry.set_width_request(wr)
+    end
+    def modify_text(*args)
+      entry.modify_text(*args)
+    end
+    def size_request
+      esize = entry.size_request
+      res = button.size_request
+      res[0] = esize[0]+1+res[0]
+      res
+    end
+  end
+
+  class CoordEntry < FloatEntry
+    def init_mask
+      super
+      @mask += 'EsNn SwW\'"`′″,'
+      self.max_length = 35
+    end
+  end
+
+  class CoordBox < Gtk::HBox
+    attr_accessor :latitude, :longitude
+    CoordWidth = 120
+    def initialize
+      super
+      @latitude   = CoordEntry.new
+      @longitude  = CoordEntry.new
+      latitude.width_request = CoordWidth
+      longitude.width_request = CoordWidth
+      self.pack_start(latitude, false, false, 0)
+      self.pack_start(longitude, false, false, 1)
+    end
+    def max_length=(maxlen)
+      ml = maxlen / 2
+      latitude.max_length = ml
+      longitude.max_length = ml
+    end
+    def text=(text)
+      i = nil
+      begin
+        i = text.to_i if (text.is_a? String) and (text.size>0)
+      rescue
+        i = nil
+      end
+      if i
+        coord = PandoraUtils.int_to_coord(i)
+      else
+        coord = ['', '']
+      end
+      latitude.text = coord[0].to_s
+      longitude.text = coord[1].to_s
+    end
+    def text
+      res = PandoraUtils.coord_to_int(latitude.text, longitude.text).to_s
+    end
+    def width_request=(wr)
+      w = (wr+10) / 2
+      latitude.set_width_request(w)
+      longitude.set_width_request(w)
+    end
+    def modify_text(*args)
+      latitude.modify_text(*args)
+      longitude.modify_text(*args)
+    end
+    def size_request
+      size1 = latitude.size_request
+      res = longitude.size_request
+      res[0] = size1[0]+1+res[0]
+      res
     end
   end
 
@@ -5669,7 +6029,7 @@ module PandoraGUI
 
   # Creating menu item from its description
   # RU: Создание пункта меню по его описанию
-  def self.create_menu_item(mi)
+  def self.create_menu_item(mi, treeview=nil)
     menuitem = nil
     if mi[0] == '-'
       menuitem = Gtk::SeparatorMenuItem.new
@@ -5686,12 +6046,12 @@ module PandoraGUI
       else
         menuitem = Gtk::MenuItem.new(text)
       end
-      if mi[3]
+      if (not treeview) and mi[3]
         key, mod = Gtk::Accelerator.parse(mi[3])
-        menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE)
+        menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE) if key
       end
       menuitem.name = mi[0]
-      menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget) }
+      menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget, treeview) }
     end
     menuitem
   end
@@ -5731,6 +6091,7 @@ module PandoraGUI
     treeview.name = panobject.ider
     treeview.panobject = panobject
     treeview.sel = sel
+
     tab_flds = panobject.tab_fields
     def_flds = panobject.def_fields
     def_flds.each do |df|
@@ -5791,7 +6152,12 @@ module PandoraGUI
       end
     end
     treeview.signal_connect('row_activated') do |tree_view, path, column|
-      act_panobject(tree_view, 'Edit')
+      if single
+        act_panobject(tree_view, 'Edit')
+      else
+        dialog = sw.parent.parent.parent
+        dialog.okbutton.activate
+      end
     end
 
     sw ||= Gtk::ScrolledWindow.new(nil, nil)
@@ -5801,6 +6167,7 @@ module PandoraGUI
     sw.border_width = 0;
 
     if single
+      p 'single: widget='+widget.inspect
       if widget.is_a? Gtk::ImageMenuItem
         animage = widget.image
       elsif widget.is_a? Gtk::ToolButton
@@ -5830,17 +6197,17 @@ module PandoraGUI
     end
 
     menu = Gtk::Menu.new
-    menu.append(create_menu_item(['Create', Gtk::Stock::NEW, _('Create'), 'Insert']))
-    menu.append(create_menu_item(['Edit', Gtk::Stock::EDIT, _('Edit'), 'Return']))
-    menu.append(create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete']))
-    menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert']))
-    menu.append(create_menu_item(['-', nil, nil]))
-    menu.append(create_menu_item(['Dialog', Gtk::Stock::MEDIA_PLAY, _('Dialog'), '<control>D']))
-    menu.append(create_menu_item(['Opinion', Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace']))
-    menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N']))
-    menu.append(create_menu_item(['Relate', Gtk::Stock::INDEX, _('Relate'), '<control>R']))
-    menu.append(create_menu_item(['-', nil, nil]))
-    menu.append(create_menu_item(['Clone', Gtk::Stock::CONVERT, _('Recreate the table')]))
+    menu.append(create_menu_item(['Create', Gtk::Stock::NEW, _('Create'), 'Insert'], treeview))
+    menu.append(create_menu_item(['Edit', Gtk::Stock::EDIT, _('Edit'), 'Return'], treeview))
+    menu.append(create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], treeview))
+    menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], treeview))
+    menu.append(create_menu_item(['-', nil, nil], treeview))
+    menu.append(create_menu_item(['Dialog', Gtk::Stock::MEDIA_PLAY, _('Dialog'), '<control>D'], treeview))
+    menu.append(create_menu_item(['Opinion', Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace'], treeview))
+    menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], treeview))
+    menu.append(create_menu_item(['Relate', Gtk::Stock::INDEX, _('Relate'), '<control>R'], treeview))
+    menu.append(create_menu_item(['-', nil, nil], treeview))
+    menu.append(create_menu_item(['Clone', Gtk::Stock::CONVERT, _('Recreate the table')], treeview))
     menu.show_all
 
     treeview.add_events(Gdk::Event::BUTTON_PRESS_MASK)
@@ -5849,6 +6216,25 @@ module PandoraGUI
         menu.popup(nil, nil, event.button, event.time)
       end
     end
+
+    treeview.signal_connect('key-press-event') do |widget, event|
+      res = true
+      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+        act_panobject(treeview, 'Edit')
+      elsif (event.keyval==Gdk::Keyval::GDK_Insert)
+        if event.state.control_mask?
+          act_panobject(treeview, 'Copy')
+        else
+          act_panobject(treeview, 'Create')
+        end
+      elsif (event.keyval==Gdk::Keyval::GDK_Delete)
+        act_panobject(treeview, 'Delete')
+      else
+        res = false
+      end
+      res
+    end
+
   end
 
   # Dialog with enter fields
@@ -5997,6 +6383,7 @@ module PandoraGUI
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::BOLD, 'Bold') do |*args|
         set_tag('bold')
       end
+
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::ITALIC, 'Italic') do |*args|
         set_tag('italic')
       end
@@ -6238,7 +6625,6 @@ module PandoraGUI
 
       PandoraGUI.show_panobject_list(PandoraModel::Relation, nil, sw)
 
-
       image = Gtk::Image.new(Gtk::Stock::DIALOG_AUTHENTICATION, Gtk::IconSize::MENU)
       image.set_padding(2, 0)
       label_box2 = TabLabelBox.new(image, _('Signs'), nil, false, 0)
@@ -6262,7 +6648,9 @@ module PandoraGUI
       max_label_height = 0
       @fields.each do |field|
         atext = field[FI_VFName]
+        aview = field[FI_View]
         label = Gtk::Label.new(atext)
+        label.tooltip_text = aview if aview and (aview.size>0)
         label.xalign = 0.0
         lw,lh = label.size_request
         field[FI_Label] = label
@@ -6291,10 +6679,36 @@ module PandoraGUI
         #p 'field='+field.inspect
         max_size = 0
         fld_size = 0
-        entry = Gtk::Entry.new
+        aview = field[FI_View]
+        atype = field[FI_Type]
+        entry = nil
+        case aview
+          when 'integer', 'byte', 'word'
+            entry = IntegerEntry.new
+          when 'hex'
+            entry = HexEntry.new
+          when 'real'
+            entry = FloatEntry.new
+          when 'time'
+            entry = TimeEntry.new
+          when 'date'
+            entry = DateEntry.new
+          when 'coord'
+            entry = CoordBox.new
+          when 'base64'
+            entry = Base64Entry.new
+          when 'phash', 'panhash'
+            if field[FI_Id]=='panhash'
+              entry = HexEntry.new
+              #entry.editable = false
+            else
+              entry = PanhashBox.new(atype)
+            end
+          else
+            entry = Gtk::Entry.new
+        end
         @def_widget ||= entry
         begin
-          atype = field[FI_Type]
           def_size = 10
           case atype
             when 'Integer'
@@ -6311,21 +6725,23 @@ module PandoraGUI
           fld_size = field[FI_FSize].to_i if field[FI_FSize]
           #p 'fld_size='+fld_size.inspect
           max_size = field[FI_Size].to_i
-          fld_size = def_size if fld_size<=0
+          max_size = fld_size if (max_size==0)
+          #p 'max_size1='+max_size.inspect
+          fld_size = def_size if (fld_size<=0)
           max_size = fld_size if (max_size<fld_size) and (max_size>0)
-          #p 'max_size='+max_size.inspect
+          #p 'max_size2='+max_size.inspect
         rescue
           #p 'FORM rescue [fld_size, max_size, def_size]='+[fld_size, max_size, def_size].inspect
           fld_size = def_size
         end
         #p 'Final [fld_size, max_size]='+[fld_size, max_size].inspect
         #entry.width_chars = fld_size
-        entry.max_length = max_size
+        entry.max_length = max_size if max_size>0
         color = field[FI_Color]
         if color
           color = Gdk::Color.parse(color)
         else
-          color = $window.modifier_style.fg(Gtk::STATE_NORMAL)
+          color = nil
         end
         #entry.modify_fg(Gtk::STATE_ACTIVE, color)
         entry.modify_text(Gtk::STATE_NORMAL, color)
@@ -6334,6 +6750,7 @@ module PandoraGUI
         ew = form_width if ew > form_width
         entry.width_request = ew
         ew,eh = entry.size_request
+        #p '[view, ew,eh]='+[aview, ew,eh].inspect
         field[FI_Widget] = entry
         field[FI_WidW] = ew
         field[FI_WidH] = eh
@@ -6467,7 +6884,7 @@ module PandoraGUI
             end
             field_matrix << row if row != []
             mw, mh = [mw, rw].max, mh+rh
-            if (mh>form_height)
+            if (mh>form_height) or (mw>form_width)
               #step = 2
               step = 5
             end
@@ -6753,7 +7170,7 @@ module PandoraGUI
         iter = store.get_iter(path)
         id = iter[0]
         sel = panobject.select('id='+id.to_s, true)
-        p 'panobject.namesvalues='+panobject.namesvalues.inspect
+        #p 'panobject.namesvalues='+panobject.namesvalues.inspect
         #p 'panobject.matter_fields='+panobject.matter_fields.inspect
         panhash0 = panobject.namesvalues['panhash']
         lang = panhash0[1].ord if panhash0 and panhash0.size>1
@@ -6815,6 +7232,7 @@ module PandoraGUI
               ps = PandoraUtils.decode_param_setting(setting)
               view = ps['view']
               view ||= PandoraUtils.pantype_to_view(type)
+              field[FI_View] = view
             end
           end
 
@@ -8835,7 +9253,8 @@ module PandoraGUI
   end  #--CaptchaHPaned
 
   class MainWindow < Gtk::Window
-    attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, :cvpaned, :pool
+    attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
+      :cvpaned, :pool
 
     include PandoraUtils
 
@@ -8895,7 +9314,7 @@ module PandoraGUI
 
     # Menu event handler
     # RU: Обработчик события меню
-    def do_menu_act(command)
+    def do_menu_act(command, treeview=nil)
       widget = nil
       if not command.is_a? String
         widget = command
@@ -8913,19 +9332,20 @@ module PandoraGUI
             close_btn = tab.children[tab.children.size-1].children[0]
             close_btn.clicked
           end
-        when 'Create','Edit','Delete','Copy', 'Dialog'
-          if notebook.page >= 0
+        when 'Create','Edit','Delete','Copy', 'Dialog', 'Clone'
+          if (not treeview) and (notebook.page >= 0)
             sw = notebook.get_nth_page(notebook.page)
             treeview = sw.children[0]
-            PandoraGUI.act_panobject(treeview, command) if treeview.is_a? SubjTreeView
           end
-        when 'Clone'
-          if notebook.page >= 0
-            sw = notebook.get_nth_page(notebook.page)
-            treeview = sw.children[0]
-            panobject = treeview.panobject
-            panobject.update(nil, nil, nil)
-            panobject.class.tab_fields(true)
+          if treeview and (treeview.is_a? SubjTreeView)
+            if command=='Clone'
+              panobject = treeview.panobject
+              panobject.update(nil, nil, nil)
+              panobject.class.tab_fields(true)
+            else
+              p treeview
+              PandoraGUI.act_panobject(treeview, command)
+            end
           end
         when 'Listen'
           PandoraNet.start_or_stop_listen
@@ -9053,7 +9473,6 @@ module PandoraGUI
       ]
 
     def fill_menubar(menubar)
-      $group = Gtk::AccelGroup.new
       menu = nil
       MENU_ITEMS.each do |mi|
         if mi[0]==nil or menu==nil
@@ -9066,7 +9485,6 @@ module PandoraGUI
           menu.append(menuitem)
         end
       end
-      $window.add_accel_group($group)
     end
 
     def fill_toolbar(toolbar)
@@ -9124,6 +9542,9 @@ module PandoraGUI
         $window.icon = main_icon
         Gtk::Window.default_icon = $window.icon
       end
+
+      $group = Gtk::AccelGroup.new
+      $window.add_accel_group($group)
 
       menubar = Gtk::MenuBar.new
       fill_menubar(menubar)

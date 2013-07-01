@@ -21,7 +21,7 @@
       <first_name name="Name" type="String" size="30" hash="1:hash(3)" />
       <last_name name="Family" type="String" size="35" hash="2:hash(6)" />
       <birth_day name="Birth day" type="Date" hash="3:date(3)" />
-      <birth_place name="Birth place" type="Panhash(City)" hash="4:panhash(4)" />
+      <birth_place name="Birth place" type="Panhash(City)" hash="4:phash(4)" />
       <father_name name="Father name" type="String" size="35" hash="5:hash(2)" />
       <mother_name name="Mother name" type="String" size="35" hash="6:hash(2)" />
       <sex name="Sex" type="Byte" />

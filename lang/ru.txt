@@ -190,3 +190,4 @@ Your panhash=>Ваш панхэш
 Panhash must consist of 44 symbols=>Панхэш должен содержать 44 символа
 Enter at least one node=>Введите хотя бы один узел
 Note=>Заметка
+Choose object=>Выберите объект
