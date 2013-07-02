@@ -1101,8 +1101,11 @@ module PandoraUtils
         if (fd.is_a? Array) and fd[FI_Type]
           type = fd[FI_Type].to_s
           case type
-            when 'Integer', 'Time', 'Coord'
+            when 'Integer', 'Time'
               hash = 'integer'
+              len = 4
+            when 'Coord'
+              hash = 'coord'
               len = 4
             when 'Byte'
               hash = 'byte'
@@ -1428,12 +1431,26 @@ module PandoraUtils
       res = nil
       #fval = [fval].pack('C*') if fval.is_a? Fixnum
       #p 'fval='+fval.inspect+'  hfor='+hfor.inspect
-      if fval and (not (fval.is_a? String) or (fval != ''))
+      if fval and ((not (fval.is_a? String)) or (fval.bytesize>0))
         #p 'fval='+fval.inspect+'  hfor='+hfor.inspect
         hfor = 'integer' if (not hfor or hfor=='') and (fval.is_a? Integer)
         hfor = 'hash' if ((hfor=='') or (hfor=='text')) and (fval.is_a? String) and (fval.size>20)
         if ['integer', 'word', 'byte', 'lang', 'coord'].include? hfor
-          if not (fval.is_a? Integer)
+          if hfor == 'coord'
+            if fval.is_a? String
+              fval = PandoraUtils.bytes_to_bigint(fval[2,4])
+            end
+            if fval==0x7ffe4d8e
+              fval = 0
+            else
+              fval = fval.to_i
+              coord = PandoraUtils.int_to_coord(fval)
+              coord[0] = PandoraUtils.simplefy_coord(coord[0])
+              coord[1] = PandoraUtils.simplefy_coord(coord[1])
+              fval = PandoraUtils.coord_to_int(*coord)
+              fval = 1 if fval==0
+            end
+          elsif not (fval.is_a? Integer)
             fval = fval.to_i
           end
           res = fval
@@ -1951,6 +1968,7 @@ module PandoraUtils
           text = text[0..-2]
           text.strip!
         end
+        #text = text[1..-1] if ('NEne'.include? text[0])
         if text.size>0
           text.gsub!('′', "'")
           text.gsub!('″', '"')
@@ -1959,6 +1977,8 @@ module PandoraUtils
           text.gsub!(',', ".")
         end
         deg = nil
+        text = text[/[ 1234567890'\.]+/]
+        text.strip!
         i = text.index(" ")
         if i
           begin
@@ -1968,7 +1988,6 @@ module PandoraUtils
           end
           text = text[i+1..-1]
         end
-        text = text[/[1234567890\.']*/]
         i = text.index("'")
         if i
           d = 0
@@ -2041,7 +2060,7 @@ module PandoraUtils
   def self.coord_to_int(y, x)
     begin
       x = text_coord_to_float(x)
-      while x>360
+      while x>180
         x = x-360.0
       end
       while x<(-180)
@@ -2053,14 +2072,25 @@ module PandoraUtils
     end
     begin
       y = text_coord_to_float(y)
+      while y.abs>90
+        if y>90
+          y = 180.0-y
+        end
+        while y<(-90)
+          y = -(180.0+y)
+        end
+      end
       y = y + 90.0
     rescue
       y = 0
     end
-    p [x, y]
+    if (y==0) or (x==0)
+      x = 360
+    end
     xp = (MultX * x.fdiv(DegX)).round
     yp = (MultY * y.fdiv(DegY)).round
-    MultX*(yp-1)+xp
+    res = MultX*(yp-1)+xp
+    res
   end
 
   def self.int_to_coord(int)
@@ -2068,7 +2098,14 @@ module PandoraUtils
     s = int - (h-1)*MultX
     x = s.fdiv(MultX)*DegX - 180.0
     y = h.fdiv(MultY)*DegY - 90.0
-    [y.round(2), x.round(2)]
+    x = x.round(2)
+    x = 180.0 if (x==(-180.0))
+    y = y.round(2)
+    [y, x]
+  end
+
+  def self.simplefy_coord(val)
+    val = val.round(1)
   end
 
   class RoundQueue < Mutex
@@ -2584,7 +2621,7 @@ module PandoraModel
         res << [kind].pack('C') if with_kind
         res << [lang].pack('C')
         p 'get_record_by_panhash|||  fields='+fields.inspect
-        res << namehash_to_pson(fields)
+        res << PandoraUtils.namehash_to_pson(fields)
       else
         res = true
       end
@@ -3131,90 +3168,121 @@ module PandoraCrypto
   KR_Sign      = 2
 
   def self.current_key(switch_key=false, need_init=true)
+    def self.read_key(panhash, passwd, key_model)
+      key_vec = nil
+      cipher = nil
+      if panhash and (panhash != '')
+        filter = {:panhash => panhash}
+        sel = key_model.select(filter, false)
+        if sel and (sel.size>1)
+          kind0 = key_model.field_val('kind', sel[0])
+          kind1 = key_model.field_val('kind', sel[1])
+          body0 = key_model.field_val('body', sel[0])
+          body1 = key_model.field_val('body', sel[1])
+
+          type0, klen0 = divide_type_and_klen(kind0)
+          cipher = 0
+          if type0==KT_Priv
+            priv = body0
+            pub = body1
+            kind = kind1
+            cipher = key_model.field_val('cipher', sel[0])
+            creator = key_model.field_val('creator', sel[0])
+          else
+            priv = body1
+            pub = body0
+            kind = kind0
+            cipher = key_model.field_val('cipher', sel[1])
+            creator = key_model.field_val('creator', sel[1])
+          end
+          key_vec = Array.new
+          key_vec[KV_Key1] = pub
+          key_vec[KV_Key2] = priv
+          key_vec[KV_Kind] = kind
+          key_vec[KV_Pass] = passwd
+          key_vec[KV_Panhash] = panhash
+          key_vec[KV_Creator] = creator
+          cipher ||= 0
+        end
+      end
+      [key_vec, cipher]
+    end
+
     key_vec = self.the_current_key
     if key_vec and switch_key
       key_vec = reset_current_key
     elsif (not key_vec) and need_init
-      try = true
-      while try
-        try = false
+      getting = true
+      last_auth_key = PandoraUtils.get_param('last_auth_key')
+      last_auth_key0 = last_auth_key
+      if last_auth_key.is_a? Integer
+        last_auth_key = AsciiString.new(PandoraUtils.bigint_to_bytes(last_auth_key))
+      end
+      passwd = nil
+      key_model = PandoraUtils.get_model('Key')
+      while getting
         creator = nil
-        key_model = PandoraUtils.get_model('Key')
-        last_auth_key = PandoraUtils.get_param('last_auth_key')
-        if last_auth_key.is_a? Integer
-          last_auth_key = AsciiString.new(PandoraUtils.bigint_to_bytes(last_auth_key))
-        end
-        if last_auth_key and (last_auth_key != '')
-          filter = {:panhash => last_auth_key}
-          sel = key_model.select(filter, false)
-          #p 'curkey  sel='+sel.inspect
-          if sel and (sel.size>1)
+        filter = {:kind => 0xF}
+        sel = key_model.select(filter, false)
+        if sel and (sel.size>0)
+          getting = false
+          key_vec, cipher = read_key(last_auth_key, passwd, key_model)
+          if (not key_vec) or (not cipher) or (cipher != 0)
+            dialog = PandoraGUI::AdvancedDialog.new(_('Key init'))
+            dialog.set_default_size(420, 190)
 
-            kind0 = key_model.field_val('kind', sel[0])
-            kind1 = key_model.field_val('kind', sel[1])
-            body0 = key_model.field_val('body', sel[0])
-            body1 = key_model.field_val('body', sel[1])
+            vbox = Gtk::VBox.new
+            dialog.viewport.add(vbox)
 
-            type0, klen0 = divide_type_and_klen(kind0)
-            cipher = 0
-            if type0==KT_Priv
-              priv = body0
-              pub = body1
-              kind = kind1
-              cipher = key_model.field_val('cipher', sel[0])
-              creator = key_model.field_val('creator', sel[0])
+            label = Gtk::Label.new(_('Key'))
+            vbox.pack_start(label, false, false, 2)
+            key_entry = PandoraGUI::PanhashBox.new('Panhash(Key)')
+            key_entry.text = PandoraUtils.bytes_to_hex(last_auth_key)
+            #key_entry.editable = false
+            vbox.pack_start(key_entry, false, false, 2)
+
+            label = Gtk::Label.new(_('Password'))
+            vbox.pack_start(label, false, false, 2)
+            pass_entry = Gtk::Entry.new
+            pass_entry.visibility = false
+            pass_entry.width_request = 200
+            align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+            align.add(pass_entry)
+            vbox.pack_start(align, false, false, 2)
+            vbox.pack_start(pass_entry, false, false, 2)
+            if key_entry.text == ''
+              dialog.def_widget = key_entry.entry
             else
-              priv = body1
-              pub = body0
-              kind = kind0
-              cipher = key_model.field_val('cipher', sel[1])
-              creator = key_model.field_val('creator', sel[1])
+              dialog.def_widget = pass_entry
             end
-            cipher ||= 0
 
-            passwd = nil
-            if cipher != 0
-              dialog = PandoraGUI::AdvancedDialog.new(_('Key init'))
-              dialog.set_default_size(400, 190)
-
-              vbox = Gtk::VBox.new
-              dialog.viewport.add(vbox)
-
-              label = Gtk::Label.new(_('Key'))
-              vbox.pack_start(label, false, false, 2)
-              entry = Gtk::Entry.new
-              entry.text = PandoraUtils.bytes_to_hex(last_auth_key)
-              entry.editable = false
-              vbox.pack_start(entry, false, false, 2)
-
-              label = Gtk::Label.new(_('Password'))
-              vbox.pack_start(label, false, false, 2)
-              entry = Gtk::Entry.new
-              entry.visibility = false
-              vbox.pack_start(entry, false, false, 2)
-              dialog.def_widget = entry
-
-              try = true
-              dialog.run do
-                passwd = entry.text
-                try = false
+            key_vec0 = key_vec
+            key_vec = nil
+            dialog.run do
+              if dialog.response == 3
+                getting = true
+              else
+                passwd = pass_entry.text
+                panhash = PandoraUtils.hex_to_bytes(key_entry.text)
+                key_vec = key_vec0
+                if (last_auth_key != panhash) or (not key_vec)
+                  last_auth_key = panhash
+                  key_vec, cipher = read_key(last_auth_key, passwd, key_model)
+                  if not key_vec
+                    getting = true
+                    key_vec = []
+                  end
+                else
+                  key_vec[KV_Pass] = passwd
+                end
               end
-            end
-
-            if not try
-              key_vec = Array.new
-              key_vec[KV_Key1] = pub
-              key_vec[KV_Key2] = priv
-              key_vec[KV_Kind] = kind
-              key_vec[KV_Pass] = passwd
-              key_vec[KV_Panhash] = last_auth_key
-              key_vec[KV_Creator] = creator
             end
           end
         end
-        if (not key_vec) and (not try)
+        if (not key_vec) and getting
+          getting = false
           dialog = PandoraGUI::AdvancedDialog.new(_('Key generation'))
-          dialog.set_default_size(400, 250)
+          dialog.set_default_size(420, 250)
 
           vbox = Gtk::VBox.new
           dialog.viewport.add(vbox)
@@ -3222,7 +3290,7 @@ module PandoraCrypto
           #creator = PandoraUtils.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
           label = Gtk::Label.new(_('Your panhash'))
           vbox.pack_start(label, false, false, 2)
-          user_entry = Gtk::Entry.new
+          user_entry = PandoraGUI::PanhashBox.new('Panhash(Person)')
           #user_entry.text = PandoraUtils.bytes_to_hex(creator)
           vbox.pack_start(user_entry, false, false, 2)
 
@@ -3236,9 +3304,13 @@ module PandoraCrypto
           label = Gtk::Label.new(_('Password'))
           vbox.pack_start(label, false, false, 2)
           pass_entry = Gtk::Entry.new
+          pass_entry.width_request = 250
+          align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+          align.add(pass_entry)
+          vbox.pack_start(align, false, false, 2)
           vbox.pack_start(pass_entry, false, false, 2)
 
-          dialog.def_widget = pass_entry
+          dialog.def_widget = user_entry.entry
 
           dialog.run do
             creator = PandoraUtils.hex_to_bytes(user_entry.text)
@@ -3287,7 +3359,7 @@ module PandoraCrypto
                 res = key_model.update(values, nil, nil)
                 if res
                   #p 'last_auth_key='+panhash.inspect
-                  PandoraUtils.set_param('last_auth_key', panhash)
+                  last_auth_key = panhash
                 end
               end
             else
@@ -3299,29 +3371,31 @@ module PandoraCrypto
               dialog.default_response = Gtk::Dialog::RESPONSE_OK
               dialog.icon = $window.icon
               if (dialog.run == Gtk::Dialog::RESPONSE_OK)
-                $window.do_menu_act('Person')
+                PandoraGUI.show_panobject_list(PandoraModel::Person, nil, nil, true)
               end
               dialog.destroy
             end
           end
         end
-        try = false
-        if key_vec
+        if key_vec and (key_vec != [])
           key_vec = init_key(key_vec)
           #p 'key_vec='+key_vec.inspect
           if key_vec and key_vec[KV_Obj]
             self.the_current_key = key_vec
             $window.set_status_field(PandoraGUI::SF_Auth, 'Logged', nil, true)
-          elsif last_auth_key
+            if last_auth_key0 != last_auth_key
+              PandoraUtils.set_param('last_auth_key', last_auth_key)
+            end
+          else
             dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
               Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-              _('Bad password. Try again?')+"\n[" +PandoraUtils.bytes_to_hex(last_auth_key[2,16])+']')
+              _('Cannot activate key. Try again?')+"\n[" +PandoraUtils.bytes_to_hex(last_auth_key[2,16])+']')
             dialog.title = _('Key init')
             dialog.default_response = Gtk::Dialog::RESPONSE_OK
             dialog.icon = $window.icon
-            try = (dialog.run == Gtk::Dialog::RESPONSE_OK)
+            getting = (dialog.run == Gtk::Dialog::RESPONSE_OK)
             dialog.destroy
-            key_vec = deactivate_key(key_vec) if (not try)
+            key_vec = deactivate_key(key_vec) if (not getting)
           end
         else
           key_vec = deactivate_key(key_vec)
@@ -3618,9 +3692,9 @@ module PandoraNet
       session
     end
 
-    def session_of_dialog(dialog)
-      session = sessions.find { |e| (e.dialog == dialog) }
-      session
+    def sessions_on_dialog(dialog)
+      dlg_sessions = sessions.select { |e| (e.dialog == dialog) }
+      dlg_sessions
     end
   end
 
@@ -4251,10 +4325,10 @@ module PandoraNet
         abase_id = sbase_id if (not abase_id) or (abase_id=='')
         akey_hash = skey_panhash if (not akey_hash) or (akey_hash=='')
 
-        adomain = @host_name if (not adomain) or (adomain=='')
+        #adomain = @host_name if (not adomain) or (adomain=='')
         adomain = aaddr if (not adomain) or (adomain=='')
-        aaddr = @host_ip if (not aaddr) or (aaddr=='')
-        adomain = @host_ip if (not adomain) or (adomain=='')
+        aaddr = @host_ip if ((not aaddr) or (aaddr=='')) and adomain and (adomain != '')
+        #adomain = @host_ip if (not adomain) or (adomain=='')
 
         values[:base_id] = abase_id
         values[:key_hash] = akey_hash
@@ -5415,9 +5489,8 @@ module PandoraNet
           dialog.title = _('Note')
           dialog.default_response = Gtk::Dialog::RESPONSE_OK
           dialog.icon = $window.icon
-          try = (dialog.run == Gtk::Dialog::RESPONSE_OK)
-          if try
-            $window.do_menu_act('Node')
+          if (dialog.run == Gtk::Dialog::RESPONSE_OK)
+            PandoraGUI.show_panobject_list(PandoraModel::Node, nil, nil, true)
           end
           dialog.destroy
         end
@@ -5880,6 +5953,7 @@ module PandoraGUI
         set_classes
         dialog = PandoraGUI::AdvancedDialog.new(_('Choose object'))
         dialog.set_default_size(600, 400)
+        auto_create = true
         panclasses.each_with_index do |panclass, i|
           title = _(PandoraUtils.get_name_or_names(panclass.name, true))
           dialog.main_sw.destroy if i==0
@@ -5888,25 +5962,24 @@ module PandoraGUI
           label_box2 = TabLabelBox.new(image, title, nil, false, 0)
           sw = Gtk::ScrolledWindow.new(nil, nil)
           page = dialog.notebook.append_page(sw, label_box2)
-          PandoraGUI.show_panobject_list(panclass, nil, sw)
+          auto_create = PandoraGUI.show_panobject_list(panclass, nil, sw, auto_create)
           if panclasses.size>MaxPanhashTabs
             break
           end
         end
+        dialog.notebook.page = 0
         dialog.run do
           panhash = nil
-          p sw = dialog.notebook.get_nth_page(dialog.notebook.page)
+          sw = dialog.notebook.get_nth_page(dialog.notebook.page)
           treeview = sw.children[0]
-          p treeview
           if treeview.is_a? SubjTreeView
             path, column = treeview.cursor
             panobject = treeview.panobject
-            p path
             if path and panobject
-              p store = treeview.model
-              p iter = store.get_iter(path)
-              p id = iter[0]
-              p sel = panobject.select('id='+id.to_s, false, 'panhash')
+              store = treeview.model
+              iter = store.get_iter(path)
+              id = iter[0]
+              sel = panobject.select('id='+id.to_s, false, 'panhash')
               panhash = sel[0][0] if sel and (sel.size>0)
             end
           end
@@ -5917,7 +5990,7 @@ module PandoraGUI
     end
     def set_classes
       if not panclasses
-        p '=== types='+types.inspect
+        #p '=== types='+types.inspect
         @panclasses = []
         @types.strip!
         if (types.is_a? String) and (types.size>0) and (@types[0, 8].downcase=='panhash(')
@@ -5931,7 +6004,7 @@ module PandoraGUI
             end
           end
         end
-        p 'panclasses='+panclasses.inspect
+        #p 'panclasses='+panclasses.inspect
       end
     end
     def max_length=(maxlen)
@@ -6020,7 +6093,7 @@ module PandoraGUI
   # Tree of panobjects
   # RU: Дерево субъектов
   class SubjTreeView < Gtk::TreeView
-    attr_accessor :panobject, :sel, :notebook
+    attr_accessor :panobject, :sel, :notebook, :auto_create
   end
 
   class SubjTreeViewColumn < Gtk::TreeViewColumn
@@ -6046,6 +6119,7 @@ module PandoraGUI
       else
         menuitem = Gtk::MenuItem.new(text)
       end
+      #if mi[3]
       if (not treeview) and mi[3]
         key, mod = Gtk::Accelerator.parse(mi[3])
         menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE) if key
@@ -6058,7 +6132,7 @@ module PandoraGUI
 
   # Showing panobject list
   # RU: Показ списка субъектов
-  def self.show_panobject_list(panobject_class, widget=nil, sw=nil)
+  def self.show_panobject_list(panobject_class, widget=nil, sw=nil, auto_create=false)
     notebook = $window.notebook
     single = (sw == nil)
     if single
@@ -6166,6 +6240,17 @@ module PandoraGUI
     sw.add(treeview)
     sw.border_width = 0;
 
+    if auto_create and sel and (sel.size==0)
+      treeview.auto_create = true
+      treeview.signal_connect('map') do |widget, event|
+        if treeview.auto_create
+          act_panobject(treeview, 'Create')
+          treeview.auto_create = false
+        end
+      end
+      auto_create = false
+    end
+
     if single
       p 'single: widget='+widget.inspect
       if widget.is_a? Gtk::ImageMenuItem
@@ -6229,12 +6314,19 @@ module PandoraGUI
         end
       elsif (event.keyval==Gdk::Keyval::GDK_Delete)
         act_panobject(treeview, 'Delete')
+      elsif event.state.control_mask?
+        if [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
+          act_panobject(treeview, 'Dialog')
+        else
+          res = false
+        end
       else
         res = false
       end
       res
     end
 
+    auto_create
   end
 
   # Dialog with enter fields
@@ -7153,8 +7245,13 @@ module PandoraGUI
       panobj_icon
     end
 
-    path, column = tree_view.cursor
-    new_act = action == 'Create'
+    path = nil
+    if tree_view.destroyed?
+      new_act = false
+    else
+      path, column = tree_view.cursor
+      new_act = action == 'Create'
+    end
     if path or new_act
       panobject = tree_view.panobject
       store = tree_view.model
@@ -7756,7 +7853,7 @@ module PandoraGUI
   def self.find_active_sender(not_this=nil)
     res = nil
     $window.notebook.children.each do |child|
-      if (child != not_this) and (child.is_a? TalkScrolledWindow) and child.vid_button.active?
+      if (child != not_this) and (child.is_a? DialogScrollWin) and child.vid_button.active?
         return child
       end
     end
@@ -7783,7 +7880,7 @@ module PandoraGUI
 
   # Talk dialog
   # RU: Диалог разговора
-  class TalkScrolledWindow < Gtk::ScrolledWindow
+  class DialogScrollWin < Gtk::ScrolledWindow
     attr_accessor :room_id, :connset, :online_button, :snd_button, :vid_button, :talkview, \
       :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :send_display_handler, :recv_display_handler
@@ -8118,8 +8215,8 @@ module PandoraGUI
           res1 = model.update(values, nil, nil)
           res = (res or res1)
         end
-        session = $window.pool.session_of_dialog(self)
-        if session
+        dlg_sessions = $window.pool.sessions_on_dialog(self)
+        dlg_sessions.each |session|
           session.send_state = (session.send_state | PandoraNet::CSF_Message)
         end
       end
@@ -8135,7 +8232,7 @@ module PandoraGUI
       if tab_widget
         curpage ||= $window.notebook.get_nth_page($window.notebook.page)
         # interrupt reading thread (if exists)
-        if $last_page and ($last_page.is_a? TalkScrolledWindow) \
+        if $last_page and ($last_page.is_a? DialogScrollWin) \
         and $last_page.read_thread and (curpage != $last_page)
           $last_page.read_thread.exit
           $last_page.read_thread = nil
@@ -8178,7 +8275,7 @@ module PandoraGUI
           end
         end
         # set focus to editbox
-        if curpage and (curpage.is_a? TalkScrolledWindow) and curpage.editbox
+        if curpage and (curpage.is_a? DialogScrollWin) and curpage.editbox
           if not timer_setted
             Thread.new do
               sleep(0.3)
@@ -8914,8 +9011,7 @@ module PandoraGUI
         end
       end
     end
-
-  end  #--class TalkDialog
+  end  #--class DialogScrollWin
 
   # Show conversation dialog
   # RU: Показать диалог общения
@@ -8957,7 +9053,7 @@ module PandoraGUI
       end
       p 'room_id='+room_id.inspect
       $window.notebook.children.each do |child|
-        if (child.is_a? TalkScrolledWindow) and (child.room_id==room_id)
+        if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
           $window.notebook.page = $window.notebook.children.index(child) if not known_node
           child.room_id = room_id
           child.connset = connset
@@ -8967,7 +9063,7 @@ module PandoraGUI
       end
 
       title = consctruct_room_title(connset[CSI_Persons])
-      sw = TalkScrolledWindow.new(known_node, room_id, connset, title)
+      sw = DialogScrollWin.new(known_node, room_id, connset, title)
     end
     sw
   end
@@ -9096,7 +9192,7 @@ module PandoraGUI
           page = $window.notebook.page
           if (page >= 0)
             cur_page = $window.notebook.get_nth_page(page)
-            if cur_page.is_a? PandoraGUI::TalkScrolledWindow
+            if cur_page.is_a? PandoraGUI::DialogScrollWin
               cur_page.update_state(false, cur_page)
             end
           else
@@ -9343,7 +9439,6 @@ module PandoraGUI
               panobject.update(nil, nil, nil)
               panobject.class.tab_fields(true)
             else
-              p treeview
               PandoraGUI.act_panobject(treeview, command)
             end
           end
@@ -9556,11 +9651,11 @@ module PandoraGUI
       @notebook = Gtk::Notebook.new
       notebook.signal_connect('switch-page') do |widget, page, page_num|
         cur_page = notebook.get_nth_page(page_num)
-        if $last_page and (cur_page != $last_page) and ($last_page.is_a? PandoraGUI::TalkScrolledWindow)
+        if $last_page and (cur_page != $last_page) and ($last_page.is_a? PandoraGUI::DialogScrollWin)
           $last_page.init_video_sender(false, true) if not $last_page.area_send.destroyed?
           $last_page.init_video_receiver(false) if not $last_page.area_recv.destroyed?
         end
-        if cur_page.is_a? PandoraGUI::TalkScrolledWindow
+        if cur_page.is_a? PandoraGUI::DialogScrollWin
           cur_page.update_state(false, cur_page)
           cur_page.init_video_receiver(true, true, false) if not cur_page.area_recv.destroyed?
           cur_page.init_video_sender(true, true) if not cur_page.area_send.destroyed?
@@ -9652,7 +9747,7 @@ module PandoraGUI
         then
           if notebook.page >= 0
             sw = notebook.get_nth_page(notebook.page)
-            if sw.is_a? TalkScrolledWindow
+            if sw.is_a? DialogScrollWin
               sw.init_video_sender(false, true) if not sw.area_send.destroyed?
               sw.init_video_receiver(false) if not sw.area_recv.destroyed?
             end
