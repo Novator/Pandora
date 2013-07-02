@@ -8216,7 +8216,7 @@ module PandoraGUI
           res = (res or res1)
         end
         dlg_sessions = $window.pool.sessions_on_dialog(self)
-        dlg_sessions.each |session|
+        dlg_sessions.each do |session|
           session.send_state = (session.send_state | PandoraNet::CSF_Message)
         end
       end
