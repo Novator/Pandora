@@ -3340,8 +3340,10 @@ module PandoraCrypto
               dialog.def_widget = pass_entry
             end
 
-            gen_button = Gtk::Button.new(_('Generate'))
-            gen_button.width_request = 110
+            gen_button = Gtk::ToolButton.new(Gtk::Stock::NEW, _('New'))
+            gen_button.tooltip_text = _('Generate')
+
+            #gen_button.width_request = 110
             gen_button.signal_connect('clicked') { |*args| dialog.response=3 }
             dialog.hbox.pack_start(gen_button, false, false, 0)
 
@@ -3787,6 +3789,16 @@ module PandoraNet
       session
     end
 
+    def session_of_key(key)
+      session = sessions.find { |e| (e.skey[PandoraCrypto::KV_Panhash] == key) }
+      session
+    end
+
+    def session_of_person(person)
+      session = sessions.find { |e| (e.skey[PandoraCrypto::KV_Creator] == person) }
+      session
+    end
+
     def sessions_on_dialog(dialog)
       dlg_sessions = sessions.select { |e| (e.dialog == dialog) }
       dlg_sessions
@@ -3840,24 +3852,14 @@ module PandoraNet
                 session = nil
                 begin
                   socket = TCPSocket.open(host, port)
-                  session = Session.new(socket, host, socket.addr[2], port, proto, node, CM_Hunter, CS_Connected, node_id)
-                  session.send_state = (session.send_state | send_state_add)
-                  session.dialog = dialog
-                rescue
-                  socket = nil
-                  log_message(LM_Warning, "Не удается подключиться к: "+host+':'+port.to_s)
-                end
-                if dialog and dialog.online_button
-                  dialog.online_button.active = (socket and (not socket.closed?))
-                end
-                if socket
-                  session.node = encode_node(session.host_ip, session.port, session.proto)
                   log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
-                  session.start_exchange_cicle(Thread.current, keybase)
+                  session = Session.new(socket, host, socket.addr[2], port, proto, CM_Hunter, \
+                    CS_Connected, Thread.current, node_id, dialog, keybase, send_state_add)
                   socket.close if not socket.closed?
                   log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
+                rescue
+                  log_message(LM_Warning, "Не удается подключиться к: "+host+':'+port.to_s)
                 end
-                del_session(session)
               end
             end
           end
@@ -4082,7 +4084,7 @@ module PandoraNet
       #:read_req, :send_mes, :send_media, :send_req, :read_mes, :read_media,
       :sindex, :rindex, :read_queue, :send_queue, :params,
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode,
-      :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw
+      :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes
 
     def set_keepalive(client)
       client.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, $keep_alive)
@@ -4093,37 +4095,6 @@ module PandoraNet
 
     def pool
       $window.pool
-    end
-
-    def initialize(asocket, ahost_name, ahost_ip, aport, aproto, node, aconn_mode=0, \
-    aconn_state=CS_Disconnected, anode_id=nil)
-      super()
-      @socket = asocket
-      @stage         = ST_Protocol  #ST_IpCheck
-      @host_name     = ahost_name
-      @host_ip       = ahost_ip
-      @port          = aport
-      @proto         = aproto
-      @node          = node
-      @conn_mode     = aconn_mode
-      @conn_state    = aconn_state
-      @conn_state    ||= CS_Connecting
-      @read_state     = 0
-      @send_state     = 0
-      @sindex         = 0
-      @rindex         = 0
-      @read_queue     = PandoraUtils::RoundQueue.new
-      @send_queue     = PandoraUtils::RoundQueue.new
-      @send_models    = {}
-      @recv_models    = {}
-      @params         = {}
-      @media_send     = false
-      @node_id        = anode_id
-      @node_panhash   = nil
-      pool.add_session(self)
-      if @socket
-        set_keepalive(@socket)
-      end
     end
 
     def unpack_comm(comm)
@@ -4644,14 +4615,23 @@ module PandoraNet
         password
       end
 
-      def get_fisher_by_hole(hole)
-        fisher = nil
-        fisher = @fishers[hole] if hole
-        fisher
+      def get_fish_by_line(line)
+        fish = nil
+        fish = @fishes[line] if line
+        fish
       end
 
-      def process_line_segment(hole, segment)
-        get_fisher_by_hole(hole)
+      def process_line_segment(line, segment)
+        res = nil
+        session = get_fish_by_line(line)
+        if not session
+          session = Session.new(nil, nil, nil, port, proto, CM_Hunter, CS_Connected, \
+            Thread.current, node_id, dialog, keybase)
+        end
+        if session
+          res = session.add_segment_to_recv_queue(segment)
+        end
+        res
       end
 
       case rcmd
@@ -5079,9 +5059,9 @@ module PandoraNet
               @r_encode = true
           end
         when EC_Line
-          process_line_segment(rcode, rdata)
-          err_scmd('Pipe still doesn''t work')
           p "EC_Line"
+          line = rcode
+          process_line_segment(line, rdata)
         when EC_Bye
           if rcode != ECC_Bye_Exit
             mes = rdata
@@ -5127,7 +5107,43 @@ module PandoraNet
 
     # Start two exchange cicle of socket: read and send
     # RU: Запускает два цикла обмена сокета: чтение и отправка
-    def start_exchange_cicle(a_send_thread, tokey=nil)
+    def initialize(asocket, ahost_name, ahost_ip, aport, aproto, aconn_mode, \
+    aconn_state, a_send_thread, anode_id, a_dialog, tokey, send_state_add)
+      super()
+      @socket = asocket
+      @stage         = ST_Protocol  #ST_IpCheck
+      @host_name     = ahost_name
+      @host_ip       = ahost_ip
+      @port          = aport
+      @proto         = aproto
+      @node          = pool.encode_node(@host_ip, @port, @proto)
+      @conn_mode     = aconn_mode
+      @conn_state    = aconn_state
+      @conn_state    ||= CS_Connecting
+      @read_state     = 0
+      send_state_add ||= 0
+      @send_state     = send_state_add
+      @sindex         = 0
+      @rindex         = 0
+      @read_queue     = PandoraUtils::RoundQueue.new
+      @send_queue     = PandoraUtils::RoundQueue.new
+      @send_models    = {}
+      @recv_models    = {}
+      @params         = {}
+      @media_send     = false
+      @node_id        = anode_id
+      @node_panhash   = nil
+      @fishes         = Array.new
+      pool.add_session(self)
+      if @socket
+        set_keepalive(@socket)
+      end
+
+      @dialog = a_dialog
+      if dialog and dialog.online_button
+        dialog.online_button.active = (socket and (not socket.closed?))
+      end
+
       #Thread.critical = true
       #PandoraGUI.add_session(self)
       #Thread.critical = false
@@ -5631,11 +5647,9 @@ module PandoraNet
                       session = $window.pool.session_of_node(node)
                     end
                   else
-                    conn_state = CS_Connected
                     conn_mode = 0
-                    session = Session.new(socket, host_name, host_ip, port, proto, node, conn_mode, conn_state)
-                    session.start_exchange_cicle(Thread.current)
-                    $window.pool.del_session(session)
+                    session = Session.new(socket, host_name, host_ip, port, proto, conn_mode, \
+                      CS_Connected, Thread.current, nil, nil, nil, nil)
                     p "END LISTEN SOKET CLIENT!!!"
                   end
                 else
@@ -7930,12 +7944,12 @@ module PandoraGUI
 
     def initialize
       super
-      set_size_request(100, 100)
-      @expose_event = signal_connect('expose-event') do
-        alloc = self.allocation
-        self.window.draw_arc(self.style.fg_gc(self.state), true, \
-          0, 0, alloc.width, alloc.height, 0, 64 * 360)
-      end
+      #set_size_request(100, 100)
+      #@expose_event = signal_connect('expose-event') do
+      #  alloc = self.allocation
+      #  self.window.draw_arc(self.style.fg_gc(self.state), true, \
+      #    0, 0, alloc.width, alloc.height, 0, 64 * 360)
+      #end
     end
 
     def set_expose_event(value)
@@ -7970,32 +7984,6 @@ module PandoraGUI
       p 'TALK INIT [known_node, a_room_id, a_targets, title]='+[known_node, a_room_id, a_targets, title].inspect
 
       model = PandoraUtils.get_model('Node')
-
-=begin
-      #node_list = Array.new
-      targets[CSI_Nodes].each do |nodehash|
-        sel = model.select({:panhash=>nodehash}, false, 'addr, domain, tport')
-        if sel and (sel.size>0)
-          sel.each do |row|
-            addr   = row[0]
-            domain = row[1]
-            if (addr and (addr != '')) or (domain and (domain != ''))
-              tport = 0
-              begin
-                tport = row[2].to_i
-              rescue
-              end
-              tport = $port if (not tport) or (tport==0) or (tport=='')
-              domain = addr if ((not domain) or (domain == ''))
-              node = $window.pool.encode_node(domain, tport, 'tcp')
-              node_list << node
-            end
-          end
-        end
-      end
-      p 'TALK INIT2 node_list='+node_list.inspect
-      node_list.uniq!
-=end
 
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       #sw.name = title
@@ -9142,6 +9130,20 @@ module PandoraGUI
 
       title = consctruct_room_title(targets[CSI_Persons])
       sw = DialogScrollWin.new(known_node, room_id, targets, title)
+    else
+      mes = _('node') if nodes.size == 0
+      mes = _('person') if persons.size == 0
+      dialog = Gtk::MessageDialog.new($window, \
+        Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
+        Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
+        mes = _('No one')+' '+mes+' '+_('is not found')+".\n"+_('Add nodes and do hunt'))
+      dialog.title = _('Note')
+      dialog.default_response = Gtk::Dialog::RESPONSE_OK
+      dialog.icon = $window.icon
+      if (dialog.run == Gtk::Dialog::RESPONSE_OK)
+        PandoraGUI.show_panobject_list(PandoraModel::Node, nil, nil, true)
+      end
+      dialog.destroy
     end
     sw
   end

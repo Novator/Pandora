@@ -17,7 +17,7 @@ TCP_PORT = 5577
 LOG_FILE_NAME = './pangate.log'
 MAX_CONNECTIONS = 10
 PASSWORD_HASH = hashlib.sha256('1234567890').digest()
-OWNER_KEY_PANHASH = 'dd032ec783d34331de1d39006fc851c7e7934141d3aa'.decode('hex')
+OWNER_KEY_PANHASH = 'dd032ec783d34331de1d39006fc851d5cf4346bfc8cc'.decode('hex')
 
 ROOT_PATH = os.path.abspath('.')
 KEEPALIVE = 1 #(on/off)
@@ -43,10 +43,9 @@ EC_Request   = 6     # Запрос записи/патча/миниатюры
 EC_Record    = 7     # Выдача записи
 EC_Line      = 8     # Данные канала двух рыбаков
 EC_Sync      = 9     # Последняя команда в серии, или индикация "живости"
-EC_Wait      = 250   # Временно недоступен
-EC_More      = 251   # Давай дальше
-EC_Bye       = 252   # Рассоединение
-EC_Data      = 253   # Ждем данные
+EC_Wait      = 254   # Временно недоступен
+EC_Bye       = 255   # Рассоединение
+EC_Data      = 256   # Ждем данные
 
 ECC_Init_Hello       = 0
 ECC_Init_Puzzle      = 1
@@ -438,11 +437,11 @@ class ClientThread(threading.Thread):
     rdatasize = None
 
     self.stage = ST_Protocol
-    self.scmd = EC_More
+    self.scmd = EC_Sync
     self.scode = 0
     self.sbuf = ''
     rbuf = ''
-    self.rcmd = EC_More
+    self.rcmd = EC_Sync
     self.rcode = 0
     self.rdata = ''
     last_scmd = self.scmd
@@ -579,7 +578,7 @@ class ClientThread(threading.Thread):
     for fisher in self.fishers:
       fisher.close_hole_of_fisher(self)
     if self==self.pool.collector:
-      self.pool.collector = nil
+      self.pool.collector = None
       self.logmes('Colleactor disconnected: '+addrstr)
     else:
       self.logmes('Client disconnected: '+addrstr)
@@ -651,50 +650,55 @@ fcntl.fcntl(fd, fcntl.F_SETFL, oldflags | os.O_NONBLOCK)
 try:
   print('The Pandora gate.')
 
-  pool = PoolThread()
-  pool.start()
-  print('Pool runed.')
-
   # Start server socket
-  server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-  #server.setblocking(0)
-  server.bind((TCP_IP, TCP_PORT))
-  server.listen(MAX_CONNECTIONS)
+  try:
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+    #server.setblocking(0)
+    server.bind((TCP_IP, TCP_PORT))
+    server.listen(MAX_CONNECTIONS)
+  except:
+    server = None
 
-  saddr = server.getsockname()
-  logmes('Listening at: '+str(saddr[0])+':'+str(saddr[1]))
-  listener = ListenerThread(server, pool)
-  pool.listener = listener
-  listener.start()
-  print('Working thread is active...')
-  print('Press Q to stop server.')
-  working = True
-  while working:
-    time.sleep(0.5)  # prevent overload cpu
-    try:
-      c = sys.stdin.read(1)
-      if (c=='q') or (c=='Q') or (c=='x') or (c=='X') or (ord(c)==185) or (ord(c)==153):
-        working = False
-    except IOError: pass
-  logmes('Stop keyborad loop.')
-  listener.listening = False
-  print('New clients off.')
-  server.shutdown(1)
-  server.close()
-  print('Stop server.')
-  pool.stop_clients()
-  if listener.isAlive():
-    try:
-      listener._Thread__stop()
-    except:
-      print('Could not terminated listen thread '+str(listener.getName()))
-  if pool.isAlive():
-    try:
-      pool._Thread__stop()
-    except:
-      print('Could not terminated pool thread '+str(pool.getName()))
-  logmes('Stop listen thread.')
+  if server:
+    saddr = server.getsockname()
+    logmes('Listening at: '+str(saddr[0])+':'+str(saddr[1]))
+
+    pool = PoolThread()
+    pool.start()
+    print('Pool runed.')
+
+    listener = ListenerThread(server, pool)
+    pool.listener = listener
+    listener.start()
+    print('Working thread is active...')
+    print('Press Q to stop server.')
+    working = True
+    while working:
+      time.sleep(0.5)  # prevent overload cpu
+      try:
+        c = sys.stdin.read(1)
+        if (c=='q') or (c=='Q') or (c=='x') or (c=='X') or (ord(c)==185) or (ord(c)==153):
+          working = False
+      except IOError: pass
+    logmes('Stop keyborad loop.')
+    listener.listening = False
+    print('New clients off.')
+    server.shutdown(1)
+    server.close()
+    print('Stop server.')
+    pool.stop_clients()
+    if listener.isAlive():
+      try:
+        listener._Thread__stop()
+      except:
+        print('Could not terminated listen thread '+str(listener.getName()))
+    if pool.isAlive():
+      try:
+        pool._Thread__stop()
+      except:
+        print('Could not terminated pool thread '+str(pool.getName()))
+    logmes('Stop listen thread.')
 finally:
   termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
   fcntl.fcntl(fd, fcntl.F_SETFL, oldflags)
