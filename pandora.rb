@@ -2379,7 +2379,89 @@ module PandoraUtils
     hash
   end
 
+  CapSymbols = '123456789qertyupasdfghkzxvbnmQRTYUPADFGHJKLBNM'
+  CapFonts = ['Sans', 'Arial', 'Times', 'Verdana', 'Tahoma']
 
+  def self.generate_captcha(drawing=nil, length=6, height=70, circles=5, curves=0)
+
+    def self.show_char(c, cr, x0, y0, step)
+      #cr.set_font_size(0.3+0.1*rand)
+      size = 0.36
+      size = 0.38 if ('a'..'z').include? c
+      cr.set_font_size(size*(0.7+0.3*rand))
+      cr.select_font_face(CapFonts[rand(CapFonts.size)], Cairo::FONT_SLANT_NORMAL, Cairo::FONT_WEIGHT_NORMAL)
+      x = x0 + step + 0.2*(rand-0.5)
+      y = y0 + 0.1 + 0.3*(rand-0.5)
+      cr.move_to(x, y)
+      cr.show_text(c)
+      cr.stroke
+      [x, y]
+    end
+
+    def self.show_blur(cr, x0, y0, r)
+      cr.close_path
+      x, y = [x0, y0]
+      #cr.move_to(x, y)
+      x1, y1 = x0+1.0*rand*r, y0-0.5*rand*r
+      cr.curve_to(x0, y0, x0, y1, x1, y1)
+      x2, y2 = x0-1.0*rand*r, y0+0.5*rand-r
+      cr.curve_to(x1, y1, x1, y2, x2, y2)
+      x3, y3 = x0+1.0*rand*r, y0+0.5*rand-r
+      cr.curve_to(x2, y2, x3, y2, x3, y3)
+      cr.curve_to(x3, y3, x0, y3, x0, y0)
+      cr.stroke
+    end
+
+    width = height*2
+    if not drawing
+      drawing = Gdk::Pixmap.new(nil, width, height, 24)
+    end
+
+    cr = drawing.create_cairo_context
+    #cr.scale(*widget.window.size)
+    cr.scale(height, height)
+    cr.set_line_width(0.03)
+
+    cr.set_source_color(Gdk::Color.new(65535, 65535, 65535))
+    cr.gdk_rectangle(Gdk::Rectangle.new(0, 0, 2, 1))
+    cr.fill
+
+    text = ''
+    length.times do
+      text << CapSymbols[rand(CapSymbols.size)]
+    end
+    cr.set_source_rgba(0.0, 0.0, 0.0, 1.0)
+
+    extents = cr.text_extents(text)
+    step = 2.0/(text.bytesize+2.0)
+    x = 0.0
+    y = 0.5
+
+    text.each_char do |c|
+      x, y2 = show_char(c, cr, x, y, step)
+    end
+
+    cr.set_source_rgba(0.0, 0.0, 0.0, 1.0)
+
+    circles.times do
+      x = 0.1+rand(20)/10.0
+      y = 0.1+rand(10)/12.0
+      r = 0.05+rand/12.0
+      f = 2.0*Math::PI * rand
+      cr.arc(x, y, r, f, f+(2.2*Math::PI * rand))
+      cr.stroke
+    end
+    curves.times do
+      x = 0.1+rand(20)/10.0
+      y = 0.1+rand(10)/10.0
+      r = 0.3+rand/10.0
+      show_blur(cr, x, y, r)
+    end
+
+    pixbuf = Gdk::Pixbuf.from_drawable(nil, drawing, 0, 0, width, height)
+    buf = pixbuf.save_to_buffer('jpeg')
+    [text, buf]
+  end
 
 end
 
@@ -2878,9 +2960,9 @@ module PandoraCrypto
   KV_Trust   = 8
 
   def self.sym_recrypt(data, encode=true, cipher_hash=nil, cipher_key=nil)
-    #p 'sym_recrypt: [cipher_hash, cipher_key]='+[cipher_hash, cipher_key].inspect
+    #p '^^^^^^^^^^^^sym_recrypt: [cipher_hash, cipher_key]='+[cipher_hash, cipher_key].inspect
     cipher_hash ||= encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
-    if cipher_hash and (cipher_hash != 0) and cipher_key and data
+    if cipher_hash and (cipher_hash != 0) and cipher_key and (cipher_key != '') and data
       ckind, chash = decode_cipher_and_hash(cipher_hash)
       hash = pan_kh_to_openssl_hash(chash)
       #p 'hash='+hash.inspect
@@ -3092,6 +3174,7 @@ module PandoraCrypto
       else
         data = AsciiString.new(data)
         #data.force_encoding('ASCII-8BIT')
+        #p 'before decrypt: data='+data.inspect
         data, len = PandoraUtils.pson_elem_to_rubyobj(data)   # pson to array
         #p 'decrypt: data='+data.inspect
         key.decrypt
@@ -3119,7 +3202,7 @@ module PandoraCrypto
         if private
           recrypted = key.public_encrypt(data)
         else
-          p 'recrypt  data.inspect='+data.inspect+'  key='+key.inspect
+          #p 'recrypt  data.inspect='+data.inspect+'  key='+key.inspect
           recrypted = key.public_encrypt(data)
         end
       else
@@ -3166,6 +3249,8 @@ module PandoraCrypto
 
   KR_Exchange  = 1
   KR_Sign      = 2
+
+  $first_key_init = true
 
   def self.current_key(switch_key=false, need_init=true)
     def self.read_key(panhash, passwd, key_model)
@@ -3223,11 +3308,11 @@ module PandoraCrypto
       while getting
         creator = nil
         filter = {:kind => 0xF}
-        sel = key_model.select(filter, false)
+        sel = key_model.select(filter, false, 'id', nil, 1)
         if sel and (sel.size>0)
           getting = false
           key_vec, cipher = read_key(last_auth_key, passwd, key_model)
-          if (not key_vec) or (not cipher) or (cipher != 0)
+          if (not key_vec) or (not cipher) or (cipher != 0) or (not $first_key_init)
             dialog = PandoraGUI::AdvancedDialog.new(_('Key init'))
             dialog.set_default_size(420, 190)
 
@@ -3249,17 +3334,21 @@ module PandoraCrypto
             align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
             align.add(pass_entry)
             vbox.pack_start(align, false, false, 2)
-            vbox.pack_start(pass_entry, false, false, 2)
             if key_entry.text == ''
               dialog.def_widget = key_entry.entry
             else
               dialog.def_widget = pass_entry
             end
 
+            gen_button = Gtk::Button.new(_('Generate'))
+            gen_button.width_request = 110
+            gen_button.signal_connect('clicked') { |*args| dialog.response=3 }
+            dialog.hbox.pack_start(gen_button, false, false, 0)
+
             key_vec0 = key_vec
             key_vec = nil
             dialog.run do
-              if dialog.response == 3
+              if (dialog.response == 3)
                 getting = true
               else
                 passwd = pass_entry.text
@@ -3278,6 +3367,7 @@ module PandoraCrypto
               end
             end
           end
+          $first_key_init = false
         end
         if (not key_vec) and getting
           getting = false
@@ -3378,8 +3468,8 @@ module PandoraCrypto
           end
         end
         if key_vec and (key_vec != [])
-          key_vec = init_key(key_vec)
           #p 'key_vec='+key_vec.inspect
+          key_vec = init_key(key_vec)
           if key_vec and key_vec[KV_Obj]
             self.the_current_key = key_vec
             $window.set_status_field(PandoraGUI::SF_Auth, 'Logged', nil, true)
@@ -3597,7 +3687,7 @@ module PandoraCrypto
               break
             end
           end
-        else
+        else  #key is not found
           key_vec = 0
         end
       end
@@ -3685,10 +3775,15 @@ module PandoraNet
     end
 
     def session_of_node(node)
-      host, port, proto = PandoraNet.decode_node(node)
+      host, port, proto = decode_node(node)
       session = sessions.find do |e|
         ((e.host_ip == host) or (e.host_name == host)) and (e.port == port) and (e.proto == proto)
       end
+      session
+    end
+
+    def session_of_keybase(keybase)
+      session = sessions.find { |e| (e.node_panhash == keybase) }
       session
     end
 
@@ -3696,6 +3791,147 @@ module PandoraNet
       dlg_sessions = sessions.select { |e| (e.dialog == dialog) }
       dlg_sessions
     end
+
+    # Find or create session with necessary node
+    # RU: Находит или создает соединение с нужным узлом
+    def init_session(node=nil, keybase=nil, send_state_add=nil, dialog=nil, node_id=nil)
+      p 'init_session: '+[node, keybase, send_state_add, dialog, node_id].inspect
+      res = nil
+      send_state_add ||= 0
+      session1 = nil
+      session2 = nil
+      session1 = session_of_keybase(keybase) if keybase
+      session2 = session_of_node(node) if node and (not session1)
+      if session1 or session2
+        session = session1
+        session ||= session2
+        session.send_state = (session.send_state | send_state_add)
+        session.dialog = nil if session.dialog and session.dialog.destroyed?
+        session.dialog ||= dialog
+        if session.dialog and session.dialog.online_button
+          session.dialog.online_button.active = (session.socket and (not session.socket.closed?))
+        end
+      elsif (node or keybase)
+        p 'NEED connect: '+[node, keybase].inspect
+        if node
+          host, port, proto = decode_node(node)
+          sel = [[host, port]]
+        else
+          node_model = PandoraUtils.get_model('Node')
+          filter = {:panhash=>keybase}
+          sel = node_model.select(filter, false, 'addr, tport, domain')
+          #p 'found: '+sel.inspect
+          sel.each do |row|
+            row[0] = row[2] if (not row[0]) or (row[0]=='')
+          end
+          #p 'after rewrite: '+sel.inspect
+        end
+        if sel and sel.size>0
+          #p 'try: '+sel.inspect
+          sel.each do |row|
+            host = row[0]
+            port = row[1]
+            proto = 'tcp'
+            #p 'host/port/proto='+[host, port, proto].inspect
+            if host
+              port ||= 5577
+              Thread.new do
+                socket = nil
+                session = nil
+                begin
+                  socket = TCPSocket.open(host, port)
+                  session = Session.new(socket, host, socket.addr[2], port, proto, node, CM_Hunter, CS_Connected, node_id)
+                  session.send_state = (session.send_state | send_state_add)
+                  session.dialog = dialog
+                rescue
+                  socket = nil
+                  log_message(LM_Warning, "Не удается подключиться к: "+host+':'+port.to_s)
+                end
+                if dialog and dialog.online_button
+                  dialog.online_button.active = (socket and (not socket.closed?))
+                end
+                if socket
+                  session.node = encode_node(session.host_ip, session.port, session.proto)
+                  log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
+                  session.start_exchange_cicle(Thread.current, keybase)
+                  socket.close if not socket.closed?
+                  log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
+                end
+                del_session(session)
+              end
+            end
+          end
+        end
+      end
+      res
+    end
+
+    # Stop session with a node
+    # RU: Останавливает соединение с заданным узлом
+    def stop_session(node=nil, keybase=nil)  #, wait_disconnect=true)
+      #p 'stop_session node='+node.inspect
+      session1 = nil
+      session2 = nil
+      session1 = session_of_keybase(keybase) if keybase
+      session2 = session_of_node(node) if node and (not session1)
+      if session1 or session2
+        session = session1
+        session ||= session2
+        if session and (session.conn_state != CS_Disconnected)
+          #p 'stop_session2 session='+session.inspect
+          session.conn_state = CS_StopRead
+          #while wait_disconnect and session and (session.conn_state != CS_Disconnected)
+          #  sleep 0.05
+          #  #Thread.pass
+          #  #Gtk.main_iteration
+          #  session = session_of_node(node)
+          #end
+          #session = session_of_node(node)
+        end
+      end
+      session and (session.conn_state != CS_Disconnected) #and wait_disconnect
+    end
+
+    # Form node marker
+    # RU: Сформировать маркер узла
+    def encode_node(host, port, proto)
+      host ||= ''
+      port ||= ''
+      proto ||= ''
+      node = host+'='+port.to_s+proto
+    end
+
+    # Unpack node marker
+    # RU: Распаковать маркер узла
+    def decode_node(node)
+      i = node.index('=')
+      if i
+        host = node[0, i]
+        port = node[i+1, node.size-4-i].to_i
+        proto = node[node.size-3, 3]
+      else
+        host = node
+        port = 5577
+        proto = 'tcp'
+      end
+      [host, port, proto]
+    end
+
+    def check_incoming_addr(addr, host_ip)
+      res = false
+      #p 'check_incoming_addr  [addr, host_ip]='+[addr, host_ip].inspect
+      if (addr.is_a? String) and (addr.size>0)
+        host, port, proto = decode_node(addr)
+        host.strip!
+        host = host_ip if (not host) or (host=='')
+        #p 'check_incoming_addr  [host, port, proto]='+[host, port, proto].inspect
+        if (host.is_a? String) and (host.size>0)
+          p 'check_incoming_addr DONE [host, port, proto]='+[host, port, proto].inspect
+          res = true
+        end
+      end
+    end
+
   end
 
 
@@ -4215,7 +4451,10 @@ module PandoraNet
             # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
             # or just 4? other later!
             if (@skey.is_a? Integer) and (@skey==0)
-              set_request(skey_panhash)
+              @scmd = EC_Request
+              kind = PandoraModel::PK_Key
+              @scode = kind
+              @sbuf = nil
               @stage = ST_KeyRequest
               set_max_pack_size(ST_Exchange)
             elsif @skey
@@ -4247,7 +4486,7 @@ module PandoraNet
           @skey[PandoraCrypto::KV_Trust] = attempts+1
           @scmd = EC_Init
           @scode = ECC_Init_Captcha
-          text, buf = PandoraGUI.generate_captcha(nil, $captcha_length)
+          text, buf = PandoraUtils.generate_captcha(nil, $captcha_length)
           params['captcha'] = text.downcase
           clue_text = 'You may enter small letters|'+$captcha_length.to_s+'|'+PandoraGUI::CapSymbols
           clue_text = clue_text[0,255]
@@ -4346,7 +4585,7 @@ module PandoraNet
 
         inaddr = params['addr']
         if inaddr and (inaddr != '')
-          host, port, proto = PandoraGUI.decode_node(inaddr)
+          host, port, proto = pool.decode_node(inaddr)
           #p log_mes+'ADDR [addr, host, port, proto]='+[addr, host, port, proto].inspect
           if (host and (host != '')) and (port and (port != 0))
             host = @host_ip if (not host) or (host=='')
@@ -4492,7 +4731,7 @@ module PandoraNet
                   suffix = rdata
                   sphrase = params['sphrase']
                   if PandoraCrypto.check_sha1_solution(sphrase, suffix)
-                    init_skey_or_error(true)
+                    init_skey_or_error(false)
                   else
                     err_scmd('Wrong sha1 solution')
                   end
@@ -4624,7 +4863,7 @@ module PandoraNet
           #curpage = nil
           p log_mes+'mes len='+@rdata.bytesize.to_s
           if not dialog
-            node = PandoraNet.encode_node(host_ip, port, proto)
+            #node = pool.encode_node(host_ip, port, proto)
             panhash = @skey[PandoraCrypto::KV_Creator]
             @dialog = PandoraGUI.show_talk_dialog(panhash, @node_panhash)
             #curpage = dialog
@@ -4662,7 +4901,7 @@ module PandoraNet
           end
         when EC_Media
           if not dialog
-            node = PandoraNet.encode_node(host_ip, port, proto)
+            #node = PandoraNet.encode_node(host_ip, port, proto)
             panhash = @skey[PandoraCrypto::KV_Creator]
             @dialog = PandoraGUI.show_talk_dialog(panhash, @node_panhash)
             dialog.update_state(true)
@@ -4674,13 +4913,13 @@ module PandoraNet
             if cannel==0
               dialog.init_audio_receiver(true, true)
             else
-              dialog.init_video_receiver(true, false)
+              dialog.init_video_receiver(true, true)
             end
             Thread.pass
             recv_buf = dialog.recv_media_queue[cannel]
           end
           if dialog and recv_buf
-            #p 'RECV AUD ('+rdata.size.to_s+')'
+            #p 'RECV MED ('+rdata.size.to_s+')'
             if cannel==0  #audio processes quickly
               buf = Gst::Buffer.new
               buf.data = rdata
@@ -4694,39 +4933,32 @@ module PandoraNet
           end
         when EC_Request
           kind = rcode
-          p log_mes+'EC_Request  kind='+kind.to_s
+          p log_mes+'EC_Request  kind='+kind.to_s+'  stage='+stage.to_s
           panhash = nil
-          if (kind==PandoraModel::PK_Key) and (stage==ST_Protocol)
-            panhash = [kind].pack('C')+rdata
-            if kind==PandoraModel::PK_Key
-              mykey = params['mykey']
-              if mykey and (panhash != mykey)
-                panhash = false
-              end
-            end
+          if (kind==PandoraModel::PK_Key) and ((stage==ST_Protocol) or (stage==ST_Greeting))
+            panhash = params['mykey']
+            p 'params[mykey]='+panhash
           end
           if (stage==ST_Exchange) or (stage==ST_Greeting) or panhash
             panhashes = nil
             if kind==0
               panhashes, len = PandoraUtils.pson_elem_to_rubyobj(panhashes)
             else
-              panhash ||= [kind].pack('C')+rdata
+              panhash = [kind].pack('C')+rdata if (not panhash) and rdata
               panhashes = [panhash]
             end
             p log_mes+'panhashes='+panhashes.inspect
             if panhashes.size==1
               panhash = panhashes[0]
               kind = PandoraUtils.kind_from_panhash(panhash)
-              p '111111111'
               pson = PandoraModel.get_record_by_panhash(kind, panhash, false, @recv_models)
-              p '222222222'
               if pson
                 @scmd = EC_Record
                 @scode = kind
                 @sbuf = pson
                 lang = @sbuf[0].ord
                 values = PandoraUtils.pson_to_namehash(@sbuf[1..-1])
-                p log_mes+'CHECH PSON !!! [pson, values]='+[pson, values].inspect
+                p log_mes+'SEND RECORD !!! [pson, values]='+[pson, values].inspect
               else
                 p log_mes+'NO RECORD panhash='+panhash.inspect
                 @scmd = EC_Sync
@@ -5103,6 +5335,7 @@ module PandoraNet
       p log_mes+'ЦИКЛ ОТПРАВКИ начало'
       while (@conn_state != CS_Disconnected)
         # отправка сформированных сегментов и их удаление
+        fast_data = false
         if (@conn_state != CS_Disconnected)
           send_segment = @send_queue.get_block_from_queue
           while (@conn_state != CS_Disconnected) and send_segment
@@ -5125,6 +5358,9 @@ module PandoraNet
               #end
               @conn_state = CS_Disconnected
             else
+              if (@scmd==EC_Media)
+                fast_data = true
+              end
               send_segment = @send_queue.get_block_from_queue
             end
           end
@@ -5166,7 +5402,8 @@ module PandoraNet
             rc_queue = dialog.recv_media_queue[cannel]
             recv_media_chunk = rc_queue.get_block_from_queue($media_buf_size) if rc_queue
             if recv_media_chunk #and (recv_media_chunk.size>0)
-              #p 'GET BUF size='+recv_media_chunk.size.to_s
+              fast_data = true
+              #p 'LOAD MED BUF size='+recv_media_chunk.size.to_s
               buf = Gst::Buffer.new
               buf.data = recv_media_chunk
               buf.timestamp = Time.now.to_i * Gst::NSECOND
@@ -5188,6 +5425,7 @@ module PandoraNet
         #sleep 1
         if (@conn_state == CS_Connected) and (stage>=ST_Exchange) \
         and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
+          fast_data = true
           @send_state = (send_state & (~CSF_Message))
           if @skey and @skey[PandoraCrypto::KV_Creator]
             filter = {'destination'=>@skey[PandoraCrypto::KV_Creator], 'state'=>0}
@@ -5234,6 +5472,7 @@ module PandoraNet
         and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
         and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
         or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
+          fast_data = true
           #p 'packbuf '+cannel.to_s
           pointer_ind = PandoraGUI.get_send_ptrind_by_room(dialog.room_id)
           processed = 0
@@ -5266,6 +5505,8 @@ module PandoraNet
 
         if socket.closed? or (@conn_state == CS_StopRead)
           @conn_state = CS_Disconnected
+        elsif (not fast_data)
+          sleep(0.2)
         #elsif conn_state == CS_Stoping
         #  add_send_segment(EC_Bye, true)
         end
@@ -5322,14 +5563,6 @@ module PandoraNet
     $captcha_attempts    = PandoraUtils.get_param('captcha_attempts')
     $trust_for_captchaed = PandoraUtils.get_param('trust_for_captchaed')
     $trust_for_listener  = PandoraUtils.get_param('trust_for_listener')
-
-    p [$incoming_addr, \
-    $puzzle_bit_length   , \
-    $puzzle_sec_delay    , \
-    $captcha_length      , \
-    $captcha_attempts    , \
-    $trust_for_captchaed , \
-    $trust_for_listener  ]
   end
 
   $listen_thread = nil
@@ -5357,7 +5590,7 @@ module PandoraNet
             log_message(LM_Info, 'Слушаю порт '+addr_str)
           rescue
             server = nil
-            log_message(LM_Warning, 'Не могу открыть порт '+addr_str)
+            log_message(LM_Warning, 'Не могу открыть порт '+host+':'+$port.to_s)
           end
           Thread.current[:listen_server_socket] = server
           Thread.current[:need_to_listen] = (server != nil)
@@ -5382,7 +5615,7 @@ module PandoraNet
                   port = socket.peeraddr[1]
                   #port = socket.addr[1] if host_ip==socket.addr[2] # hack for short circuit!!!
                   proto = "tcp"
-                  node = encode_node(host_ip, port, proto)
+                  node = $window.pool.encode_node(host_ip, port, proto)
                   p "LISTEN: node: "+node.inspect
 
                   session = $window.pool.session_of_node(node)
@@ -5465,8 +5698,8 @@ module PandoraNet
                   tokey = row[4]
                   tport = $port if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
-                  node = encode_node(domain, tport, 'tcp')
-                  set_session(node, nil, nil, node_id, tokey)
+                  node = $window.pool.encode_node(domain, tport, 'tcp')
+                  $window.pool.init_session(node, tokey, nil, nil, node_id)
                 end
                 round_count -= 1
                 if round_count>0
@@ -5496,108 +5729,6 @@ module PandoraNet
         end
       else
         $window.correct_hunt_btn_state
-      end
-    end
-  end
-
-  # Find or create session with necessary node
-  # RU: Находит или создает соединение с нужным узлом
-  def self.set_session(node, send_state_add=nil, dialog=nil, node_id=nil, tokey=nil)
-    res = nil
-    send_state_add ||= 0
-    session = $window.pool.session_of_node(node)
-    if session
-      session.send_state = (session.send_state | send_state_add)
-      session.dialog = nil if session.dialog and session.dialog.destroyed?
-      session.dialog ||= dialog
-      if session.dialog and session.dialog.online_button
-        session.dialog.online_button.active = (session.socket and (not session.socket.closed?))
-      end
-    else
-      Thread.new do
-        host, port, proto = PandoraNet.decode_node(node)
-        socket = nil
-        session = nil
-        begin
-          socket = TCPSocket.open(host, port)
-          session = Session.new(socket, host, socket.addr[2], port, proto, node, CM_Hunter, CS_Connected, node_id)
-          session.send_state = (session.send_state | send_state_add)
-          session.dialog = dialog
-        rescue
-          socket = nil
-          log_message(LM_Warning, "Не удается подключиться к: "+host+':'+port.to_s)
-        end
-        if dialog and dialog.online_button
-          dialog.online_button.active = (socket and (not socket.closed?))
-        end
-        if socket
-          session.node = encode_node(session.host_ip, session.port, session.proto)
-          log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
-          session.start_exchange_cicle(Thread.current, tokey)
-          socket.close if not socket.closed?
-          log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
-        end
-        $window.pool.del_session(session)
-      end
-    end
-    res
-  end
-
-  # Stop session with a node
-  # RU: Останавливает соединение с заданным узлом
-  def self.stop_session(node, wait_disconnect=true)
-    #p 'stop_session node='+node.inspect
-    session = $window.pool.session_of_node(node)
-    if session and (session.conn_state != CS_Disconnected)
-      #p 'stop_session2 session='+session.inspect
-      session.conn_state = CS_StopRead
-      while wait_disconnect and session and (session.conn_state != CS_Disconnected)
-        sleep 0.05
-        #Thread.pass
-        #Gtk.main_iteration
-        session = $window.pool.session_of_node(node)
-      end
-      session = $window.pool.session_of_node(node)
-    end
-    session and (session.conn_state != CS_Disconnected) and wait_disconnect
-  end
-
-  # Form node marker
-  # RU: Сформировать маркер узла
-  def self.encode_node(host, port, proto)
-    host ||= ''
-    port ||= ''
-    proto ||= ''
-    node = host+'='+port.to_s+proto
-  end
-
-  # Unpack node marker
-  # RU: Распаковать маркер узла
-  def self.decode_node(node)
-    i = node.index('=')
-    if i
-      host = node[0, i]
-      port = node[i+1, node.size-4-i].to_i
-      proto = node[node.size-3, 3]
-    else
-      host = node
-      port = 5577
-      proto = 'tcp'
-    end
-    [host, port, proto]
-  end
-
-  def self.check_incoming_addr(addr, host_ip)
-    res = false
-    #p 'check_incoming_addr  [addr, host_ip]='+[addr, host_ip].inspect
-    if (addr.is_a? String) and (addr.size>0)
-      host, port, proto = decode_node(addr)
-      host.strip!
-      host = host_ip if (not host) or (host=='')
-      #p 'check_incoming_addr  [host, port, proto]='+[host, port, proto].inspect
-      if (host.is_a? String) and (host.size>0)
-        p 'check_incoming_addr DONE [host, port, proto]='+[host, port, proto].inspect
-        res = true
       end
     end
   end
@@ -5725,21 +5856,21 @@ module PandoraGUI
 
       @okbutton = Gtk::Button.new(Gtk::Stock::OK)
       okbutton.width_request = 110
-      okbutton.signal_connect('clicked') { |*args| @response=1 }
+      okbutton.signal_connect('clicked') { |*args| @response=2 }
       bbox.pack_start(okbutton, false, false, 0)
 
       @cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
       cancelbutton.width_request = 110
-      cancelbutton.signal_connect('clicked') { |*args| @response=2 }
+      cancelbutton.signal_connect('clicked') { |*args| @response=1 }
       bbox.pack_start(cancelbutton, false, false, 0)
 
       hbox.pack_start(bbox, true, false, 1.0)
 
       window.signal_connect('delete-event') { |*args|
-        @response=2
+        @response=1
         false
       }
-      window.signal_connect('destroy') { |*args| @response=2 }
+      window.signal_connect('destroy') { |*args| @response=1 }
 
       window.signal_connect('key-press-event') do |widget, event|
         if (event.keyval==Gdk::Keyval::GDK_Tab) and enter_like_tab  # Enter works like Tab
@@ -5762,7 +5893,7 @@ module PandoraGUI
           ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
         then
           $window.destroy
-          @response=2
+          @response=1
           false
         else
           false
@@ -5785,7 +5916,7 @@ module PandoraGUI
         Thread.pass
       end
       if not destroyed?
-        if (@response==1)
+        if (@response > 1)
           yield(@response) if block_given?
           res = true
         end
@@ -6238,7 +6369,7 @@ module PandoraGUI
     sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
     sw.name = panobject.ider
     sw.add(treeview)
-    sw.border_width = 0;
+    sw.border_width = 0
 
     if auto_create and sel and (sel.size==0)
       treeview.auto_create = true
@@ -6508,13 +6639,13 @@ module PandoraGUI
         set_tag('link')
       end
       PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::HOME, 'Image')
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::OK, 'Ok') { |*args| @response=1 }
-      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=2 }
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
+      PandoraGUI.add_tool_btn(toolbar, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
 
       PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::ADD, 'Add')
       PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::DELETE, 'Delete')
-      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::OK, 'Ok') { |*args| @response=1 }
-      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=2 }
+      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
+      PandoraGUI.add_tool_btn(toolbar2, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
 
       notebook.signal_connect('switch-page') do |widget, page, page_num|
         if page_num==0
@@ -7607,90 +7738,6 @@ module PandoraGUI
     res.size
   end
 
-  CapSymbols = '123456789qertyupasdfghkzxvbnmQRTYUPADFGHJKLBNM'
-  CapFonts = ['Sans', 'Arial', 'Times', 'Verdana', 'Tahoma']
-
-  def self.generate_captcha(drawing=nil, length=6, height=70, circles=5, curves=0)
-
-    def self.show_char(c, cr, x0, y0, step)
-      #cr.set_font_size(0.3+0.1*rand)
-      size = 0.36
-      size = 0.38 if ('a'..'z').include? c
-      cr.set_font_size(size*(0.7+0.3*rand))
-      cr.select_font_face(CapFonts[rand(CapFonts.size)], Cairo::FONT_SLANT_NORMAL, Cairo::FONT_WEIGHT_NORMAL)
-      x = x0 + step + 0.2*(rand-0.5)
-      y = y0 + 0.1 + 0.3*(rand-0.5)
-      cr.move_to(x, y)
-      cr.show_text(c)
-      cr.stroke
-      [x, y]
-    end
-
-    def self.show_blur(cr, x0, y0, r)
-      cr.close_path
-      x, y = [x0, y0]
-      #cr.move_to(x, y)
-      x1, y1 = x0+1.0*rand*r, y0-0.5*rand*r
-      cr.curve_to(x0, y0, x0, y1, x1, y1)
-      x2, y2 = x0-1.0*rand*r, y0+0.5*rand-r
-      cr.curve_to(x1, y1, x1, y2, x2, y2)
-      x3, y3 = x0+1.0*rand*r, y0+0.5*rand-r
-      cr.curve_to(x2, y2, x3, y2, x3, y3)
-      cr.curve_to(x3, y3, x0, y3, x0, y0)
-      cr.stroke
-    end
-
-    width = height*2
-    if not drawing
-      drawing = Gdk::Pixmap.new(nil, width, height, 24)
-    end
-
-    cr = drawing.create_cairo_context
-    #cr.scale(*widget.window.size)
-    cr.scale(height, height)
-    cr.set_line_width(0.03)
-
-    cr.set_source_color(Gdk::Color.new(65535, 65535, 65535))
-    cr.gdk_rectangle(Gdk::Rectangle.new(0, 0, 2, 1))
-    cr.fill
-
-    text = ''
-    length.times do
-      text << CapSymbols[rand(CapSymbols.size)]
-    end
-    cr.set_source_rgba(0.0, 0.0, 0.0, 1.0)
-
-    extents = cr.text_extents(text)
-    step = 2.0/(text.bytesize+2.0)
-    x = 0.0
-    y = 0.5
-
-    text.each_char do |c|
-      x, y2 = show_char(c, cr, x, y, step)
-    end
-
-    cr.set_source_rgba(0.0, 0.0, 0.0, 1.0)
-
-    circles.times do
-      x = 0.1+rand(20)/10.0
-      y = 0.1+rand(10)/12.0
-      r = 0.05+rand/12.0
-      f = 2.0*Math::PI * rand
-      cr.arc(x, y, r, f, f+(2.2*Math::PI * rand))
-      cr.stroke
-    end
-    curves.times do
-      x = 0.1+rand(20)/10.0
-      y = 0.1+rand(10)/10.0
-      r = 0.3+rand/10.0
-      show_blur(cr, x, y, r)
-    end
-
-    pixbuf = Gdk::Pixbuf.from_drawable(nil, drawing, 0, 0, width, height)
-    buf = pixbuf.save_to_buffer('jpeg')
-    [text, buf]
-  end
-
   $hide_on_minimize = true
 
   def self.get_view_params
@@ -7710,10 +7757,10 @@ module PandoraGUI
 
   # Get person panhash by any panhash
   # RU: Получить панхэш персоны по произвольному панхэшу
-  def self.extract_connset_from_panhash(connset, panhashes)
-    persons, keys, nodes = connset
+  def self.extract_targets_from_panhash(targets, panhashes)
+    persons, keys, nodes = targets
     panhashes = [panhashes] if not panhashes.is_a? Array
-    #p '--extract_connset_from_panhash  connset='+connset.inspect
+    #p '--extract_targets_from_panhash  targets='+targets.inspect
     panhashes.each do |panhash|
       if (panhash.is_a? String) and (panhash.bytesize>0)
         kind = PandoraUtils.kind_from_panhash(panhash)
@@ -7808,7 +7855,7 @@ module PandoraGUI
         end
       end
       #p '[keys, nodes]='+[keys, nodes].inspect
-      #p 'connset3='+connset.inspect
+      #p 'targets3='+targets.inspect
     end
     nodes.uniq!
     nodes.compact!
@@ -7817,7 +7864,7 @@ module PandoraGUI
 
   # Extend lists of persons, nodes and keys by relations
   # RU: Расширить списки персон, узлов и ключей пройдясь по связям
-  def self.extend_connset_by_relations(connset)
+  def self.extend_targets_by_relations(targets)
     added = 0
     # need to copmose by relations
     added
@@ -7825,7 +7872,7 @@ module PandoraGUI
 
   # Start a thread which is searching additional nodes and keys
   # RU: Запуск потока, которые ищет дополнительные узлы и ключи
-  def self.start_extending_connset_by_hunt(connset)
+  def self.start_extending_targets_by_hunt(targets)
     started = true
     # heen hunt with poll of nodes
     started
@@ -7878,12 +7925,31 @@ module PandoraGUI
   $read_time = 1.5
   $last_page = nil
 
+  class ViewDrawingArea < Gtk::DrawingArea
+    attr_accessor :expose_event
+
+    def initialize
+      super
+      set_size_request(100, 100)
+      @expose_event = signal_connect('expose-event') do
+        alloc = self.allocation
+        self.window.draw_arc(self.style.fg_gc(self.state), true, \
+          0, 0, alloc.width, alloc.height, 0, 64 * 360)
+      end
+    end
+
+    def set_expose_event(value)
+      signal_handler_disconnect(@expose_event) if @expose_event
+      @expose_event = value
+    end
+  end
+
   # Talk dialog
   # RU: Диалог разговора
   class DialogScrollWin < Gtk::ScrolledWindow
-    attr_accessor :room_id, :connset, :online_button, :snd_button, :vid_button, :talkview, \
+    attr_accessor :room_id, :targets, :online_button, :snd_button, :vid_button, :talkview, \
       :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
-      :read_thread, :recv_media_queue, :send_display_handler, :recv_display_handler
+      :read_thread, :recv_media_queue
 
     include PandoraGUI
 
@@ -7892,44 +7958,49 @@ module PandoraGUI
 
     # Show conversation dialog
     # RU: Показать диалог общения
-    def initialize(known_node, a_room_id, a_connset, title)
+    def initialize(known_node, a_room_id, a_targets, title)
       super(nil, nil)
 
       @room_id = a_room_id
-      @connset = a_connset
+      @targets = a_targets
       @recv_media_queue = Array.new
       @recv_media_pipeline = Array.new
       @appsrcs = Array.new
 
-      p 'TALK INIT [known_node, a_room_id, a_connset, title]='+[known_node, a_room_id, a_connset, title].inspect
+      p 'TALK INIT [known_node, a_room_id, a_targets, title]='+[known_node, a_room_id, a_targets, title].inspect
 
       model = PandoraUtils.get_model('Node')
-      node_list = Array.new
-      connset[CSI_Nodes].each do |nodehash|
+
+=begin
+      #node_list = Array.new
+      targets[CSI_Nodes].each do |nodehash|
         sel = model.select({:panhash=>nodehash}, false, 'addr, domain, tport')
         if sel and (sel.size>0)
           sel.each do |row|
             addr   = row[0]
             domain = row[1]
-            tport = 0
-            begin
-              tport = row[2].to_i
-            rescue
+            if (addr and (addr != '')) or (domain and (domain != ''))
+              tport = 0
+              begin
+                tport = row[2].to_i
+              rescue
+              end
+              tport = $port if (not tport) or (tport==0) or (tport=='')
+              domain = addr if ((not domain) or (domain == ''))
+              node = $window.pool.encode_node(domain, tport, 'tcp')
+              node_list << node
             end
-            tport = $port if (not tport) or (tport==0) or (tport=='')
-            domain = addr if ((not domain) or (domain == ''))
-            node = PandoraNet.encode_node(domain, tport, 'tcp')
-            node_list << node
           end
         end
       end
       p 'TALK INIT2 node_list='+node_list.inspect
       node_list.uniq!
+=end
 
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       #sw.name = title
       #sw.add(treeview)
-      border_width = 0;
+      border_width = 0
 
       image = Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU)
       image.set_padding(2, 0)
@@ -7940,7 +8011,7 @@ module PandoraGUI
       vpaned1 = Gtk::VPaned.new
       vpaned2 = Gtk::VPaned.new
 
-      @area_recv = Gtk::DrawingArea.new
+      @area_recv = ViewDrawingArea.new
       area_recv.set_size_request(320, 240)
       area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
 
@@ -7953,12 +8024,14 @@ module PandoraGUI
       @online_button = Gtk::CheckButton.new(_('Online'), true)
       online_button.signal_connect('clicked') do |widget|
         if widget.active?
-          node_list.each do |node|
-            PandoraNet.set_session(node, 0, self)
+          targets[CSI_Nodes].each do |keybase|
+          #node_list.each do |node|
+            $window.pool.init_session(nil, keybase, 0, self)
           end
         else
-          node_list.each do |node|
-            PandoraNet.stop_session(node, false)
+          targets[CSI_Nodes].each do |keybase|
+          #node_list.each do |node|
+            $window.pool.stop_session(nil, keybase)
           end
         end
       end
@@ -8024,12 +8097,9 @@ module PandoraGUI
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
           if editbox.buffer.text != ''
             mes = editbox.buffer.text
-            sended = false
-            node_list.each do |node|
-              if add_and_send_mes(mes)
-                sended = true
-              end
-            end
+            #sended = false
+            #node_list.each do |node|
+            sended = add_and_send_mes(mes)
             if sended
               t = Time.now
               talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
@@ -8052,7 +8122,7 @@ module PandoraGUI
       PandoraGUI.hack_enter_bug(editbox)
 
       hpaned2 = Gtk::HPaned.new
-      @area_send = Gtk::DrawingArea.new
+      @area_send = ViewDrawingArea.new
       area_send.set_size_request(120, 90)
       area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
       hpaned2.pack1(area_send, false, true)
@@ -8064,10 +8134,10 @@ module PandoraGUI
       #list_sw.visible = false
 
       list_store = Gtk::ListStore.new(TrueClass, String)
-      node_list.each do |node|
-        user_iter = list_store.append
-        user_iter[CL_Name] = node.inspect
-      end
+      #node_list.each do |node|
+      #  user_iter = list_store.append
+      #  user_iter[CL_Name] = node.inspect
+      #end
 
       # create tree view
       list_tree = Gtk::TreeView.new(list_store)
@@ -8156,6 +8226,7 @@ module PandoraGUI
       hpaned.pack2(vpaned2, true, true)
 
       area_recv.signal_connect('visibility_notify_event') do |widget, event_visibility|
+        #p 'visibility_notify_event!!!  state='+event_visibility.state.inspect
         case event_visibility.state
           when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
             init_video_receiver(true, true, false) if not area_recv.destroyed?
@@ -8164,11 +8235,14 @@ module PandoraGUI
         end
       end
 
+      #area_recv.signal_connect('map') do |widget, event|
+      #  p 'show!!!!'
+      #  init_video_receiver(true, true, false) if not area_recv.destroyed?
+      #end
+
       area_recv.signal_connect('destroy') do |*args|
         init_video_receiver(false, false)
       end
-
-      area_recv.show
 
       label_box = TabLabelBox.new(image, title, self, false, 0) do
         #init_video_sender(false)
@@ -8176,8 +8250,9 @@ module PandoraGUI
         area_send.destroy if not area_send.destroyed?
         area_recv.destroy if not area_recv.destroyed?
 
-        node_list.each do |node|
-          PandoraNet.stop_session(node, false)
+        targets[CSI_Nodes].each do |keybase|
+        #node_list.each do |node|
+          $window.pool.stop_session(nil, keybase)
         end
       end
 
@@ -8191,6 +8266,7 @@ module PandoraGUI
       end
 
       show_all
+
       $window.notebook.page = $window.notebook.n_pages-1 if not known_node
       editbox.grab_focus
     end
@@ -8205,7 +8281,7 @@ module PandoraGUI
         #Thread.pass
         time_now = Time.now.to_i
         state = 0
-        connset[CSI_Persons].each do |panhash|
+        targets[CSI_Persons].each do |panhash|
           p 'ADD_MESS panhash='+panhash.inspect
           values = {:destination=>panhash, :text=>text, :state=>state, \
             :creator=>creator, :created=>time_now, :modified=>time_now}
@@ -8495,25 +8571,27 @@ module PandoraGUI
       if area and (not area.destroyed?)
         if (not area.window) and pipeline
           area.realize
-          Gtk.main_iteration
+          #Gtk.main_iteration
         end
+        #p 'link_sink_to_area(sink, area, pipeline)='+[sink, area, pipeline].inspect
         set_xid(area, sink)
-      end
-      if pipeline and (not pipeline.destroyed?)
-        pipeline.bus.add_watch do |bus, message|
-          if (message and message.structure and message.structure.name \
-          and (message.structure.name == 'prepare-xwindow-id'))
-            Gdk::Threads.synchronize do
-              Gdk::Display.default.sync
-              asink = message.src
-              set_xid(area, asink)
+        if pipeline and (not pipeline.destroyed?)
+          pipeline.bus.add_watch do |bus, message|
+            if (message and message.structure and message.structure.name \
+            and (message.structure.name == 'prepare-xwindow-id'))
+              Gdk::Threads.synchronize do
+                Gdk::Display.default.sync
+                asink = message.src
+                set_xid(area, asink)
+              end
             end
+            true
           end
-          true
-        end
 
-        res = area.signal_connect('expose-event') do |*args|
-          set_xid(area, sink)
+          res = area.signal_connect('expose-event') do |*args|
+            set_xid(area, sink)
+          end
+          area.set_expose_event(res)
         end
       end
       res
@@ -8556,16 +8634,13 @@ module PandoraGUI
           $webcam_xvimagesink.pause
         end
         if just_upd_area
-          if send_display_handler
-            area_send.signal_handler_disconnect(send_display_handler)
-            @send_display_handler = nil
-          end
+          area_send.set_expose_event(nil)
           tsw = PandoraGUI.find_active_sender(self)
           if $webcam_xvimagesink and (not $webcam_xvimagesink.destroyed?) and tsw \
           and tsw.area_send and tsw.area_send.window
             link_sink_to_area($webcam_xvimagesink, tsw.area_send)
             #$webcam_xvimagesink.xwindow_id = tsw.area_send.window.xid
-            #p 'RECONN tsw.title='+PandoraGUI.consctruct_room_title(connset[CSI_Persons]).inspect
+            #p 'RECONN tsw.title='+PandoraGUI.consctruct_room_title(targets[CSI_Persons]).inspect
           end
           #p '--LEAVE'
           area_send.queue_draw if area_send and (not area_send.destroyed?)
@@ -8574,10 +8649,7 @@ module PandoraGUI
           count = PandoraGUI.nil_send_ptrind_by_room(room_id)
           if video_pipeline and (count==0) and (video_pipeline.get_state != Gst::STATE_NULL)
             video_pipeline.stop
-            if send_display_handler
-              area_send.signal_handler_disconnect(send_display_handler)
-              @send_display_handler = nil
-            end
+            area_send.set_expose_event(nil)
             #p '==STOP!!'
           end
         end
@@ -8669,18 +8741,15 @@ module PandoraGUI
           end
           if not just_upd_area
             video_pipeline.stop if (video_pipeline.get_state != Gst::STATE_NULL)
-            if send_display_handler
-              area_send.signal_handler_disconnect(send_display_handler)
-              @send_display_handler = nil
-            end
+            area_send.set_expose_event(nil)
           end
-          if not send_display_handler
-            @send_display_handler = link_sink_to_area($webcam_xvimagesink, area_send, video_pipeline)
-          end
-          if $webcam_xvimagesink and area_send and area_send.window
-            #$webcam_xvimagesink.xwindow_id = area_send.window.xid
-            link_sink_to_area($webcam_xvimagesink, area_send)
-          end
+          #if not area_send.expose_event
+            link_sink_to_area($webcam_xvimagesink, area_send, video_pipeline)
+          #end
+          #if $webcam_xvimagesink and area_send and area_send.window
+          #  #$webcam_xvimagesink.xwindow_id = area_send.window.xid
+          #  link_sink_to_area($webcam_xvimagesink, area_send)
+          #end
           if just_upd_area
             video_pipeline.play if (video_pipeline.get_state != Gst::STATE_PLAYING)
           else
@@ -8729,9 +8798,9 @@ module PandoraGUI
             ximagesink.stop
           end
         end
-        if recv_display_handler and (not can_play)
-          area_recv.signal_handler_disconnect(recv_display_handler)
-          @recv_display_handler = nil
+        if not can_play
+          p 'Disconnect HANDLER !!!'
+          area_recv.set_expose_event(nil)
         end
       elsif (not self.destroyed?) and area_recv and (not area_recv.destroyed?)
         if (not recv_media_pipeline[1]) and init
@@ -8789,12 +8858,21 @@ module PandoraGUI
             vid_button.active = false
           end
         end
-        if recv_media_pipeline[1] and can_play
-          if not recv_display_handler and @ximagesink
-            @recv_display_handler = link_sink_to_area(@ximagesink, area_recv,  recv_media_pipeline[1])
+
+        if @ximagesink #and area_recv.window
+          link_sink_to_area(@ximagesink, area_recv,  recv_media_pipeline[1])
+        end
+
+        #p '[recv_media_pipeline[1], can_play]='+[recv_media_pipeline[1], can_play].inspect
+        if recv_media_pipeline[1] and can_play and area_recv.window
+          #if (not area_recv.expose_event) and
+          if (recv_media_pipeline[1].get_state != Gst::STATE_PLAYING) or (ximagesink.get_state != Gst::STATE_PLAYING)
+            #p 'PLAYYYYYYYYYYYYYYYYYY!!!!!!!!!! '
+            #ximagesink.stop
+            #recv_media_pipeline[1].stop
+            ximagesink.play
+            recv_media_pipeline[1].play
           end
-          recv_media_pipeline[1].play if (recv_media_pipeline[1].get_state != Gst::STATE_PLAYING)
-          ximagesink.play if (ximagesink.get_state != Gst::STATE_PLAYING)
         end
       end
     end
@@ -9018,21 +9096,21 @@ module PandoraGUI
   def self.show_talk_dialog(panhashes, known_node=nil)
     sw = nil
     p 'show_talk_dialog: [panhashes, known_node]='+[panhashes, known_node].inspect
-    connset = [[], [], []]
-    persons, keys, nodes = connset
+    targets = [[], [], []]
+    persons, keys, nodes = targets
     if known_node and (panhashes.is_a? String)
       persons << panhashes
       nodes << known_node
     else
-      extract_connset_from_panhash(connset, panhashes)
+      extract_targets_from_panhash(targets, panhashes)
     end
     if nodes.size==0
-      extend_connset_by_relations(connset)
+      extend_targets_by_relations(targets)
     end
     if nodes.size==0
-      start_extending_connset_by_hunt(connset)
+      start_extending_targets_by_hunt(targets)
     end
-    connset.each do |list|
+    targets.each do |list|
       list.sort!
     end
     persons.uniq!
@@ -9041,7 +9119,7 @@ module PandoraGUI
     keys.compact!
     nodes.uniq!
     nodes.compact!
-    p 'connset='+connset.inspect
+    p 'targets='+targets.inspect
 
     if (persons.size>0) and (nodes.size>0)
       room_id = consctruct_room_id(persons)
@@ -9056,17 +9134,149 @@ module PandoraGUI
         if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
           $window.notebook.page = $window.notebook.children.index(child) if not known_node
           child.room_id = room_id
-          child.connset = connset
+          child.targets = targets
           child.online_button.active = (known_node != nil)
           return child
         end
       end
 
-      title = consctruct_room_title(connset[CSI_Persons])
-      sw = DialogScrollWin.new(known_node, room_id, connset, title)
+      title = consctruct_room_title(targets[CSI_Persons])
+      sw = DialogScrollWin.new(known_node, room_id, targets, title)
     end
     sw
   end
+
+  # Search panel
+  # RU: Панель поиска
+  class SearchScrollWin < Gtk::ScrolledWindow
+    attr_accessor :text
+
+    include PandoraGUI
+
+    # Show conversation dialog
+    # RU: Показать диалог общения
+    def initialize(text=nil)
+      super(nil, nil)
+
+      @text = nil
+
+      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      border_width = 0
+
+      vpaned = Gtk::VPaned.new
+
+      hbox = Gtk::HBox.new
+
+      search_entry = Gtk::Entry.new
+      search_btn = Gtk::Button.new(_('Search'))
+
+      hbox.pack_start(search_entry, true, true, 0)
+      hbox.pack_start(search_btn, false, false, 1)
+
+      list_sw = Gtk::ScrolledWindow.new(nil, nil)
+      list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+      list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+
+      list_store = Gtk::ListStore.new(Integer, String)
+
+      search_btn.signal_connect('clicked') do |*args|
+        user_iter = list_store.append
+        user_iter[0] = 1
+        user_iter[1] = '<result>'
+      end
+
+      # create tree view
+      list_tree = Gtk::TreeView.new(list_store)
+      #list_tree.rules_hint = true
+      #list_tree.search_column = CL_Name
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new('№', renderer, 'text' => 0)
+      column.set_sort_column_id(0)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
+      column.set_sort_column_id(1)
+      list_tree.append_column(column)
+
+      list_tree.signal_connect('row_activated') do |tree_view, path, column|
+        # download and go to record
+      end
+
+      list_sw.add(list_tree)
+
+      vpaned.pack1(hbox, false, true)
+      vpaned.pack2(list_sw, true, true)
+      list_sw.show_all
+
+      self.add_with_viewport(vpaned)
+      #self.add(hpaned)
+
+      search_entry.grab_focus
+    end
+  end
+
+  # Showing search panel
+  # RU: Показать панель поиска
+  def self.show_search_panel(text=nil)
+    sw = SearchScrollWin.new(text)
+
+    image = Gtk::Image.new(Gtk::Stock::FIND, Gtk::IconSize::MENU)
+    image.set_padding(2, 0)
+
+    label_box = TabLabelBox.new(image, _('Search'), sw, false, 0) do
+      #store.clear
+      #treeview.destroy
+      #sw.destroy
+    end
+
+    page = $window.notebook.append_page(sw, label_box)
+    sw.show_all
+    $window.notebook.page = $window.notebook.n_pages-1
+  end
+
+
+  # Profile panel
+  # RU: Панель профиля
+  class ProfileScrollWin < Gtk::ScrolledWindow
+    attr_accessor :person
+
+    include PandoraGUI
+
+    # Show conversation dialog
+    # RU: Показать диалог общения
+    def initialize(person=nil)
+      super(nil, nil)
+
+      @person = nil
+
+      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      border_width = 0
+
+      #self.add_with_viewport(vpaned)
+    end
+  end
+
+  # Show profile panel
+  # RU: Показать панель профиля
+  def self.show_profile_panel(person=nil)
+    sw = ProfileScrollWin.new(person)
+
+    image = Gtk::Image.new(Gtk::Stock::HOME, Gtk::IconSize::MENU)
+    image.set_padding(2, 0)
+
+    label_box = TabLabelBox.new(image, _('Profile'), sw, false, 0) do
+      #store.clear
+      #treeview.destroy
+      #sw.destroy
+    end
+
+    page = $window.notebook.append_page(sw, label_box)
+    sw.show_all
+    $window.notebook.page = $window.notebook.n_pages-1
+  end
+
 
   class PandoraStatusIcon < Gtk::StatusIcon
     attr_accessor :main_icon
@@ -9466,11 +9676,9 @@ module PandoraGUI
 
           #p PandoraUtils.get_param('base_id')
         when 'Profile'
-          p '1cc'
-          cvpaned.show_captcha('abc123', $window.icon.save_to_buffer('jpeg')) do |text|
-            p 'cap_text='+text.inspect
-          end
-          p '2cc'
+          PandoraGUI.show_profile_panel
+        when 'Search'
+          PandoraGUI.show_search_panel
         else
           panobj_id = command
           if PandoraModel.const_defined? panobj_id
