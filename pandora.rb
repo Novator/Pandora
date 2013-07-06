@@ -111,8 +111,12 @@ if RUBY_VERSION<'1.9'
   exit(10)
 else
   class AsciiString < String
-    def initialize(*args)
-      super(*args)
+    def initialize(str=nil)
+      if str == nil
+        super('')
+      else
+        super(str)
+      end
       force_encoding('ASCII-8BIT')
     end
   end
@@ -2148,22 +2152,20 @@ module PandoraUtils
     QS_NotEmpty  = 1
     QS_Full      = 2
 
-    def get_queue_state(max=MaxQueue, ptrind=nil)
+    def single_read_state(max=MaxQueue)
       res = QS_NotEmpty
-      ind = read_ind
-      if ptrind
-        ind = ind[ptrind]
-        ind ||= -1
-      end
-      if ind == write_ind
-        res = QS_Empty
-      else
-        if ind<max
-          ind += 1
+      if read_ind.is_a? Integer
+        if (read_ind == write_ind)
+          res = QS_Empty
         else
-          ind = 0
+          wind = write_ind
+          if wind<max
+            wind += 1
+          else
+            wind = 0
+          end
+          res = QS_Full if (read_ind == wind)
         end
-        res = QS_Full if ind == write_ind
       end
       res
     end
@@ -2680,7 +2682,7 @@ module PandoraModel
 
   PK_Key    = 221
 
-  def self.get_record_by_panhash(kind, panhash, with_kind=true, models=nil, get_pson=true)
+  def self.get_record_by_panhash(kind, panhash, pson_with_kind=nil, models=nil, getfields=nil)
     res = nil
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
     model = PandoraUtils.get_model(panobjectclass.ider, models)
@@ -2688,11 +2690,10 @@ module PandoraModel
     if kind==PK_Key
       filter['kind'] = 0x81
     end
-    getfields = nil
-    getfields = 'id' if not get_pson
-    sel = model.select(filter, true, getfields, nil, 1)
+    pson = (pson_with_kind != nil)
+    sel = model.select(filter, pson, getfields, nil, 1)
     if sel and sel.size>0
-      if get_pson
+      if pson
         #namesvalues = panobject.namesvalues
         #fields = model.matter_fields
         fields = model.clear_excess_fields(sel[0])
@@ -2700,12 +2701,12 @@ module PandoraModel
         # need get all fields (except: id, panhash, modified) + kind
         lang = PandoraUtils.lang_from_panhash(panhash)
         res = AsciiString.new
-        res << [kind].pack('C') if with_kind
+        res << [kind].pack('C') if pson_with_kind
         res << [lang].pack('C')
         p 'get_record_by_panhash|||  fields='+fields.inspect
         res << PandoraUtils.namehash_to_pson(fields)
       else
-        res = true
+        res = sel
       end
     end
     res
@@ -2958,6 +2959,7 @@ module PandoraCrypto
   KV_Panhash = 6
   KV_Creator = 7
   KV_Trust   = 8
+  KV_NameFamily  = 9
 
   def self.sym_recrypt(data, encode=true, cipher_hash=nil, cipher_key=nil)
     #p '^^^^^^^^^^^^sym_recrypt: [cipher_hash, cipher_key]='+[cipher_hash, cipher_key].inspect
@@ -3703,6 +3705,36 @@ module PandoraCrypto
     key_vec
   end
 
+  def self.name_and_family_of_person(key, person=nil)
+    nf = nil
+    nf = key[KV_NameFamily] if key
+    aname, afamily = nil, nil
+    if nf.is_a? Array
+      aname, afamily = nf
+    elsif (person or key)
+      person ||= key[KV_Creator]
+      kind = PandoraUtils.kind_from_panhash(person)
+      sel = PandoraModel.get_record_by_panhash(kind, person, nil, nil, 'first_name, last_name')
+      aname, afamily = sel[0][0], sel[0][1]
+      key[KV_NameFamily] = [aname, afamily] if key
+    end
+    aname ||= ''
+    afamily ||= ''
+    #p 'name_and_family_of_person: '+[aname, afamily].inspect
+    [aname, afamily]
+  end
+
+  def self.short_name_of_person(key, person=nil, kind=0, othername=nil)
+    aname, afamily = name_and_family_of_person(key, person)
+    if othername and (othername == aname)
+      res = afamily
+    else
+      res = aname
+    end
+    res ||= ''
+    res
+  end
+
   def self.find_sha1_solution(phrase)
     res = nil
     lenbit = phrase[phrase.size-1].ord
@@ -3820,9 +3852,10 @@ module PandoraNet
         session.send_state = (session.send_state | send_state_add)
         session.dialog = nil if session.dialog and session.dialog.destroyed?
         session.dialog ||= dialog
-        if session.dialog and session.dialog.online_button
-          session.dialog.online_button.active = (session.socket and (not session.socket.closed?))
-        end
+        #if session.dialog and session.dialog.online_button
+        #  session.dialog.online_button.active = (session.socket and (not session.socket.closed?))
+        #end
+        res = true
       elsif (node or keybase)
         p 'NEED connect: '+[node, keybase].inspect
         if node
@@ -3850,17 +3883,26 @@ module PandoraNet
               Thread.new do
                 socket = nil
                 session = nil
+                server = host+':'+port.to_s
                 begin
                   socket = TCPSocket.open(host, port)
-                  log_message(LM_Info, "Подключился к серверу: "+socket.to_s)
-                  session = Session.new(socket, host, socket.addr[2], port, proto, CM_Hunter, \
-                    CS_Connected, Thread.current, node_id, dialog, keybase, send_state_add)
-                  socket.close if not socket.closed?
-                  log_message(LM_Info, "Отключился от сервера: "+socket.to_s)
                 rescue
-                  log_message(LM_Warning, "Не удается подключиться к: "+host+':'+port.to_s)
+                  log_message(LM_Warning, _('Cannot connect to')+' '+server)
+                  socket = nil
+                end
+                if socket
+                  #begin
+                    log_message(LM_Info, _('Connected to server')+' '+server)
+                    session = Session.new(socket, host, socket.addr[2], port, proto, CM_Hunter, \
+                      CS_Connected, Thread.current, node_id, dialog, keybase, send_state_add)
+                    socket.close if not socket.closed?
+                    log_message(LM_Info, _('Disconnected from server')+' '+server)
+                  #rescue => err
+                  #  log_message(LM_Warning, _('Cicle exchange')+' '+server+' except='+err.message)
+                  #end
                 end
               end
+              res = true
             end
           end
         end
@@ -3871,16 +3913,17 @@ module PandoraNet
     # Stop session with a node
     # RU: Останавливает соединение с заданным узлом
     def stop_session(node=nil, keybase=nil)  #, wait_disconnect=true)
-      #p 'stop_session node='+node.inspect
+      p 'stop_session1 keybase='+keybase.inspect
       session1 = nil
       session2 = nil
       session1 = session_of_keybase(keybase) if keybase
       session2 = session_of_node(node) if node and (not session1)
       if session1 or session2
+        #p 'stop_session2 session1,session2='+[session1,session2].inspect
         session = session1
         session ||= session2
         if session and (session.conn_state != CS_Disconnected)
-          #p 'stop_session2 session='+session.inspect
+          #p 'stop_session3 session='+session.inspect
           session.conn_state = CS_StopRead
           #while wait_disconnect and session and (session.conn_state != CS_Disconnected)
           #  sleep 0.05
@@ -3891,7 +3934,7 @@ module PandoraNet
           #session = session_of_node(node)
         end
       end
-      session and (session.conn_state != CS_Disconnected) #and wait_disconnect
+      res = (session and (session.conn_state != CS_Disconnected)) #and wait_disconnect
     end
 
     # Form node marker
@@ -3951,6 +3994,7 @@ module PandoraNet
   EC_Sync      = 9     # Последняя команда в серии, или индикация "живости"
   EC_Wait      = 254   # Временно недоступен
   EC_Bye       = 255   # Рассоединение
+  # signs only
   EC_Data      = 256   # Ждем данные
 
   #TExchangeCommands = {EC_Init=>'init', EC_Query=>'query', EC_News=>'news',
@@ -4082,7 +4126,7 @@ module PandoraNet
       :send_thread, :read_thread, :socket, :read_state, :send_state,
       :send_models, :recv_models, \
       #:read_req, :send_mes, :send_media, :send_req, :read_mes, :read_media,
-      :sindex, :rindex, :read_queue, :send_queue, :params,
+      :sindex, :read_queue, :send_queue, :params,
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode,
       :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes
 
@@ -4290,51 +4334,48 @@ module PandoraNet
 
     # Add segment (chunk, grain, phrase) to pack and send when it's time
     # RU: Добавляет сегмент в пакет и отправляет если пора
-    def add_send_segment(ex_comm, last_seg=true, param=nil, scode=nil)
+    def add_send_segment(ex_comm, last_seg=true, param=nil, ascode=nil)
       res = nil
-      scmd = ex_comm
-      scode ||= 0
-      sbuf = nil
+      ascmd = ex_comm
+      ascode ||= 0
+      asbuf = nil
       case ex_comm
         when EC_Init
           @rkey = PandoraCrypto.current_key(false, false)
           #p log_mes+'first key='+key.inspect
           if @rkey and @rkey[PandoraCrypto::KV_Obj]
             key_hash = @rkey[PandoraCrypto::KV_Panhash]
-            scode = EC_Init
-            scode = ECC_Init_Hello
+            ascode = EC_Init
+            ascode = ECC_Init_Hello
             params['mykey'] = key_hash
             params['tokey'] = param
             hparams = {:version=>0, :mode=>0, :mykey=>key_hash, :tokey=>param}
             hparams[:addr] = $incoming_addr if $incoming_addr and (not ($incoming_addr != ''))
-            sbuf = PandoraUtils.namehash_to_pson(hparams)
+            asbuf = PandoraUtils.namehash_to_pson(hparams)
           else
-            scmd = EC_Bye
-            scode = ECC_Bye_Exit
-            sbuf = nil
+            ascmd = EC_Bye
+            ascode = ECC_Bye_Exit
+            asbuf = nil
           end
         when EC_Message
-          sbuf = param
+          asbuf = param
         when EC_Bye
-          scmd = EC_Bye
-          scode = ECC_Bye_Exit
-          sbuf = param
+          ascmd = EC_Bye
+          ascode = ECC_Bye_Exit
+          asbuf = param
         else
-          sbuf = param
+          asbuf = param
       end
-      #while PandoraGUI.get_queue_state(@send_queue) == QS_Full do
-      #  p log_mes+'get_queue_state.EX = '+PandoraGUI.get_queue_state(@send_queue).inspect
-      #  Thread.pass
-      #end
-      res = @send_queue.add_block_to_queue([scmd, scode, sbuf])
-
-      if scmd != EC_Media
-        sbuf ||= '';
-        p log_mes+'add_send_segment:  [scmd, scode, sbuf.bytesize]='+[scmd, scode, sbuf.bytesize].inspect
-        p log_mes+'add_send_segment2: sbuf='+sbuf.inspect if sbuf
+      if (@send_queue.single_read_state != PandoraUtils::RoundQueue::QS_Full)
+        res = @send_queue.add_block_to_queue([ascmd, ascode, asbuf])
+      end
+      if ascmd != EC_Media
+        asbuf ||= '';
+        p log_mes+'add_send_segment:  [ascmd, ascode, asbuf.bytesize]='+[ascmd, ascode, asbuf.bytesize].inspect
+        p log_mes+'add_send_segment2: asbuf='+asbuf.inspect if sbuf
       end
       if not res
-        puts 'add_send_segment: add_block_to_queue error'
+        log_message(LM_Error, _('Cannot add segment to send queue'))
         @conn_state = CS_Stoping
       end
       res
@@ -4351,7 +4392,9 @@ module PandoraNet
         asbuf = panhashes[1..-1]
       end
       if send_now
-        add_send_segment(ascmd, true, asbuf, ascode)
+        if not add_send_segment(ascmd, true, asbuf, ascode)
+          log_message(LM_Error, _('Cannot add request'))
+        end
       else
         @scmd = ascmd
         @scode = ascode
@@ -4599,6 +4642,39 @@ module PandoraNet
         @node_panhash = panhash
 
         res = node_model.update(values, nil, filter)
+      end
+
+      def process_media_segment(cannel, mediabuf)
+        if not dialog
+          #node = PandoraNet.encode_node(host_ip, port, proto)
+          panhash = @skey[PandoraCrypto::KV_Creator]
+          @dialog = PandoraGUI.show_talk_dialog(panhash, @node_panhash)
+          dialog.update_state(true)
+          Thread.pass
+        end
+        recv_buf = dialog.recv_media_queue[cannel]
+        if not recv_buf
+          if cannel==0
+            dialog.init_audio_receiver(true, true)
+          else
+            dialog.init_video_receiver(true, true)
+          end
+          Thread.pass
+          recv_buf = dialog.recv_media_queue[cannel]
+        end
+        if dialog and recv_buf
+          #p 'RECV MED ('+mediabuf.size.to_s+')'
+          if cannel==0  #audio processes quickly
+            buf = Gst::Buffer.new
+            buf.data = mediabuf
+            #buf.timestamp = Time.now.to_i * Gst::NSECOND
+            appsrc = dialog.appsrcs[cannel]
+            appsrc.push_buffer(buf)
+            appsrc.play if (appsrc.get_state != Gst::STATE_PLAYING)
+          else  #video puts to queue
+            recv_buf.add_block_to_queue(mediabuf, $media_buf_size)
+          end
+        end
       end
 
       def get_simple_answer_to_node
@@ -4862,7 +4938,9 @@ module PandoraNet
               t = Time.now
               talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
               talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
-              talkview.buffer.insert(talkview.buffer.end_iter, 'Dude:', 'dude_bold')
+              myname = PandoraCrypto.short_name_of_person(@rkey)
+              dude_name = PandoraCrypto.short_name_of_person(@skey, nil, 0, myname)
+              talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', 'dude_bold')
               talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
               talkview.parent.vadjustment.value = talkview.parent.vadjustment.upper
               dialog.update_state(true)
@@ -4880,37 +4958,7 @@ module PandoraNet
             end
           end
         when EC_Media
-          if not dialog
-            #node = PandoraNet.encode_node(host_ip, port, proto)
-            panhash = @skey[PandoraCrypto::KV_Creator]
-            @dialog = PandoraGUI.show_talk_dialog(panhash, @node_panhash)
-            dialog.update_state(true)
-            Thread.pass
-          end
-          cannel = rcode
-          recv_buf = dialog.recv_media_queue[cannel]
-          if not recv_buf
-            if cannel==0
-              dialog.init_audio_receiver(true, true)
-            else
-              dialog.init_video_receiver(true, true)
-            end
-            Thread.pass
-            recv_buf = dialog.recv_media_queue[cannel]
-          end
-          if dialog and recv_buf
-            #p 'RECV MED ('+rdata.size.to_s+')'
-            if cannel==0  #audio processes quickly
-              buf = Gst::Buffer.new
-              buf.data = rdata
-              #buf.timestamp = Time.now.to_i * Gst::NSECOND
-              appsrc = dialog.appsrcs[cannel]
-              appsrc.push_buffer(buf)
-              appsrc.play if (appsrc.get_state != Gst::STATE_PLAYING)
-            else  #video puts to queue
-              recv_buf.add_block_to_queue(rdata, $media_buf_size)
-            end
-          end
+          process_media_segment(rcode, rdata)
         when EC_Request
           kind = rcode
           p log_mes+'EC_Request  kind='+kind.to_s+'  stage='+stage.to_s
@@ -5124,7 +5172,6 @@ module PandoraNet
       send_state_add ||= 0
       @send_state     = send_state_add
       @sindex         = 0
-      @rindex         = 0
       @read_queue     = PandoraUtils::RoundQueue.new
       @send_queue     = PandoraUtils::RoundQueue.new
       @send_models    = {}
@@ -5140,8 +5187,9 @@ module PandoraNet
       end
 
       @dialog = a_dialog
-      if dialog and dialog.online_button
-        dialog.online_button.active = (socket and (not socket.closed?))
+      if dialog and (not dialog.destroyed?) and dialog.online_button
+        dialog.set_session(self, true)
+        #dialog.online_button.active = (socket and (not socket.closed?))
       end
 
       #Thread.critical = true
@@ -5159,195 +5207,224 @@ module PandoraNet
         add_send_segment(EC_Init, true, tokey)
       end
 
-      # Read cicle
-      # RU: Цикл приёма
-      if not read_thread
-        @read_thread = Thread.new do
-          #read_thread = Thread.current
-
-          sindex = 0
-          rindex = 0
+      # Read from socket cicle
+      # RU: Цикл чтения из сокета
+      if @socket
+        @socket_thread = Thread.new do
           readmode = RM_Comm
-          nextreadmode = RM_Comm
           waitlen = CommSize
           rdatasize = 0
           fullcrc32 = nil
           rdatasize = nil
           ok1comm = nil
 
-          @rcmd = EC_Sync
-          rbuf = AsciiString.new
-          @rdata = AsciiString.new
-          @scmd = EC_Sync
-          @sbuf = ''
+          rkcmd = EC_Sync
+          rkbuf = AsciiString.new
+          rkdata = AsciiString.new
+          rkindex = 0
+          serrcode = nil
+          serrbuf = nil
 
-          p log_mes+"Цикл ЧТЕНИЯ начало"
+          p log_mes+"Цикл ЧТЕНИЯ сокета начало"
           # Цикл обработки команд и блоков данных
           while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
-          and (not socket.closed?) and (recieved = socket_recv(@max_pack_size))
+          and (not socket.closed?)
+            recieved = socket_recv(@max_pack_size)
             if (not recieved) or (recieved == '')
               @conn_state = CS_Stoping
             end
             #p log_mes+"recieved=["+recieved+']  '+socket.closed?.to_s+'  sok='+socket.inspect
-            rbuf << AsciiString.new(recieved)
+            rkbuf << AsciiString.new(recieved)
             processedlen = 0
             while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
-            and (@conn_state != CS_Stoping) and (not socket.closed?) and (rbuf.bytesize>=waitlen)
-              #p log_mes+'readmode, rbuf, rbuf.len, wailtlen='+[readmode, rbuf, rbuf.size, waitlen].inspect
+            and (@conn_state != CS_Stoping) and (not socket.closed?) and (rkbuf.bytesize>=waitlen)
+              #p log_mes+'readmode, rkbuf.len, wailtlen='+[readmode, rkbuf.size, waitlen].inspect
               processedlen = waitlen
-              nextreadmode = readmode
 
               # Определимся с данными по режиму чтения
               case readmode
                 when RM_Comm
                   fullcrc32 = nil
                   rdatasize = nil
-                  comm = rbuf[0, processedlen]
-                  rindex, @rcmd, @rcode, rsegsign, errcode = unpack_comm(comm)
+                  comm = rkbuf[0, processedlen]
+                  rkindex, rkcmd, rkcode, rsegsign, errcode = unpack_comm(comm)
                   if errcode == 0
-                    if (@rcmd <= EC_Sync) or (@rcmd >= EC_Wait)
+                    if (rkcmd <= EC_Sync) or (rkcmd >= EC_Wait)
                       ok1comm ||= true
-                      #p log_mes+' RM_Comm: '+[rindex, rcmd, rcode, rsegsign].inspect
+                      #p log_mes+' RM_Comm: '+[rkindex, rkcmd, rkcode, rsegsign].inspect
                       if rsegsign == Session::LONG_SEG_SIGN
-                        nextreadmode = RM_CommExt
+                        readmode = RM_CommExt
                         waitlen = CommExtSize
                       elsif rsegsign > 0
-                        nextreadmode = RM_SegmentS
+                        readmode = RM_SegmentS
                         waitlen, rdatasize = rsegsign, rsegsign
-                        rdatasize -=4 if (@rcmd != EC_Media)
+                        rdatasize -=4 if (rkcmd != EC_Media)
                       end
                     else
-                      err_scmd('Bad command code', ECC_Bye_BadComm)
+                      serrbuf, serrcode = 'Bad command code', ECC_Bye_BadComm
                     end
                   elsif errcode == 1
-                    err_scmd('Wrong CRC of recieved command', ECC_Bye_BadCommCRC)
+                    serrbuf, serrcode = 'Wrong CRC of recieved command', ECC_Bye_BadCommCRC
                   elsif errcode == 2
-                    err_scmd('Wrong length of recieved command', ECC_Bye_BadCommLen)
+                    serrbuf, serrcode = 'Wrong length of recieved command', ECC_Bye_BadCommLen
                   else
-                    err_scmd('Wrong recieved command', ECC_Bye_Unknown)
+                    serrbuf, serrcode = 'Wrong recieved command', ECC_Bye_Unknown
                   end
                 when RM_CommExt
-                  comm = rbuf[0, processedlen]
+                  comm = rkbuf[0, processedlen]
                   rdatasize, fullcrc32, rsegsize = unpack_comm_ext(comm)
                   #p log_mes+' RM_CommExt: '+[rdatasize, fullcrc32, rsegsize].inspect
-                  fullcrc32 = nil if (@rcmd == EC_Media)
-                  nextreadmode = RM_Segment1
+                  fullcrc32 = nil if (rkcmd == EC_Media)
+                  readmode = RM_Segment1
                   waitlen = rsegsize
                 when RM_SegLenN
-                  comm = rbuf[0, processedlen]
-                  rindex, rsegindex, rsegsize = comm.unpack('CNn')
-                  #p log_mes+' RM_SegLenN: '+[rindex, rsegindex, rsegsize].inspect
-                  nextreadmode = RM_SegmentN
+                  comm = rkbuf[0, processedlen]
+                  rkindex, rsegindex, rsegsize = comm.unpack('CNn')
+                  #p log_mes+' RM_SegLenN: '+[rkindex, rsegindex, rsegsize].inspect
+                  readmode = RM_SegmentN
                   waitlen = rsegsize
-                when RM_SegmentS, RM_Segment1, RM_SegmentN
-                  #p log_mes+' RM_SegLen?['+readmode.to_s+']  rbuf.size=['+rbuf.bytesize.to_s+']'
-                  if @rcmd == EC_Media
-                    @rdata << rbuf[0, processedlen]
+                else  #RM_SegmentS, RM_Segment1, RM_SegmentN
+                  #p log_mes+' RM_SegLen?['+readmode.to_s+']  rkbuf.size=['+rkbuf.bytesize.to_s+']'
+                  if rkcmd == EC_Media
+                    rkdata << rkbuf[0, processedlen]
                   else
-                    rseg = AsciiString.new(rbuf[0, processedlen-4])
+                    rseg = AsciiString.new(rkbuf[0, processedlen-4])
                     #p log_mes+'rseg=['+rseg+']'
-                    rsegcrc32str = rbuf[processedlen-4, 4]
+                    rsegcrc32str = rkbuf[processedlen-4, 4]
                     rsegcrc32 = rsegcrc32str.unpack('N')[0]
                     fsegcrc32 = Zlib.crc32(rseg)
                     if fsegcrc32 == rsegcrc32
-                      @rdata << rseg
+                      rkdata << rseg
                     else
-                      err_scmd('Wrong CRC of received segment', ECC_Bye_BadSegCRC)
+                      serrbuf, serrcode = 'Wrong CRC of received segment', ECC_Bye_BadSegCRC
                     end
                   end
-                  #p log_mes+'RM_Segment?: data['+rdata+']'+rdata.size.to_s+'/'+rdatasize.to_s
+                  #p log_mes+'RM_Segment?: data['+rkdata+']'+rkdata.size.to_s+'/'+rdatasize.to_s
                   #p log_mes+'RM_Segment?: datasize='+rdatasize.to_s
-                  if rdata.bytesize == rdatasize
-                    nextreadmode = RM_Comm
+                  if rkdata.bytesize == rdatasize
+                    readmode = RM_Comm
                     waitlen = CommSize
-                    if fullcrc32 and (fullcrc32 != Zlib.crc32(@rdata))
-                      err_scmd('Wrong CRC of composed data', ECC_Bye_BadDataCRC)
+                    if fullcrc32 and (fullcrc32 != Zlib.crc32(rkdata))
+                      serrbuf, serrcode = 'Wrong CRC of composed data', ECC_Bye_BadDataCRC
                     end
-                  elsif rdata.bytesize < rdatasize
+                  elsif rkdata.bytesize < rdatasize
                     if (readmode==RM_Segment1) or (readmode==RM_SegmentN)
-                      nextreadmode = RM_SegLenN
+                      readmode = RM_SegLenN
                       waitlen = 7    #index + segindex + rseglen (1+4+2)
                     else
-                      err_scmd('Too short received data ('+rdata.bytesize.to_s+'>'+rdatasize.to_s+')', \
-                        ECC_Bye_DataTooShort)
+                      serrbuf, serrcode = 'Too short received data ('+rkdata.bytesize.to_s+'>'  \
+                        +rdatasize.to_s+')', ECC_Bye_DataTooShort
                     end
                   else
-                    err_scmd('Too long received data ('+rdata.bytesize.to_s+'>'+rdatasize.to_s+')', \
-                      ECC_Bye_DataTooLong)
+                    serrbuf, serrcode = 'Too long received data ('+rkdata.bytesize.to_s+'>' \
+                      +rdatasize.to_s+')', ECC_Bye_DataTooLong
                   end
-
               end
               # Очистим буфер от определившихся данных
-              rbuf.slice!(0, processedlen)
-              @scmd = EC_Data if (scmd != EC_Bye) and (scmd != EC_Wait)
-              # Обработаем поступившие команды и блоки данных
-              rdata0 = rdata
-              #p 'Порция данных [scmd, nextreadmode]'+[scmd, nextreadmode].inspect
-              if (scmd != EC_Bye) and (scmd != EC_Wait) and (nextreadmode == RM_Comm)
-                #p log_mes+'-->>>> before accept: [rcmd, rcode, rdata.size]='+[rcmd, rcode, rdata.size].inspect
-                if @rdata and (@rdata.bytesize>0) and @r_encode
-                  #@rdata = PandoraGUI.recrypt(@rkey, @rdata, false, true)
-                  #@rdata = Base64.strict_decode64(@rdata)
-                  #p log_mes+'::: decode rdata.size='+rdata.size.to_s
+              rkbuf.slice!(0, processedlen)
+              if serrbuf  #there was error
+                res = @send_queue.add_block_to_queue([EC_Bye, serrcode, serrbuf])
+                if not res
+                  log_message(LM_Error, _('Cannot add error segment to send queue'))
+                end
+                @conn_state = CS_Stoping
+              elsif (readmode == RM_Comm)
+                #p log_mes+'-- from socket to read queue: [rkcmd, rcode, rkdata.size]='+[rkcmd, rkcode, rkdata.size].inspect
+                if @r_encode and rkdata and (rkdata.bytesize>0)
+                  #@rkdata = PandoraGUI.recrypt(@rkey, @rkdata, false, true)
+                  #@rkdata = Base64.strict_decode64(@rkdata)
+                  #p log_mes+'::: decode rkdata.size='+rkdata.size.to_s
                 end
 
-                #rcmd, rcode, rdata, scmd, scode, sbuf = \
-                  accept_segment #(rcmd, rcode, rdata, scmd, scode, sbuf)
-
-                @rdata = AsciiString.new
-                @sbuf ||= AsciiString.new
-                #p log_mes+'after accept ==>>>: [scmd, scode, sbuf, sbuf.size]='+[scmd, scode, @sbuf, @sbuf.size].inspect
-              #else
-                #p log_mes+'-->>>> NO accept: [rcmd, rcode, rdata.size]='+[rcmd, rcode, rdata.size].inspect
-              end
-
-              if scmd != EC_Data
-                #@sbuf = '' if scmd == EC_Bye
-                #p log_mes+'add to queue [scmd, scode, sbuf]='+[scmd, scode, @sbuf].inspect
-                #p log_mes+'recv/send: ='+[rcmd, rcode, rdata0.bytesize].inspect+'/'+[scmd, scode, @sbuf.bytesize].inspect
-                #while PandoraGUI.get_queue_state(@send_queue) == QS_Full do
-                #  p log_mes+'get_queue_state.MAIN = '+PandoraGUI.get_queue_state(@send_queue).inspect
-                #  Thread.pass
-                #end
-                if ok1comm
-                  res = @send_queue.add_block_to_queue([scmd, scode, @sbuf])
+                if rkcmd==EC_Media
+                  process_media_segment(rkcode, rkdata)
+                else
+                  while (@read_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full ) \
+                  and (@conn_state == CS_Connected)
+                    sleep(0.03)
+                    Thread.pass
+                  end
+                  res = @read_queue.add_block_to_queue([rkcmd, rkcode, rkdata])
                   if not res
-                    log_message(LM_Error, 'Error while adding segment to queue')
+                    log_message(LM_Error, _('Cannot add socket segment to read queue'))
                     @conn_state = CS_Stoping
                   end
-                  @sbuf = ''
-                else
-                  log_message(LM_Error, 'Bad first command')
-                  @conn_state = CS_Stoping
                 end
-              else
-                #p log_mes+'EC_Data(skip): nextreadmode='+nextreadmode.inspect
+                rkdata = AsciiString.new
               end
-              readmode = nextreadmode
+
+              if not ok1comm
+                log_message(LM_Error, 'Bad first command')
+                @conn_state = CS_Stoping
+              end
             end
             if (@conn_state == CS_Stoping)
               @conn_state = CS_StopRead
             end
-            Thread.pass
+            #Thread.pass
           end
           @conn_state = CS_StopRead if (not @conn_state) or (@conn_state < CS_StopRead)
-          p log_mes+"Цикл ЧТЕНИЯ конец!"
-          #socket.close if not socket.closed?
-          #@conn_state = CS_Disconnected
-          @read_thread = nil
+          p log_mes+"Цикл ЧТЕНИЯ сокета конец!"
+          @socket_thread = nil
         end
       end
 
-      #p log_mes+"ФАЗА ОЖИДАНИЯ"
+      # Read from buffer cicle
+      # RU: Цикл чтения из буфера
+      @read_thread = Thread.new do
+        @rcmd = EC_Sync
+        @rdata = AsciiString.new
+        @scmd = EC_Sync
+        @sbuf = ''
 
-      #while (conn_state != CS_Disconnected) and (stage<ST_Protocoled)
-      #  Thread.pass
-      #end
+        p log_mes+"Цикл ЧТЕНИЯ начало"
+        # Цикл обработки команд и блоков данных
+        while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead)
+          read_segment = @read_queue.get_block_from_queue
+          if (@conn_state != CS_Disconnected) and read_segment
+            @rcmd, @rcode, @rdata = read_segment
+            len = 0
+            len = rdata.size if rdata
+            #p log_mes+'--**** before accept: [rcmd, rcode, rdata]='+[rcmd, rcode, len].inspect
+            #rcmd, rcode, rdata, scmd, scode, sbuf = \
+              accept_segment #(rcmd, rcode, rdata, scmd, scode, sbuf)
+            len = 0
+            len = @sbuf.size if @sbuf
+            #p log_mes+'--**** after accept: [scmd, scode, sbuf]='+[@scmd, @scode, len].inspect
 
+            if @scmd != EC_Data
+              while (@send_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) \
+              and (@conn_state == CS_Connected)
+                sleep(0.03)
+                Thread.pass
+              end
+              res = @send_queue.add_block_to_queue([@scmd, @scode, @sbuf])
+              @scmd = EC_Data
+              if not res
+                log_message(LM_Error, 'Error while adding segment to queue')
+                @conn_state = CS_Stoping
+              end
+            end
+          else  #no segment in read queue
+            #p 'aaaaaaaaaaaaa'
+            sleep(0.01)
+            #Thread.pass
+          end
+          if (@conn_state == CS_Stoping)
+            @conn_state = CS_StopRead
+          end
+        end
+        @conn_state = CS_StopRead if (not @conn_state) or (@conn_state < CS_StopRead)
+        p log_mes+"Цикл ЧТЕНИЯ конец!"
+        #socket.close if not socket.closed?
+        #@conn_state = CS_Disconnected
+        @read_thread = nil
+      end
+
+      # Send cicle
+      # RU: Цикл отправки
       inquirer_step = IS_CreatorCheck
-
       message_model = PandoraUtils.get_model('Message', @send_models)
-
       p log_mes+'ЦИКЛ ОТПРАВКИ начало'
       while (@conn_state != CS_Disconnected)
         # отправка сформированных сегментов и их удаление
@@ -5356,16 +5433,17 @@ module PandoraNet
           send_segment = @send_queue.get_block_from_queue
           while (@conn_state != CS_Disconnected) and send_segment
             #p log_mes+' send_segment='+send_segment.inspect
-            @scmd, @scode, @sbuf = send_segment
-            if @sbuf and (@sbuf.bytesize>0) and @s_encode
-              #@sbuf = PandoraGUI.recrypt(@skey, @sbuf, true, false)
-              #@sbuf = Base64.strict_encode64(@sbuf)
+            sscmd, sscode, ssbuf = send_segment
+            if ssbuf and (ssbuf.bytesize>0) and @s_encode
+              #ssbuf = PandoraGUI.recrypt(@skey, ssbuf, true, false)
+              #ssbuf = Base64.strict_encode64(@sbuf)
             end
-            @sindex = send_comm_and_data(sindex, @scmd, @scode, @sbuf)
-            if (scmd==EC_Sync) and (scode==ECC_Sync2_Encode)
+            #p log_mes+'MAIN SEND: '+[@sindex, sscmd, sscode, ssbuf].inspect
+            @sindex = send_comm_and_data(@sindex, sscmd, sscode, ssbuf)
+            if (sscmd==EC_Sync) and (sscode==ECC_Sync2_Encode)
               @s_encode = true
             end
-            if (@scmd==EC_Bye)
+            if (sscmd==EC_Bye)
               p log_mes+'SEND BYE!!!!!!!!!!!!!!!'
               send_segment = nil
               #if not socket.closed?
@@ -5374,7 +5452,7 @@ module PandoraNet
               #end
               @conn_state = CS_Disconnected
             else
-              if (@scmd==EC_Media)
+              if (sscmd==EC_Media)
                 fast_data = true
               end
               send_segment = @send_queue.get_block_from_queue
@@ -5391,10 +5469,10 @@ module PandoraNet
             when IS_CreatorCheck
               creator = @skey[PandoraCrypto::KV_Creator]
               kind = PandoraUtils.kind_from_panhash(creator)
-              res = PandoraModel.get_record_by_panhash(kind, creator, false, @send_models, false)
-              p log_mes+'======  IS_CreatorCheck  creator='+creator.inspect
+              res = PandoraModel.get_record_by_panhash(kind, creator, nil, @send_models, 'id')
+              p log_mes+'Whyer: CreatorCheck  creator='+creator.inspect
               if not res
-                p log_mes+'======  IS_CreatorCheck  Request!'
+                p log_mes+'Whyer: CreatorCheck  Request!'
                 set_request(creator, true)
               end
               inquirer_step += 1
@@ -5445,15 +5523,18 @@ module PandoraNet
           @send_state = (send_state & (~CSF_Message))
           if @skey and @skey[PandoraCrypto::KV_Creator]
             filter = {'destination'=>@skey[PandoraCrypto::KV_Creator], 'state'=>0}
-            sel = message_model.select(filter, false, 'id, text', 'created', $mes_block_count)
+            fields = 'id, text'
+            sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
             if sel and (sel.size>0)
               @send_state = (send_state | CSF_Messaging)
               i = 0
               while sel and (i<sel.size) and (processed<$mes_block_count) \
-              and (@conn_state == CS_Connected)
+              and (@conn_state == CS_Connected) \
+              and (@send_queue.single_read_state != PandoraUtils::RoundQueue::QS_Full)
                 processed += 1
                 id = sel[i][0]
                 text = sel[i][1]
+                #p log_mes+'send_message: [i, id, text]='+[i, id, text].inspect
                 if add_send_segment(EC_Message, true, text)
                   res = message_model.update({:state=>1}, nil, 'id='+id.to_s)
                   if not res
@@ -5466,7 +5547,7 @@ module PandoraNet
                 if (i>=sel.size) and (processed<$mes_block_count) and (@conn_state == CS_Connected)
                   #sel = message_model.select('destination="'+node.to_s+'" AND state=0', \
                   #  false, 'id, text', 'created', $mes_block_count)
-                  sel = message_model.select(filter, false, 'id, text', 'created', $mes_block_count)
+                  sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
                   if sel and (sel.size>0)
                     i = 0
                   else
@@ -5506,10 +5587,10 @@ module PandoraNet
             send_media_chunk = sc_queue.get_block_from_queue($media_buf_size, pointer_ind) if sc_queue and pointer_ind
             if send_media_chunk
               #p log_mes+'[cannel, pointer_ind, chunk.size]='+[cannel, pointer_ind, send_media_chunk.size].inspect
-              @scmd = EC_Media
-              @scode = cannel
-              @sbuf = send_media_chunk
-              @sindex = send_comm_and_data(sindex, @scmd, @scode, @sbuf)
+              mscmd = EC_Media
+              mscode = cannel
+              msbuf = send_media_chunk
+              @sindex = send_comm_and_data(sindex, mscmd, mscode, msbuf)
               if not @sindex
                 log_message(LM_Error, 'Ошибка отправки буфера data.size='+send_media_chunk.size.to_s)
               end
@@ -5546,8 +5627,9 @@ module PandoraNet
       @socket = nil
       @send_thread = nil
 
-      if dialog and (not dialog.destroyed?) and (not dialog.online_button.destroyed?)
-        dialog.online_button.active = false
+      if dialog and (not dialog.destroyed?) #and (not dialog.online_button.destroyed?)
+        dialog.set_session(self, false)
+        #dialog.online_button.active = false
       end
     end
 
@@ -5943,6 +6025,23 @@ module PandoraGUI
   # ToggleToolButton with safety "active" switching
   # ToggleToolButton с безопасным переключением "active"
   class GoodToggleToolButton < Gtk::ToggleToolButton
+    def good_signal_clicked
+      @clicked_signal = self.signal_connect('clicked') do |*args|
+        yield(*args) if block_given?
+      end
+    end
+    def good_set_active(an_active)
+      if @clicked_signal
+        self.signal_handler_block(@clicked_signal) do
+          self.active = an_active
+        end
+      end
+    end
+  end
+
+  # CheckButton with safety "active" switching
+  # CheckButton с безопасным переключением "active"
+  class GoodCheckButton < Gtk::CheckButton
     def good_signal_clicked
       @clicked_signal = self.signal_connect('clicked') do |*args|
         yield(*args) if block_given?
@@ -7315,7 +7414,7 @@ module PandoraGUI
             rescue => err
               http = nil
               $window.set_status_field(SF_Update, 'Connection error')
-              log_message(LM_Warning, _('Connection error')+' 1')
+              log_message(LM_Warning, _('Cannot connect to GitHub to check update'))
               puts err.message
             end
           else
@@ -7334,7 +7433,7 @@ module PandoraGUI
               rescue => err
                 http = nil
                 $window.set_status_field(SF_Update, 'Connection error')
-                log_message(LM_Warning, _('Connection error')+' 2')
+                log_message(LM_Warning, _('Cannot connect to GitHub to update'))
                 puts err.message
               end
             end
@@ -7765,6 +7864,7 @@ module PandoraGUI
   CSI_Persons = 0
   CSI_Keys    = 1
   CSI_Nodes   = 2
+  CSI_PersonRecs = 3
 
   $key_watch_lim   = 5
   $sign_watch_lim  = 5
@@ -7892,7 +7992,7 @@ module PandoraGUI
     started
   end
 
-  def self.consctruct_room_id(persons)
+  def self.construct_room_id(persons)
     res = nil
     if (persons.is_a? Array) and (persons.size>0)
       sha1 = Digest::SHA1.new
@@ -7902,13 +8002,6 @@ module PandoraGUI
       res = sha1.digest
     end
     res
-  end
-
-  def self.consctruct_room_title(persons)
-    res = 'unknown'
-    if (persons.is_a? Array) and (persons.size>0)
-      res = PandoraUtils.bytes_to_hex(persons[0])[4,16]
-    end
   end
 
   def self.find_active_sender(not_this=nil)
@@ -7972,7 +8065,7 @@ module PandoraGUI
 
     # Show conversation dialog
     # RU: Показать диалог общения
-    def initialize(known_node, a_room_id, a_targets, title)
+    def initialize(known_node, a_room_id, a_targets)
       super(nil, nil)
 
       @room_id = a_room_id
@@ -7981,7 +8074,7 @@ module PandoraGUI
       @recv_media_pipeline = Array.new
       @appsrcs = Array.new
 
-      p 'TALK INIT [known_node, a_room_id, a_targets, title]='+[known_node, a_room_id, a_targets, title].inspect
+      p 'TALK INIT [known_node, a_room_id, a_targets]='+[known_node, a_room_id, a_targets].inspect
 
       model = PandoraUtils.get_model('Node')
 
@@ -8009,26 +8102,25 @@ module PandoraGUI
       bbox.border_width = 5
       bbox.spacing = 5
 
-      @online_button = Gtk::CheckButton.new(_('Online'), true)
-      online_button.signal_connect('clicked') do |widget|
+      @online_button = GoodCheckButton.new(_('Online'), true)
+      online_button.good_signal_clicked do |widget|
         if widget.active?
+          widget.good_set_active(false)
           targets[CSI_Nodes].each do |keybase|
-          #node_list.each do |node|
             $window.pool.init_session(nil, keybase, 0, self)
           end
         else
           targets[CSI_Nodes].each do |keybase|
-          #node_list.each do |node|
             $window.pool.stop_session(nil, keybase)
           end
         end
       end
-      online_button.active = (known_node != nil)
+      online_button.good_set_active(known_node != nil)
 
       bbox.pack_start(online_button, false, false, 0)
 
-      @snd_button = Gtk::CheckButton.new(_('Sound'), true)
-      snd_button.signal_connect('clicked') do |widget|
+      @snd_button = GoodCheckButton.new(_('Sound'), true)
+      snd_button.good_signal_clicked do |widget|
         if widget.active?
           if init_audio_sender(true)
             online_button.active = true
@@ -8040,8 +8132,8 @@ module PandoraGUI
       end
       bbox.pack_start(snd_button, false, false, 0)
 
-      @vid_button = Gtk::CheckButton.new(_('Video'), true)
-      vid_button.signal_connect('clicked') do |widget|
+      @vid_button = GoodCheckButton.new(_('Video'), true)
+      vid_button.good_signal_clicked do |widget|
         if widget.active?
           if init_video_sender(true)
             online_button.active = true
@@ -8092,7 +8184,9 @@ module PandoraGUI
               t = Time.now
               talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
               talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'you')
-              talkview.buffer.insert(talkview.buffer.end_iter, 'You:', 'you_bold')
+              mykey = PandoraCrypto.current_key(false, false)
+              myname = PandoraCrypto.short_name_of_person(mykey)
+              talkview.buffer.insert(talkview.buffer.end_iter, myname+':', 'you_bold')
               talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
               talkview.parent.vadjustment.value = talkview.parent.vadjustment.upper
               editbox.buffer.text = ''
@@ -8232,6 +8326,7 @@ module PandoraGUI
         init_video_receiver(false, false)
       end
 
+      title = 'unknown'
       label_box = TabLabelBox.new(image, title, self, false, 0) do
         #init_video_sender(false)
         #init_video_receiver(false, false)
@@ -8252,11 +8347,52 @@ module PandoraGUI
         area_send.destroy if not area_send.destroyed?
         area_recv.destroy if not area_recv.destroyed?
       end
+      $window.construct_room_title(self)
 
       show_all
 
       $window.notebook.page = $window.notebook.n_pages-1 if not known_node
       editbox.grab_focus
+    end
+
+    def get_name_and_family(i)
+      person = nil
+      if i.is_a? String
+        person = i
+        i = targets[CSI_Persons].index(person)
+      else
+        person = targets[CSI_Persons][i]
+      end
+      aname, afamily = '', ''
+      if i and person
+        person_recs = targets[CSI_PersonRecs]
+        if not person_recs
+          person_recs = Array.new
+          targets[CSI_PersonRecs] = person_recs
+        end
+        if person_recs[i]
+          aname, afamily = person_recs[i]
+        else
+          aname, afamily = PandoraCrypto.name_and_family_of_person(nil, person)
+          person_recs[i] = [aname, afamily]
+        end
+      end
+      [aname, afamily]
+    end
+
+    def set_session(session, online=true)
+      @sessions ||= []
+      if online
+        @sessions << session if (not @sessions.include?(session))
+      else
+        @sessions.delete(session)
+      end
+      active = (@sessions.size>0)
+      online_button.good_set_active(active)
+      if not active
+        snd_button.active = false
+        vid_button.active = false
+      end
     end
 
     # Send message to node
@@ -8310,7 +8446,7 @@ module PandoraGUI
         end
         # run reading thread
         timer_setted = false
-        if (not self.read_thread) and (curpage == self) and $window.visible? #and $window.active?
+        if (not self.read_thread) and (curpage == self) and $window.visible? and $window.has_toplevel_focus?
           color = $window.modifier_style.text(Gtk::STATE_NORMAL)
           curcolor = tab_widget.label.modifier_style.fg(Gtk::STATE_ACTIVE)
           if curcolor and (color != curcolor)
@@ -8320,12 +8456,12 @@ module PandoraGUI
               if (not curpage.destroyed?) and (not curpage.editbox.destroyed?)
                 curpage.editbox.grab_focus
               end
-              if $window.visible? #and $window.active?
+              if $window.visible? and $window.has_toplevel_focus?
                 read_sec = $read_time-0.3
                 if read_sec >= 0
                   sleep(read_sec)
                 end
-                if $window.visible? #and $window.active?
+                if $window.visible? and $window.has_toplevel_focus?
                   if (not self.destroyed?) and (not tab_widget.destroyed?) \
                   and (not tab_widget.label.destroyed?)
                     tab_widget.label.modify_fg(Gtk::STATE_NORMAL, nil)
@@ -8628,7 +8764,6 @@ module PandoraGUI
           and tsw.area_send and tsw.area_send.window
             link_sink_to_area($webcam_xvimagesink, tsw.area_send)
             #$webcam_xvimagesink.xwindow_id = tsw.area_send.window.xid
-            #p 'RECONN tsw.title='+PandoraGUI.consctruct_room_title(targets[CSI_Persons]).inspect
           end
           #p '--LEAVE'
           area_send.queue_draw if area_send and (not area_send.destroyed?)
@@ -8649,7 +8784,6 @@ module PandoraGUI
             Gst.init
             winos = (os_family == 'windows')
             video_pipeline = Gst::Pipeline.new('spipe_v')
-            $send_media_pipelines['video'] = video_pipeline
 
             ##video_src = 'v4l2src decimate=3'
             ##video_src_caps = 'capsfilter caps="video/x-raw-rgb,width=320,height=240"'
@@ -8698,20 +8832,30 @@ module PandoraGUI
               video_view1 ||= 'queue ! directdrawsink'
             end
 
+            $webcam_xvimagesink = nil
             webcam, pad = add_elem_to_pipe(video_src, video_pipeline)
-            capsfilter, pad = add_elem_to_pipe(video_send_caps, video_pipeline, webcam, pad)
-            tee, teepad = add_elem_to_pipe(video_send_tee, video_pipeline, capsfilter, pad)
-            encoder, pad = add_elem_to_pipe(video_can_encoder, video_pipeline, tee, teepad)
-            appsink, pad = add_elem_to_pipe(video_can_sink, video_pipeline, encoder, pad)
-            $webcam_xvimagesink, pad = add_elem_to_pipe(video_view1, video_pipeline, tee, teepad)
-
-            $send_media_queues[1] ||= PandoraUtils::RoundQueue.new(true)
-            appsink.signal_connect('new-buffer') do |appsink|
-              buf = appsink.pull_buffer
-              if buf
-                data = buf.data
-                $send_media_queues[1].add_block_to_queue(data, $media_buf_size)
+            if webcam
+              capsfilter, pad = add_elem_to_pipe(video_send_caps, video_pipeline, webcam, pad)
+              tee, teepad = add_elem_to_pipe(video_send_tee, video_pipeline, capsfilter, pad)
+              encoder, pad = add_elem_to_pipe(video_can_encoder, video_pipeline, tee, teepad)
+              if encoder
+                appsink, pad = add_elem_to_pipe(video_can_sink, video_pipeline, encoder, pad)
+                $webcam_xvimagesink, pad = add_elem_to_pipe(video_view1, video_pipeline, tee, teepad)
               end
+            end
+
+            if $webcam_xvimagesink
+              $send_media_pipelines['video'] = video_pipeline
+              $send_media_queues[1] ||= PandoraUtils::RoundQueue.new(true)
+              appsink.signal_connect('new-buffer') do |appsink|
+                buf = appsink.pull_buffer
+                if buf
+                  data = buf.data
+                  $send_media_queues[1].add_block_to_queue(data, $media_buf_size)
+                end
+              end
+            else
+              video_pipeline.destroy if video_pipeline
             end
           rescue => err
             $send_media_pipelines['video'] = nil
@@ -9110,7 +9254,7 @@ module PandoraGUI
     p 'targets='+targets.inspect
 
     if (persons.size>0) and (nodes.size>0)
-      room_id = consctruct_room_id(persons)
+      room_id = construct_room_id(persons)
       if known_node
         creator = PandoraCrypto.current_user_or_key(true)
         if (persons.size==1) and (persons[0]==creator)
@@ -9121,15 +9265,15 @@ module PandoraGUI
       $window.notebook.children.each do |child|
         if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
           $window.notebook.page = $window.notebook.children.index(child) if not known_node
-          child.room_id = room_id
           child.targets = targets
           child.online_button.active = (known_node != nil)
-          return child
+          sw = child
+          break
         end
       end
-
-      title = consctruct_room_title(targets[CSI_Persons])
-      sw = DialogScrollWin.new(known_node, room_id, targets, title)
+      if not sw
+        sw = DialogScrollWin.new(known_node, room_id, targets)
+      end
     else
       mes = _('node') if nodes.size == 0
       mes = _('person') if persons.size == 0
@@ -9389,7 +9533,7 @@ module PandoraGUI
     def icon_activated
       #$window.skip_taskbar_hint = false
       if $window.visible?
-        if $window.active?
+        if $window.has_toplevel_focus?    #.active?
           $window.hide
         else
           $window.present
@@ -9562,7 +9706,7 @@ module PandoraGUI
 
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
-      :cvpaned, :pool
+      :cvpaned, :pool, :focus_timer, :title_view
 
     include PandoraUtils
 
@@ -9618,6 +9762,101 @@ module PandoraGUI
 
     def get_status_field(index)
       $status_fields[index]
+    end
+
+    TV_Name    = 0
+    TV_NameF   = 1
+    TV_Family  = 2
+    TV_NameN   = 3
+
+    MaxTitleLen = 15
+
+    def construct_room_title(dialog, check_all=true)
+      res = 'unknown'
+      persons = dialog.targets[CSI_Persons]
+      if (persons.is_a? Array) and (persons.size>0)
+        res = ''
+        persons.each_with_index do |person, i|
+          aname, afamily = dialog.get_name_and_family(i)
+          addname = ''
+          case @title_view
+            when TV_Name, TV_NameN
+              if (aname.size==0)
+                addname << afamily
+              else
+                addname << aname
+              end
+            when TV_NameF
+              if (aname.size==0)
+                addname << afamily
+              else
+                addname << aname
+                addname << afamily[0] if afamily[0]
+              end
+            when TV_Family
+              if (afamily.size==0)
+                addname << aname
+              else
+                addname << afamily
+              end
+          end
+          if (addname.size>0)
+            res << ',' if (res.size>0)
+            res << addname
+          end
+        end
+        res = 'unknown' if (res.size==0)
+        if res.size>MaxTitleLen
+          res = res[0, MaxTitleLen-1]+'..'
+        end
+        tab_widget = $window.notebook.get_tab_label(dialog)
+        tab_widget.label.text = res if tab_widget
+        #p 'title_view, res='+[@title_view, res].inspect
+        if check_all
+          @title_view=TV_Name if (@title_view==TV_NameN)
+          has_conflict = true
+          while has_conflict
+            has_conflict = false
+            names = Array.new
+            $window.notebook.children.each do |child|
+              if (child.is_a? DialogScrollWin)
+                tab_widget = $window.notebook.get_tab_label(child)
+                if tab_widget
+                  tit = tab_widget.label.text
+                  if names.include? tit
+                    has_conflict = true
+                    break
+                  else
+                    names << tit
+                  end
+                end
+              end
+            end
+            if has_conflict
+              if (@title_view < TV_NameN)
+                @title_view += 1
+              else
+                has_conflict = false
+              end
+              #p '@title_view='+@title_view.inspect
+              names = Array.new
+              $window.notebook.children.each do |child|
+                if (child.is_a? DialogScrollWin)
+                  sn = construct_room_title(child, false)
+                  if (@title_view == TV_NameN)
+                    names << sn
+                    c = names.count(sn)
+                    sn = sn+c.to_s
+                    tab_widget = $window.notebook.get_tab_label(child)
+                    tab_widget.label.text = sn if tab_widget
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+      res
     end
 
     # Menu event handler
@@ -9834,6 +10073,7 @@ module PandoraGUI
       super(*args)
       $window = self
       @hunter_count, @listener_count, @fisher_count = 0, 0, 0
+      @title_view = TV_Name
 
       main_icon = nil
       begin
@@ -9968,6 +10208,30 @@ module PandoraGUI
           end
         end
       end
+
+      $window.focus_timer = $window
+      $window.signal_connect('focus-in-event') do |window, event|
+        #p 'focus-in-event: ' + $window.has_toplevel_focus?.inspect
+        if $window.focus_timer
+          $window.focus_timer = nil if ($window.focus_timer == $window)
+        else
+          $window.focus_timer = GLib::Timeout.add(700) do
+            #p 'read timer!!!' + $window.has_toplevel_focus?.inspect
+            curpage = $window.notebook.get_nth_page($window.notebook.page)
+            if (curpage.is_a? PandoraGUI::DialogScrollWin) and $window.has_toplevel_focus?
+              curpage.update_state(false, curpage)
+            end
+            $window.focus_timer = nil
+            false
+          end
+        end
+        false
+      end
+
+      #$window.signal_connect('focus-out-event') do |window, event|
+      #  p 'focus-out-event: ' + $window.has_toplevel_focus?.inspect
+      #  false
+      #end
 
       @pool = PandoraNet::Pool.new($window)
 
