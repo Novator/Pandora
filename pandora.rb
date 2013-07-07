@@ -120,6 +120,16 @@ else
       force_encoding('ASCII-8BIT')
     end
   end
+  class Utf8String < String
+    def initialize(str=nil)
+      if str == nil
+        super('')
+      else
+        super(str)
+      end
+      force_encoding('UTF-8')
+    end
+  end
   Encoding.default_external = 'UTF-8'
   Encoding.default_internal = 'UTF-8' #BINARY ASCII-8BIT UTF-8
 end
@@ -480,12 +490,12 @@ module PandoraUtils
     NAME = "Сеанс SQLite"
     attr_accessor :db, :exist
     def connect
-      if not connected
+      if not @connected
         @db = SQLite3::Database.new(conn_param)
-        @connected = TRUE
+        @connected = true
         @exist = {}
       end
-      connected
+      @connected
     end
     def create_table(table_name, recreate=false)
       connect
@@ -538,11 +548,11 @@ module PandoraUtils
       mask
     end
     def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil, like_filter=nil)
+      res = nil
       connect
       tfd = fields_table(table_name)
-      if (not tfd) or (tfd == [])
-        @selection = [['<no>'],['<base>']]
-      else
+      #p '[tfd, table_name, filter, fields, sort, limit, like_filter]='+[tfd, table_name, filter, fields, sort, limit, like_filter].inspect
+      if tfd and (tfd != [])
         sql_values = Array.new
         if filter.is_a? Hash
           sql2 = ''
@@ -584,9 +594,11 @@ module PandoraUtils
         if limit
           sql = sql + ' LIMIT '+limit.to_s
         end
-        #p 'select  sql='+sql.inspect
-        @selection = db.execute(sql, sql_values)
+        #p 'select  sql='+sql.inspect+'  values='+sql_values.inspect+' db='+db.inspect
+        res = db.execute(sql, sql_values)
       end
+      #p 'res='+res.inspect
+      res
     end
     def update_table(table_name, values, names=nil, filter=nil)
       res = false
@@ -1494,11 +1506,14 @@ module PandoraUtils
           case hfor
             when 'sha1', 'hash'
               res = AsciiString.new
-              #res = ''
-              #res.force_encoding('ASCII-8BIT')
               res << Digest::SHA1.digest(fval)
+            when 'sha256'
+              res = AsciiString.new
+              res << OpenSSL::Digest::SHA256.digest(fval)
             when 'phash'
               res = fval[2..-1]
+            when 'pbirth'
+              res = fval[9, 3]
             when 'md5'
               res = AsciiString.new
               #res = ''
@@ -1511,6 +1526,15 @@ module PandoraUtils
               res = Zlib.crc32(fval) #if fval.is_a? String
             when 'raw'
               res = AsciiString.new(fval)
+            when 'sha224'
+              res = AsciiString.new
+              res << OpenSSL::Digest::SHA224.digest(fval)
+            when 'sha384'
+              res = AsciiString.new
+              res << OpenSSL::Digest::SHA384.digest(fval)
+            when 'sha512'
+              res = AsciiString.new
+              res << OpenSSL::Digest::SHA512.digest(fval)
           end
         end
         if not res
@@ -2692,7 +2716,7 @@ module PandoraModel
     end
     pson = (pson_with_kind != nil)
     sel = model.select(filter, pson, getfields, nil, 1)
-    if sel and sel.size>0
+    if sel and (sel.size>0)
       if pson
         #namesvalues = panobject.namesvalues
         #fields = model.matter_fields
@@ -2954,7 +2978,7 @@ module PandoraCrypto
   KV_Key1  = 1
   KV_Key2  = 2
   KV_Kind  = 3
-  KV_Ciph  = 4
+  KV_Cipher  = 4
   KV_Pass  = 5
   KV_Panhash = 6
   KV_Creator = 7
@@ -2963,11 +2987,12 @@ module PandoraCrypto
 
   def self.sym_recrypt(data, encode=true, cipher_hash=nil, cipher_key=nil)
     #p '^^^^^^^^^^^^sym_recrypt: [cipher_hash, cipher_key]='+[cipher_hash, cipher_key].inspect
-    cipher_hash ||= encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
-    if cipher_hash and (cipher_hash != 0) and cipher_key and (cipher_key != '') and data
+    #cipher_hash ||= encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
+    if cipher_hash and (cipher_hash != 0) and data
       ckind, chash = decode_cipher_and_hash(cipher_hash)
       hash = pan_kh_to_openssl_hash(chash)
       #p 'hash='+hash.inspect
+      cipher_key ||= ''
       cipher_key = hash.digest(cipher_key) if hash
       #p 'cipher_key.hash='+cipher_key.inspect
       cipher_vec = Array.new
@@ -3027,12 +3052,7 @@ module PandoraCrypto
         #p key1.size
         #p key2.size
     end
-    if cipher_key and cipher_key==''
-      cipher_hash = 0
-      cipher_key = nil
-    else
-      key2 = sym_recrypt(key2, true, cipher_hash, cipher_key)
-    end
+    key2 = sym_recrypt(key2, true, cipher_hash, cipher_key)
     [key, key1, key2, type_klen, cipher_hash, cipher_key]
   end
 
@@ -3044,7 +3064,7 @@ module PandoraCrypto
       key1 = key_vec[KV_Key1]
       key2 = key_vec[KV_Key2]
       type_klen = key_vec[KV_Kind]
-      cipher = key_vec[KV_Ciph]
+      cipher = key_vec[KV_Cipher]
       pass = key_vec[KV_Pass]
       type, klen = divide_type_and_klen(type_klen)
       bitlen = klen_to_bitlen(klen)
@@ -3057,7 +3077,9 @@ module PandoraCrypto
           e = OpenSSL::BN.new(RSA_exponent.to_s)
           p0 = nil
           if key2
+            #p '[cipher, key2]='+[cipher, key2].inspect
             key2 = sym_recrypt(key2, false, cipher, pass)
+            #p 'key2='+key2.inspect
             p0 = PandoraUtils.bytes_to_bigint(key2) if key2
           else
             p0 = 0
@@ -3065,9 +3087,7 @@ module PandoraCrypto
 
           if p0
             pass = 0
-
             #p 'n='+n.inspect+'  p='+p0.inspect+'  e='+e.inspect
-
             if key2
               q = (n / p0)[0]
               p0,q = q,p0 if p0 < q
@@ -3181,15 +3201,21 @@ module PandoraCrypto
         #p 'decrypt: data='+data.inspect
         key.decrypt
         #p 'DDDDDDEEEEECR'
-        iv = AsciiString.new(data[1])
-        data = AsciiString.new(data[0])  # data from array
+        if data.is_a? Array
+          iv = AsciiString.new(data[1])
+          data = AsciiString.new(data[0])  # data from array
+        else
+          data = nil
+        end
         key.key = key_vec[KV_Key1]
-        key.iv = iv
+        key.iv = iv if iv
       end
 
       begin
         #p 'BEFORE key='+key.key.inspect
-        recrypted = key.update(data) + key.final
+        if data
+          recrypted = key.update(data) + key.final
+        end
       rescue
         recrypted = nil
       end
@@ -3285,6 +3311,7 @@ module PandoraCrypto
           key_vec = Array.new
           key_vec[KV_Key1] = pub
           key_vec[KV_Key2] = priv
+          key_vec[KV_Cipher] = cipher
           key_vec[KV_Kind] = kind
           key_vec[KV_Pass] = passwd
           key_vec[KV_Panhash] = panhash
@@ -3293,6 +3320,43 @@ module PandoraCrypto
         end
       end
       [key_vec, cipher]
+    end
+
+    def self.recrypt_key(key_model, key_vec, cipher, panhash, passwd, newpasswd)
+      if not key_vec
+        key_vec, cipher = read_key(panhash, passwd, key_model)
+      end
+      if key_vec
+        key2 = key_vec[KV_Key2]
+        cipher = key_vec[KV_Cipher]
+        #type_klen = key_vec[KV_Kind]
+        #type, klen = divide_type_and_klen(type_klen)
+        #bitlen = klen_to_bitlen(klen)
+        if key2
+          key2 = sym_recrypt(key2, false, cipher, passwd)
+          if key2
+            cipher_key = newpasswd
+            cipher_hash = 0
+            if cipher_key and (cipher_key.size>0)
+              cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
+            end
+            key2 = sym_recrypt(key2, true, cipher_hash, cipher_key)
+            if key2
+              time_now = Time.now.to_i
+              filter = {:panhash=>panhash, :kind=>KT_Priv}
+              panstate = PandoraModel::PSF_Support
+              values = {:panstate=>panstate, :cipher=>cipher_hash, :body=>key2, :modified=>time_now}
+              res = key_model.update(values, nil, filter)
+              if res
+                key_vec[KV_Key2] = key2
+                key_vec[KV_Cipher] = cipher_hash
+                passwd = newpasswd
+              end
+            end
+          end
+        end
+      end
+      [key_vec, cipher, passwd]
     end
 
     key_vec = self.the_current_key
@@ -3314,6 +3378,7 @@ module PandoraCrypto
         if sel and (sel.size>0)
           getting = false
           key_vec, cipher = read_key(last_auth_key, passwd, key_model)
+          #p '[key_vec, cipher]='+[key_vec, cipher].inspect
           if (not key_vec) or (not cipher) or (cipher != 0) or (not $first_key_init)
             dialog = PandoraGUI::AdvancedDialog.new(_('Key init'))
             dialog.set_default_size(420, 190)
@@ -3332,19 +3397,51 @@ module PandoraCrypto
             vbox.pack_start(label, false, false, 2)
             pass_entry = Gtk::Entry.new
             pass_entry.visibility = false
+            if (not cipher) or (cipher == 0)
+              pass_entry.editable = false
+              pass_entry.sensitive = false
+            end
             pass_entry.width_request = 200
             align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
             align.add(pass_entry)
             vbox.pack_start(align, false, false, 2)
+
+            new_label = nil
+            new_pass_entry = nil
+            new_align = nil
+
             if key_entry.text == ''
               dialog.def_widget = key_entry.entry
             else
               dialog.def_widget = pass_entry
             end
 
-            gen_button = Gtk::ToolButton.new(Gtk::Stock::NEW, _('New'))
-            gen_button.tooltip_text = _('Generate')
+            changebtn = PandoraGUI::GoodToggleToolButton.new(Gtk::Stock::EDIT)
+            changebtn.tooltip_text = _('Change password')
+            changebtn.good_signal_clicked do |*args|
+              if not new_label
+                new_label = Gtk::Label.new(_('New password'))
+                vbox.pack_start(new_label, false, false, 2)
+                new_pass_entry = Gtk::Entry.new
+                new_pass_entry.width_request = 200
+                new_align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+                new_align.add(new_pass_entry)
+                vbox.pack_start(new_align, false, false, 2)
+                new_align.show_all
+              end
+              new_label.visible = changebtn.active?
+              new_align.visible = changebtn.active?
+              if changebtn.active?
+                #dialog.set_size_request(420, 250)
+                dialog.resize(420, 240)
+              else
+                dialog.resize(420, 190)
+              end
+            end
+            dialog.hbox.pack_start(changebtn, false, false, 0)
 
+            gen_button = Gtk::ToolButton.new(Gtk::Stock::NEW, _('New'))
+            gen_button.tooltip_text = _('Generate new key pair')
             #gen_button.width_request = 110
             gen_button.signal_connect('clicked') { |*args| dialog.response=3 }
             dialog.hbox.pack_start(gen_button, false, false, 0)
@@ -3355,9 +3452,14 @@ module PandoraCrypto
               if (dialog.response == 3)
                 getting = true
               else
-                passwd = pass_entry.text
-                panhash = PandoraUtils.hex_to_bytes(key_entry.text)
                 key_vec = key_vec0
+                panhash = PandoraUtils.hex_to_bytes(key_entry.text)
+                passwd = pass_entry.text
+                if changebtn.active? and new_pass_entry
+                  key_vec, cipher, passwd = recrypt_key(key_model, key_vec, cipher, panhash, \
+                    passwd, new_pass_entry.text)
+                end
+                #p 'key_vec='+key_vec.inspect
                 if (last_auth_key != panhash) or (not key_vec)
                   last_auth_key = panhash
                   key_vec, cipher = read_key(last_auth_key, passwd, key_model)
@@ -3410,8 +3512,11 @@ module PandoraCrypto
             creator = PandoraUtils.hex_to_bytes(user_entry.text)
             if creator.size==22
               #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
-              cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
-               cipher_key = pass_entry.text
+              cipher_key = pass_entry.text
+              cipher_hash = 0
+              if cipher_key and (cipher_key.size>0)
+                cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
+              end
               rights = rights_entry.text.to_i
 
               #p 'cipher_hash='+cipher_hash.to_s
@@ -3424,7 +3529,7 @@ module PandoraCrypto
               pub  = key_vec[KV_Key1]
               priv = key_vec[KV_Key2]
               type_klen = key_vec[KV_Kind]
-              cipher_hash = key_vec[KV_Ciph]
+              cipher_hash = key_vec[KV_Cipher]
               cipher_key = key_vec[KV_Pass]
 
               key_vec[KV_Creator] = creator
@@ -3436,17 +3541,17 @@ module PandoraCrypto
               expire = Time.local(y+5, m, d).to_i
 
               time_now = time_now.to_i
-
               panstate = PandoraModel::PSF_Support
-
               values = {:panstate=>panstate, :kind=>type_klen, :rights=>rights, :expire=>expire, \
                 :creator=>creator, :created=>time_now, :cipher=>0, :body=>pub, :modified=>time_now}
               panhash = key_model.panhash(values, rights)
               values['panhash'] = panhash
               key_vec[KV_Panhash] = panhash
 
+              # save public key
               res = key_model.update(values, nil, nil)
               if res
+                # save private key
                 values[:kind] = KT_Priv
                 values[:body] = priv
                 values[:cipher] = cipher_hash
@@ -3476,7 +3581,13 @@ module PandoraCrypto
           key_vec = init_key(key_vec)
           if key_vec and key_vec[KV_Obj]
             self.the_current_key = key_vec
-            $window.set_status_field(PandoraGUI::SF_Auth, 'Logged', nil, true)
+            text = PandoraCrypto.short_name_of_person(key_vec, nil, 1)
+            if text and (text.size>0)
+              #text = '['+text+']'
+            else
+              text = 'Logged'
+            end
+            $window.set_status_field(PandoraGUI::SF_Auth, text, nil, true)
             if last_auth_key0 != last_auth_key
               PandoraUtils.set_param('last_auth_key', last_auth_key)
             end
@@ -3707,15 +3818,31 @@ module PandoraCrypto
 
   def self.name_and_family_of_person(key, person=nil)
     nf = nil
+    #p 'person, key='+[person, key].inspect
     nf = key[KV_NameFamily] if key
     aname, afamily = nil, nil
     if nf.is_a? Array
+      #p 'nf='+nf.inspect
       aname, afamily = nf
     elsif (person or key)
       person ||= key[KV_Creator]
       kind = PandoraUtils.kind_from_panhash(person)
       sel = PandoraModel.get_record_by_panhash(kind, person, nil, nil, 'first_name, last_name')
-      aname, afamily = sel[0][0], sel[0][1]
+      #p 'key, person, sel='+[key, person, sel].inspect
+      if (sel.is_a? Array) and (sel.size>0)
+        aname, afamily = Utf8String.new(sel[0][0]), Utf8String.new(sel[0][1])
+      end
+      #p '[aname, afamily]='+[aname, afamily].inspect
+      if (not aname) and (not afamily) and (key.is_a? Array)
+        aname = PandoraUtils.bytes_to_hex(key[KV_Creator])
+        aname = aname[2, 10] if aname
+        afamily = PandoraUtils.bytes_to_hex(key[KV_Panhash])
+        afamily = afamily[2, 10] if afamily
+      end
+      if (not aname) and (not afamily) and person
+        aname = PandoraUtils.bytes_to_hex(person)
+        aname = aname[2, 12] if aname
+      end
       key[KV_NameFamily] = [aname, afamily] if key
     end
     aname ||= ''
@@ -3726,10 +3853,18 @@ module PandoraCrypto
 
   def self.short_name_of_person(key, person=nil, kind=0, othername=nil)
     aname, afamily = name_and_family_of_person(key, person)
-    if othername and (othername == aname)
-      res = afamily
+    #p [othername, aname, afamily]
+    if kind==0
+      if othername and (othername == aname)
+        res = afamily
+      else
+        res = aname
+      end
     else
-      res = aname
+      res = ''
+      res << aname if (aname and (aname.size>0))
+      res << ' ' if (res.size>0)
+      res << afamily if (afamily and (afamily.size>0))
     end
     res ||= ''
     res
@@ -4943,6 +5078,7 @@ module PandoraNet
               talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', 'dude_bold')
               talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
               talkview.parent.vadjustment.value = talkview.parent.vadjustment.upper
+              talkview.show_all
               dialog.update_state(true)
             else
               log_message(LM_Error, 'Пришло сообщение, но лоток чата не найдено!')
@@ -5187,7 +5323,7 @@ module PandoraNet
       end
 
       @dialog = a_dialog
-      if dialog and (not dialog.destroyed?) and dialog.online_button
+      if dialog and (not dialog.destroyed?)
         dialog.set_session(self, true)
         #dialog.online_button.active = (socket and (not socket.closed?))
       end
@@ -5615,14 +5751,21 @@ module PandoraNet
       #Thread.critical = true
       pool.del_session(self)
       #Thread.critical = false
+      #p log_mes+'check close'
       if not socket.closed?
-        socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-        socket.flush
+        p log_mes+'before close_write'
+        #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+        #socket.flush
         #socket.print('\000')
         socket.close_write
+        p log_mes+'before close'
         sleep(0.05)
         socket.close
+        p log_mes+'closed!'
       end
+      @socket_thread.exit if @socket_thread
+      @read_thread.exit if @read_thread
+
       @conn_state = CS_Disconnected
       @socket = nil
       @send_thread = nil
@@ -7350,12 +7493,12 @@ module PandoraGUI
   $update_interval = 30
   $download_thread = nil
 
+  UPD_FileList = ['model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'pandora.bat']
+  UPD_FileList.concat(['model/03-language-'+$lang+'.xml', 'lang/'+$lang+'.txt']) if ($lang and ($lang != 'en'))
+
   # Check updated files and download them
   # RU: Проверить обновления и скачать их
   def self.start_updating(all_step=true)
-
-    upd_list = ['model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'model/03-language-ru.xml', \
-      'lang/ru.txt', 'pandora.bat']
 
     def self.update_file(http, path, pfn)
       res = false
@@ -7441,7 +7584,7 @@ module PandoraGUI
             if http
               $window.set_status_field(SF_Update, 'Updating')
               downloaded = update_file(http, main_uri.path, main_script)
-              upd_list.each do |fn|
+              UPD_FileList.each do |fn|
                 pfn = File.join($pandora_root_dir, fn)
                 if File.exist?(pfn) and File.stat(pfn).writable?
                   downloaded = downloaded and update_file(http, '/Novator/Pandora/master/'+fn, pfn)
@@ -8056,7 +8199,7 @@ module PandoraGUI
   class DialogScrollWin < Gtk::ScrolledWindow
     attr_accessor :room_id, :targets, :online_button, :snd_button, :vid_button, :talkview, \
       :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
-      :read_thread, :recv_media_queue
+      :read_thread, :recv_media_queue, :has_unread
 
     include PandoraGUI
 
@@ -8068,6 +8211,7 @@ module PandoraGUI
     def initialize(known_node, a_room_id, a_targets)
       super(nil, nil)
 
+      @has_unread = false
       @room_id = a_room_id
       @targets = a_targets
       @recv_media_queue = Array.new
@@ -8388,10 +8532,10 @@ module PandoraGUI
         @sessions.delete(session)
       end
       active = (@sessions.size>0)
-      online_button.good_set_active(active)
+      online_button.good_set_active(active) if (not online_button.destroyed?)
       if not active
-        snd_button.active = false
-        vid_button.active = false
+        snd_button.good_set_active(false) if (not snd_button.destroyed?)
+        vid_button.good_set_active(false) if (not vid_button.destroyed?)
       end
     end
 
@@ -8439,6 +8583,7 @@ module PandoraGUI
         end
         # set self dialog as unread
         if received
+          @has_unread = true
           color = Gdk::Color.parse($tab_color)
           tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
           tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
@@ -8447,11 +8592,11 @@ module PandoraGUI
         # run reading thread
         timer_setted = false
         if (not self.read_thread) and (curpage == self) and $window.visible? and $window.has_toplevel_focus?
-          color = $window.modifier_style.text(Gtk::STATE_NORMAL)
-          curcolor = tab_widget.label.modifier_style.fg(Gtk::STATE_ACTIVE)
-          if curcolor and (color != curcolor)
+          #color = $window.modifier_style.text(Gtk::STATE_NORMAL)
+          #curcolor = tab_widget.label.modifier_style.fg(Gtk::STATE_ACTIVE)
+          if @has_unread #curcolor and (color != curcolor)
             timer_setted = true
-            self.read_thread = Thread.new(color) do |color|
+            self.read_thread = Thread.new do
               sleep(0.3)
               if (not curpage.destroyed?) and (not curpage.editbox.destroyed?)
                 curpage.editbox.grab_focus
@@ -8464,6 +8609,7 @@ module PandoraGUI
                 if $window.visible? and $window.has_toplevel_focus?
                   if (not self.destroyed?) and (not tab_widget.destroyed?) \
                   and (not tab_widget.label.destroyed?)
+                    @has_unread = false
                     tab_widget.label.modify_fg(Gtk::STATE_NORMAL, nil)
                     tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, nil)
                     $statusicon.set_message(nil)
@@ -9264,9 +9410,9 @@ module PandoraGUI
       p 'room_id='+room_id.inspect
       $window.notebook.children.each do |child|
         if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
-          $window.notebook.page = $window.notebook.children.index(child) if not known_node
           child.targets = targets
-          child.online_button.active = (known_node != nil)
+          child.online_button.good_set_active(known_node != nil)
+          $window.notebook.page = $window.notebook.children.index(child) if (not known_node)
           sw = child
           break
         end
@@ -9274,7 +9420,7 @@ module PandoraGUI
       if not sw
         sw = DialogScrollWin.new(known_node, room_id, targets)
       end
-    else
+    elsif (not known_node)
       mes = _('node') if nodes.size == 0
       mes = _('person') if persons.size == 0
       dialog = Gtk::MessageDialog.new($window, \
@@ -9579,9 +9725,9 @@ module PandoraGUI
         @csw = Gtk::ScrolledWindow.new(nil, nil)
         csw = @csw
         csw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-        csw.shadow_type = Gtk::SHADOW_IN
-        csw.add(vbox)
-        csw.border_width = 1;
+        #csw.shadow_type = Gtk::SHADOW_NONE
+        #csw.border_width = 0
+        csw.add_with_viewport(vbox)
 
         pixbuf_loader = Gdk::PixbufLoader.new
         pixbuf_loader.last_write(captcha_buf) if captcha_buf
@@ -9693,6 +9839,12 @@ module PandoraGUI
         full_width = $window.allocation.width
         self.position = full_width-250 #self.max_position #@csw.width_request
         captcha_entry.grab_focus
+        Thread.new do
+          sleep(0.3)
+          if (not captcha_entry.destroyed?)
+            captcha_entry.grab_focus
+          end
+        end
         res = csw
       else
         #@csw.width_request = @csw.allocation.width
@@ -9706,7 +9858,7 @@ module PandoraGUI
 
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
-      :cvpaned, :pool, :focus_timer, :title_view
+      :cvpaned, :pool, :focus_timer, :title_view, :do_on_show
 
     include PandoraUtils
 
@@ -9846,7 +9998,7 @@ module PandoraGUI
                   if (@title_view == TV_NameN)
                     names << sn
                     c = names.count(sn)
-                    sn = sn+c.to_s
+                    sn = sn+c.to_s if c>1
                     tab_widget = $window.notebook.get_tab_label(child)
                     tab_widget.label.text = sn if tab_widget
                   end
@@ -9898,6 +10050,10 @@ module PandoraGUI
         when 'Hunt'
           PandoraNet.hunt_nodes
         when 'Authorize'
+          key = PandoraCrypto.current_key(false, false)
+          if key and $listen_thread
+            PandoraNet.start_or_stop_listen
+          end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
           p OpenSSL::Cipher::ciphers
@@ -10161,27 +10317,30 @@ module PandoraGUI
 
       $window.add(vbox)
 
-      $window.set_default_size(640, 420)
-      $window.maximize
-      $window.show_all
-
       $window.signal_connect('delete-event') do |*args|
-        $window.hide
-        true
+        #Thread.pass
+        #sleep(5)
+        #$window.hide
+        false
       end
 
       $statusicon = PandoraGUI::PandoraStatusIcon.new
 
       $window.signal_connect('destroy') do |window|
+        while (not $window.notebook.destroyed?) and ($window.notebook.children.count>0)
+          $window.notebook.children[0].destroy if (not $window.notebook.children[0].destroyed?)
+        end
         PandoraCrypto.reset_current_key
         $statusicon.visible = false if ($statusicon and (not $statusicon.destroyed?))
         Gtk.main_quit
       end
 
       $window.signal_connect('key-press-event') do |widget, event|
-        if ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
-          ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
-        then
+        if event.keyval == Gdk::Keyval::GDK_F5
+          PandoraNet.hunt_nodes
+        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
+        and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
+        1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
           Gtk.main_quit
         end
         false
@@ -10209,6 +10368,30 @@ module PandoraGUI
         end
       end
 
+      #$window.signal_connect('focus-out-event') do |window, event|
+      #  p 'focus-out-event: ' + $window.has_toplevel_focus?.inspect
+      #  false
+      #end
+      $window.do_on_show = PandoraUtils.get_param('do_on_show')
+      $window.signal_connect('show') do |window, event|
+        if $window.do_on_show > 0
+          key = PandoraCrypto.current_key(false, true)
+          if ($window.do_on_show>1) and key and (not $listen_thread)
+            PandoraNet.start_or_stop_listen
+          end
+          $window.do_on_show = 0
+        end
+        false
+      end
+
+      @pool = PandoraNet::Pool.new($window)
+
+      $window.set_default_size(640, 420)
+      $window.maximize
+      $window.show_all
+
+      #------next must be after show main form ---->>>>
+
       $window.focus_timer = $window
       $window.signal_connect('focus-in-event') do |window, event|
         #p 'focus-in-event: ' + $window.has_toplevel_focus?.inspect
@@ -10217,9 +10400,17 @@ module PandoraGUI
         else
           $window.focus_timer = GLib::Timeout.add(700) do
             #p 'read timer!!!' + $window.has_toplevel_focus?.inspect
-            curpage = $window.notebook.get_nth_page($window.notebook.page)
-            if (curpage.is_a? PandoraGUI::DialogScrollWin) and $window.has_toplevel_focus?
-              curpage.update_state(false, curpage)
+            if $window.has_toplevel_focus? and $window.visible?
+              $window.notebook.children.each do |child|
+                if (child.is_a? DialogScrollWin) and (child.has_unread)
+                  $window.notebook.page = $window.notebook.children.index(child)
+                  break
+                end
+              end
+              curpage = $window.notebook.get_nth_page($window.notebook.page)
+              if (curpage.is_a? PandoraGUI::DialogScrollWin) and $window.has_toplevel_focus?
+                curpage.update_state(false, curpage)
+              end
             end
             $window.focus_timer = nil
             false
@@ -10227,13 +10418,6 @@ module PandoraGUI
         end
         false
       end
-
-      #$window.signal_connect('focus-out-event') do |window, event|
-      #  p 'focus-out-event: ' + $window.has_toplevel_focus?.inspect
-      #  false
-      #end
-
-      @pool = PandoraNet::Pool.new($window)
 
       $base_id = PandoraUtils.get_param('base_id')
       check_update = PandoraUtils.get_param('check_update')
@@ -10257,6 +10441,7 @@ module PandoraGUI
         end
       end
       PandoraGUI.get_main_params
+
       Gtk.main
     end
 
