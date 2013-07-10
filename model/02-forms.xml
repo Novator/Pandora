@@ -61,6 +61,16 @@
   </Bussiness>
 
   <Region>
+
+    <Registry>
+      <creator pos="1" />
+      <recipient pos="|2" />
+      <resolution pos="|3" />
+      <number pos="|4" />
+      <attributes pos="5"/>
+      <created pos="6" />
+    </Registry>
+
   </Region>
 
   <Pandora name="Pandora Node">

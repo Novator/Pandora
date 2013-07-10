@@ -148,6 +148,7 @@ $pandora_model_dir = File.join($pandora_root_dir, 'model')          # Model desc
 $pandora_lang_dir = File.join($pandora_root_dir, 'lang')            # Languages directory
 $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Default database file
 $pandora_sqlite_db2 = File.join($pandora_base_dir, 'pandora2.sqlite')  # Default database file
+$pandora_sqlite_db3 = File.join($pandora_base_dir, 'pandora3.sqlite')  # Default database file
 
 # If it's runned under WinOS, redirect console output to file, because of rubyw.exe crush
 # RU: Если под Виндой, то перенаправить консольный вывод в файл из-за краша rubyw.exe
@@ -686,10 +687,10 @@ module PandoraUtils
       @base_list = # динамический список баз
         [['robux', 'sqlite3,', $pandora_sqlite_db, nil],
          ['robux', 'sqlite3,', $pandora_sqlite_db2, nil],
+         ['robux', 'sqlite3,', $pandora_sqlite_db3, nil],
          ['robux', 'mysql', ['robux.biz', 'user', 'pass', 'oscomm'], nil]]
     end
     def get_adapter(panobj, table_ptr, recreate=false)
-      #find db_ptr in db_list
       adap = nil
       base_des = base_list[$base_index]
       if not base_des[3]
@@ -776,17 +777,9 @@ module PandoraUtils
   # RU: Преобрзует большое целое в строку байт
   def self.bigint_to_bytes(bigint)
     bytes = AsciiString.new
-    #bytes = ''
-    #bytes.force_encoding('ASCII-8BIT')
     if bigint<=0xFF
       bytes << [bigint].pack('C')
     else
-      #not_null = true
-      #while not_null
-      #  bytes = (bigint & 255).chr + bytes
-      #  bigint = bigint >> 8
-      #  not_null = (bigint>0)
-      #end
       hexstr = bigint.to_s(16)
       hexstr = '0'+hexstr if hexstr.size % 2 > 0
       ((hexstr.size+1)/2).times do |i|
@@ -1471,32 +1464,14 @@ module PandoraUtils
           end
           res = fval
         elsif hfor == 'date'
-          #dmy = fval.split('.')   # D.M.Y
-          # convert DMY to time from 1970 in days
-          #p "date="+[dmy[2].to_i, dmy[1].to_i, dmy[0].to_i].inspect
-          #p Time.now.to_a.inspect
-
-          #vals = Time.now.to_a
-          #y, m, d = [vals[5], vals[4], vals[3]]  #current day
-          #p [y, m, d]
-          #expire = Time.local(y+5, m, d)
-          #p expire
-          #p '-------'
-          #p [dmy[2].to_i, dmy[1].to_i, dmy[0].to_i]
-
-          #res = Time.local(dmy[2].to_i, dmy[1].to_i, dmy[0].to_i)
-          #p res
           res = 0
           if fval.is_a? Integer
             res = Time.at(fval)
           else
             res = Time.parse(fval)
           end
-          res = res.to_i / (24*60*60)
-          # convert date to 0 year epoch
-          res += (1970-1900)*365
-          #p res.to_s(16)
-          #res = [t].pack('N')
+          res = res.to_i / (24*60*60)   #obtain days, drop hours and seconds
+          res += (1970-1900)*365   #mesure data from 1900
         else
           if fval.is_a? Integer
             fval = PandoraUtils.bigint_to_bytes(fval)
@@ -1516,8 +1491,6 @@ module PandoraUtils
               res = fval[9, 3]
             when 'md5'
               res = AsciiString.new
-              #res = ''
-              #res.force_encoding('ASCII-8BIT')
               res << Digest::MD5.digest(fval)
             when 'crc16'
               res = Zlib.crc32(fval) #if fval.is_a? String
@@ -1540,39 +1513,25 @@ module PandoraUtils
         if not res
           if fval.is_a? String
             res = AsciiString.new(fval)
-            #res = ''
-            #res.force_encoding('ASCII-8BIT')
           else
             res = fval
           end
         end
         if res.is_a? Integer
           res = AsciiString.new(PandoraUtils.bigint_to_bytes(res))
-          #p '---- '+hlen.to_s
-          #p PandoraUtils.bytes_to_hex(res)
-
           res = PandoraUtils.fill_zeros_from_left(res, hlen)
-          #p PandoraUtils.bytes_to_hex(res)
-          #p res = res[-hlen..-1]  # trunc if big
         elsif not fval.is_a? String
           res = AsciiString.new(res.to_s)
-          #res << res.to_s
-          #res.force_encoding('ASCII-8BIT')
         end
         res = AsciiString.new(res[0, hlen])
       end
       if not res
         res = AsciiString.new
-        #res = ''
-        #res.force_encoding('ASCII-8BIT')
         res << [0].pack('C')
       end
       while res.size<hlen
         res << [0].pack('C')
       end
-      #p 'hash='+res.to_s
-      #p 'hex_of_str='+hex_of_str(res)
-      #res.force_encoding('ASCII-8BIT')
       res = AsciiString.new(res)
     end
     def show_panhash(val, prefix=true)
@@ -4112,8 +4071,12 @@ module PandoraNet
       end
     end
 
+    def init_fishes_for_fisher(fisher)
+      fish = Session.new(fisher, nil, nil, port, proto, CM_Hunter, CS_Connected, \
+        Thread.current, node_id, dialog, keybase)
+      fish
+    end
   end
-
 
   # Network exchange comands
   # RU: Команды сетевого обмена
@@ -4125,27 +4088,13 @@ module PandoraNet
   EC_News      = 5     # Пачка сортов или пачка панхэшей измененных записей
   EC_Request   = 6     # Запрос записи/патча/миниатюры
   EC_Record    = 7     # Выдача записи
-  EC_Line      = 8     # Данные канала двух рыбаков
-  EC_Sync      = 9     # Последняя команда в серии, или индикация "живости"
+  EC_Lure      = 8     # Запрос рыбака (наживка)
+  EC_Bite      = 9     # Ответ рыбки (поклевка)
+  EC_Sync      = 10    # Последняя команда в серии, или индикация "живости"
   EC_Wait      = 254   # Временно недоступен
   EC_Bye       = 255   # Рассоединение
   # signs only
   EC_Data      = 256   # Ждем данные
-
-  #TExchangeCommands = {EC_Init=>'init', EC_Query=>'query', EC_News=>'news',
-  #  EC_Request=>'request', EC_Record=>'record',
-  #  EC_Wait=>'wait', EC_More=>'more', EC_Bye=>'bye'}
-  #TExchangeCommands_invert = TExchangeCommands.invert
-
-  # RU: Преобразует код в xml-команду
-  #def self.cmd_to_text(cmd)
-  #  TExchangeCommands[cmd]
-  #end
-
-  # RU: Преобразует xml-команду в код
-  #def self.text_to_cmd(text)
-  #  TExchangeCommands_invert[text.downcase]
-  #end
 
   CommSize = 6
   CommExtSize = 10
@@ -4171,6 +4120,8 @@ module PandoraNet
 
   ECC_Sync1_NoRecord    = 1
   ECC_Sync2_Encode      = 2
+
+  EC_Wait1_NoFish       = 1
 
   ECC_Bye_Exit          = 200
   ECC_Bye_Unknown       = 201
@@ -4826,21 +4777,58 @@ module PandoraNet
         password
       end
 
-      def get_fish_by_line(line)
-        fish = nil
-        fish = @fishes[line] if line
-        fish
+      def get_fisher_line(fisher)
+        line = nil
+        line = @fishers.index(fish)
+        if not line
+          i = 0
+          while (i<line.size) and (not line)
+            line = i if @fishers[i]==nil
+            i += 1
+          end
+          line = i if (not line) and (i<=255)
+          @fishers[line] = fish if line
+        end
+        line
       end
 
-      def process_line_segment(line, segment)
-        res = nil
-        session = get_fish_by_line(line)
-        if not session
-          session = Session.new(nil, nil, nil, port, proto, CM_Hunter, CS_Connected, \
-            Thread.current, node_id, dialog, keybase)
+      def free_fisher_line(fisher)
+        while line = @fishers.index(fisher)
+          @fishers[line] = nil
         end
-        if session
-          res = session.add_segment_to_recv_queue(segment)
+      end
+
+      def set_fish_on_lure(lure, fish)
+        @fishes[lure] = fish if lure.is_a? Integer
+      end
+
+      def get_fish_of_lure(lure)
+        fish = @fishes[lure]
+      end
+
+      def free_fish_lure(lure)
+        @fishes[lure] = nil if lure.is_a? Integer
+      end
+
+      def add_segment_to_read_queue(fisher_session, lure, segment)
+        res = @read_queue.add_block_to_queue([EC_Lure, lure, segment])
+      end
+
+      # Send segment from current fisher session to fish session
+      # RU: Отправляет сегмент от текущей рыбацкой сессии к сессии рыбки
+      def send_segment_to_fish(lure, segment)
+        res = nil
+        fish = get_fish_of_lure(lure)
+        if not fish
+          main_fish = pool.init_fishes_for_fisher(self)
+          set_fish_on_lure(lure, main_fish) if main_fish
+        end
+        if fish
+          res = fish.add_segment_to_read_queue(self, lure, segment)
+        else
+          @scmd = EC_Wait
+          @scode = EC_Wait1_NoFish
+          @scbuf = nil
         end
         res
       end
@@ -5235,6 +5223,12 @@ module PandoraNet
             @scode=0
             @sbuf=''
           end
+        when EC_Lure
+          p "EC_Lure"
+          send_segment_to_fish(rcode, rdata)
+        when EC_Bite
+          p "EC_Bite"
+          send_segment_to_fisher(rcode, rdata)
         when EC_Sync
           case rcode
             when ECC_Sync1_NoRecord
@@ -5242,10 +5236,11 @@ module PandoraNet
             when ECC_Sync2_Encode
               @r_encode = true
           end
-        when EC_Line
-          p "EC_Line"
-          line = rcode
-          process_line_segment(line, rdata)
+        when EC_Wait
+          case rcode
+            when EC_Wait1_NoFish
+              log_message(LM_Error, _('Cannot find a fish'))
+          end
         when EC_Bye
           if rcode != ECC_Bye_Exit
             mes = rdata
@@ -7597,7 +7592,7 @@ module PandoraGUI
                 PandoraUtils.set_param('last_update', Time.now)
                 $window.set_status_field(SF_Update, 'Need reboot')
                 Thread.stop
-                Gtk.main_quit
+                $window.destroy
               else
                 $window.set_status_field(SF_Update, 'Updating error')
               end
@@ -9620,9 +9615,9 @@ module PandoraGUI
         menu.append(checkmenuitem)
 
         menuitem = Gtk::MenuItem.new(_('_Quit'))
-        menuitem.signal_connect("activate") do
+        menuitem.signal_connect('activate') do
           widget.set_visible(false)
-          Gtk.main_quit
+          $window.destroy
         end
         menu.append(menuitem)
         menu.show_all
@@ -10106,7 +10101,6 @@ module PandoraGUI
       ['Language', nil, 'Languages'],
       ['Address', nil, 'Addresses'],
       ['Contact', nil, 'Contacts'],
-      ['Document', nil, 'Documents'],
       ['-', nil, '-'],
       ['Relation', nil, 'Relations'],
       ['Opinion', nil, 'Opinions'],
@@ -10147,6 +10141,7 @@ module PandoraGUI
       ['-', nil, '-'],
       ['Resource', nil, 'Resources'],
       ['Delegation', nil, 'Delegations'],
+      ['Registry', nil, 'Registry'],
       [nil, nil, '_Pandora'],
       ['Parameter', Gtk::Stock::PREFERENCES, 'Parameters'],
       ['-', nil, '-'],
@@ -10318,10 +10313,9 @@ module PandoraGUI
       $window.add(vbox)
 
       $window.signal_connect('delete-event') do |*args|
-        #Thread.pass
-        #sleep(5)
-        #$window.hide
-        false
+        $window.iconify
+        $window.hide
+        true
       end
 
       $statusicon = PandoraGUI::PandoraStatusIcon.new
@@ -10341,7 +10335,7 @@ module PandoraGUI
         elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
         and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
         1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
-          Gtk.main_quit
+          $window.destroy
         end
         false
       end

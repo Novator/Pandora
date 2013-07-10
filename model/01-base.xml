@@ -246,11 +246,14 @@
       <expire name="Expire" type="Time" />
     </Delegation>
 
-    <Document name="Document" kind="160">
-      <type name="Type" type="String" size="16" />
-      <number name="Number" type="String" size="128" />
-      <issued name="Expire" type="Time" />
-    </Document>
+    <Registry name="Registry" parent="Created" kind="160">
+      <creator name="Issuer" type="Panhash(Citizen, Union)" />
+      <recipient name="Recipient" type="Panhash(Person, Community)" hash="1:phash(9)" />
+      <resolution name="Resolution" type="Panhash(Resolution)" />
+      <number name="Number" type="String" size="40" hash="2:hash(9)" />
+      <attributes name="Attributes" type="Text" />
+      <created name="Issued" hash="3:time(4)" />
+    </Registry>
 
   </Region>
   <Pandora lang="no">

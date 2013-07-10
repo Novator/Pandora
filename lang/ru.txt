@@ -207,3 +207,4 @@ Cicle exchange=>Цикл обмена
 Cannot add segment to send queue=>Не могу добавить сегмент в очередь отправки
 Change password=>Сменить пароль
 New password=>Новый пароль
+Registry=>Регистрация

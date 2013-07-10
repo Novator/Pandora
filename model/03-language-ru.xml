@@ -176,10 +176,14 @@
       <expire name.ru="Истекает" />
     </Delegation>
 
-    <Document name.ru="Документ|Документы">
-      <type name.ru="Тип" />
+    <Registry name.ru="Регистр|Регистры" >
+      <creator name.ru="Издатель" />
+      <recipient name.ru="Получатель" />
+      <resolution name.ru="Постановление" />
       <number name.ru="Номер" />
-    </Document>
+      <attributes name.ru="Атрибуты" />
+      <created name.ru="Выдан" />
+    </Registry>
 
   </Region>
   <Pandora name.ru="Узел Пандоры">
