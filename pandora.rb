@@ -1624,6 +1624,7 @@ module PandoraUtils
   PT_Array = 4
   PT_Hash  = 5
   PT_Sym   = 6
+  PT_Real  = 7
   PT_Unknown = 32
 
   def self.string_to_pantype(type)
@@ -1643,6 +1644,8 @@ module PandoraUtils
         res = PT_Hash
       when 'Symbol'
         res = PT_Sym
+      when 'Real', 'Float', 'Double'
+        res = PT_Real
     end
     res
   end
@@ -1656,6 +1659,8 @@ module PandoraUtils
         res = 'boolean'
       when PT_Time
         res = 'time'
+      when PT_Real
+        res = 'real'
     end
     res
   end
@@ -1695,6 +1700,14 @@ module PandoraUtils
             val = val.to_i
           else
             val = 0
+          end
+        end
+      when PT_Real
+        if (not val.is_a? Float)
+          if val
+            val = val.to_f
+          else
+            val = 0.0
           end
         end
       when PT_Bool
@@ -1910,6 +1923,10 @@ module PandoraUtils
     val = nil if val==''
     if val and view
       case view
+        when 'byte', 'word', 'integer', 'coord'
+          val = val.to_i
+        when 'real'
+          val = val.to_f
         when 'date', 'time'
           begin
             val = Time.parse(val)  #Time.strptime(defval, '%d.%m.%Y')
@@ -2233,6 +2250,10 @@ module PandoraUtils
           data << [0].pack('C')
         end
         type = PT_Bool
+      when Float
+        data << [rubyobj].pack('D')
+        elem_size = data.bytesize
+        type, count = encode_pson_type(PT_Real, elem_size)
       when Time
         data << PandoraUtils.bigint_to_bytes(rubyobj.to_i)
         type, count = encode_pson_type(PT_Time, rubyobj.to_i)
@@ -2283,7 +2304,7 @@ module PandoraUtils
             val = (int != 0)
           when PT_Time
             val = Time.at(int)
-          when PT_Str, PT_Sym
+          when PT_Str, PT_Sym, PT_Real
             pos = len+vlen
             if pos+int>data.bytesize
               int = data.bytesize-pos
@@ -2291,7 +2312,11 @@ module PandoraUtils
             val = ''
             val << data[pos, int]
             vlen += int
-            val = data[pos, int].to_sym if basetype == PT_Sym
+            if basetype == PT_Sym
+              val = data[pos, int].to_sym
+            elsif basetype == PT_Real
+              val = data[pos, int].unpack['D']
+            end
           when PT_Array, PT_Hash
             val = Array.new
             int *= 2 if basetype == PT_Hash
@@ -4810,21 +4835,25 @@ module PandoraNet
         @fishes[lure] = nil if lure.is_a? Integer
       end
 
-      def add_segment_to_read_queue(fisher_session, lure, segment)
-        res = @read_queue.add_block_to_queue([EC_Lure, lure, segment])
-      end
-
       # Send segment from current fisher session to fish session
       # RU: Отправляет сегмент от текущей рыбацкой сессии к сессии рыбки
       def send_segment_to_fish(lure, segment)
         res = nil
         fish = get_fish_of_lure(lure)
         if not fish
-          main_fish = pool.init_fishes_for_fisher(self)
-          set_fish_on_lure(lure, main_fish) if main_fish
+          fish = pool.init_fishes_for_fisher(self)
+          set_fish_on_lure(lure, fish) if fish
         end
         if fish
-          res = fish.add_segment_to_read_queue(self, lure, segment)
+          if fish.socket == self
+            cmd = segment[0]
+            code = segment[1]
+            data = nil
+            data = segment[2..-1] if (segment.bytesize>2)
+            res = @read_queue.add_block_to_queue([cmd, code, data])
+          else
+            res = @send_queue.add_block_to_queue([EC_Lure, lure, segment])
+          end
         else
           @scmd = EC_Wait
           @scode = EC_Wait1_NoFish
@@ -9564,12 +9593,11 @@ module PandoraGUI
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
-
   class PandoraStatusIcon < Gtk::StatusIcon
     attr_accessor :main_icon
 
-    def initialize
-      super
+    def initialize(a_update_win_icon=false, a_flash_interval=0)
+      super()
 
       @main_icon = nil
       if $window.icon
@@ -9586,9 +9614,11 @@ module PandoraGUI
         @message_icon = $window.render_icon(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::LARGE_TOOLBAR)
       end
 
+      @update_win_icon = a_update_win_icon
+      @flash_interval = (a_flash_interval.to_f*1000).round
+      @flash_on_mes = (@flash_interval>0)
+
       @message = nil
-      @flash_on_mes = false
-      @update_main_icon = false
       @flash = false
       @flash_status = 0
       update_icon
@@ -9653,11 +9683,11 @@ module PandoraGUI
       else
         self.pixbuf = @main_icon
       end
-      $window.icon = self.pixbuf if (@update_main_icon and $window.visible?)
+      $window.icon = self.pixbuf if (@update_win_icon and $window.visible?)
     end
 
     def timeout_func
-      @timer = GLib::Timeout.add(800) do
+      @timer = GLib::Timeout.add(@flash_interval) do
         next_step = true
         if @flash_status == 0
           @flash_status = 1
@@ -9684,7 +9714,7 @@ module PandoraGUI
         $window.show_all
         #$statusicon.visible = false
         $window.present
-        update_icon if @update_main_icon
+        update_icon if @update_win_icon
         if @message
           page = $window.notebook.page
           if (page >= 0)
@@ -10318,7 +10348,9 @@ module PandoraGUI
         true
       end
 
-      $statusicon = PandoraGUI::PandoraStatusIcon.new
+      update_win_icon = PandoraUtils.get_param('status_update_win_icon')
+      flash_interval = PandoraUtils.get_param('status_flash_interval')
+      $statusicon = PandoraGUI::PandoraStatusIcon.new(update_win_icon, flash_interval)
 
       $window.signal_connect('destroy') do |window|
         while (not $window.notebook.destroyed?) and ($window.notebook.children.count>0)

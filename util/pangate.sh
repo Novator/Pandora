@@ -7,7 +7,7 @@ DIRFILE=`readlink -e "$0"`
 CURFILE=`basename "$DIRFILE"`
 CURDIR=`dirname "$DIRFILE"`
 
-cd $CURDIR
+cd "$CURDIR"
 
 /usr/bin/python ./pangate.py
 
