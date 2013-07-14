@@ -143,13 +143,13 @@ def logmes(mes, show=True, addr=None):
       filename = os.path.abspath(filename)
       try:
         logfile = open(filename, 'a')
-        print('Открыт log-файл: '+filename)
+        print('Logging to file: '+filename)
       except:
         logfile = False
-        print('Не могу открыть log-файл: '+filename)
+        print('Cannot open log-file: '+filename)
     else:
       logfile = False
-      print('Log-файл отключен.')
+      print('Log-file is off.')
   if logfile:
     timestr = time.strftime('%Y.%m.%d %H:%M:%S')
     addr = ''
@@ -174,6 +174,7 @@ class ClientThread(threading.Thread):
     self.pool = pool
     self.srckey = None
     self.authkey = None
+    self.lure = None
     self.fishers = []
     threading.Thread.__init__(self)
 
@@ -181,14 +182,14 @@ class ClientThread(threading.Thread):
     logmes(mes, show, self.addr[0])
 
   def unpack_comm(self, comm):
-    print('unpack_comm self, comm, len(comm) ', self, comm, len(comm))
+    #print('unpack_comm self, comm, len(comm) ', self, comm, len(comm))
     errcode = 0
     index, cmd, code, segsign = None, None, None, None
     if len(comm) == CommSize:
-      print(comm)
+      #print(comm)
       index, cmd, code, segsign, crc8 = struct.unpack('!BBBHB', comm)
       #segsign = byte2word(segsign1, segsign2)
-      print(index, cmd, code, segsign, crc8)
+      #print('index, cmd, code, segsign, crc8', index, cmd, code, segsign, crc8)
       crc8f = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
       if crc8 != crc8f:
         errcode = 1
@@ -201,7 +202,7 @@ class ClientThread(threading.Thread):
       #datasize, fullcrc32, segsize = struct.unpack('!IIH', comm)
       datasize, fullcrc32, segsize = struct.unpack('!iiH', comm)
     else:
-      logmes('Ошибочная длина расширения команды')
+      logmes('Wrong length of command extention')
     return datasize, fullcrc32, segsize
 
   # RU: Отправляет команду и данные, если есть !!! ДОБАВИТЬ !!! send_number!, buflen, buf
@@ -226,7 +227,7 @@ class ClientThread(threading.Thread):
           segdata = segsize-4  #for crc32
     crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
     comm = struct.pack('!BBBHB', index, cmd, code, segsign, crc8)
-    print('>send comm/data.len=', comm, len(comm), len(data))
+    #print('>send comm/data.len=', comm, len(comm), len(data))
     if index<255:
       index += 1
     else:
@@ -259,7 +260,7 @@ class ClientThread(threading.Thread):
     #end
     try:
       if client: #and (not socket.closed?):
-        print('SEND_main buf.len=', len(buf))
+        #print('SEND_main buf.len=', len(buf))
         sended = client.send(buf)
       else:
         sended = -1
@@ -268,7 +269,7 @@ class ClientThread(threading.Thread):
     if sended == len(buf):
       res = index
     elif sended != -1:
-      self.logmes('Не все данные отправлены '+str(sended))
+      self.logmes('Not all data is sended '+str(sended))
     segindex = 0
     i = segdata
     while res and ((datasize-i)>0):
@@ -302,7 +303,7 @@ class ClientThread(threading.Thread):
       buf = comm + buf
       try:
         if client: # and not socket.closed?:
-          print('SEND_add buf.len=', len(buf))
+          #print('SEND_add buf.len=', len(buf))
           sended = client.send(buf)
         else:
           sended = -1
@@ -313,7 +314,7 @@ class ClientThread(threading.Thread):
         #p log_mes+'SEND_ADD: ('+buf+')'
       elif sended != -1:
         res = nil
-        self.logmes('Не все данные отправлены2 '+str(sended))
+        self.logmes('Not all data is sended 2 '+str(sended))
       i += segdata
     return res
 
@@ -385,7 +386,7 @@ class ClientThread(threading.Thread):
 
   def resend_to_fisher_hole(self, fisher, hole):
     if fisher and (hole != None):
-      print('LURE!', fisher, hole)
+      #print('LURE!', fisher, hole)
       comm = struct.pack('!BB', self.rcmd, self.rcode)
       data = comm + self.rdata
       self.sindex = self.send_comm_and_data(self.sindex, EC_Lure, hole, data, fisher.client)
@@ -395,18 +396,19 @@ class ClientThread(threading.Thread):
       cmd = ord(self.rdata[0])
       code = ord(self.rdata[1])
       seg = self.rdata[2:]
-      print('BITE! cmd,code,len(seg)', cmd, code, len(seg))
+      #print('BITE! cmd,code,len(seg)', cmd, code, len(seg))
       self.sindex = self.send_comm_and_data(self.sindex, cmd, code, seg, fish.client)
 
   # Accept received segment
   # RU: Принять полученный сегмент
   def accept_segment(self):
-    print('accept_segment:  self.rcmd, self.rcode, self.stage', self.rcmd, self.rcode, self.stage)
+    #print('accept_segment:  self.rcmd, self.rcode, self.stage', self.rcmd, self.rcode, self.stage)
     if (self.rcmd==EC_Init):
       if (self.rcode==ECC_Init_Hello) and (self.stage==ST_Protocol):
         print('self.rdata: ', self.rdata)
         if self.pool.collector:
           hole = self.pool.collector.add_hole_for_fisher(self)
+          self.lure = hole
           print('-------------------hole', hole)
           if hole==None:
             self.err_scmd('Temporary error')
@@ -445,7 +447,7 @@ class ClientThread(threading.Thread):
       if self.pool.collector:
         hole = self.rcode
         fisher = self.get_fisher_by_hole(hole)
-        print('========= fisher, hole', fisher, hole)
+        #print('========= fisher, hole', fisher, hole)
         if fisher:
           self.resend_to_fish(fisher)
         else:
@@ -487,7 +489,7 @@ class ClientThread(threading.Thread):
     while (self.conn_state != CS_StopRead) and (self.conn_state != CS_Disconnected):
       try:
         recieved = self.client.recv(MaxPackSize)
-        if recieved: print('recieved.len', len(recieved))
+        #if recieved: print('recieved.len', len(recieved))
         if (not recieved) or (recieved==''):
           self.conn_state = CS_StopRead
         rbuf = rbuf + recieved
@@ -497,7 +499,7 @@ class ClientThread(threading.Thread):
       processedlen = 0
       while (self.conn_state == CS_Connected) and (len(rbuf)>=waitlen): #and (not socket.closed?)
         #print('==rbuf len waitlen readmode: ', rbuf, len(rbuf), waitlen, readmode)
-        print('==rbuf.len waitlen readmode: ', len(rbuf), waitlen, readmode)
+        #print('==rbuf.len waitlen readmode: ', len(rbuf), waitlen, readmode)
         processedlen = waitlen
         nextreadmode = readmode
 
@@ -507,7 +509,7 @@ class ClientThread(threading.Thread):
           rdatasize = None
           comm = rbuf[0: processedlen]
           rindex, self.rcmd, self.rcode, rsegsign, errcode = self.unpack_comm(comm)
-          print(' RM_Comm: rindex, rcmd, rcode, segsign, errcode: ', rindex, self.rcmd, self.rcode, rsegsign, errcode)
+          #print(' RM_Comm: rindex, rcmd, rcode, segsign, errcode: ', rindex, self.rcmd, self.rcode, rsegsign, errcode)
           if errcode == 0:
             if rsegsign == LONG_SEG_SIGN:
               nextreadmode = RM_CommExt
@@ -525,23 +527,23 @@ class ClientThread(threading.Thread):
         elif readmode==RM_CommExt:
           comm = rbuf[0: processedlen]
           rdatasize, fullcrc32, rsegsize = self.unpack_comm_ext(comm)
-          print(' RM_CommExt: rdatasize, fullcrc32, rsegsize ', rdatasize, fullcrc32, rsegsize)
+          #print(' RM_CommExt: rdatasize, fullcrc32, rsegsize ', rdatasize, fullcrc32, rsegsize)
           nextreadmode = RM_Segment1
           waitlen = rsegsize
         elif readmode==RM_SegLenN:
           comm = rbuf[0: processedlen]
           #rindex, rsegindex, rsegsize = struct.unpack('!BIH', comm)
           rindex, rsegindex, rsegsize = struct.unpack('!BiH', comm)
-          print(' RM_SegLenN: ', rindex, rsegindex, rsegsize)
+          #print(' RM_SegLenN: ', rindex, rsegindex, rsegsize)
           nextreadmode = RM_SegmentN
           waitlen = rsegsize
         elif (readmode==RM_SegmentS) or (readmode==RM_Segment1) or (readmode==RM_SegmentN):
-          print(' RM_SegLen? [mode, buf.len] ', readmode, len(rbuf))
+          #print(' RM_SegLen? [mode, buf.len] ', readmode, len(rbuf))
           if (readmode==RM_Segment1) or (readmode==RM_SegmentN):
             nextreadmode = RM_SegLenN
             waitlen = 7    #index + segindex + rseglen (1+4+2)
           if self.rcmd == EC_Media:
-            self.rdata << rbuf[0, processedlen]
+            self.rdata = self.rdata + rbuf[0: processedlen]
           else:
             rseg = rbuf[0: processedlen-4]
             #print('rseg',rseg)
@@ -556,7 +558,7 @@ class ClientThread(threading.Thread):
               self.rdata = self.rdata + rseg
             else:
               self.err_scmd('Wrong CRC of received segment', ECC_Bye_BadCRC)
-          print('RM_Segment?: data.len  rdatasize', len(self.rdata), rdatasize)
+          #print('RM_Segment?: data.len  rdatasize', len(self.rdata), rdatasize)
 
           if len(self.rdata) == rdatasize:
             nextreadmode = RM_Comm
@@ -573,31 +575,33 @@ class ClientThread(threading.Thread):
         # Обработаем поступившие команды и блоки данных
         rdata0 = self.rdata
         if (self.scmd != EC_Bye) and (self.scmd != EC_Wait) and (nextreadmode == RM_Comm):
-          print('-->>>> before accept: [rcmd, rcode, rdata.size]=', self.rcmd, self.rcode, len(self.rdata))
+          #print('-->>>> before accept: [rcmd, rcode, rdata.size]=', self.rcmd, self.rcode, len(self.rdata))
           #if self.rdata and (len(self.rdata)>0) and @r_encode
             #@rdata = PandoraGUI.recrypt(@rkey, @rdata, false, true)
             #@rdata = Base64.strict_decode64(@rdata)
             #p log_mes+'::: decode rdata.size='+rdata.size.to_s
           #end
 
-          hole = None
-          if self.pool.collector:
-            hole = self.pool.collector.get_hole_of_fisher(self)
-          if hole==None:
+          #lure = None
+          #if self.pool.collector:
+          #  lure = self.pool.collector.get_hole_of_fisher(self)
+          if self.lure==None:
             #rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = \
             self.accept_segment() #(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
-          else:
-            self.resend_to_fisher_hole(self.pool.collector, hole)
+          elif self.pool.collector:
+            self.resend_to_fisher_hole(self.pool.collector, self.lure)
 
           self.rdata = ''
           if not self.sbuf: self.sbuf = ''
-          print('after accept ==>>>: [scmd, scode, sbuf.size]=', self.scmd, self.scode, len(self.sbuf))
+          #print('after accept ==>>>: [scmd, scode, sbuf.size]=', self.scmd, self.scode, len(self.sbuf))
           #p log_mes+'accept_request After='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
 
         if self.scmd != EC_Data:
           #@sbuf = '' if scmd == EC_Bye
           #p log_mes+'add to queue [scmd, scode, sbuf]='+[scmd, scode, @sbuf].inspect
-          print('recv/send: =', self.rcmd, self.rcode, len(rdata0), '/', self.scmd, self.scode, self.sbuf)
+          print('-->>>> before accept: [rcmd, rcode, rdata.size]=', self.rcmd, self.rcode, len(self.rdata))
+          print('after accept ==>>>: [scmd, scode, sbuf.size]=', self.scmd, self.scode, len(self.sbuf))
+          #print('recv/send: =', self.rcmd, self.rcode, len(rdata0), '/', self.scmd, self.scode, self.sbuf)
           #while PandoraGUI.get_queue_state(@send_queue) == QS_Full do
           #  p log_mes+'get_queue_state.MAIN = '+PandoraGUI.get_queue_state(@send_queue).inspect
           #  Thread.pass
@@ -609,12 +613,12 @@ class ClientThread(threading.Thread):
             self.conn_state == CS_Stoping
           last_scmd = self.scmd
           self.sbuf = ''
-        print('self.conn_state: ', self.conn_state)
+        #print('self.conn_state: ', self.conn_state)
         readmode = nextreadmode
       if self.conn_state == CS_Stoping:
         self.conn_state = CS_StopRead
-      print('self.conn_state2: ', self.conn_state)
-      time.sleep(0.2)
+      #print('self.conn_state2: ', self.conn_state)
+      time.sleep(0.1)
 
     print('FINISH')
     self.client.close()
@@ -625,7 +629,7 @@ class ClientThread(threading.Thread):
     if self==self.pool.collector:
       self.pool.collector = None
       self.logmes('Colleactor disconnected: '+addrstr)
-      self.pool.stop_clients()
+      self.pool.stop_clients(self)
     else:
       self.logmes('Client disconnected: '+addrstr)
 
@@ -646,12 +650,15 @@ class PoolThread(threading.Thread):
           sockets.append(thread.client)
     return sockets
 
-  def stop_clients(self):
+  def stop_clients(self, except_client=None):
     print('Stopping client threads...')
     for thread in self.threads:
-      if thread.isAlive():
+      if thread and (thread != except_client) and thread.isAlive():
         print('Stop: ', thread)
+        thread.conn_state = CS_StopRead
         try:
+          thread.client.setblocking(0)
+          thread.client.shutdown(1)
           thread.client.close()
         except:
           print(str(thread.getName()) + ' error while close socket')
@@ -724,6 +731,7 @@ try:
     listener.start()
     print('Working thread is active...')
     print('Press Q to stop server.')
+    print('(screen: Ctrl+a+d - detach, Ctrl+a+k - kill, "screen -r" to resume)')
     working = True
     while working:
       time.sleep(0.5)  # prevent overload cpu

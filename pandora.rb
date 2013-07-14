@@ -83,7 +83,7 @@ MAIN_WINDOW_TITLE = 'Pandora'
 # Prevent second execution
 # RU: Предотвратить второй запуск
 if not $poly_launch
-  #begin
+  begin
     if os_family=='unix'
       res = `ps -few | grep pandora.rb | grep -v grep`
       res = res.scan("\n").count if res
@@ -102,8 +102,8 @@ if not $poly_launch
         Thread.current.exit
       end
     end
-  #rescue Exception
-  #end
+  rescue Exception
+  end
 end
 
 if RUBY_VERSION<'1.9'
@@ -4326,7 +4326,7 @@ module PandoraNet
       res = nil
       lengt = 0
       lengt = data.bytesize if data
-      p log_mes+'SEND_ALL: [cmd, code, data.len]='+[cmd, code, lengt].inspect
+      #p log_mes+'SEND_ALL: [cmd, code, data.len]='+[cmd, code, lengt].inspect
       if donor
         #out_lure = fish.get_out_lure_for_fisher(self)
         segment = [cmd, code].pack('CC')
@@ -4412,7 +4412,7 @@ module PandoraNet
         #end
         begin
           if socket and not socket.closed?
-            p "!SEND_main: buf.size="+buf.bytesize.to_s
+            #p "!SEND_main: buf.size="+buf.bytesize.to_s
             #sended = socket.write(buf)
             sended = socket.send(buf, 0)
           else
@@ -4458,7 +4458,7 @@ module PandoraNet
           begin
             if socket and not socket.closed?
               #sended = socket.write(buf)
-              p "!SEND_add: buf.size="+buf.bytesize.to_s
+              #p "!SEND_add: buf.size="+buf.bytesize.to_s
               sended = socket.send(buf, 0)
             else
               sended = -1
@@ -4916,15 +4916,15 @@ module PandoraNet
             fish = pool.init_fish_for_fisher(self, in_lure, nil, nil)
             set_fish_of_in_lure(in_lure, fish)
           end
-          p 'send_segment_to_fish: in_lure,segsize='+[in_lure, segment.bytesize].inspect
+          #p 'send_segment_to_fish: in_lure,segsize='+[in_lure, segment.bytesize].inspect
           if fish
             if fish.donor == self
-              p 'DONOR lure'
+              #p 'DONOR lure'
               cmd = segment[0].ord
               code = segment[1].ord
               data = nil
               data = segment[2..-1] if (segment.bytesize>2)
-              p '-->Add raw to fish (inlure='+in_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
+              #p '-->Add raw to fish (inlure='+in_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
               res = fish.read_queue.add_block_to_queue([cmd, code, data])
             else
               p 'RESENDER lure'
@@ -5115,11 +5115,11 @@ module PandoraNet
               elsif (rcode==ECC_Init_Simple) and (stage==ST_Protocol)
                 p 'ECC_Init_Simple!'
                 rphrase = rdata
-                p 'rphrase='+rphrase.inspect
-                p password = get_simple_answer_to_node
+                #p 'rphrase='+rphrase.inspect
+                password = get_simple_answer_to_node
                 if (password.is_a? String) and (password.bytesize>0)
-                  p password_hash = OpenSSL::Digest::SHA256.digest(password)
-                  p answer = OpenSSL::Digest::SHA256.digest(rphrase+password_hash)
+                  password_hash = OpenSSL::Digest::SHA256.digest(password)
+                  answer = OpenSSL::Digest::SHA256.digest(rphrase+password_hash)
                   @scmd = EC_Init
                   @scode = ECC_Init_Answer
                   @sbuf = answer
@@ -5370,7 +5370,6 @@ module PandoraNet
             @sbuf=''
           end
         when EC_Lure
-          p "EC_Lure"
           send_segment_to_fish(rcode, rdata)
           #sleep 2
         when EC_Bite
@@ -5523,12 +5522,12 @@ module PandoraNet
               @conn_state = CS_Stoping
             end
             #p log_mes+"recieved=["+recieved+']  '+socket.closed?.to_s+'  sok='+socket.inspect
-            p log_mes+"recieved.size, waitlen="+[recieved.bytesize, waitlen].inspect if recieved
+            #p log_mes+"recieved.size, waitlen="+[recieved.bytesize, waitlen].inspect if recieved
             rkbuf << AsciiString.new(recieved)
             processedlen = 0
             while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
             and (@conn_state != CS_Stoping) and (not socket.closed?) and (rkbuf.bytesize>=waitlen)
-              p log_mes+'readmode, rkbuf.len, waitlen='+[readmode, rkbuf.size, waitlen].inspect
+              #p log_mes+'readmode, rkbuf.len, waitlen='+[readmode, rkbuf.size, waitlen].inspect
               processedlen = waitlen
 
               # Определимся с данными по режиму чтения
