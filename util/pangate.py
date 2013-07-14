@@ -16,8 +16,8 @@ TCP_PORT = 5577
 #LOG_FILE_NAME = ''
 LOG_FILE_NAME = './pangate.log'
 MAX_CONNECTIONS = 10
-PASSWORD_HASH = hashlib.sha256('1234567890').digest()
-OWNER_KEY_PANHASH = 'dd032ec783d34331de1d39006fc851d5cf4346bfc8cc'.decode('hex')
+PASSWORD_HASH = hashlib.sha256('123456').digest()
+OWNER_KEY_PANHASH = 'dd0332860ccdd2b7eb6e6f6e1f627e6b976a51e22b57'.decode('hex')
 
 ROOT_PATH = os.path.abspath('.')
 KEEPALIVE = 1 #(on/off)
@@ -41,10 +41,12 @@ EC_Query     = 4     # Запрос пачки сортов или пачки п
 EC_News      = 5     # Пачка сортов или пачка панхэшей измененных записей
 EC_Request   = 6     # Запрос записи/патча/миниатюры
 EC_Record    = 7     # Выдача записи
-EC_Line      = 8     # Данные канала двух рыбаков
-EC_Sync      = 9     # Последняя команда в серии, или индикация "живости"
+EC_Lure      = 8     # Запрос рыбака (наживка)
+EC_Bite      = 9     # Ответ рыбки (поклевка)
+EC_Sync      = 10    # Последняя команда в серии, или индикация "живости"
 EC_Wait      = 254   # Временно недоступен
 EC_Bye       = 255   # Рассоединение
+# signs only
 EC_Data      = 256   # Ждем данные
 
 ECC_Init_Hello       = 0
@@ -370,7 +372,7 @@ class ClientThread(threading.Thread):
       print('FISHING!', fisher, hole)
       comm = struct.pack('!BB', self.rcmd, self.rcode)
       data = comm + self.rdata
-      self.sindex = self.send_comm_and_data(self.sindex, EC_Line, hole, data, fisher.client)
+      self.sindex = self.send_comm_and_data(self.sindex, EC_Lure, hole, data, fisher.client)
 
   # Accept received segment
   # RU: Принять полученный сегмент
@@ -415,6 +417,14 @@ class ClientThread(threading.Thread):
           self.err_scmd('Password hash is wrong')
       else:
         self.err_scmd('Wrong stage for rcode')
+    elif (self.rcmd==EC_Bite):
+      if self.pool.collector:
+        hole = self.pool.collector.get_hole_for_fisher(self)
+        print('========= hole', hole)
+        if hole==None:
+          self.err_scmd('Temporary error 2')
+        else:
+          self.resend_to_fisher_hole(self.pool.collector, hole)
     elif (self.rcmd==EC_Bye):
       if self.rcode != ECC_Bye_Exit:
         mes = self.rdata
@@ -580,6 +590,7 @@ class ClientThread(threading.Thread):
     if self==self.pool.collector:
       self.pool.collector = None
       self.logmes('Colleactor disconnected: '+addrstr)
+      self.pool.stop_clients()
     else:
       self.logmes('Client disconnected: '+addrstr)
 
@@ -604,6 +615,11 @@ class PoolThread(threading.Thread):
     print('Stopping client threads...')
     for thread in self.threads:
       if thread.isAlive():
+        print('Stop: ', thread)
+        try:
+          thread.client.close()
+        except:
+          print(str(thread.getName()) + ' error while close socket')
         try:
           thread._Thread__stop()
         except:

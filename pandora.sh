@@ -93,7 +93,7 @@ case "$PARAMS" in
     sudo gem install sqlite3 gtk2 gstreamer openssl
     ;;
   *)
-    cd $CURDIR
+    cd "$CURDIR"
     $RUBY ./pandora.rb $@
     ;;
 esac

@@ -28,7 +28,7 @@ end
 $host = '127.0.0.1'
 $port = 5577
 $base_index = 0
-$poly_launch = false
+$poly_launch = true
 $pandora_parameters = []
 
 # Expand the arguments of command line
@@ -3917,13 +3917,13 @@ module PandoraNet
     def add_session(conn)
       if not sessions.include?(conn)
         sessions << conn
-        window.update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, 1)
+        window.update_conn_status(conn, conn.get_type, 1)
       end
     end
 
     def del_session(conn)
       if sessions.delete(conn)
-        window.update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, -1)
+        window.update_conn_status(conn, conn.get_type, -1)
       end
     end
 
@@ -4012,7 +4012,8 @@ module PandoraNet
                 if socket
                   #begin
                     log_message(LM_Info, _('Connected to server')+' '+server)
-                    session = Session.new(socket, host, socket.addr[2], port, proto, CM_Hunter, \
+                    session = Session.new
+                    session.run(socket, host, socket.addr[2], port, proto, CM_Hunter, \
                       CS_Connected, Thread.current, node_id, dialog, keybase, send_state_add)
                     socket.close if not socket.closed?
                     log_message(LM_Info, _('Disconnected from server')+' '+server)
@@ -4096,9 +4097,23 @@ module PandoraNet
       end
     end
 
-    def init_fishes_for_fisher(fisher)
-      fish = Session.new(fisher, nil, nil, port, proto, CM_Hunter, CS_Connected, \
-        Thread.current, node_id, dialog, keybase)
+    def init_fish_for_fisher(fisher, inlure, keyhash=nil, baseid=nil)
+      fish = nil
+      thread = Thread.new do
+        log_message(LM_Info, _('Create fish session')+' for '+inlure.to_s)
+        session = Session.new
+        thread[:fish] = session
+        session.run(fisher, nil, inlure, nil, nil, 0, CS_Connected, \
+          thread, nil, nil, nil, nil)
+        log_message(LM_Info, _('Close fish session')+' '+fisher.inspect+'/'+inlure.to_s)
+      end
+      Thread.pass
+      while thread.alive? and (not thread[:fish])
+        sleep(0.01)
+      end
+      if thread.alive?
+        fish = thread[:fish]
+      end
       fish
     end
   end
@@ -4147,6 +4162,8 @@ module PandoraNet
   ECC_Sync2_Encode      = 2
 
   EC_Wait1_NoFish       = 1
+  EC_Wait2_NoFisher     = 2
+  EC_Wait3_EmptySegment = 3
 
   ECC_Bye_Exit          = 200
   ECC_Bye_Unknown       = 201
@@ -4234,22 +4251,35 @@ module PandoraNet
 
   class Session
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
-      :send_thread, :read_thread, :socket, :read_state, :send_state,
-      :send_models, :recv_models, \
-      #:read_req, :send_mes, :send_media, :send_req, :read_mes, :read_media,
-      :sindex, :read_queue, :send_queue, :params,
-      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode,
+      :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, :fisher_lure, :fish_lure, \
+      :send_models, :recv_models, :sindex, :read_queue, :send_queue, :params, \
+      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, \
       :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes
 
     def set_keepalive(client)
       client.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, $keep_alive)
-      client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPIDLE, $keep_idle)
-      client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPINTVL, $keep_intvl)
-      client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPCNT, $keep_cnt)
+      if os_family != 'windows'
+        client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPIDLE, $keep_idle)
+        client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPINTVL, $keep_intvl)
+        client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPCNT, $keep_cnt)
+      end
     end
 
     def pool
       $window.pool
+    end
+
+    def get_type
+      res = nil
+      if donor
+        res = 2
+      else
+        if ((conn_mode & CM_Hunter)>0)
+          res = 0
+        else
+          res = 1
+        end
+      end
     end
 
     def unpack_comm(comm)
@@ -4281,124 +4311,90 @@ module PandoraNet
     # RU: Отправляет команду и данные, если есть !!! ДОБАВИТЬ !!! send_number!, buflen, buf
     def send_comm_and_data(index, cmd, code, data=nil)
       res = nil
-      data ||= ''
-      data = AsciiString.new(data)
-      datasize = data.bytesize
-      segsign, segdata, segsize = datasize, datasize, datasize
-      if datasize>0
-        if cmd != EC_Media
-          segsize += 4           #for crc32
-          segsign = segsize
-        end
-        if segsize > MaxSegSize
-          segsign = LONG_SEG_SIGN
-          segsize = MaxSegSize
-          if cmd == EC_Media
-            segdata = segsize
-          else
-            segdata = segsize-4  #for crc32
-          end
-        end
-      end
-      crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
-      # Команда как минимум равна 1+1+1+2+1= 6 байт (CommSize)
-      #p 'SCAB: '+[index, cmd, code, segsign, crc8].inspect
-      comm = AsciiString.new([index, cmd, code, segsign, crc8].pack('CCCnC'))
-      if index<255 then index += 1 else index = 0 end
-      buf = AsciiString.new
-      if datasize>0
-        if segsign == LONG_SEG_SIGN
-          # если пакетов много, то добавить еще 4+4+2= 10 байт
-          fullcrc32 = 0
-          fullcrc32 = Zlib.crc32(data) if (cmd != EC_Media)
-          comm << [datasize, fullcrc32, segsize].pack('NNn')
-          buf << data[0, segdata]
+      if donor
+        #out_lure = fish.get_out_lure_for_fisher(self)
+        segment = [cmd, code].pack('CC')
+        segment << data if data
+        if fisher_lure
+          res = donor.send_queue.add_block_to_queue([EC_Lure, fisher_lure, segment])
         else
-          buf << data
-        end
-        if cmd != EC_Media
-          segcrc32 = Zlib.crc32(buf)
-          buf << [segcrc32].pack('N')
-        end
-      end
-      buf = comm + buf
-      #p "!SEND: ("+buf+')'
-
-      # tos_sip    cs3   0x60  0x18
-      # tos_video  af41  0x88  0x22
-      # tos_xxx    cs5   0xA0  0x28
-      # tos_audio  ef    0xB8  0x2E
-      if cmd == EC_Media
-        if not @media_send
-          @media_send = true
-          #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-          socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
-          p '@media_send = true'
+          res = donor.send_queue.add_block_to_queue([EC_Bite, fish_lure, segment])
         end
       else
-        nodelay = nil
-        if @media_send
-          socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0)
-          nodelay = 0
-          @media_send = false
-          p '@media_send = false'
-        end
-        #nodelay = 1 if (cmd == EC_Bye)
-        #if nodelay
-        #  socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, nodelay)
-        #end
-      end
-      #if cmd == EC_Media
-      #  if code==0
-      #    p 'send AUDIO ('+buf.size.to_s+')'
-      #  else
-      #    p 'send VIDEO ('+buf.size.to_s+')'
-      #  end
-      #end
-      begin
-        if socket and not socket.closed?
-          #sended = socket.write(buf)
-          sended = socket.send(buf, 0)
-        else
-          sended = -1
-        end
-      rescue #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
-        sended = -1
-      end
-      #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
-      #p log_mes+'SEND_MAIN: ('+buf+')'
-
-      if sended == buf.bytesize
-        res = index
-      elsif sended != -1
-        log_message(LM_Error, 'Не все данные отправлены '+sended.to_s)
-      end
-      segindex = 0
-      i = segdata
-      while res and ((datasize-i)>0)
-        segdata = datasize-i
-        segsize = segdata
-        if cmd != EC_Media
-          segsize += 4           #for crc32
-        end
-        if segsize > MaxSegSize
-          segsize = MaxSegSize
-          if cmd == EC_Media
-            segdata = segsize
-          else
-            segdata = segsize-4  #for crc32
+        data ||= ''
+        data = AsciiString.new(data)
+        datasize = data.bytesize
+        segsign, segdata, segsize = datasize, datasize, datasize
+        if datasize>0
+          if cmd != EC_Media
+            segsize += 4           #for crc32
+            segsign = segsize
+          end
+          if segsize > MaxSegSize
+            segsign = LONG_SEG_SIGN
+            segsize = MaxSegSize
+            if cmd == EC_Media
+              segdata = segsize
+            else
+              segdata = segsize-4  #for crc32
+            end
           end
         end
-        if segindex<0xFFFFFFFF then segindex += 1 else segindex = 0 end
-        #p log_mes+'comm_ex_pack: [index, segindex, segsize]='+[index, segindex, segsize].inspect
-        comm = [index, segindex, segsize].pack('CNn')
+        crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
+        # Команда как минимум равна 1+1+1+2+1= 6 байт (CommSize)
+        #p 'SCAB: '+[index, cmd, code, segsign, crc8].inspect
+        comm = AsciiString.new([index, cmd, code, segsign, crc8].pack('CCCnC'))
         if index<255 then index += 1 else index = 0 end
-        buf = data[i, segdata]
-        if cmd != EC_Media
-          segcrc32 = Zlib.crc32(buf)
-          buf << [segcrc32].pack('N')
+        buf = AsciiString.new
+        if datasize>0
+          if segsign == LONG_SEG_SIGN
+            # если пакетов много, то добавить еще 4+4+2= 10 байт
+            fullcrc32 = 0
+            fullcrc32 = Zlib.crc32(data) if (cmd != EC_Media)
+            comm << [datasize, fullcrc32, segsize].pack('NNn')
+            buf << data[0, segdata]
+          else
+            buf << data
+          end
+          if cmd != EC_Media
+            segcrc32 = Zlib.crc32(buf)
+            buf << [segcrc32].pack('N')
+          end
         end
         buf = comm + buf
+        #p "!SEND: ("+buf+')'
+
+        # tos_sip    cs3   0x60  0x18
+        # tos_video  af41  0x88  0x22
+        # tos_xxx    cs5   0xA0  0x28
+        # tos_audio  ef    0xB8  0x2E
+        if cmd == EC_Media
+          if not @media_send
+            @media_send = true
+            #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+            socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
+            p '@media_send = true'
+          end
+        else
+          nodelay = nil
+          if @media_send
+            socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0)
+            nodelay = 0
+            @media_send = false
+            p '@media_send = false'
+          end
+          #nodelay = 1 if (cmd == EC_Bye)
+          #if nodelay
+          #  socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, nodelay)
+          #end
+        end
+        #if cmd == EC_Media
+        #  if code==0
+        #    p 'send AUDIO ('+buf.size.to_s+')'
+        #  else
+        #    p 'send VIDEO ('+buf.size.to_s+')'
+        #  end
+        #end
         begin
           if socket and not socket.closed?
             #sended = socket.write(buf)
@@ -4409,14 +4405,59 @@ module PandoraNet
         rescue #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
           sended = -1
         end
+        #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
+        #p log_mes+'SEND_MAIN: ('+buf+')'
+
         if sended == buf.bytesize
           res = index
-          #p log_mes+'SEND_ADD: ('+buf+')'
         elsif sended != -1
-          res = nil
-          log_message(LM_Error, 'Не все данные отправлены2 '+sended.to_s)
+          log_message(LM_Error, 'Не все данные отправлены '+sended.to_s)
         end
-        i += segdata
+        segindex = 0
+        i = segdata
+        while res and ((datasize-i)>0)
+          segdata = datasize-i
+          segsize = segdata
+          if cmd != EC_Media
+            segsize += 4           #for crc32
+          end
+          if segsize > MaxSegSize
+            segsize = MaxSegSize
+            if cmd == EC_Media
+              segdata = segsize
+            else
+              segdata = segsize-4  #for crc32
+            end
+          end
+          if segindex<0xFFFFFFFF then segindex += 1 else segindex = 0 end
+          #p log_mes+'comm_ex_pack: [index, segindex, segsize]='+[index, segindex, segsize].inspect
+          comm = [index, segindex, segsize].pack('CNn')
+          if index<255 then index += 1 else index = 0 end
+          buf = data[i, segdata]
+          if cmd != EC_Media
+            segcrc32 = Zlib.crc32(buf)
+            buf << [segcrc32].pack('N')
+          end
+          buf = comm + buf
+          begin
+            if socket and not socket.closed?
+              #sended = socket.write(buf)
+              sended = socket.send(buf, 0)
+            else
+              sended = -1
+            end
+          rescue #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
+            sended = -1
+          end
+          if sended == buf.bytesize
+            res = index
+            #p log_mes+'SEND_ADD: ('+buf+')'
+          elsif sended != -1
+            res = nil
+            log_message(LM_Error, 'Не все данные отправлены2 '+sended.to_s)
+          end
+          i += segdata
+        end
       end
       res
     end
@@ -4802,61 +4843,111 @@ module PandoraNet
         password
       end
 
-      def get_fisher_line(fisher)
-        line = nil
-        line = @fishers.index(fish)
-        if not line
+      def take_out_lure_for_fisher(fisher)
+        lure = nil
+        lure = @fishers.index(fisher)
+        if not lure
           i = 0
-          while (i<line.size) and (not line)
-            line = i if @fishers[i]==nil
+          while (i<lure.size) and (not lure)
+            lure = i if ((not @fishers[i]) or (@fishers[i].destroyed?))
             i += 1
           end
-          line = i if (not line) and (i<=255)
-          @fishers[line] = fish if line
+          lure = i if (not lure) and (i<=255)
+          @fishers[lure] = fisher if lure
         end
-        line
+        lure
       end
 
-      def free_fisher_line(fisher)
+      def get_out_lure_for_fisher(fisher)
+        lure = @fishers.index(fisher)
+        lure
+      end
+
+      def get_fisher_for_out_lure(lure)
+        fisher = @fishers[lure]
+      end
+
+      def free_out_lure_of_fisher(fisher)
         while line = @fishers.index(fisher)
           @fishers[line] = nil
         end
       end
 
-      def set_fish_on_lure(lure, fish)
+      def set_fish_of_in_lure(lure, fish)
         @fishes[lure] = fish if lure.is_a? Integer
       end
 
-      def get_fish_of_lure(lure)
+      def get_fish_for_in_lure(lure)
         fish = @fishes[lure]
       end
 
-      def free_fish_lure(lure)
+      def get_in_lure_by_fish(fish)
+        lure = @fishes.index(fish) if lure.is_a? Integer
+      end
+
+      def free_fish_of_in_lure(lure)
         @fishes[lure] = nil if lure.is_a? Integer
       end
 
       # Send segment from current fisher session to fish session
       # RU: Отправляет сегмент от текущей рыбацкой сессии к сессии рыбки
-      def send_segment_to_fish(lure, segment)
+      def send_segment_to_fish(in_lure, segment)
         res = nil
-        fish = get_fish_of_lure(lure)
-        if not fish
-          fish = pool.init_fishes_for_fisher(self)
-          set_fish_on_lure(lure, fish) if fish
+        if segment and (segment.bytesize>1)
+          fish = get_fish_for_in_lure(in_lure)
+          if not fish
+            fish = pool.init_fish_for_fisher(self, in_lure, nil, nil)
+            set_fish_of_in_lure(in_lure, fish)
+          end
+          p 'send_segment_to_fish: fish,segsize='+[fish, segment.bytesize].inspect
+          if fish
+            if fish.donor == self
+              p 'DONOR'
+              cmd = segment[0].ord
+              code = segment[1].ord
+              data = nil
+              data = segment[2..-1] if (segment.bytesize>2)
+              p '-->Add raw to donor (inlure='+in_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
+              res = fish.read_queue.add_block_to_queue([cmd, code, data])
+            else
+              p 'RESENDER'
+              out_lure = fish.take_out_lure_for_fisher(self)
+              p '-->Add LURE to resender: inlure, outlure='+[in_lure, out_lure].inspect
+              res = fish.send_queue.add_block_to_queue([EC_Lure, out_lure, segment])
+            end
+          else
+            @scmd = EC_Wait
+            @scode = EC_Wait1_NoFish
+            @scbuf = nil
+          end
+        else
+          @scmd = EC_Wait
+          @scode = EC_Wait3_EmptySegment
+          @scbuf = nil
         end
-        if fish
-          if fish.socket == self
+        res
+      end
+
+      # Send segment from current session to fisher session
+      # RU: Отправляет сегмент от текущей сессии к сессии рыбака
+      def send_segment_to_fisher(lure, segment)
+        res = nil
+        fisher = get_fisher_for_out_lure(lure)
+        p 'send_segment_to_fisher: fisher,lure,segsize='+[fisher, lure, segment.bytesize].inspect
+        if fisher and (not fisher.destroyed?)
+          if fisher.donor == self
             cmd = segment[0]
             code = segment[1]
             data = nil
             data = segment[2..-1] if (segment.bytesize>2)
-            res = @read_queue.add_block_to_queue([cmd, code, data])
+            res = fisher.read_queue.add_block_to_queue([cmd, code, data])
           else
-            res = @send_queue.add_block_to_queue([EC_Lure, lure, segment])
+            in_lure = fisher.get_in_lure_by_fish(self)
+            res = fisher.send_queue.add_block_to_queue([EC_Bite, in_lure, segment])
           end
         else
           @scmd = EC_Wait
-          @scode = EC_Wait1_NoFish
+          @scode = EC_Wait2_NoFisher
           @scbuf = nil
         end
         res
@@ -5315,16 +5406,26 @@ module PandoraNet
 
     # Start two exchange cicle of socket: read and send
     # RU: Запускает два цикла обмена сокета: чтение и отправка
-    def initialize(asocket, ahost_name, ahost_ip, aport, aproto, aconn_mode, \
+    def run(asocket, ahost_name, ahost_ip, aport, aproto, aconn_mode, \
     aconn_state, a_send_thread, anode_id, a_dialog, tokey, send_state_add)
-      super()
-      @socket = asocket
+      if asocket.is_a? Session
+        @donor        = asocket
+        if ahost_name
+          @fisher_lure  = ahost_name
+        else
+          @fish_lure  = ahost_ip
+        end
+      else
+        @socket       = asocket
+        @host_name    = ahost_name
+        @host_ip      = ahost_ip
+        @port         = aport
+        @proto        = aproto
+        @node         = pool.encode_node(@host_ip, @port, @proto)
+        @node_id      = anode_id
+      end
+
       @stage         = ST_Protocol  #ST_IpCheck
-      @host_name     = ahost_name
-      @host_ip       = ahost_ip
-      @port          = aport
-      @proto         = aproto
-      @node          = pool.encode_node(@host_ip, @port, @proto)
       @conn_mode     = aconn_mode
       @conn_state    = aconn_state
       @conn_state    ||= CS_Connecting
@@ -5338,7 +5439,6 @@ module PandoraNet
       @recv_models    = {}
       @params         = {}
       @media_send     = false
-      @node_id        = anode_id
       @node_panhash   = nil
       @fishes         = Array.new
       pool.add_session(self)
@@ -5760,7 +5860,7 @@ module PandoraNet
           end
         end
 
-        if socket.closed? or (@conn_state == CS_StopRead)
+        if socket and socket.closed? or (@conn_state == CS_StopRead)
           @conn_state = CS_Disconnected
         elsif (not fast_data)
           sleep(0.2)
@@ -5776,7 +5876,7 @@ module PandoraNet
       pool.del_session(self)
       #Thread.critical = false
       #p log_mes+'check close'
-      if not socket.closed?
+      if socket and (not socket.closed?)
         p log_mes+'before close_write'
         #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
         #socket.flush
@@ -5789,6 +5889,13 @@ module PandoraNet
       end
       @socket_thread.exit if @socket_thread
       @read_thread.exit if @read_thread
+      if donor
+        if fisher_lure
+          donor.free_out_lure_of_fisher(self, fisher_lure)
+        else
+          donor.free_fish_of_in_lure(self, fish_lure)
+        end
+      end
 
       @conn_state = CS_Disconnected
       @socket = nil
@@ -5897,7 +6004,8 @@ module PandoraNet
                     end
                   else
                     conn_mode = 0
-                    session = Session.new(socket, host_name, host_ip, port, proto, conn_mode, \
+                    session = Session.new
+                    session.run(socket, host_name, host_ip, port, proto, conn_mode, \
                       CS_Connected, Thread.current, nil, nil, nil, nil)
                     p "END LISTEN SOKET CLIENT!!!"
                   end
@@ -8186,7 +8294,8 @@ module PandoraGUI
   def self.hack_enter_bug(enterbox)
     # because of bug - doesnt work Enter at 'key-press-event'
     enterbox.signal_connect('key-release-event') do |widget, event|
-      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
+      and (not event.state.control_mask?) and (not event.state.shift_mask?) and (not event.state.mod1_mask?)
         widget.signal_emit('key-press-event', event)
         false
       end
@@ -8342,7 +8451,8 @@ module PandoraGUI
       talksw.add(talkview)
 
       editbox.signal_connect('key-press-event') do |widget, event|
-        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
+        and (not event.state.control_mask?) and (not event.state.shift_mask?) and (not event.state.mod1_mask?)
           if editbox.buffer.text != ''
             mes = editbox.buffer.text
             #sended = false
@@ -9887,11 +9997,13 @@ module PandoraGUI
 
     include PandoraUtils
 
-    def update_conn_status(conn, hunter, diff_count)
-      if hunter
+    def update_conn_status(conn, session_type, diff_count)
+      if session_type==0
         @hunter_count += diff_count
-      else
+      elsif session_type==1
         @listener_count += diff_count
+      else
+        @fisher_count += diff_count
       end
       set_status_field(SF_Conn, hunter_count.to_s+'/'+listener_count.to_s+'/'+fisher_count.to_s)
     end
