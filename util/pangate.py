@@ -196,9 +196,10 @@ class ClientThread(threading.Thread):
       errcode = 2
     return index, cmd, code, segsign, errcode
 
-  def unpack_comm_ext(comm):
+  def unpack_comm_ext(self, comm):
     if len(comm) == CommExtSize:
-      datasize, fullcrc32, segsize = struct.unpack('!IIH', comm)
+      #datasize, fullcrc32, segsize = struct.unpack('!IIH', comm)
+      datasize, fullcrc32, segsize = struct.unpack('!iiH', comm)
     else:
       logmes('Ошибочная длина расширения команды')
     return datasize, fullcrc32, segsize
@@ -225,7 +226,7 @@ class ClientThread(threading.Thread):
           segdata = segsize-4  #for crc32
     crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
     comm = struct.pack('!BBBHB', index, cmd, code, segsign, crc8)
-    print('>send comm/data=', comm, len(comm), data)
+    print('>send comm/data.len=', comm, len(comm), len(data))
     if index<255:
       index += 1
     else:
@@ -236,7 +237,8 @@ class ClientThread(threading.Thread):
         # если пакетов много, то добавить еще 4+4+2= 10 байт
         fullcrc32 = 0
         if cmd != EC_Media: fullcrc32 = binascii.crc32(data)
-        comm = comm + struct.pack('!IiH', datasize, fullcrc32, segsize)
+        #comm = comm + struct.pack('!IiH', datasize, fullcrc32, segsize)
+        comm = comm + struct.pack('!iiH', datasize, fullcrc32, segsize)
         buf = data[0: segdata]
       else:
         buf = data
@@ -257,6 +259,7 @@ class ClientThread(threading.Thread):
     #end
     try:
       if client: #and (not socket.closed?):
+        print('SEND_main buf.len=', len(buf))
         sended = client.send(buf)
       else:
         sended = -1
@@ -267,7 +270,7 @@ class ClientThread(threading.Thread):
     elif sended != -1:
       self.logmes('Не все данные отправлены '+str(sended))
     segindex = 0
-    i = segsize
+    i = segdata
     while res and ((datasize-i)>0):
       segdata = datasize-i
       segsize = segdata
@@ -284,19 +287,22 @@ class ClientThread(threading.Thread):
         segindex += 1
       else:
         segindex = 0
-      comm = struct.pack('!BIH', index, segindex, segsize)
+      #comm = struct.pack('!BIH', index, segindex, segsize)
+      comm = struct.pack('!BiH', index, segindex, segsize)
       if index<255:
         index += 1
       else:
         index = 0
 
-      buf = data[i: segdata]
+      buf = data[i: i+segdata]
       if cmd != EC_Media:
         segcrc32 = binascii.crc32(buf)
-        buf = buf + struct.pack('!I', segcrc32)
+        #buf = buf + struct.pack('!I', segcrc32)
+        buf = buf + struct.pack('!i', segcrc32)
       buf = comm + buf
       try:
         if client: # and not socket.closed?:
+          print('SEND_add buf.len=', len(buf))
           sended = client.send(buf)
         else:
           sended = -1
@@ -330,37 +336,47 @@ class ClientThread(threading.Thread):
       if code: mesadd = ' err=' + str(code)
       self.logmes('Our error: '+str(fullmes+mesadd))
 
-  def get_hole_for_fisher(self, fisher):
+  def get_hole_of_fisher(self, fisher):
     hole = None
-    size = len(self.fishers)
-    if size>0:
-      first_nil_hole = None
-      i = 0
-      while (i<size) and (not hole):
-        if self.fishers[i]:
-          if fisher == self.fishers[i]:
-            hole = i
-        else:
-          first_nil_hole = i
-        i += 1
-      if not hole:
-        if first_nil_hole:
-          hole = first_nil_hole
-        elif size<256:
-          hole = size
-        if hole: list_set(self.fishers, hole, fisher)
-    else:
-      hole = 0
-      list_set(self.fishers, hole, fisher)
+    if fisher:
+      try:
+        hole = self.fishers.index(fisher)
+      except:
+        hole = None
+    return hole
+
+  def add_hole_for_fisher(self, fisher):
+    hole = self.get_hole_of_fisher(fisher)
+    if hole==None:
+      size = len(self.fishers)
+      if size>0:
+        first_nil_hole = None
+        i = 0
+        while (i<size) and (not hole):
+          if self.fishers[i]:
+            if fisher == self.fishers[i]:
+              hole = i
+          else:
+            first_nil_hole = i
+          i += 1
+        if not hole:
+          if first_nil_hole:
+            hole = first_nil_hole
+          elif size<256:
+            hole = size
+          if hole: list_set(self.fishers, hole, fisher)
+      else:
+        hole = 0
+        list_set(self.fishers, hole, fisher)
     return hole
 
   def get_fisher_by_hole(self, hole):
     fisher = None
-    if hole: fisher = self.fishers[hole]
+    if (hole != None): fisher = self.fishers[hole]
     return fisher
 
   def close_hole(self, hole):
-    if hole: self.fishers[hole] = None
+    if (hole != None): self.fishers[hole] = None
 
   def close_hole_of_fisher(self, fisher):
     for hole in range(len(self.fishers)):
@@ -369,10 +385,18 @@ class ClientThread(threading.Thread):
 
   def resend_to_fisher_hole(self, fisher, hole):
     if fisher and (hole != None):
-      print('FISHING!', fisher, hole)
+      print('LURE!', fisher, hole)
       comm = struct.pack('!BB', self.rcmd, self.rcode)
       data = comm + self.rdata
       self.sindex = self.send_comm_and_data(self.sindex, EC_Lure, hole, data, fisher.client)
+
+  def resend_to_fish(self, fish):
+    if fish:
+      cmd = ord(self.rdata[0])
+      code = ord(self.rdata[1])
+      seg = self.rdata[2:]
+      print('BITE! cmd,code,len(seg)', cmd, code, len(seg))
+      self.sindex = self.send_comm_and_data(self.sindex, cmd, code, seg, fish.client)
 
   # Accept received segment
   # RU: Принять полученный сегмент
@@ -382,7 +406,7 @@ class ClientThread(threading.Thread):
       if (self.rcode==ECC_Init_Hello) and (self.stage==ST_Protocol):
         print('self.rdata: ', self.rdata)
         if self.pool.collector:
-          hole = self.pool.collector.get_hole_for_fisher(self)
+          hole = self.pool.collector.add_hole_for_fisher(self)
           print('-------------------hole', hole)
           if hole==None:
             self.err_scmd('Temporary error')
@@ -405,7 +429,7 @@ class ClientThread(threading.Thread):
       elif (self.rcode==ECC_Init_Answer) and (self.stage==ST_Protocol):
         sanswer = self.rdata
         fanswer = hashlib.sha256(self.sphrase+PASSWORD_HASH).digest()
-        print(self.sphrase, PASSWORD_HASH, fanswer)
+        print('phrase,answer: ', self.sphrase, PASSWORD_HASH, fanswer)
         if sanswer == fanswer:
           if self.pool.collector:
             self.err_scmd('Another collector is active')
@@ -419,12 +443,13 @@ class ClientThread(threading.Thread):
         self.err_scmd('Wrong stage for rcode')
     elif (self.rcmd==EC_Bite):
       if self.pool.collector:
-        hole = self.pool.collector.get_hole_for_fisher(self)
-        print('========= hole', hole)
-        if hole==None:
-          self.err_scmd('Temporary error 2')
+        hole = self.rcode
+        fisher = self.get_fisher_by_hole(hole)
+        print('========= fisher, hole', fisher, hole)
+        if fisher:
+          self.resend_to_fish(fisher)
         else:
-          self.resend_to_fisher_hole(self.pool.collector, hole)
+          self.err_scmd('No fisher for lure')
     elif (self.rcmd==EC_Bye):
       if self.rcode != ECC_Bye_Exit:
         mes = self.rdata
@@ -462,7 +487,7 @@ class ClientThread(threading.Thread):
     while (self.conn_state != CS_StopRead) and (self.conn_state != CS_Disconnected):
       try:
         recieved = self.client.recv(MaxPackSize)
-        print('recieved', recieved)
+        if recieved: print('recieved.len', len(recieved))
         if (not recieved) or (recieved==''):
           self.conn_state = CS_StopRead
         rbuf = rbuf + recieved
@@ -471,7 +496,8 @@ class ClientThread(threading.Thread):
 
       processedlen = 0
       while (self.conn_state == CS_Connected) and (len(rbuf)>=waitlen): #and (not socket.closed?)
-        print('==rbuf len waitlen readmode: ', rbuf, len(rbuf), waitlen, readmode)
+        #print('==rbuf len waitlen readmode: ', rbuf, len(rbuf), waitlen, readmode)
+        print('==rbuf.len waitlen readmode: ', len(rbuf), waitlen, readmode)
         processedlen = waitlen
         nextreadmode = readmode
 
@@ -498,13 +524,14 @@ class ClientThread(threading.Thread):
             self.err_scmd('Wrong recieved command', ECC_Bye_Unknown)
         elif readmode==RM_CommExt:
           comm = rbuf[0: processedlen]
-          rdatasize, fullcrc32, rsegsize = unpack_comm_ext(comm)
+          rdatasize, fullcrc32, rsegsize = self.unpack_comm_ext(comm)
           print(' RM_CommExt: rdatasize, fullcrc32, rsegsize ', rdatasize, fullcrc32, rsegsize)
           nextreadmode = RM_Segment1
           waitlen = rsegsize
         elif readmode==RM_SegLenN:
           comm = rbuf[0: processedlen]
-          rindex, rsegindex, rsegsize = struct.unpack('!BIH', comm)
+          #rindex, rsegindex, rsegsize = struct.unpack('!BIH', comm)
+          rindex, rsegindex, rsegsize = struct.unpack('!BiH', comm)
           print(' RM_SegLenN: ', rindex, rsegindex, rsegsize)
           nextreadmode = RM_SegmentN
           waitlen = rsegsize
@@ -517,23 +544,25 @@ class ClientThread(threading.Thread):
             self.rdata << rbuf[0, processedlen]
           else:
             rseg = rbuf[0: processedlen-4]
-            print('rseg',rseg)
+            #print('rseg',rseg)
             rsegcrc32str = rbuf[processedlen-4: processedlen]
-            print('rsegcrc32str=',rsegcrc32str,len(rsegcrc32str))
-            rsegcrc32 = struct.unpack('!i', rsegcrc32str)[0]
+            #print('rsegcrc32str=', rsegcrc32str, len(rsegcrc32str))
+            crc32unpacked = struct.unpack('!i', rsegcrc32str)
+            #print(crc32unpacked)
+            rsegcrc32 = crc32unpacked[0]
+            #print('rsegcrc32=',rsegcrc32)
             fsegcrc32 = binascii.crc32(rseg)
             if fsegcrc32 == rsegcrc32:
               self.rdata = self.rdata + rseg
-              if fullcrc32:
-                if fullcrc32 != binascii.crc32(self.rdta):
-                  self.err_scmd('Wrong CRC of received block', ECC_Bye_BadCRC)
             else:
               self.err_scmd('Wrong CRC of received segment', ECC_Bye_BadCRC)
-          print('RM_Segment?: data', self.rdata, len(self.rdata), rdatasize)
+          print('RM_Segment?: data.len  rdatasize', len(self.rdata), rdatasize)
 
           if len(self.rdata) == rdatasize:
             nextreadmode = RM_Comm
             waitlen = CommSize
+            if fullcrc32 and (fullcrc32 != binascii.crc32(self.rdata)):
+              self.err_scmd('Wrong CRC of received block', ECC_Bye_BadCRC)
           elif len(self.rdata) > rdatasize:
             self.err_scmd('Too match received data ('+rdata.bytesize.to_s+'>'+rdatasize.to_s+')', \
               ECC_Bye_DataTooLong)
@@ -551,8 +580,14 @@ class ClientThread(threading.Thread):
             #p log_mes+'::: decode rdata.size='+rdata.size.to_s
           #end
 
-          #rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = \
-          self.accept_segment() #(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
+          hole = None
+          if self.pool.collector:
+            hole = self.pool.collector.get_hole_of_fisher(self)
+          if hole==None:
+            #rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = \
+            self.accept_segment() #(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
+          else:
+            self.resend_to_fisher_hole(self.pool.collector, hole)
 
           self.rdata = ''
           if not self.sbuf: self.sbuf = ''
@@ -715,6 +750,8 @@ try:
       except:
         print('Could not terminated pool thread '+str(pool.getName()))
     logmes('Stop listen thread.')
+  else:
+    print('Cannot open socket', TCP_IP, TCP_PORT)
 finally:
   termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
   fcntl.fcntl(fd, fcntl.F_SETFL, oldflags)

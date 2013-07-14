@@ -781,7 +781,7 @@ module PandoraUtils
       bytes << [bigint].pack('C')
     else
       hexstr = bigint.to_s(16)
-      hexstr = '0'+hexstr if hexstr.size % 2 > 0
+      hexstr = '0'+hexstr if (hexstr.size % 2) > 0
       ((hexstr.size+1)/2).times do |i|
         bytes << hexstr[i*2,2].to_i(16).chr
       end
@@ -1625,7 +1625,8 @@ module PandoraUtils
   PT_Hash  = 5
   PT_Sym   = 6
   PT_Real  = 7
-  PT_Unknown = 32
+  PT_Unknown = 15
+  PT_Negative = 16
 
   def self.string_to_pantype(type)
     res = PT_Unknown
@@ -2205,23 +2206,29 @@ module PandoraUtils
   # RU: Кодирует тип данных и размер в тип PSON и число байт размера
   def self.encode_pson_type(basetype, int)
     count = 0
+    neg = 0
+    if int<0
+      neg = PT_Negative
+      int = -int
+    end
     while (int>0xFF) and (count<8)
-      int = int >> 8
+      int = (int >> 8)
       count +=1
     end
     if count >= 8
       puts '[encode_pan_type] Too big int='+int.to_s
       count = 7
     end
-    [basetype ^ (count << 5), count]
+    [basetype ^ neg ^ (count << 5), count, (neg>0)]
   end
 
   # Decode PSON type to data type and count of size in bytes (1..8)-1
   # RU: Раскодирует тип PSON в тип данных и число байт размера
   def self.decode_pson_type(type)
-    basetype = type & 0x1F
-    count = type >> 5
-    [basetype, count]
+    basetype = type & 0xF
+    negative = ((type & PT_Negative)>0)
+    count = (type >> 5)
+    [basetype, count, negative]
   end
 
   # Convert ruby object to PSON (Pandora Simple Object Notation)
@@ -2241,8 +2248,14 @@ module PandoraUtils
         elem_size = data.bytesize
         type, count = encode_pson_type(PT_Sym, elem_size)
       when Integer
+        type, count, neg = encode_pson_type(PT_Int, rubyobj)
+        rubyobj = -rubyobj if neg
         data << PandoraUtils.bigint_to_bytes(rubyobj)
-        type, count = encode_pson_type(PT_Int, rubyobj)
+      when Time
+        rubyobj = rubyobj.to_i
+        type, count, neg = encode_pson_type(PT_Time, rubyobj)
+        rubyobj = -rubyobj if neg
+        data << PandoraUtils.bigint_to_bytes(rubyobj)
       when TrueClass, FalseClass
         if rubyobj
           data << [1].pack('C')
@@ -2254,9 +2267,6 @@ module PandoraUtils
         data << [rubyobj].pack('D')
         elem_size = data.bytesize
         type, count = encode_pson_type(PT_Real, elem_size)
-      when Time
-        data << PandoraUtils.bigint_to_bytes(rubyobj.to_i)
-        type, count = encode_pson_type(PT_Time, rubyobj.to_i)
       when Array
         rubyobj.each do |a|
           data << rubyobj_to_pson_elem(a)
@@ -2292,7 +2302,7 @@ module PandoraUtils
     if data.bytesize>0
       type = data[0].ord
       len = 1
-      basetype, vlen = decode_pson_type(type)
+      basetype, vlen, neg = decode_pson_type(type)
       #p 'basetype, vlen='+[basetype, vlen].inspect
       vlen += 1
       if data.bytesize >= len+vlen
@@ -2300,10 +2310,13 @@ module PandoraUtils
         case basetype
           when PT_Int
             val = int
+            val = -val if neg
           when PT_Bool
             val = (int != 0)
           when PT_Time
-            val = Time.at(int)
+            val = int
+            val = -val if neg
+            val = Time.at(val)
           when PT_Str, PT_Sym, PT_Real
             pos = len+vlen
             if pos+int>data.bytesize
@@ -4311,6 +4324,9 @@ module PandoraNet
     # RU: Отправляет команду и данные, если есть !!! ДОБАВИТЬ !!! send_number!, buflen, buf
     def send_comm_and_data(index, cmd, code, data=nil)
       res = nil
+      lengt = 0
+      lengt = data.bytesize if data
+      p log_mes+'SEND_ALL: [cmd, code, data.len]='+[cmd, code, lengt].inspect
       if donor
         #out_lure = fish.get_out_lure_for_fisher(self)
         segment = [cmd, code].pack('CC')
@@ -4362,7 +4378,6 @@ module PandoraNet
           end
         end
         buf = comm + buf
-        #p "!SEND: ("+buf+')'
 
         # tos_sip    cs3   0x60  0x18
         # tos_video  af41  0x88  0x22
@@ -4397,6 +4412,7 @@ module PandoraNet
         #end
         begin
           if socket and not socket.closed?
+            p "!SEND_main: buf.size="+buf.bytesize.to_s
             #sended = socket.write(buf)
             sended = socket.send(buf, 0)
           else
@@ -4442,6 +4458,7 @@ module PandoraNet
           begin
             if socket and not socket.closed?
               #sended = socket.write(buf)
+              p "!SEND_add: buf.size="+buf.bytesize.to_s
               sended = socket.send(buf, 0)
             else
               sended = -1
@@ -4885,7 +4902,7 @@ module PandoraNet
         lure = @fishes.index(fish) if lure.is_a? Integer
       end
 
-      def free_fish_of_in_lure(lure)
+      def free_fish_of_in_lure(fish, lure)
         @fishes[lure] = nil if lure.is_a? Integer
       end
 
@@ -4899,18 +4916,18 @@ module PandoraNet
             fish = pool.init_fish_for_fisher(self, in_lure, nil, nil)
             set_fish_of_in_lure(in_lure, fish)
           end
-          p 'send_segment_to_fish: fish,segsize='+[fish, segment.bytesize].inspect
+          p 'send_segment_to_fish: in_lure,segsize='+[in_lure, segment.bytesize].inspect
           if fish
             if fish.donor == self
-              p 'DONOR'
+              p 'DONOR lure'
               cmd = segment[0].ord
               code = segment[1].ord
               data = nil
               data = segment[2..-1] if (segment.bytesize>2)
-              p '-->Add raw to donor (inlure='+in_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
+              p '-->Add raw to fish (inlure='+in_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
               res = fish.read_queue.add_block_to_queue([cmd, code, data])
             else
-              p 'RESENDER'
+              p 'RESENDER lure'
               out_lure = fish.take_out_lure_for_fisher(self)
               p '-->Add LURE to resender: inlure, outlure='+[in_lure, out_lure].inspect
               res = fish.send_queue.add_block_to_queue([EC_Lure, out_lure, segment])
@@ -4932,22 +4949,31 @@ module PandoraNet
       # RU: Отправляет сегмент от текущей сессии к сессии рыбака
       def send_segment_to_fisher(lure, segment)
         res = nil
-        fisher = get_fisher_for_out_lure(lure)
-        p 'send_segment_to_fisher: fisher,lure,segsize='+[fisher, lure, segment.bytesize].inspect
-        if fisher and (not fisher.destroyed?)
-          if fisher.donor == self
-            cmd = segment[0]
-            code = segment[1]
-            data = nil
-            data = segment[2..-1] if (segment.bytesize>2)
-            res = fisher.read_queue.add_block_to_queue([cmd, code, data])
+        if segment and (segment.bytesize>1)
+          fisher = get_fisher_for_out_lure(lure)
+          p 'send_segment_to_fisher: fisher,lure,segsize='+[fisher, lure, segment.bytesize].inspect
+          if fisher and (not fisher.destroyed?)
+            if fisher.donor == self
+              p 'DONOR bite'
+              cmd = segment[0].ord
+              code = segment[1].ord
+              data = nil
+              data = segment[2..-1] if (segment.bytesize>2)
+              p '-->Add raw to fisher (outlure='+lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
+              res = fisher.read_queue.add_block_to_queue([cmd, code, data])
+            else
+              p 'RESENDER bite'
+              in_lure = fisher.get_in_lure_by_fish(self)
+              res = fisher.send_queue.add_block_to_queue([EC_Bite, in_lure, segment])
+            end
           else
-            in_lure = fisher.get_in_lure_by_fish(self)
-            res = fisher.send_queue.add_block_to_queue([EC_Bite, in_lure, segment])
+            @scmd = EC_Wait
+            @scode = EC_Wait2_NoFisher
+            @scbuf = nil
           end
         else
           @scmd = EC_Wait
-          @scode = EC_Wait2_NoFisher
+          @scode = EC_Wait3_EmptySegment
           @scbuf = nil
         end
         res
@@ -5346,9 +5372,11 @@ module PandoraNet
         when EC_Lure
           p "EC_Lure"
           send_segment_to_fish(rcode, rdata)
+          #sleep 2
         when EC_Bite
           p "EC_Bite"
           send_segment_to_fisher(rcode, rdata)
+          #sleep 2
         when EC_Sync
           case rcode
             when ECC_Sync1_NoRecord
@@ -5441,6 +5469,7 @@ module PandoraNet
       @media_send     = false
       @node_panhash   = nil
       @fishes         = Array.new
+      @fishers        = Array.new
       pool.add_session(self)
       if @socket
         set_keepalive(@socket)
@@ -5494,11 +5523,12 @@ module PandoraNet
               @conn_state = CS_Stoping
             end
             #p log_mes+"recieved=["+recieved+']  '+socket.closed?.to_s+'  sok='+socket.inspect
+            p log_mes+"recieved.size, waitlen="+[recieved.bytesize, waitlen].inspect if recieved
             rkbuf << AsciiString.new(recieved)
             processedlen = 0
             while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
             and (@conn_state != CS_Stoping) and (not socket.closed?) and (rkbuf.bytesize>=waitlen)
-              #p log_mes+'readmode, rkbuf.len, wailtlen='+[readmode, rkbuf.size, waitlen].inspect
+              p log_mes+'readmode, rkbuf.len, waitlen='+[readmode, rkbuf.size, waitlen].inspect
               processedlen = waitlen
 
               # Определимся с данными по режиму чтения
