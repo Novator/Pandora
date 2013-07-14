@@ -4118,7 +4118,7 @@ module PandoraNet
         thread[:fish] = session
         session.run(fisher, nil, inlure, nil, nil, 0, CS_Connected, \
           thread, nil, nil, nil, nil)
-        log_message(LM_Info, _('Close fish session')+' '+fisher.inspect+'/'+inlure.to_s)
+        log_message(LM_Info, _('Close fish session')+' for '+inlure.to_s)
       end
       Thread.pass
       while thread.alive? and (not thread[:fish])

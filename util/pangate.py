@@ -11,9 +11,9 @@
 import time, termios, fcntl, sys, os, socket, threading, struct, binascii, time, hashlib
 
 # Server settings
-TCP_IP = '127.0.0.1'
+TCP_IP = '0.0.0.0'
 TCP_PORT = 5577
-#LOG_FILE_NAME = ''
+#LOG_FILE_NAME = ''  #switch off logging
 LOG_FILE_NAME = './pangate.log'
 MAX_CONNECTIONS = 10
 PASSWORD_HASH = hashlib.sha256('123456').digest()

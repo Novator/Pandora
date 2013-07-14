@@ -9,5 +9,11 @@ CURDIR=`dirname "$DIRFILE"`
 
 cd "$CURDIR"
 
-/usr/bin/python ./pangate.py
+screen -d -m  /usr/bin/python ./pangate.py
+
+#screen -r
+#screen -x
+#screen -ls
+#ctrl+a+d - detach, ctrl+a+k - kill
+
 
