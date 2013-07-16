@@ -28,7 +28,7 @@ end
 $host = '127.0.0.1'
 $port = 5577
 $base_index = 0
-$poly_launch = true
+$poly_launch = false
 $pandora_parameters = []
 
 # Expand the arguments of command line
@@ -73,7 +73,7 @@ while (ARGV.length>0) or next_arg
       puts runit+'-h localhost   - set listen address'
       puts runit+'-p 5577        - set listen port'
       puts runit+'-bi 0          - set index of database'
-      Thread.current.exit
+      Kernel.exit!
   end
   val = nil
 end
@@ -83,26 +83,24 @@ MAIN_WINDOW_TITLE = 'Pandora'
 # Prevent second execution
 # RU: Предотвратить второй запуск
 if not $poly_launch
-  begin
-    if os_family=='unix'
-      res = `ps -few | grep pandora.rb | grep -v grep`
-      res = res.scan("\n").count if res
-      if res>1
-        Thread.current.exit
-      end
-    elsif os_family=='windows'
-      require 'Win32API'
-      FindWindow = Win32API.new('user32', 'FindWindowA', ['P', 'P'], 'L')
-      win_handle = FindWindow.call(nil, MAIN_WINDOW_TITLE)
-      if win_handle != 0
-        SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
-        SetForegroundWindow.call(win_handle)
-        ShowWindow = Win32API.new('user32', 'ShowWindow', 'L', 'V')
-        ShowWindow.call(win_handle, 5)  #WM_SHOW
-        Thread.current.exit
-      end
+  if os_family=='unix'
+    res = `ps -few | grep pandora.rb | grep -v grep`
+    res = res.scan("\n").count if res
+    if res>1
+      Kernel.abort('Another copy of Pandora is already runned')
     end
-  rescue Exception
+  elsif os_family=='windows'
+    require 'Win32API'
+    FindWindow = Win32API.new('user32', 'FindWindowA', ['P', 'P'], 'L')
+    win_handle = FindWindow.call(nil, MAIN_WINDOW_TITLE)
+    if win_handle != 0
+      SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
+      SetForegroundWindow.call(win_handle)
+      ShowWindow = Win32API.new('user32', 'ShowWindow', 'L', 'V')
+      ShowWindow.call(win_handle, 5)  #WM_SHOW
+      SetForegroundWindow.call(win_handle)
+      Kernel.abort('Another copy of Pandora is already runned')
+    end
   end
 end
 
@@ -6223,8 +6221,7 @@ module PandoraGUI
   SF_Conn   = 4
 
   if not $gtk2_on
-    puts 'Gtk не установлена'
-    Thread.current.exit
+    Kernel.abort('Gtk is not installed')
   end
 
   # About dialog hooks
@@ -9836,8 +9833,9 @@ module PandoraGUI
       @flash_status = 0
       update_icon
 
-      title = $window.title
-      tooltip = $window.title
+      atitle = $window.title
+      set_title(atitle)
+      set_tooltip(atitle)
 
       #set_blinking(true)
       signal_connect('activate') do
