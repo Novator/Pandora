@@ -310,6 +310,7 @@
       <session_key name="Session key" type="String" size="32" />
       <try_upnp_time name="UPnP try time" type="Time" />
       <try_natpmp_time name="NAT-PMP try time" type="Time" />
+      <query_time name="Time of query" type="Time" />
       <!-- last_link_time name="Last received link" type="Time" />
       <last_trust_time name="Last received trust" type="Time" /-->
     </Node>

@@ -3044,8 +3044,8 @@ module PandoraCrypto
         #p OpenSSL::Cipher::ciphers
         key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
         key.encrypt
-        key1 = cipher.random_key
-        key2 = cipher.random_iv
+        key1 = key.random_key
+        key2 = key.random_iv
         #p key1.size
         #p key2.size
     end
@@ -3225,14 +3225,13 @@ module PandoraCrypto
     else  #elsif key.is_a? OpenSSL::PKey
       if encrypt
         if private
-          recrypted = key.public_encrypt(data)
+          recrypted = key.private_encrypt(data)
         else
-          #p 'recrypt  data.inspect='+data.inspect+'  key='+key.inspect
           recrypted = key.public_encrypt(data)
         end
       else
         if private
-          recrypted = key.public_decrypt(data)
+          recrypted = key.private_decrypt(data)
         else
           recrypted = key.public_decrypt(data)
         end
@@ -3983,7 +3982,7 @@ module PandoraNet
         session ||= session2
         session.send_state = (session.send_state | send_state_add)
         session.dialog = nil if session.dialog and session.dialog.destroyed?
-        session.dialog ||= dialog
+        session.dialog = dialog if dialog
         #if session.dialog and session.dialog.online_button
         #  session.dialog.online_button.active = (session.socket and (not session.socket.closed?))
         #end
@@ -4110,22 +4109,26 @@ module PandoraNet
       end
     end
 
-    def init_fish_for_fisher(fisher, inlure, keyhash=nil, baseid=nil)
+    def init_fish_for_fisher(fisher, in_lure, keyhash=nil, baseid=nil)
       fish = nil
-      thread = Thread.new do
-        log_message(LM_Info, _('Create fish session')+' for '+inlure.to_s)
-        session = Session.new
-        thread[:fish] = session
-        session.run(fisher, nil, inlure, nil, nil, 0, CS_Connected, \
-          thread, nil, nil, nil, nil)
-        log_message(LM_Info, _('Close fish session')+' for '+inlure.to_s)
-      end
-      Thread.pass
-      while thread.alive? and (not thread[:fish])
-        sleep(0.01)
-      end
-      if thread.alive?
-        fish = thread[:fish]
+      if (keyhash==nil) #or (keyhash==mykeyhash)   # my key
+        thread = Thread.new do
+          log_message(LM_Info, _('Create fish session for')+' '+in_lure.to_s)
+          session = Session.new
+          thread[:fish] = session
+          session.run(fisher, nil, in_lure, nil, nil, 0, CS_Connected, \
+            thread, nil, nil, nil, nil)
+          log_message(LM_Info, _('Close fish session for')+' '+in_lure.to_s)
+        end
+        Thread.pass
+        while thread.alive? and (not thread[:fish])
+          sleep(0.01)
+        end
+        if thread.alive?
+          fish = thread[:fish]
+        end
+      else  # alien key
+        fish = @sessions.index { |session| session.skey[PandoraCrypto::KV_Panhash] == keyhash }
       end
       fish
     end
@@ -4246,6 +4249,7 @@ module PandoraNet
   # Inquirer steps
   # RU: Шаги почемучки
   IS_CreatorCheck  = 0
+  IS_NewsQuery     = 1
   IS_Finished      = 255
 
   $incoming_addr = nil
@@ -4267,7 +4271,7 @@ module PandoraNet
       :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, :fisher_lure, :fish_lure, \
       :send_models, :recv_models, :sindex, :read_queue, :send_queue, :params, \
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, \
-      :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes
+      :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes, :fishers
 
     def set_keepalive(client)
       client.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, $keep_alive)
@@ -4552,6 +4556,27 @@ module PandoraNet
 
     def set_request(panhashes, send_now=false)
       ascmd = EC_Request
+      ascode = 0
+      asbuf = nil
+      if panhashes.is_a? Array
+        asbuf = PandoraUtils.rubyobj_to_pson_elem(panhashes)
+      else
+        ascode = PandoraUtils.kind_from_panhash(panhashes)
+        asbuf = panhashes[1..-1]
+      end
+      if send_now
+        if not add_send_segment(ascmd, true, asbuf, ascode)
+          log_message(LM_Error, _('Cannot add request'))
+        end
+      else
+        @scmd = ascmd
+        @scode = ascode
+        @sbuf = asbuf
+      end
+    end
+
+    def set_query(list, time, send_now=false)
+      ascmd = EC_Query
       ascode = 0
       asbuf = nil
       if panhashes.is_a? Array
@@ -4860,50 +4885,79 @@ module PandoraNet
         password
       end
 
-      def take_out_lure_for_fisher(fisher)
-        lure = nil
-        lure = @fishers.index(fisher)
-        if not lure
+      def take_out_lure_for_fisher(fisher, in_lure)
+        out_lure = nil
+        val = [fisher, in_lure]
+        out_lure = @fishers.index(val)
+        if not out_lure
           i = 0
-          while (i<lure.size) and (not lure)
-            lure = i if ((not @fishers[i]) or (@fishers[i].destroyed?))
+          while (i<out_lure.size)
+            break if (not (@fishers[i].is_a? Array))  #or (@fishers[i][0].destroyed?))
             i += 1
           end
-          lure = i if (not lure) and (i<=255)
-          @fishers[lure] = fisher if lure
+          out_lure = i if (not out_lure) and (i<=255)
+          @fishers[out_lure] = val if out_lure
         end
-        lure
+        out_lure
       end
 
-      def get_out_lure_for_fisher(fisher)
-        lure = @fishers.index(fisher)
-        lure
+      def get_out_lure_for_fisher(fisher, in_lure)
+        val = [fisher, in_lure]
+        out_lure = @fishers.index(val)
+        out_lure
       end
 
-      def get_fisher_for_out_lure(lure)
-        fisher = @fishers[lure]
+      def get_fisher_for_out_lure(out_lure)
+        fisher, in_lure = nil, nil
+        val = @fishers[out_lure] if out_lure.is_a? Integer
+        fisher, in_lure = val if val.is_a? Array
+        [fisher, in_lure]
       end
 
-      def free_out_lure_of_fisher(fisher)
-        while line = @fishers.index(fisher)
-          @fishers[line] = nil
+      def free_out_lure_of_fisher(fisher, in_lure)
+        val = [fisher, in_lure]
+        while out_lure = @fishers.index(val)
+          @fishers[out_lure] = nil
+          if fisher #and (not fisher.destroyed?)
+            if fisher.donor
+              fisher.conn_state = CS_StopRead if (fisher.conn_state < CS_StopRead)
+            end
+            fisher.free_fish_of_in_lure(in_lure)
+          end
         end
       end
 
-      def set_fish_of_in_lure(lure, fish)
-        @fishes[lure] = fish if lure.is_a? Integer
+      def set_fish_of_in_lure(in_lure, fish)
+        @fishes[in_lure] = fish if in_lure.is_a? Integer
       end
 
-      def get_fish_for_in_lure(lure)
-        fish = @fishes[lure]
+      def get_fish_for_in_lure(in_lure)
+        fish = nil
+        if in_lure.is_a? Integer
+          fish = @fishes[in_lure]
+          #if fish #and fish.destroyed?
+          #  fish = nil
+          #  @fishes[in_lure] = nil
+          #end
+        end
+        fish
       end
 
-      def get_in_lure_by_fish(fish)
-        lure = @fishes.index(fish) if lure.is_a? Integer
-      end
+      #def get_in_lure_by_fish(fish)
+      #  lure = @fishes.index(fish) if lure.is_a? Integer
+      #end
 
-      def free_fish_of_in_lure(fish, lure)
-        @fishes[lure] = nil if lure.is_a? Integer
+      def free_fish_of_in_lure(in_lure)
+        if in_lure.is_a? Integer
+          fish = @fishes[in_lure]
+          @fishes[in_lure] = nil
+          if fish #and (not fish.destroyed?)
+            if fish.donor
+              fish.conn_state = CS_StopRead if (fish.conn_state < CS_StopRead)
+            end
+            fish.free_out_lure_of_fisher(self, in_lure)
+          end
+        end
       end
 
       # Send segment from current fisher session to fish session
@@ -4924,13 +4978,13 @@ module PandoraNet
               code = segment[1].ord
               data = nil
               data = segment[2..-1] if (segment.bytesize>2)
-              #p '-->Add raw to fish (inlure='+in_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
+              #p '-->Add raw to fish (in_lure='+in_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
               res = fish.read_queue.add_block_to_queue([cmd, code, data])
             else
               p 'RESENDER lure'
-              out_lure = fish.take_out_lure_for_fisher(self)
-              p '-->Add LURE to resender: inlure, outlure='+[in_lure, out_lure].inspect
-              res = fish.send_queue.add_block_to_queue([EC_Lure, out_lure, segment])
+              out_lure = fish.take_out_lure_for_fisher(self, in_lure)
+              p '-->Add LURE to resender: inlure ==>> outlure='+[in_lure, out_lure].inspect
+              res = fish.send_queue.add_block_to_queue([EC_Lure, out_lure, segment]) if out_lure.is_a? Integer
             end
           else
             @scmd = EC_Wait
@@ -4947,23 +5001,23 @@ module PandoraNet
 
       # Send segment from current session to fisher session
       # RU: Отправляет сегмент от текущей сессии к сессии рыбака
-      def send_segment_to_fisher(lure, segment)
+      def send_segment_to_fisher(out_lure, segment)
         res = nil
         if segment and (segment.bytesize>1)
-          fisher = get_fisher_for_out_lure(lure)
-          p 'send_segment_to_fisher: fisher,lure,segsize='+[fisher, lure, segment.bytesize].inspect
-          if fisher and (not fisher.destroyed?)
+          fisher, in_lure = get_fisher_for_out_lure(out_lure)
+          p 'send_segment_to_fisher: out_lure,fisher,in_lure,segsize='+[out_lure, fisher, in_lure, segment.bytesize].inspect
+          if fisher #and (not fisher.destroyed?)
             if fisher.donor == self
               p 'DONOR bite'
               cmd = segment[0].ord
               code = segment[1].ord
               data = nil
               data = segment[2..-1] if (segment.bytesize>2)
-              p '-->Add raw to fisher (outlure='+lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
+              p '-->Add raw to fisher (outlure='+out_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
               res = fisher.read_queue.add_block_to_queue([cmd, code, data])
             else
               p 'RESENDER bite'
-              in_lure = fisher.get_in_lure_by_fish(self)
+              #in_lure = fisher.get_in_lure_by_fish(self)
               res = fisher.send_queue.add_block_to_queue([EC_Bite, in_lure, segment])
             end
           else
@@ -5373,7 +5427,7 @@ module PandoraNet
           send_segment_to_fish(rcode, rdata)
           #sleep 2
         when EC_Bite
-          p "EC_Bite"
+          #p "EC_Bite"
           send_segment_to_fisher(rcode, rdata)
           #sleep 2
         when EC_Sync
@@ -5612,9 +5666,11 @@ module PandoraNet
               # Очистим буфер от определившихся данных
               rkbuf.slice!(0, processedlen)
               if serrbuf  #there was error
-                res = @send_queue.add_block_to_queue([EC_Bye, serrcode, serrbuf])
-                if not res
-                  log_message(LM_Error, _('Cannot add error segment to send queue'))
+                if ok1comm
+                  res = @send_queue.add_block_to_queue([EC_Bye, serrcode, serrbuf])
+                  if not res
+                    log_message(LM_Error, _('Cannot add error segment to send queue'))
+                  end
                 end
                 @conn_state = CS_Stoping
               elsif (readmode == RM_Comm)
@@ -5715,6 +5771,7 @@ module PandoraNet
       inquirer_step = IS_CreatorCheck
       message_model = PandoraUtils.get_model('Message', @send_models)
       p log_mes+'ЦИКЛ ОТПРАВКИ начало'
+
       while (@conn_state != CS_Disconnected)
         # отправка сформированных сегментов и их удаление
         fast_data = false
@@ -5764,6 +5821,9 @@ module PandoraNet
                 p log_mes+'Whyer: CreatorCheck  Request!'
                 set_request(creator, true)
               end
+              inquirer_step += 1
+            when IS_NewsQuery
+              #set_query(@query_kind_list, @last_time, true)
               inquirer_step += 1
             else
               inquirer_step = IS_Finished
@@ -5918,12 +5978,26 @@ module PandoraNet
       end
       @socket_thread.exit if @socket_thread
       @read_thread.exit if @read_thread
-      if donor
+      if donor #and (not donor.destroyed?)
         if fisher_lure
           donor.free_out_lure_of_fisher(self, fisher_lure)
         else
-          donor.free_fish_of_in_lure(self, fish_lure)
+          donor.free_fish_of_in_lure(fish_lure)
         end
+      end
+      i = fishes.size
+      while (i>0)
+        i -= 1
+        fish = fishes[i]
+        fish.free_out_lure_of_fisher(self, i) if fish #and (not fish.destroyed?)
+      end
+      i = fishers.size
+      while (i>0)
+        i -= 1
+        fisher = nil
+        val = fishers[i]
+        fisher, out_lure = val if val.is_a? Integer
+        fisher.free_fish_of_in_lure(i) if fisher #and (not fisher.destroyed?)
       end
 
       @conn_state = CS_Disconnected
@@ -10222,14 +10296,34 @@ module PandoraGUI
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
-          p OpenSSL::Cipher::ciphers
+          #p OpenSSL::Cipher::ciphers
 
-          cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
+          #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
           #cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
-          p 'cipher_hash16='+cipher_hash.to_s(16)
-          type_klen = KT_Rsa | KL_bit2048
-          cipher_key = '123'
-          p keys = generate_key(type_klen, cipher_hash, cipher_key)
+          #p 'cipher_hash16='+cipher_hash.to_s(16)
+          #type_klen = KT_Rsa | KL_bit2048
+          #cipher_key = '123'
+          #p keys = generate_key(type_klen, cipher_hash, cipher_key)
+
+          key = PandoraCrypto.current_key(false, true)
+          if key
+            p data = 'Тестовое сообщение!'
+            p cipher_vec = PandoraCrypto.generate_key(PandoraCrypto::KT_Bf)
+            p 'coded:'
+            p data = PandoraCrypto.recrypt(cipher_vec, data, true)
+            p '---'
+            cihper = cipher_vec[PandoraCrypto::KV_Key1]
+            p cihper.bytesize
+            p 'rsa_encode..'
+            #p cihper = PandoraCrypto.recrypt(key, cihper, true, false)
+            p cihper = PandoraCrypto.recrypt(key, cihper, true, true)
+            p 'rsa_decode..'
+            #p cihper = PandoraCrypto.recrypt(key, cihper, false, true)
+            p cihper = PandoraCrypto.recrypt(key, cihper, false, false)
+            cipher_vec[PandoraCrypto::KV_Key1] = cihper
+            p '---decoded:'
+            puts data = PandoraCrypto.recrypt(cipher_vec, data, false)
+          end
 
           #typ, count = encode_pson_type(PT_Str, 0x1FF)
           #p decode_pson_type(typ)

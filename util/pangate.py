@@ -18,6 +18,7 @@ LOG_FILE_NAME = './pangate.log'
 MAX_CONNECTIONS = 10
 PASSWORD_HASH = hashlib.sha256('123456').digest()
 OWNER_KEY_PANHASH = 'dd0332860ccdd2b7eb6e6f6e1f627e6b976a51e22b57'.decode('hex')
+CLIENT_MEDIA_FIRST_ALLOW = False
 
 ROOT_PATH = os.path.abspath('.')
 KEEPALIVE = 1 #(on/off)
@@ -176,6 +177,7 @@ class ClientThread(threading.Thread):
     self.authkey = None
     self.lure = None
     self.fishers = []
+    self.media_allow = CLIENT_MEDIA_FIRST_ALLOW
     threading.Thread.__init__(self)
 
   def logmes(self, mes, show=True):
@@ -212,6 +214,8 @@ class ClientThread(threading.Thread):
       client = self.client
     if not data:
       data = ''
+    if not index:
+      index = 0
     datasize = len(data)
     segsign, segdata, segsize = datasize, datasize, datasize
     if datasize>0:
@@ -387,15 +391,18 @@ class ClientThread(threading.Thread):
   def resend_to_fisher_hole(self, fisher, hole):
     if fisher and (hole != None):
       #print('LURE!', fisher, hole)
-      comm = struct.pack('!BB', self.rcmd, self.rcode)
-      data = comm + self.rdata
+      data = struct.pack('!BB', self.rcmd, self.rcode)
+      if self.rdata: data = data + self.rdata
       self.sindex = self.send_comm_and_data(self.sindex, EC_Lure, hole, data, fisher.client)
 
   def resend_to_fish(self, fish):
-    if fish:
+    if fish and self.rdata and (len(self.rdata)>1):
       cmd = ord(self.rdata[0])
       code = ord(self.rdata[1])
       seg = self.rdata[2:]
+      if (cmd==EC_Media) and (not self.media_allow):
+        self.media_allow = True
+        fish.media_allow = True
       #print('BITE! cmd,code,len(seg)', cmd, code, len(seg))
       self.sindex = self.send_comm_and_data(self.sindex, cmd, code, seg, fish.client)
 
@@ -431,7 +438,7 @@ class ClientThread(threading.Thread):
       elif (self.rcode==ECC_Init_Answer) and (self.stage==ST_Protocol):
         sanswer = self.rdata
         fanswer = hashlib.sha256(self.sphrase+PASSWORD_HASH).digest()
-        print('phrase,answer: ', self.sphrase, PASSWORD_HASH, fanswer)
+        #print('phrase,answer: ', self.sphrase, PASSWORD_HASH, fanswer)
         if sanswer == fanswer:
           if self.pool.collector:
             self.err_scmd('Another collector is active')
@@ -485,6 +492,7 @@ class ClientThread(threading.Thread):
     self.conn_state = CS_Connected
     rdatasize = 0
     self.sphrase = None
+    ok1comm = None
 
     while (self.conn_state != CS_StopRead) and (self.conn_state != CS_Disconnected):
       try:
@@ -511,13 +519,15 @@ class ClientThread(threading.Thread):
           rindex, self.rcmd, self.rcode, rsegsign, errcode = self.unpack_comm(comm)
           #print(' RM_Comm: rindex, rcmd, rcode, segsign, errcode: ', rindex, self.rcmd, self.rcode, rsegsign, errcode)
           if errcode == 0:
-            if rsegsign == LONG_SEG_SIGN:
-              nextreadmode = RM_CommExt
-              waitlen = CommExtSize
-            elif rsegsign > 0:
-              nextreadmode = RM_SegmentS
-              waitlen, rdatasize = rsegsign, rsegsign
-              if (self.rcmd != EC_Media): rdatasize -=4
+            if (self.rcmd <= EC_Sync) or (self.rcmd >= EC_Wait):
+              if not ok1comm: ok1comm = True
+              if rsegsign == LONG_SEG_SIGN:
+                nextreadmode = RM_CommExt
+                waitlen = CommExtSize
+              elif rsegsign > 0:
+                nextreadmode = RM_SegmentS
+                waitlen, rdatasize = rsegsign, rsegsign
+                if (self.rcmd != EC_Media): rdatasize -=4
           elif errcode == 1:
             self.err_scmd('Wrong CRC of recieved command', ECC_Bye_BadCommCRC)
           elif errcode == 2:
@@ -569,69 +579,82 @@ class ClientThread(threading.Thread):
             self.err_scmd('Too match received data ('+rdata.bytesize.to_s+'>'+rdatasize.to_s+')', \
               ECC_Bye_DataTooLong)
 
-        # Очистим буфер от определившихся данных
-        rbuf = rbuf[processedlen:]
-        if (self.scmd != EC_Bye) and (self.scmd != EC_Wait): self.scmd = EC_Data
-        # Обработаем поступившие команды и блоки данных
-        rdata0 = self.rdata
-        if (self.scmd != EC_Bye) and (self.scmd != EC_Wait) and (nextreadmode == RM_Comm):
-          #print('-->>>> before accept: [rcmd, rcode, rdata.size]=', self.rcmd, self.rcode, len(self.rdata))
-          #if self.rdata and (len(self.rdata)>0) and @r_encode
-            #@rdata = PandoraGUI.recrypt(@rkey, @rdata, false, true)
-            #@rdata = Base64.strict_decode64(@rdata)
-            #p log_mes+'::: decode rdata.size='+rdata.size.to_s
-          #end
+        if ok1comm:
+          # Очистим буфер от определившихся данных
+          rbuf = rbuf[processedlen:]
+          if (self.scmd != EC_Bye) and (self.scmd != EC_Wait): self.scmd = EC_Data
+          # Обработаем поступившие команды и блоки данных
+          rdata0 = self.rdata
+          if (self.scmd != EC_Bye) and (self.scmd != EC_Wait) and (nextreadmode == RM_Comm):
+            #print('-->>>> before accept: [rcmd, rcode, rdata.size]=', self.rcmd, self.rcode, len(self.rdata))
+            #if self.rdata and (len(self.rdata)>0) and @r_encode
+              #@rdata = PandoraGUI.recrypt(@rkey, @rdata, false, true)
+              #@rdata = Base64.strict_decode64(@rdata)
+              #p log_mes+'::: decode rdata.size='+rdata.size.to_s
+            #end
 
-          #lure = None
-          #if self.pool.collector:
-          #  lure = self.pool.collector.get_hole_of_fisher(self)
-          if self.lure==None:
-            #rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = \
-            self.accept_segment() #(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
-          elif self.pool.collector:
-            self.resend_to_fisher_hole(self.pool.collector, self.lure)
+            #lure = None
+            #if self.pool.collector:
+            #  lure = self.pool.collector.get_hole_of_fisher(self)
+            if self.lure==None:
+              #rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd = \
+              self.accept_segment() #(rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd)
+            elif self.pool.collector:
+              if (self.rcmd == EC_Media) and (not self.media_allow):
+                self.err_scmd('Only owner can start video or audio first')
+              else:
+                self.resend_to_fisher_hole(self.pool.collector, self.lure)
+            else:
+              self.err_scmd('Owner is disconnected')
 
-          self.rdata = ''
-          if not self.sbuf: self.sbuf = ''
-          #print('after accept ==>>>: [scmd, scode, sbuf.size]=', self.scmd, self.scode, len(self.sbuf))
-          #p log_mes+'accept_request After='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
+            self.rdata = ''
+            if not self.sbuf: self.sbuf = ''
+            #print('after accept ==>>>: [scmd, scode, sbuf.size]=', self.scmd, self.scode, len(self.sbuf))
+            #p log_mes+'accept_request After='+[rcmd, rcode, rdata, scmd, scode, sbuf, last_scmd].inspect
 
-        if self.scmd != EC_Data:
-          #@sbuf = '' if scmd == EC_Bye
-          #p log_mes+'add to queue [scmd, scode, sbuf]='+[scmd, scode, @sbuf].inspect
-          print('-->>>> before accept: [rcmd, rcode, rdata.size]=', self.rcmd, self.rcode, len(self.rdata))
-          print('after accept ==>>>: [scmd, scode, sbuf.size]=', self.scmd, self.scode, len(self.sbuf))
-          #print('recv/send: =', self.rcmd, self.rcode, len(rdata0), '/', self.scmd, self.scode, self.sbuf)
-          #while PandoraGUI.get_queue_state(@send_queue) == QS_Full do
-          #  p log_mes+'get_queue_state.MAIN = '+PandoraGUI.get_queue_state(@send_queue).inspect
-          #  Thread.pass
-          #end
-          #res = PandoraGUI.add_block_to_queue(@send_queue, [scmd, scode, @sbuf])
-          self.sindex = self.send_comm_and_data(self.sindex, self.scmd, self.scode, self.sbuf)
-          if not self.sindex:
-            self.logmes('Error while sending segment [scmd, scode, len(sbuf)]'+str(self.scmd, self.scode, len(self.sbuf)))
-            self.conn_state == CS_Stoping
-          last_scmd = self.scmd
-          self.sbuf = ''
-        #print('self.conn_state: ', self.conn_state)
-        readmode = nextreadmode
+          if self.scmd != EC_Data:
+            #@sbuf = '' if scmd == EC_Bye
+            #p log_mes+'add to queue [scmd, scode, sbuf]='+[scmd, scode, @sbuf].inspect
+            print('-->>>> before accept: [rcmd, rcode, rdata.size]=', self.rcmd, self.rcode, len(self.rdata))
+            print('after accept ==>>>: [scmd, scode, sbuf.size]=', self.scmd, self.scode, len(self.sbuf))
+            #print('recv/send: =', self.rcmd, self.rcode, len(rdata0), '/', self.scmd, self.scode, self.sbuf)
+            #while PandoraGUI.get_queue_state(@send_queue) == QS_Full do
+            #  p log_mes+'get_queue_state.MAIN = '+PandoraGUI.get_queue_state(@send_queue).inspect
+            #  Thread.pass
+            #end
+            #res = PandoraGUI.add_block_to_queue(@send_queue, [scmd, scode, @sbuf])
+            self.sindex = self.send_comm_and_data(self.sindex, self.scmd, self.scode, self.sbuf)
+            if not self.sindex:
+              self.logmes('Error while sending segment [scmd, scode, sbuf.len]', self.scmd, self.scode, len(self.sbuf))
+              self.conn_state == CS_Stoping
+            last_scmd = self.scmd
+            self.sbuf = ''
+          #print('self.conn_state: ', self.conn_state)
+          readmode = nextreadmode
+        else:
+          print('Bad first command')
+          self.conn_state = CS_Stoping
       if self.conn_state == CS_Stoping:
         self.conn_state = CS_StopRead
       #print('self.conn_state2: ', self.conn_state)
       time.sleep(0.1)
 
-    print('FINISH')
     self.client.close()
     self.conn_state = CS_Disconnected
     addrstr = str(self.addr[0])+':'+str(self.addr[1])
-    for fisher in self.fishers:
-      fisher.close_hole_of_fisher(self)
     if self==self.pool.collector:
       self.pool.collector = None
       self.logmes('Colleactor disconnected: '+addrstr)
       self.pool.stop_clients(self)
     else:
       self.logmes('Client disconnected: '+addrstr)
+      if self.pool.collector:
+        self.rcmd = EC_Bye
+        self.rcode = ECC_Bye_Exit
+        self.rdata = None
+        self.resend_to_fisher_hole(self.pool.collector, self.lure)
+    for fisher in self.fishers:
+      fisher.close_hole_of_fisher(self)
 
 
 class PoolThread(threading.Thread):
