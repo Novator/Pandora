@@ -5208,7 +5208,7 @@ module PandoraNet
                 end
               elsif (rcode==ECC_Init_Answer) and (stage==ST_Captcha)
                 captcha = rdata
-                p log_mes+'recived captcha='+captcha
+                p log_mes+'recived captcha='+captcha if captcha
                 if captcha.downcase==params['captcha']
                   @stage = ST_Greeting
                   if not (@skey[PandoraCrypto::KV_Trust].is_a? Float)
