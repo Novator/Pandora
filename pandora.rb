@@ -5042,7 +5042,8 @@ module PandoraNet
                   if vers==0
                     addr = params['addr']
                     p log_mes+'addr='+addr.inspect
-                    PandoraNet.check_incoming_addr(addr, host_ip) if addr
+                    # need to change an ip checking
+                    pool.check_incoming_addr(addr, host_ip) if addr
                     mode = params['mode']
                     init_skey_or_error(true)
                   else
