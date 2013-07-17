@@ -7,7 +7,10 @@ DIRFILE=`readlink -e "$0"`
 CURFILE=`basename "$DIRFILE"`
 CURDIR=`dirname "$DIRFILE"`
 
-cd $CURDIR
+cd "$CURDIR"
 
-/usr/bin/python ./pangate.py
+screen -x "pangate"
+if [ "$?" != "0" ]; then
+  screen -S "pangate" /usr/bin/python ./pangate.py
+fi
 

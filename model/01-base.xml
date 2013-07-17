@@ -310,6 +310,7 @@
       <session_key name="Session key" type="String" size="32" />
       <try_upnp_time name="UPnP try time" type="Time" />
       <try_natpmp_time name="NAT-PMP try time" type="Time" />
+      <query_time name="Time of query" type="Time" />
       <!-- last_link_time name="Last received link" type="Time" />
       <last_trust_time name="Last received trust" type="Time" /-->
     </Node>
@@ -368,6 +369,8 @@
 
     <do_on_show desc="Do on show main window" type="Integer" section="view" setting="2" />
     <hide_on_minimize desc="Hide on minimize" type="Boolean" section="view" setting="true" />
+    <status_update_win_icon desc="Update window icon on message" type="Boolean" section="view" setting="false" />
+    <status_flash_interval desc="Interval of status icon flash (sec or 0)" type="Real" section="view" setting="0.8" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
     <check_interval desc="Сheck interval (days)" type="Integer" section="update" setting="2" />

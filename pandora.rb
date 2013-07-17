@@ -73,7 +73,7 @@ while (ARGV.length>0) or next_arg
       puts runit+'-h localhost   - set listen address'
       puts runit+'-p 5577        - set listen port'
       puts runit+'-bi 0          - set index of database'
-      Thread.current.exit
+      Kernel.exit!
   end
   val = nil
 end
@@ -83,27 +83,25 @@ MAIN_WINDOW_TITLE = 'Pandora'
 # Prevent second execution
 # RU: Предотвратить второй запуск
 if not $poly_launch
-  #begin
-    if os_family=='unix'
-      res = `ps -few | grep pandora.rb | grep -v grep`
-      res = res.scan("\n").count if res
-      if res>1
-        Thread.current.exit
-      end
-    elsif os_family=='windows'
-      require 'Win32API'
-      FindWindow = Win32API.new('user32', 'FindWindowA', ['P', 'P'], 'L')
-      win_handle = FindWindow.call(nil, MAIN_WINDOW_TITLE)
-      if win_handle != 0
-        SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
-        SetForegroundWindow.call(win_handle)
-        ShowWindow = Win32API.new('user32', 'ShowWindow', 'L', 'V')
-        ShowWindow.call(win_handle, 5)  #WM_SHOW
-        Thread.current.exit
-      end
+  if os_family=='unix'
+    res = `ps -few | grep pandora.rb | grep -v grep`
+    res = res.scan("\n").count if res
+    if res>1
+      Kernel.abort('Another copy of Pandora is already runned')
     end
-  #rescue Exception
-  #end
+  elsif os_family=='windows'
+    require 'Win32API'
+    FindWindow = Win32API.new('user32', 'FindWindowA', ['P', 'P'], 'L')
+    win_handle = FindWindow.call(nil, MAIN_WINDOW_TITLE)
+    if win_handle != 0
+      SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
+      SetForegroundWindow.call(win_handle)
+      ShowWindow = Win32API.new('user32', 'ShowWindow', 'L', 'V')
+      ShowWindow.call(win_handle, 5)  #WM_SHOW
+      SetForegroundWindow.call(win_handle)
+      Kernel.abort('Another copy of Pandora is already runned')
+    end
+  end
 end
 
 if RUBY_VERSION<'1.9'
@@ -781,7 +779,7 @@ module PandoraUtils
       bytes << [bigint].pack('C')
     else
       hexstr = bigint.to_s(16)
-      hexstr = '0'+hexstr if hexstr.size % 2 > 0
+      hexstr = '0'+hexstr if (hexstr.size % 2) > 0
       ((hexstr.size+1)/2).times do |i|
         bytes << hexstr[i*2,2].to_i(16).chr
       end
@@ -1624,7 +1622,9 @@ module PandoraUtils
   PT_Array = 4
   PT_Hash  = 5
   PT_Sym   = 6
-  PT_Unknown = 32
+  PT_Real  = 7
+  PT_Unknown = 15
+  PT_Negative = 16
 
   def self.string_to_pantype(type)
     res = PT_Unknown
@@ -1643,6 +1643,8 @@ module PandoraUtils
         res = PT_Hash
       when 'Symbol'
         res = PT_Sym
+      when 'Real', 'Float', 'Double'
+        res = PT_Real
     end
     res
   end
@@ -1656,6 +1658,8 @@ module PandoraUtils
         res = 'boolean'
       when PT_Time
         res = 'time'
+      when PT_Real
+        res = 'real'
     end
     res
   end
@@ -1695,6 +1699,14 @@ module PandoraUtils
             val = val.to_i
           else
             val = 0
+          end
+        end
+      when PT_Real
+        if (not val.is_a? Float)
+          if val
+            val = val.to_f
+          else
+            val = 0.0
           end
         end
       when PT_Bool
@@ -1910,6 +1922,10 @@ module PandoraUtils
     val = nil if val==''
     if val and view
       case view
+        when 'byte', 'word', 'integer', 'coord'
+          val = val.to_i
+        when 'real'
+          val = val.to_f
         when 'date', 'time'
           begin
             val = Time.parse(val)  #Time.strptime(defval, '%d.%m.%Y')
@@ -2188,23 +2204,29 @@ module PandoraUtils
   # RU: Кодирует тип данных и размер в тип PSON и число байт размера
   def self.encode_pson_type(basetype, int)
     count = 0
+    neg = 0
+    if int<0
+      neg = PT_Negative
+      int = -int
+    end
     while (int>0xFF) and (count<8)
-      int = int >> 8
+      int = (int >> 8)
       count +=1
     end
     if count >= 8
       puts '[encode_pan_type] Too big int='+int.to_s
       count = 7
     end
-    [basetype ^ (count << 5), count]
+    [basetype ^ neg ^ (count << 5), count, (neg>0)]
   end
 
   # Decode PSON type to data type and count of size in bytes (1..8)-1
   # RU: Раскодирует тип PSON в тип данных и число байт размера
   def self.decode_pson_type(type)
-    basetype = type & 0x1F
-    count = type >> 5
-    [basetype, count]
+    basetype = type & 0xF
+    negative = ((type & PT_Negative)>0)
+    count = (type >> 5)
+    [basetype, count, negative]
   end
 
   # Convert ruby object to PSON (Pandora Simple Object Notation)
@@ -2224,8 +2246,14 @@ module PandoraUtils
         elem_size = data.bytesize
         type, count = encode_pson_type(PT_Sym, elem_size)
       when Integer
+        type, count, neg = encode_pson_type(PT_Int, rubyobj)
+        rubyobj = -rubyobj if neg
         data << PandoraUtils.bigint_to_bytes(rubyobj)
-        type, count = encode_pson_type(PT_Int, rubyobj)
+      when Time
+        rubyobj = rubyobj.to_i
+        type, count, neg = encode_pson_type(PT_Time, rubyobj)
+        rubyobj = -rubyobj if neg
+        data << PandoraUtils.bigint_to_bytes(rubyobj)
       when TrueClass, FalseClass
         if rubyobj
           data << [1].pack('C')
@@ -2233,9 +2261,10 @@ module PandoraUtils
           data << [0].pack('C')
         end
         type = PT_Bool
-      when Time
-        data << PandoraUtils.bigint_to_bytes(rubyobj.to_i)
-        type, count = encode_pson_type(PT_Time, rubyobj.to_i)
+      when Float
+        data << [rubyobj].pack('D')
+        elem_size = data.bytesize
+        type, count = encode_pson_type(PT_Real, elem_size)
       when Array
         rubyobj.each do |a|
           data << rubyobj_to_pson_elem(a)
@@ -2271,7 +2300,7 @@ module PandoraUtils
     if data.bytesize>0
       type = data[0].ord
       len = 1
-      basetype, vlen = decode_pson_type(type)
+      basetype, vlen, neg = decode_pson_type(type)
       #p 'basetype, vlen='+[basetype, vlen].inspect
       vlen += 1
       if data.bytesize >= len+vlen
@@ -2279,11 +2308,14 @@ module PandoraUtils
         case basetype
           when PT_Int
             val = int
+            val = -val if neg
           when PT_Bool
             val = (int != 0)
           when PT_Time
-            val = Time.at(int)
-          when PT_Str, PT_Sym
+            val = int
+            val = -val if neg
+            val = Time.at(val)
+          when PT_Str, PT_Sym, PT_Real
             pos = len+vlen
             if pos+int>data.bytesize
               int = data.bytesize-pos
@@ -2291,7 +2323,11 @@ module PandoraUtils
             val = ''
             val << data[pos, int]
             vlen += int
-            val = data[pos, int].to_sym if basetype == PT_Sym
+            if basetype == PT_Sym
+              val = data[pos, int].to_sym
+            elsif basetype == PT_Real
+              val = data[pos, int].unpack['D']
+            end
           when PT_Array, PT_Hash
             val = Array.new
             int *= 2 if basetype == PT_Hash
@@ -3006,8 +3042,8 @@ module PandoraCrypto
         #p OpenSSL::Cipher::ciphers
         key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
         key.encrypt
-        key1 = cipher.random_key
-        key2 = cipher.random_iv
+        key1 = key.random_key
+        key2 = key.random_iv
         #p key1.size
         #p key2.size
     end
@@ -3187,14 +3223,13 @@ module PandoraCrypto
     else  #elsif key.is_a? OpenSSL::PKey
       if encrypt
         if private
-          recrypted = key.public_encrypt(data)
+          recrypted = key.private_encrypt(data)
         else
-          #p 'recrypt  data.inspect='+data.inspect+'  key='+key.inspect
           recrypted = key.public_encrypt(data)
         end
       else
         if private
-          recrypted = key.public_decrypt(data)
+          recrypted = key.private_decrypt(data)
         else
           recrypted = key.public_decrypt(data)
         end
@@ -3892,13 +3927,13 @@ module PandoraNet
     def add_session(conn)
       if not sessions.include?(conn)
         sessions << conn
-        window.update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, 1)
+        window.update_conn_status(conn, conn.get_type, 1)
       end
     end
 
     def del_session(conn)
       if sessions.delete(conn)
-        window.update_conn_status(conn, (conn.conn_mode & CM_Hunter)>0, -1)
+        window.update_conn_status(conn, conn.get_type, -1)
       end
     end
 
@@ -3945,7 +3980,7 @@ module PandoraNet
         session ||= session2
         session.send_state = (session.send_state | send_state_add)
         session.dialog = nil if session.dialog and session.dialog.destroyed?
-        session.dialog ||= dialog
+        session.dialog = dialog if dialog
         #if session.dialog and session.dialog.online_button
         #  session.dialog.online_button.active = (session.socket and (not session.socket.closed?))
         #end
@@ -3987,7 +4022,8 @@ module PandoraNet
                 if socket
                   #begin
                     log_message(LM_Info, _('Connected to server')+' '+server)
-                    session = Session.new(socket, host, socket.addr[2], port, proto, CM_Hunter, \
+                    session = Session.new
+                    session.run(socket, host, socket.addr[2], port, proto, CM_Hunter, \
                       CS_Connected, Thread.current, node_id, dialog, keybase, send_state_add)
                     socket.close if not socket.closed?
                     log_message(LM_Info, _('Disconnected from server')+' '+server)
@@ -4071,9 +4107,27 @@ module PandoraNet
       end
     end
 
-    def init_fishes_for_fisher(fisher)
-      fish = Session.new(fisher, nil, nil, port, proto, CM_Hunter, CS_Connected, \
-        Thread.current, node_id, dialog, keybase)
+    def init_fish_for_fisher(fisher, in_lure, keyhash=nil, baseid=nil)
+      fish = nil
+      if (keyhash==nil) #or (keyhash==mykeyhash)   # my key
+        thread = Thread.new do
+          log_message(LM_Info, _('Create fish session for')+' '+in_lure.to_s)
+          session = Session.new
+          thread[:fish] = session
+          session.run(fisher, nil, in_lure, nil, nil, 0, CS_Connected, \
+            thread, nil, nil, nil, nil)
+          log_message(LM_Info, _('Close fish session for')+' '+in_lure.to_s)
+        end
+        Thread.pass
+        while thread.alive? and (not thread[:fish])
+          sleep(0.01)
+        end
+        if thread.alive?
+          fish = thread[:fish]
+        end
+      else  # alien key
+        fish = @sessions.index { |session| session.skey[PandoraCrypto::KV_Panhash] == keyhash }
+      end
       fish
     end
   end
@@ -4122,6 +4176,8 @@ module PandoraNet
   ECC_Sync2_Encode      = 2
 
   EC_Wait1_NoFish       = 1
+  EC_Wait2_NoFisher     = 2
+  EC_Wait3_EmptySegment = 3
 
   ECC_Bye_Exit          = 200
   ECC_Bye_Unknown       = 201
@@ -4191,6 +4247,7 @@ module PandoraNet
   # Inquirer steps
   # RU: Шаги почемучки
   IS_CreatorCheck  = 0
+  IS_NewsQuery     = 1
   IS_Finished      = 255
 
   $incoming_addr = nil
@@ -4209,22 +4266,35 @@ module PandoraNet
 
   class Session
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
-      :send_thread, :read_thread, :socket, :read_state, :send_state,
-      :send_models, :recv_models, \
-      #:read_req, :send_mes, :send_media, :send_req, :read_mes, :read_media,
-      :sindex, :read_queue, :send_queue, :params,
-      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode,
-      :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes
+      :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, :fisher_lure, :fish_lure, \
+      :send_models, :recv_models, :sindex, :read_queue, :send_queue, :params, \
+      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, \
+      :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes, :fishers
 
     def set_keepalive(client)
       client.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, $keep_alive)
-      client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPIDLE, $keep_idle)
-      client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPINTVL, $keep_intvl)
-      client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPCNT, $keep_cnt)
+      if os_family != 'windows'
+        client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPIDLE, $keep_idle)
+        client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPINTVL, $keep_intvl)
+        client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPCNT, $keep_cnt)
+      end
     end
 
     def pool
       $window.pool
+    end
+
+    def get_type
+      res = nil
+      if donor
+        res = 2
+      else
+        if ((conn_mode & CM_Hunter)>0)
+          res = 0
+        else
+          res = 1
+        end
+      end
     end
 
     def unpack_comm(comm)
@@ -4256,126 +4326,95 @@ module PandoraNet
     # RU: Отправляет команду и данные, если есть !!! ДОБАВИТЬ !!! send_number!, buflen, buf
     def send_comm_and_data(index, cmd, code, data=nil)
       res = nil
-      data ||= ''
-      data = AsciiString.new(data)
-      datasize = data.bytesize
-      segsign, segdata, segsize = datasize, datasize, datasize
-      if datasize>0
-        if cmd != EC_Media
-          segsize += 4           #for crc32
-          segsign = segsize
-        end
-        if segsize > MaxSegSize
-          segsign = LONG_SEG_SIGN
-          segsize = MaxSegSize
-          if cmd == EC_Media
-            segdata = segsize
-          else
-            segdata = segsize-4  #for crc32
-          end
-        end
-      end
-      crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
-      # Команда как минимум равна 1+1+1+2+1= 6 байт (CommSize)
-      #p 'SCAB: '+[index, cmd, code, segsign, crc8].inspect
-      comm = AsciiString.new([index, cmd, code, segsign, crc8].pack('CCCnC'))
-      if index<255 then index += 1 else index = 0 end
-      buf = AsciiString.new
-      if datasize>0
-        if segsign == LONG_SEG_SIGN
-          # если пакетов много, то добавить еще 4+4+2= 10 байт
-          fullcrc32 = 0
-          fullcrc32 = Zlib.crc32(data) if (cmd != EC_Media)
-          comm << [datasize, fullcrc32, segsize].pack('NNn')
-          buf << data[0, segdata]
+      lengt = 0
+      lengt = data.bytesize if data
+      #p log_mes+'SEND_ALL: [cmd, code, data.len]='+[cmd, code, lengt].inspect
+      if donor
+        #out_lure = fish.get_out_lure_for_fisher(self)
+        segment = [cmd, code].pack('CC')
+        segment << data if data
+        if fisher_lure
+          res = donor.send_queue.add_block_to_queue([EC_Lure, fisher_lure, segment])
         else
-          buf << data
-        end
-        if cmd != EC_Media
-          segcrc32 = Zlib.crc32(buf)
-          buf << [segcrc32].pack('N')
-        end
-      end
-      buf = comm + buf
-      #p "!SEND: ("+buf+')'
-
-      # tos_sip    cs3   0x60  0x18
-      # tos_video  af41  0x88  0x22
-      # tos_xxx    cs5   0xA0  0x28
-      # tos_audio  ef    0xB8  0x2E
-      if cmd == EC_Media
-        if not @media_send
-          @media_send = true
-          #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-          socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
-          p '@media_send = true'
+          res = donor.send_queue.add_block_to_queue([EC_Bite, fish_lure, segment])
         end
       else
-        nodelay = nil
-        if @media_send
-          socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0)
-          nodelay = 0
-          @media_send = false
-          p '@media_send = false'
-        end
-        #nodelay = 1 if (cmd == EC_Bye)
-        #if nodelay
-        #  socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, nodelay)
-        #end
-      end
-      #if cmd == EC_Media
-      #  if code==0
-      #    p 'send AUDIO ('+buf.size.to_s+')'
-      #  else
-      #    p 'send VIDEO ('+buf.size.to_s+')'
-      #  end
-      #end
-      begin
-        if socket and not socket.closed?
-          #sended = socket.write(buf)
-          sended = socket.send(buf, 0)
-        else
-          sended = -1
-        end
-      rescue #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
-        sended = -1
-      end
-      #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
-      #p log_mes+'SEND_MAIN: ('+buf+')'
-
-      if sended == buf.bytesize
-        res = index
-      elsif sended != -1
-        log_message(LM_Error, 'Не все данные отправлены '+sended.to_s)
-      end
-      segindex = 0
-      i = segdata
-      while res and ((datasize-i)>0)
-        segdata = datasize-i
-        segsize = segdata
-        if cmd != EC_Media
-          segsize += 4           #for crc32
-        end
-        if segsize > MaxSegSize
-          segsize = MaxSegSize
-          if cmd == EC_Media
-            segdata = segsize
-          else
-            segdata = segsize-4  #for crc32
+        data ||= ''
+        data = AsciiString.new(data)
+        datasize = data.bytesize
+        segsign, segdata, segsize = datasize, datasize, datasize
+        if datasize>0
+          if cmd != EC_Media
+            segsize += 4           #for crc32
+            segsign = segsize
+          end
+          if segsize > MaxSegSize
+            segsign = LONG_SEG_SIGN
+            segsize = MaxSegSize
+            if cmd == EC_Media
+              segdata = segsize
+            else
+              segdata = segsize-4  #for crc32
+            end
           end
         end
-        if segindex<0xFFFFFFFF then segindex += 1 else segindex = 0 end
-        #p log_mes+'comm_ex_pack: [index, segindex, segsize]='+[index, segindex, segsize].inspect
-        comm = [index, segindex, segsize].pack('CNn')
+        crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
+        # Команда как минимум равна 1+1+1+2+1= 6 байт (CommSize)
+        #p 'SCAB: '+[index, cmd, code, segsign, crc8].inspect
+        comm = AsciiString.new([index, cmd, code, segsign, crc8].pack('CCCnC'))
         if index<255 then index += 1 else index = 0 end
-        buf = data[i, segdata]
-        if cmd != EC_Media
-          segcrc32 = Zlib.crc32(buf)
-          buf << [segcrc32].pack('N')
+        buf = AsciiString.new
+        if datasize>0
+          if segsign == LONG_SEG_SIGN
+            # если пакетов много, то добавить еще 4+4+2= 10 байт
+            fullcrc32 = 0
+            fullcrc32 = Zlib.crc32(data) if (cmd != EC_Media)
+            comm << [datasize, fullcrc32, segsize].pack('NNn')
+            buf << data[0, segdata]
+          else
+            buf << data
+          end
+          if cmd != EC_Media
+            segcrc32 = Zlib.crc32(buf)
+            buf << [segcrc32].pack('N')
+          end
         end
         buf = comm + buf
+
+        # tos_sip    cs3   0x60  0x18
+        # tos_video  af41  0x88  0x22
+        # tos_xxx    cs5   0xA0  0x28
+        # tos_audio  ef    0xB8  0x2E
+        if cmd == EC_Media
+          if not @media_send
+            @media_send = true
+            #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+            socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
+            p '@media_send = true'
+          end
+        else
+          nodelay = nil
+          if @media_send
+            socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0)
+            nodelay = 0
+            @media_send = false
+            p '@media_send = false'
+          end
+          #nodelay = 1 if (cmd == EC_Bye)
+          #if nodelay
+          #  socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, nodelay)
+          #end
+        end
+        #if cmd == EC_Media
+        #  if code==0
+        #    p 'send AUDIO ('+buf.size.to_s+')'
+        #  else
+        #    p 'send VIDEO ('+buf.size.to_s+')'
+        #  end
+        #end
         begin
           if socket and not socket.closed?
+            #p "!SEND_main: buf.size="+buf.bytesize.to_s
             #sended = socket.write(buf)
             sended = socket.send(buf, 0)
           else
@@ -4384,14 +4423,60 @@ module PandoraNet
         rescue #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
           sended = -1
         end
+        #socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0x00)  # обычный пакет
+        #p log_mes+'SEND_MAIN: ('+buf+')'
+
         if sended == buf.bytesize
           res = index
-          #p log_mes+'SEND_ADD: ('+buf+')'
         elsif sended != -1
-          res = nil
-          log_message(LM_Error, 'Не все данные отправлены2 '+sended.to_s)
+          log_message(LM_Error, 'Не все данные отправлены '+sended.to_s)
         end
-        i += segdata
+        segindex = 0
+        i = segdata
+        while res and ((datasize-i)>0)
+          segdata = datasize-i
+          segsize = segdata
+          if cmd != EC_Media
+            segsize += 4           #for crc32
+          end
+          if segsize > MaxSegSize
+            segsize = MaxSegSize
+            if cmd == EC_Media
+              segdata = segsize
+            else
+              segdata = segsize-4  #for crc32
+            end
+          end
+          if segindex<0xFFFFFFFF then segindex += 1 else segindex = 0 end
+          #p log_mes+'comm_ex_pack: [index, segindex, segsize]='+[index, segindex, segsize].inspect
+          comm = [index, segindex, segsize].pack('CNn')
+          if index<255 then index += 1 else index = 0 end
+          buf = data[i, segdata]
+          if cmd != EC_Media
+            segcrc32 = Zlib.crc32(buf)
+            buf << [segcrc32].pack('N')
+          end
+          buf = comm + buf
+          begin
+            if socket and not socket.closed?
+              #sended = socket.write(buf)
+              #p "!SEND_add: buf.size="+buf.bytesize.to_s
+              sended = socket.send(buf, 0)
+            else
+              sended = -1
+            end
+          rescue #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
+            sended = -1
+          end
+          if sended == buf.bytesize
+            res = index
+            #p log_mes+'SEND_ADD: ('+buf+')'
+          elsif sended != -1
+            res = nil
+            log_message(LM_Error, 'Не все данные отправлены2 '+sended.to_s)
+          end
+          i += segdata
+        end
       end
       res
     end
@@ -4469,6 +4554,27 @@ module PandoraNet
 
     def set_request(panhashes, send_now=false)
       ascmd = EC_Request
+      ascode = 0
+      asbuf = nil
+      if panhashes.is_a? Array
+        asbuf = PandoraUtils.rubyobj_to_pson_elem(panhashes)
+      else
+        ascode = PandoraUtils.kind_from_panhash(panhashes)
+        asbuf = panhashes[1..-1]
+      end
+      if send_now
+        if not add_send_segment(ascmd, true, asbuf, ascode)
+          log_message(LM_Error, _('Cannot add request'))
+        end
+      else
+        @scmd = ascmd
+        @scode = ascode
+        @sbuf = asbuf
+      end
+    end
+
+    def set_query(list, time, send_now=false)
+      ascmd = EC_Query
       ascode = 0
       asbuf = nil
       if panhashes.is_a? Array
@@ -4777,57 +4883,149 @@ module PandoraNet
         password
       end
 
-      def get_fisher_line(fisher)
-        line = nil
-        line = @fishers.index(fish)
-        if not line
+      def take_out_lure_for_fisher(fisher, in_lure)
+        out_lure = nil
+        val = [fisher, in_lure]
+        out_lure = @fishers.index(val)
+        if not out_lure
           i = 0
-          while (i<line.size) and (not line)
-            line = i if @fishers[i]==nil
+          while (i<out_lure.size)
+            break if (not (@fishers[i].is_a? Array))  #or (@fishers[i][0].destroyed?))
             i += 1
           end
-          line = i if (not line) and (i<=255)
-          @fishers[line] = fish if line
+          out_lure = i if (not out_lure) and (i<=255)
+          @fishers[out_lure] = val if out_lure
         end
-        line
+        out_lure
       end
 
-      def free_fisher_line(fisher)
-        while line = @fishers.index(fisher)
-          @fishers[line] = nil
+      def get_out_lure_for_fisher(fisher, in_lure)
+        val = [fisher, in_lure]
+        out_lure = @fishers.index(val)
+        out_lure
+      end
+
+      def get_fisher_for_out_lure(out_lure)
+        fisher, in_lure = nil, nil
+        val = @fishers[out_lure] if out_lure.is_a? Integer
+        fisher, in_lure = val if val.is_a? Array
+        [fisher, in_lure]
+      end
+
+      def free_out_lure_of_fisher(fisher, in_lure)
+        val = [fisher, in_lure]
+        while out_lure = @fishers.index(val)
+          @fishers[out_lure] = nil
+          if fisher #and (not fisher.destroyed?)
+            if fisher.donor
+              fisher.conn_state = CS_StopRead if (fisher.conn_state < CS_StopRead)
+            end
+            fisher.free_fish_of_in_lure(in_lure)
+          end
         end
       end
 
-      def set_fish_on_lure(lure, fish)
-        @fishes[lure] = fish if lure.is_a? Integer
+      def set_fish_of_in_lure(in_lure, fish)
+        @fishes[in_lure] = fish if in_lure.is_a? Integer
       end
 
-      def get_fish_of_lure(lure)
-        fish = @fishes[lure]
+      def get_fish_for_in_lure(in_lure)
+        fish = nil
+        if in_lure.is_a? Integer
+          fish = @fishes[in_lure]
+          #if fish #and fish.destroyed?
+          #  fish = nil
+          #  @fishes[in_lure] = nil
+          #end
+        end
+        fish
       end
 
-      def free_fish_lure(lure)
-        @fishes[lure] = nil if lure.is_a? Integer
-      end
+      #def get_in_lure_by_fish(fish)
+      #  lure = @fishes.index(fish) if lure.is_a? Integer
+      #end
 
-      def add_segment_to_read_queue(fisher_session, lure, segment)
-        res = @read_queue.add_block_to_queue([EC_Lure, lure, segment])
+      def free_fish_of_in_lure(in_lure)
+        if in_lure.is_a? Integer
+          fish = @fishes[in_lure]
+          @fishes[in_lure] = nil
+          if fish #and (not fish.destroyed?)
+            if fish.donor
+              fish.conn_state = CS_StopRead if (fish.conn_state < CS_StopRead)
+            end
+            fish.free_out_lure_of_fisher(self, in_lure)
+          end
+        end
       end
 
       # Send segment from current fisher session to fish session
       # RU: Отправляет сегмент от текущей рыбацкой сессии к сессии рыбки
-      def send_segment_to_fish(lure, segment)
+      def send_segment_to_fish(in_lure, segment)
         res = nil
-        fish = get_fish_of_lure(lure)
-        if not fish
-          main_fish = pool.init_fishes_for_fisher(self)
-          set_fish_on_lure(lure, main_fish) if main_fish
-        end
-        if fish
-          res = fish.add_segment_to_read_queue(self, lure, segment)
+        if segment and (segment.bytesize>1)
+          fish = get_fish_for_in_lure(in_lure)
+          if not fish
+            fish = pool.init_fish_for_fisher(self, in_lure, nil, nil)
+            set_fish_of_in_lure(in_lure, fish)
+          end
+          #p 'send_segment_to_fish: in_lure,segsize='+[in_lure, segment.bytesize].inspect
+          if fish
+            if fish.donor == self
+              #p 'DONOR lure'
+              cmd = segment[0].ord
+              code = segment[1].ord
+              data = nil
+              data = segment[2..-1] if (segment.bytesize>2)
+              #p '-->Add raw to fish (in_lure='+in_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
+              res = fish.read_queue.add_block_to_queue([cmd, code, data])
+            else
+              p 'RESENDER lure'
+              out_lure = fish.take_out_lure_for_fisher(self, in_lure)
+              p '-->Add LURE to resender: inlure ==>> outlure='+[in_lure, out_lure].inspect
+              res = fish.send_queue.add_block_to_queue([EC_Lure, out_lure, segment]) if out_lure.is_a? Integer
+            end
+          else
+            @scmd = EC_Wait
+            @scode = EC_Wait1_NoFish
+            @scbuf = nil
+          end
         else
           @scmd = EC_Wait
-          @scode = EC_Wait1_NoFish
+          @scode = EC_Wait3_EmptySegment
+          @scbuf = nil
+        end
+        res
+      end
+
+      # Send segment from current session to fisher session
+      # RU: Отправляет сегмент от текущей сессии к сессии рыбака
+      def send_segment_to_fisher(out_lure, segment)
+        res = nil
+        if segment and (segment.bytesize>1)
+          fisher, in_lure = get_fisher_for_out_lure(out_lure)
+          p 'send_segment_to_fisher: out_lure,fisher,in_lure,segsize='+[out_lure, fisher, in_lure, segment.bytesize].inspect
+          if fisher #and (not fisher.destroyed?)
+            if fisher.donor == self
+              p 'DONOR bite'
+              cmd = segment[0].ord
+              code = segment[1].ord
+              data = nil
+              data = segment[2..-1] if (segment.bytesize>2)
+              p '-->Add raw to fisher (outlure='+out_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
+              res = fisher.read_queue.add_block_to_queue([cmd, code, data])
+            else
+              p 'RESENDER bite'
+              #in_lure = fisher.get_in_lure_by_fish(self)
+              res = fisher.send_queue.add_block_to_queue([EC_Bite, in_lure, segment])
+            end
+          else
+            @scmd = EC_Wait
+            @scode = EC_Wait2_NoFisher
+            @scbuf = nil
+          end
+        else
+          @scmd = EC_Wait
+          @scode = EC_Wait3_EmptySegment
           @scbuf = nil
         end
         res
@@ -4844,7 +5042,8 @@ module PandoraNet
                   if vers==0
                     addr = params['addr']
                     p log_mes+'addr='+addr.inspect
-                    PandoraNet.check_incoming_addr(addr, host_ip) if addr
+                    # need to change an ip checking
+                    pool.check_incoming_addr(addr, host_ip) if addr
                     mode = params['mode']
                     init_skey_or_error(true)
                   else
@@ -4969,11 +5168,11 @@ module PandoraNet
               elsif (rcode==ECC_Init_Simple) and (stage==ST_Protocol)
                 p 'ECC_Init_Simple!'
                 rphrase = rdata
-                p 'rphrase='+rphrase.inspect
-                p password = get_simple_answer_to_node
+                #p 'rphrase='+rphrase.inspect
+                password = get_simple_answer_to_node
                 if (password.is_a? String) and (password.bytesize>0)
-                  p password_hash = OpenSSL::Digest::SHA256.digest(password)
-                  p answer = OpenSSL::Digest::SHA256.digest(rphrase+password_hash)
+                  password_hash = OpenSSL::Digest::SHA256.digest(password)
+                  answer = OpenSSL::Digest::SHA256.digest(rphrase+password_hash)
                   @scmd = EC_Init
                   @scode = ECC_Init_Answer
                   @sbuf = answer
@@ -5009,7 +5208,7 @@ module PandoraNet
                 end
               elsif (rcode==ECC_Init_Answer) and (stage==ST_Captcha)
                 captcha = rdata
-                p log_mes+'recived captcha='+captcha
+                p log_mes+'recived captcha='+captcha if captcha
                 if captcha.downcase==params['captcha']
                   @stage = ST_Greeting
                   if not (@skey[PandoraCrypto::KV_Trust].is_a? Float)
@@ -5224,11 +5423,12 @@ module PandoraNet
             @sbuf=''
           end
         when EC_Lure
-          p "EC_Lure"
           send_segment_to_fish(rcode, rdata)
+          #sleep 2
         when EC_Bite
-          p "EC_Bite"
+          #p "EC_Bite"
           send_segment_to_fisher(rcode, rdata)
+          #sleep 2
         when EC_Sync
           case rcode
             when ECC_Sync1_NoRecord
@@ -5286,16 +5486,26 @@ module PandoraNet
 
     # Start two exchange cicle of socket: read and send
     # RU: Запускает два цикла обмена сокета: чтение и отправка
-    def initialize(asocket, ahost_name, ahost_ip, aport, aproto, aconn_mode, \
+    def run(asocket, ahost_name, ahost_ip, aport, aproto, aconn_mode, \
     aconn_state, a_send_thread, anode_id, a_dialog, tokey, send_state_add)
-      super()
-      @socket = asocket
+      if asocket.is_a? Session
+        @donor        = asocket
+        if ahost_name
+          @fisher_lure  = ahost_name
+        else
+          @fish_lure  = ahost_ip
+        end
+      else
+        @socket       = asocket
+        @host_name    = ahost_name
+        @host_ip      = ahost_ip
+        @port         = aport
+        @proto        = aproto
+        @node         = pool.encode_node(@host_ip, @port, @proto)
+        @node_id      = anode_id
+      end
+
       @stage         = ST_Protocol  #ST_IpCheck
-      @host_name     = ahost_name
-      @host_ip       = ahost_ip
-      @port          = aport
-      @proto         = aproto
-      @node          = pool.encode_node(@host_ip, @port, @proto)
       @conn_mode     = aconn_mode
       @conn_state    = aconn_state
       @conn_state    ||= CS_Connecting
@@ -5309,9 +5519,9 @@ module PandoraNet
       @recv_models    = {}
       @params         = {}
       @media_send     = false
-      @node_id        = anode_id
       @node_panhash   = nil
       @fishes         = Array.new
+      @fishers        = Array.new
       pool.add_session(self)
       if @socket
         set_keepalive(@socket)
@@ -5365,11 +5575,12 @@ module PandoraNet
               @conn_state = CS_Stoping
             end
             #p log_mes+"recieved=["+recieved+']  '+socket.closed?.to_s+'  sok='+socket.inspect
+            #p log_mes+"recieved.size, waitlen="+[recieved.bytesize, waitlen].inspect if recieved
             rkbuf << AsciiString.new(recieved)
             processedlen = 0
             while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
             and (@conn_state != CS_Stoping) and (not socket.closed?) and (rkbuf.bytesize>=waitlen)
-              #p log_mes+'readmode, rkbuf.len, wailtlen='+[readmode, rkbuf.size, waitlen].inspect
+              #p log_mes+'readmode, rkbuf.len, waitlen='+[readmode, rkbuf.size, waitlen].inspect
               processedlen = waitlen
 
               # Определимся с данными по режиму чтения
@@ -5454,9 +5665,11 @@ module PandoraNet
               # Очистим буфер от определившихся данных
               rkbuf.slice!(0, processedlen)
               if serrbuf  #there was error
-                res = @send_queue.add_block_to_queue([EC_Bye, serrcode, serrbuf])
-                if not res
-                  log_message(LM_Error, _('Cannot add error segment to send queue'))
+                if ok1comm
+                  res = @send_queue.add_block_to_queue([EC_Bye, serrcode, serrbuf])
+                  if not res
+                    log_message(LM_Error, _('Cannot add error segment to send queue'))
+                  end
                 end
                 @conn_state = CS_Stoping
               elsif (readmode == RM_Comm)
@@ -5557,6 +5770,7 @@ module PandoraNet
       inquirer_step = IS_CreatorCheck
       message_model = PandoraUtils.get_model('Message', @send_models)
       p log_mes+'ЦИКЛ ОТПРАВКИ начало'
+
       while (@conn_state != CS_Disconnected)
         # отправка сформированных сегментов и их удаление
         fast_data = false
@@ -5606,6 +5820,9 @@ module PandoraNet
                 p log_mes+'Whyer: CreatorCheck  Request!'
                 set_request(creator, true)
               end
+              inquirer_step += 1
+            when IS_NewsQuery
+              #set_query(@query_kind_list, @last_time, true)
               inquirer_step += 1
             else
               inquirer_step = IS_Finished
@@ -5731,7 +5948,7 @@ module PandoraNet
           end
         end
 
-        if socket.closed? or (@conn_state == CS_StopRead)
+        if socket and socket.closed? or (@conn_state == CS_StopRead)
           @conn_state = CS_Disconnected
         elsif (not fast_data)
           sleep(0.2)
@@ -5747,7 +5964,7 @@ module PandoraNet
       pool.del_session(self)
       #Thread.critical = false
       #p log_mes+'check close'
-      if not socket.closed?
+      if socket and (not socket.closed?)
         p log_mes+'before close_write'
         #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
         #socket.flush
@@ -5760,6 +5977,27 @@ module PandoraNet
       end
       @socket_thread.exit if @socket_thread
       @read_thread.exit if @read_thread
+      if donor #and (not donor.destroyed?)
+        if fisher_lure
+          donor.free_out_lure_of_fisher(self, fisher_lure)
+        else
+          donor.free_fish_of_in_lure(fish_lure)
+        end
+      end
+      i = fishes.size
+      while (i>0)
+        i -= 1
+        fish = fishes[i]
+        fish.free_out_lure_of_fisher(self, i) if fish #and (not fish.destroyed?)
+      end
+      i = fishers.size
+      while (i>0)
+        i -= 1
+        fisher = nil
+        val = fishers[i]
+        fisher, out_lure = val if val.is_a? Integer
+        fisher.free_fish_of_in_lure(i) if fisher #and (not fisher.destroyed?)
+      end
 
       @conn_state = CS_Disconnected
       @socket = nil
@@ -5868,7 +6106,8 @@ module PandoraNet
                     end
                   else
                     conn_mode = 0
-                    session = Session.new(socket, host_name, host_ip, port, proto, conn_mode, \
+                    session = Session.new
+                    session.run(socket, host_name, host_ip, port, proto, conn_mode, \
                       CS_Connected, Thread.current, nil, nil, nil, nil)
                     p "END LISTEN SOKET CLIENT!!!"
                   end
@@ -5983,8 +6222,7 @@ module PandoraGUI
   SF_Conn   = 4
 
   if not $gtk2_on
-    puts 'Gtk не установлена'
-    Thread.current.exit
+    Kernel.abort('Gtk is not installed')
   end
 
   # About dialog hooks
@@ -8157,7 +8395,8 @@ module PandoraGUI
   def self.hack_enter_bug(enterbox)
     # because of bug - doesnt work Enter at 'key-press-event'
     enterbox.signal_connect('key-release-event') do |widget, event|
-      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
+      and (not event.state.control_mask?) and (not event.state.shift_mask?) and (not event.state.mod1_mask?)
         widget.signal_emit('key-press-event', event)
         false
       end
@@ -8313,7 +8552,8 @@ module PandoraGUI
       talksw.add(talkview)
 
       editbox.signal_connect('key-press-event') do |widget, event|
-        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
+        and (not event.state.control_mask?) and (not event.state.shift_mask?) and (not event.state.mod1_mask?)
           if editbox.buffer.text != ''
             mes = editbox.buffer.text
             #sended = false
@@ -9564,12 +9804,11 @@ module PandoraGUI
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
-
   class PandoraStatusIcon < Gtk::StatusIcon
     attr_accessor :main_icon
 
-    def initialize
-      super
+    def initialize(a_update_win_icon=false, a_flash_interval=0)
+      super()
 
       @main_icon = nil
       if $window.icon
@@ -9586,15 +9825,18 @@ module PandoraGUI
         @message_icon = $window.render_icon(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::LARGE_TOOLBAR)
       end
 
+      @update_win_icon = a_update_win_icon
+      @flash_interval = (a_flash_interval.to_f*1000).round
+      @flash_on_mes = (@flash_interval>0)
+
       @message = nil
-      @flash_on_mes = false
-      @update_main_icon = false
       @flash = false
       @flash_status = 0
       update_icon
 
-      title = $window.title
-      tooltip = $window.title
+      atitle = $window.title
+      set_title(atitle)
+      set_tooltip(atitle)
 
       #set_blinking(true)
       signal_connect('activate') do
@@ -9653,11 +9895,11 @@ module PandoraGUI
       else
         self.pixbuf = @main_icon
       end
-      $window.icon = self.pixbuf if (@update_main_icon and $window.visible?)
+      $window.icon = self.pixbuf if (@update_win_icon and $window.visible?)
     end
 
     def timeout_func
-      @timer = GLib::Timeout.add(800) do
+      @timer = GLib::Timeout.add(@flash_interval) do
         next_step = true
         if @flash_status == 0
           @flash_status = 1
@@ -9684,7 +9926,7 @@ module PandoraGUI
         $window.show_all
         #$statusicon.visible = false
         $window.present
-        update_icon if @update_main_icon
+        update_icon if @update_win_icon
         if @message
           page = $window.notebook.page
           if (page >= 0)
@@ -9857,11 +10099,13 @@ module PandoraGUI
 
     include PandoraUtils
 
-    def update_conn_status(conn, hunter, diff_count)
-      if hunter
+    def update_conn_status(conn, session_type, diff_count)
+      if session_type==0
         @hunter_count += diff_count
-      else
+      elsif session_type==1
         @listener_count += diff_count
+      else
+        @fisher_count += diff_count
       end
       set_status_field(SF_Conn, hunter_count.to_s+'/'+listener_count.to_s+'/'+fisher_count.to_s)
     end
@@ -10051,14 +10295,34 @@ module PandoraGUI
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
-          p OpenSSL::Cipher::ciphers
+          #p OpenSSL::Cipher::ciphers
 
-          cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
+          #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
           #cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
-          p 'cipher_hash16='+cipher_hash.to_s(16)
-          type_klen = KT_Rsa | KL_bit2048
-          cipher_key = '123'
-          p keys = generate_key(type_klen, cipher_hash, cipher_key)
+          #p 'cipher_hash16='+cipher_hash.to_s(16)
+          #type_klen = KT_Rsa | KL_bit2048
+          #cipher_key = '123'
+          #p keys = generate_key(type_klen, cipher_hash, cipher_key)
+
+          key = PandoraCrypto.current_key(false, true)
+          if key
+            p data = 'Тестовое сообщение!'
+            p cipher_vec = PandoraCrypto.generate_key(PandoraCrypto::KT_Bf)
+            p 'coded:'
+            p data = PandoraCrypto.recrypt(cipher_vec, data, true)
+            p '---'
+            cihper = cipher_vec[PandoraCrypto::KV_Key1]
+            p cihper.bytesize
+            p 'rsa_encode..'
+            #p cihper = PandoraCrypto.recrypt(key, cihper, true, false)
+            p cihper = PandoraCrypto.recrypt(key, cihper, true, true)
+            p 'rsa_decode..'
+            #p cihper = PandoraCrypto.recrypt(key, cihper, false, true)
+            p cihper = PandoraCrypto.recrypt(key, cihper, false, false)
+            cipher_vec[PandoraCrypto::KV_Key1] = cihper
+            p '---decoded:'
+            puts data = PandoraCrypto.recrypt(cipher_vec, data, false)
+          end
 
           #typ, count = encode_pson_type(PT_Str, 0x1FF)
           #p decode_pson_type(typ)
@@ -10318,7 +10582,9 @@ module PandoraGUI
         true
       end
 
-      $statusicon = PandoraGUI::PandoraStatusIcon.new
+      update_win_icon = PandoraUtils.get_param('status_update_win_icon')
+      flash_interval = PandoraUtils.get_param('status_flash_interval')
+      $statusicon = PandoraGUI::PandoraStatusIcon.new(update_win_icon, flash_interval)
 
       $window.signal_connect('destroy') do |window|
         while (not $window.notebook.destroyed?) and ($window.notebook.children.count>0)
