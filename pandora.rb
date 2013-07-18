@@ -2500,6 +2500,27 @@ module PandoraUtils
     [text, buf]
   end
 
+  $mp3_player = 'mpg123'
+  if os_family=='windows'
+    #start, mplayer(9x), mplay32(xp), wmplayer(vista)
+    #start c:\music\"my song.mp3"
+    #mplay32 /play /close "c:\windows\media\windows xp error.wav"
+    $mp3_player = 'start'
+  end
+
+  $play_thread = nil
+
+  def self.play_mp3(filename='message.mp3', path=nil)
+    if not $play_thread
+      $play_thread = Thread.new do
+        path ||= $pandora_view_dir
+        full_name = File.join(path, filename)
+        system($mp3_player, full_name)
+        $play_thread = nil
+      end
+    end
+  end
+
 end
 
 # ==============================================================================
@@ -4014,23 +4035,25 @@ module PandoraNet
           sel = [[host, port]]
         else
           node_model = PandoraUtils.get_model('Node')
-          filter = {:panhash=>keybase}
-          sel = node_model.select(filter, false, 'addr, tport, domain')
-          #p 'found: '+sel.inspect
-          sel.each do |row|
-            row[0] = row[2] if (not row[0]) or (row[0]=='')
+          if node_id
+            filter = {:id=>node_id}
+          else
+            filter = {:panhash=>keybase}
           end
-          #p 'after rewrite: '+sel.inspect
+          sel = node_model.select(filter, false, 'addr, tport, domain')
         end
         if sel and sel.size>0
-          #p 'try: '+sel.inspect
           sel.each do |row|
-            host = row[0]
+            host = row[2]
+            host.strip! if host
+            host = row[0] if (not host) or (host=='')
+            host.strip! if host
             port = row[1]
             proto = 'tcp'
             #p 'host/port/proto='+[host, port, proto].inspect
             if host
               port ||= 5577
+              port = port.to_i
               Thread.new do
                 socket = nil
                 session = nil
@@ -4042,16 +4065,12 @@ module PandoraNet
                   socket = nil
                 end
                 if socket
-                  #begin
-                    log_message(LM_Info, _('Connected to server')+' '+server)
-                    session = Session.new
-                    session.run(socket, host, socket.addr[2], port, proto, CM_Hunter, \
-                      CS_Connected, Thread.current, node_id, dialog, keybase, send_state_add)
-                    socket.close if not socket.closed?
-                    log_message(LM_Info, _('Disconnected from server')+' '+server)
-                  #rescue => err
-                  #  log_message(LM_Warning, _('Cicle exchange')+' '+server+' except='+err.message)
-                  #end
+                  log_message(LM_Info, _('Connected to server')+' '+server)
+                  session = Session.new
+                  session.run(socket, host, socket.peeraddr[2], port, proto, CM_Hunter, \
+                    CS_Connected, Thread.current, node_id, dialog, keybase, send_state_add)
+                  socket.close if not socket.closed?
+                  log_message(LM_Info, _('Disconnected from server')+' '+server)
                 end
               end
               res = true
@@ -8881,6 +8900,7 @@ module PandoraGUI
           tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
           tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
           $statusicon.set_message(_('Message')+' ['+tab_widget.label.text+']')
+          PandoraUtils.play_mp3 if $statusicon.play_sounds
         end
         # run reading thread
         timer_setted = false
@@ -9863,9 +9883,9 @@ module PandoraGUI
   end
 
   class PandoraStatusIcon < Gtk::StatusIcon
-    attr_accessor :main_icon
+    attr_accessor :main_icon, :play_sounds
 
-    def initialize(a_update_win_icon=false, a_flash_on_new=true, a_flash_interval=0)
+    def initialize(a_update_win_icon=false, a_flash_on_new=true, a_flash_interval=0, a_play_sounds=true)
       super()
 
       @main_icon = nil
@@ -9886,6 +9906,7 @@ module PandoraGUI
       @update_win_icon = a_update_win_icon
       @flash_on_new = a_flash_on_new
       @flash_interval = (a_flash_interval.to_f*1000).round
+      @play_sounds = a_play_sounds
 
       @message = nil
       @flash = false
@@ -9926,10 +9947,19 @@ module PandoraGUI
       end
       menu.append(checkmenuitem)
 
+      checkmenuitem = Gtk::CheckMenuItem.new(_('Play sounds'))
+      checkmenuitem.active = @play_sounds
+      checkmenuitem.signal_connect('activate') do |w|
+        @play_sounds = w.active?
+      end
+      menu.append(checkmenuitem)
+
       menuitem = Gtk::SeparatorMenuItem.new
       menu.append(menuitem)
 
       menuitem = Gtk::ImageMenuItem.new(Gtk::Stock::QUIT)
+      alabel = menuitem.children[0]
+      alabel.set_text(_('_Quit'), true)
       menuitem.signal_connect('activate') do |w|
         self.set_visible(false)
         $window.destroy
@@ -10379,6 +10409,10 @@ module PandoraGUI
           #cipher_key = '123'
           #p keys = generate_key(type_klen, cipher_hash, cipher_key)
 
+          PandoraUtils.play_mp3
+
+          return
+
           key = PandoraCrypto.current_key(false, true)
           if key
             p data = 'Тестовое сообщение!'
@@ -10660,7 +10694,8 @@ module PandoraGUI
       update_win_icon = PandoraUtils.get_param('status_update_win_icon')
       flash_on_new = PandoraUtils.get_param('status_flash_on_new')
       flash_interval = PandoraUtils.get_param('status_flash_interval')
-      $statusicon = PandoraGUI::PandoraStatusIcon.new(update_win_icon, flash_on_new, flash_interval)
+      play_sounds = PandoraUtils.get_param('play_sounds')
+      $statusicon = PandoraGUI::PandoraStatusIcon.new(update_win_icon, flash_on_new, flash_interval, play_sounds)
 
       $window.signal_connect('destroy') do |window|
         while (not $window.notebook.destroyed?) and ($window.notebook.children.count>0)
