@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# The Pandora gate. It allows to collect connections for one node
-# RU: Шлюз Пандоры. Позволяет собирать соединения для одного узла
+# The Pandora gate. It collects connections for owner of gate
+# RU: Шлюз Пандоры. Собирает соединения для владельца шлюза
 #
 # This program is distributed under the GNU GPLv2
 # RU: Эта программа распространяется под GNU GPLv2
@@ -17,7 +17,7 @@ TCP_PORT = 5577
 LOG_FILE_NAME = './pangate.log'
 MAX_CONNECTIONS = 10
 PASSWORD_HASH = hashlib.sha256('123456').digest()
-OWNER_KEY_PANHASH = 'dd0332860ccdd2b7eb6e6f6e1f627e6b976a51e22b57'.decode('hex')
+OWNER_KEY_PANHASH = 'dd0308eed0743cba54d1e2f7838fcd3943be51e67b1f'.decode('hex')
 CLIENT_MEDIA_FIRST_ALLOW = False
 
 ROOT_PATH = os.path.abspath('.')
@@ -343,6 +343,7 @@ class ClientThread(threading.Thread):
 
   def get_hole_of_fisher(self, fisher):
     hole = None
+    print('get_hole_of_fisher  fisher=',fisher)
     if fisher:
       try:
         hole = self.fishers.index(fisher)
@@ -355,21 +356,14 @@ class ClientThread(threading.Thread):
     if hole==None:
       size = len(self.fishers)
       if size>0:
-        first_nil_hole = None
         i = 0
-        while (i<size) and (not hole):
-          if self.fishers[i]:
-            if fisher == self.fishers[i]:
-              hole = i
-          else:
-            first_nil_hole = i
+        while (i<size) and (hole==None):
+          if self.fishers[i]==None:
+            hole = i
           i += 1
-        if not hole:
-          if first_nil_hole:
-            hole = first_nil_hole
-          elif size<256:
-            hole = size
-          if hole: list_set(self.fishers, hole, fisher)
+        if (hole==None) and (size<256):
+          hole = size
+        if hole != None: list_set(self.fishers, hole, fisher)
       else:
         hole = 0
         list_set(self.fishers, hole, fisher)
@@ -458,7 +452,10 @@ class ClientThread(threading.Thread):
         if fisher:
           self.resend_to_fish(fisher)
         else:
-          self.err_scmd('No fisher for lure')
+          cmd = None
+          if self.rdata and (len(self.rdata)>0): cmd = ord(self.rdata[0])
+          if (cmd != EC_Bye):
+            self.err_scmd('No fisher for lure')
     elif (self.rcmd==EC_Bye):
       if self.rcode != ECC_Bye_Exit:
         mes = self.rdata
@@ -653,8 +650,10 @@ class ClientThread(threading.Thread):
         self.rcode = ECC_Bye_Exit
         self.rdata = None
         self.resend_to_fisher_hole(self.pool.collector, self.lure)
+        self.pool.collector.close_hole(self.lure)
+        #self.pool.collector.close_hole_of_fisher(self)
     for fisher in self.fishers:
-      fisher.close_hole_of_fisher(self)
+      if fisher: fisher.close_hole_of_fisher(self)
 
 
 class PoolThread(threading.Thread):
