@@ -91,9 +91,9 @@ if not $poly_launch
     end
   elsif os_family=='windows'
     require 'Win32API'
-    FindWindow = Win32API.new('user32', 'FindWindowA', ['P', 'P'], 'L')
+    FindWindow = Win32API.new('user32', 'FindWindow', ['P', 'P'], 'L')
     win_handle = FindWindow.call(nil, MAIN_WINDOW_TITLE)
-    if win_handle != 0
+    if (win_handle.is_a? Integer) and (win_handle>0)
       SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
       SetForegroundWindow.call(win_handle)
       ShowWindow = Win32API.new('user32', 'ShowWindow', 'L', 'V')
@@ -847,6 +847,20 @@ module PandoraUtils
 
   $max_hash_len = 20
 
+  def self.panhash_nil?(panhash)
+    res = true
+    if panhash.is_a? String
+      i = 2
+      while res and (i<panhash.size)
+        res = (panhash[i] == 0.chr)
+        i += 1
+      end
+    elsif panhash.is_a? Integer
+      res = (panhash == 0)
+    end
+    res
+  end
+
   def self.kind_from_panhash(panhash)
     kind = panhash[0].ord
   end
@@ -979,7 +993,7 @@ module PandoraUtils
               len = 14
             when 'Coord'
               view = 'coord'
-              len = 18
+              len = 24
             when 'Blog'
               if not fd[FI_Size] or fd[FI_Size].to_i>25
                 view = 'base64'
@@ -1447,16 +1461,13 @@ module PandoraUtils
             if fval.is_a? String
               fval = PandoraUtils.bytes_to_bigint(fval[2,4])
             end
-            if fval==0x7ffe4d8e
-              fval = 0
-            else
-              fval = fval.to_i
-              coord = PandoraUtils.int_to_coord(fval)
-              coord[0] = PandoraUtils.simplefy_coord(coord[0])
-              coord[1] = PandoraUtils.simplefy_coord(coord[1])
-              fval = PandoraUtils.coord_to_int(*coord)
-              fval = 1 if fval==0
-            end
+            res = fval.to_i
+            coord = PandoraUtils.int_to_coord(res)
+            coord[0] = PandoraUtils.simplify_coord(coord[0])
+            coord[1] = PandoraUtils.simplify_coord(coord[1])
+            fval = PandoraUtils.coord_to_int(*coord)
+            fval ||= res
+            fval = 1 if (fval.is_a? Integer) and (fval==0)
           elsif not (fval.is_a? Integer)
             fval = fval.to_i
           end
@@ -2029,7 +2040,7 @@ module PandoraUtils
               s = 0
             end
           end
-          p '[d, m, s]='+[d, m, s].inspect
+          #p '[d, m, s]='+[d, m, s].inspect
           res = d + m.fdiv(60) + s.fdiv(3600)
         else
           begin
@@ -2059,6 +2070,8 @@ module PandoraUtils
   DegY = 180
   MultX = 92681
   MultY = 46340
+
+  NilCoord = 0x7ffe4d8e
 
   def self.coord_to_int(y, x)
     begin
@@ -2093,21 +2106,24 @@ module PandoraUtils
     xp = (MultX * x.fdiv(DegX)).round
     yp = (MultY * y.fdiv(DegY)).round
     res = MultX*(yp-1)+xp
+    res = nil if res==NilCoord
     res
   end
+
+  CoordRound = 2
 
   def self.int_to_coord(int)
     h = (int.fdiv(MultX)).truncate + 1
     s = int - (h-1)*MultX
     x = s.fdiv(MultX)*DegX - 180.0
     y = h.fdiv(MultY)*DegY - 90.0
-    x = x.round(2)
+    x = x.round(CoordRound)
     x = 180.0 if (x==(-180.0))
-    y = y.round(2)
+    y = y.round(CoordRound)
     [y, x]
   end
 
-  def self.simplefy_coord(val)
+  def self.simplify_coord(val)
     val = val.round(1)
   end
 
@@ -3627,26 +3643,28 @@ module PandoraCrypto
     if key and key[KV_Obj] and key[KV_Creator]
       namesvalues = panobject.namesvalues
       matter_fields = panobject.matter_fields
-      #p 'sign: matter_fields='+matter_fields.inspect
-      sign = make_sign(key, PandoraUtils.namehash_to_pson(matter_fields))
 
-      time_now = Time.now.to_i
       obj_hash = namesvalues['panhash']
-      key_hash = key[KV_Panhash]
-      creator = key[KV_Creator]
+      if not PandoraUtils.panhash_nil?(obj_hash)
+        #p 'sign: matter_fields='+matter_fields.inspect
+        sign = make_sign(key, PandoraUtils.namehash_to_pson(matter_fields))
 
-      trust = PandoraModel.normalize_trust(trust, true)
+        time_now = Time.now.to_i
+        key_hash = key[KV_Panhash]
+        creator = key[KV_Creator]
 
-      values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, :pack=>PT_Pson1, \
-        :trust=>trust, :creator=>creator, :created=>time_now, :sign=>sign}
+        trust = PandoraModel.normalize_trust(trust, true)
 
-      sign_model = PandoraUtils.get_model('Sign', models)
-      panhash = sign_model.panhash(values)
-      #p '!!!!!!panhash='+PandoraUtils.bytes_to_hex(panhash).inspect
+        values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, :pack=>PT_Pson1, \
+          :trust=>trust, :creator=>creator, :created=>time_now, :sign=>sign}
 
-      values['panhash'] = panhash
+        sign_model = PandoraUtils.get_model('Sign', models)
+        panhash = sign_model.panhash(values)
+        #p '!!!!!!panhash='+PandoraUtils.bytes_to_hex(panhash).inspect
 
-      res = sign_model.update(values, nil, nil)
+        values['panhash'] = panhash
+        res = sign_model.update(values, nil, nil)
+      end
     end
     res
   end
@@ -3828,14 +3846,18 @@ module PandoraCrypto
       end
       #p '[aname, afamily]='+[aname, afamily].inspect
       if (not aname) and (not afamily) and (key.is_a? Array)
-        aname = PandoraUtils.bytes_to_hex(key[KV_Creator])
-        aname = aname[2, 10] if aname
-        afamily = PandoraUtils.bytes_to_hex(key[KV_Panhash])
-        afamily = afamily[2, 10] if afamily
+        aname = key[KV_Creator]
+        aname = aname[2, 5] if aname
+        aname = PandoraUtils.bytes_to_hex(aname)
+        afamily = key[KV_Panhash]
+        afamily = afamily[2, 5] if afamily
+        afamily = PandoraUtils.bytes_to_hex(afamily)
       end
       if (not aname) and (not afamily) and person
-        aname = PandoraUtils.bytes_to_hex(person)
-        aname = aname[2, 12] if aname
+        aname = person[2, 3]
+        aname = PandoraUtils.bytes_to_hex(aname) if aname
+        afamily = person[5, 4]
+        afamily = PandoraUtils.bytes_to_hex(afamily) if afamily
       end
       key[KV_NameFamily] = [aname, afamily] if key
     end
@@ -4189,6 +4211,8 @@ module PandoraNet
   ECC_Bye_DataTooShort  = 207
   ECC_Bye_DataTooLong   = 208
   ECC_Wait_NoHandlerYet = 209
+  ECC_Bye_NoAnswer      = 210
+  ECC_Bye_Silent        = 211
 
   # Режимы чтения
   RM_Comm      = 0   # Базовая команда
@@ -4330,7 +4354,6 @@ module PandoraNet
       lengt = data.bytesize if data
       #p log_mes+'SEND_ALL: [cmd, code, data.len]='+[cmd, code, lengt].inspect
       if donor
-        #out_lure = fish.get_out_lure_for_fisher(self)
         segment = [cmd, code].pack('CC')
         segment << data if data
         if fisher_lure
@@ -4614,7 +4637,7 @@ module PandoraNet
       end
 
       def set_max_pack_size(stage)
-        case stage
+        case @stage
           when ST_Protocol
             @max_pack_size = MPS_Proto
           when ST_Puzzle
@@ -4641,7 +4664,7 @@ module PandoraNet
         skey_panhash = params['srckey']
         #p log_mes+'     skey_panhash='+skey_panhash.inspect
         if (skey_panhash.is_a? String) and (skey_panhash.bytesize>0)
-          if first and (stage == ST_Protocol) and $puzzle_bit_length \
+          if first and (@stage == ST_Protocol) and $puzzle_bit_length \
           and ($puzzle_bit_length>0) and ((conn_mode & CM_Hunter) == 0)
             phrase, init = get_sphrase(true)
             phrase[-1] = $puzzle_bit_length.chr
@@ -4887,9 +4910,10 @@ module PandoraNet
         out_lure = nil
         val = [fisher, in_lure]
         out_lure = @fishers.index(val)
+        p '-===--take_out_lure_for_fisher  in_lure, out_lure='+[in_lure, out_lure].inspect
         if not out_lure
           i = 0
-          while (i<out_lure.size)
+          while (i<@fishers.size)
             break if (not (@fishers[i].is_a? Array))  #or (@fishers[i][0].destroyed?))
             i += 1
           end
@@ -4902,6 +4926,7 @@ module PandoraNet
       def get_out_lure_for_fisher(fisher, in_lure)
         val = [fisher, in_lure]
         out_lure = @fishers.index(val)
+        p '----get_out_lure_for_fisher  in_lure, out_lure='+[in_lure, out_lure].inspect
         out_lure
       end
 
@@ -4909,12 +4934,15 @@ module PandoraNet
         fisher, in_lure = nil, nil
         val = @fishers[out_lure] if out_lure.is_a? Integer
         fisher, in_lure = val if val.is_a? Array
+        p '~~~~~ get_fisher_for_out_lure  in_lure, out_lure='+[in_lure, out_lure].inspect
         [fisher, in_lure]
       end
 
       def free_out_lure_of_fisher(fisher, in_lure)
         val = [fisher, in_lure]
+        p '====//// free_out_lure_of_fisher(in_lure)='+in_lure.inspect
         while out_lure = @fishers.index(val)
+          p '//// free_out_lure_of_fisher(in_lure), out_lure='+[in_lure, out_lure].inspect
           @fishers[out_lure] = nil
           if fisher #and (not fisher.destroyed?)
             if fisher.donor
@@ -4926,11 +4954,13 @@ module PandoraNet
       end
 
       def set_fish_of_in_lure(in_lure, fish)
+        p '+++++set_fish_of_in_lure(in_lure)='+in_lure.inspect
         @fishes[in_lure] = fish if in_lure.is_a? Integer
       end
 
       def get_fish_for_in_lure(in_lure)
         fish = nil
+        p '+++++get_fish_for_in_lure(in_lure)='+in_lure.inspect
         if in_lure.is_a? Integer
           fish = @fishes[in_lure]
           #if fish #and fish.destroyed?
@@ -4948,6 +4978,7 @@ module PandoraNet
       def free_fish_of_in_lure(in_lure)
         if in_lure.is_a? Integer
           fish = @fishes[in_lure]
+          p '//// free_fish_of_in_lure(in_lure)='+in_lure.inspect
           @fishes[in_lure] = nil
           if fish #and (not fish.destroyed?)
             if fish.donor
@@ -4962,17 +4993,22 @@ module PandoraNet
       # RU: Отправляет сегмент от текущей рыбацкой сессии к сессии рыбки
       def send_segment_to_fish(in_lure, segment)
         res = nil
+        p '******send_segment_to_fish(in_lure)='+in_lure.inspect
         if segment and (segment.bytesize>1)
+          cmd = segment[0].ord
           fish = get_fish_for_in_lure(in_lure)
           if not fish
-            fish = pool.init_fish_for_fisher(self, in_lure, nil, nil)
-            set_fish_of_in_lure(in_lure, fish)
+            if cmd == EC_Bye
+              fish = false
+            else
+              fish = pool.init_fish_for_fisher(self, in_lure, nil, nil)
+              set_fish_of_in_lure(in_lure, fish)
+            end
           end
           #p 'send_segment_to_fish: in_lure,segsize='+[in_lure, segment.bytesize].inspect
           if fish
             if fish.donor == self
               #p 'DONOR lure'
-              cmd = segment[0].ord
               code = segment[1].ord
               data = nil
               data = segment[2..-1] if (segment.bytesize>2)
@@ -4984,7 +5020,7 @@ module PandoraNet
               p '-->Add LURE to resender: inlure ==>> outlure='+[in_lure, out_lure].inspect
               res = fish.send_queue.add_block_to_queue([EC_Lure, out_lure, segment]) if out_lure.is_a? Integer
             end
-          else
+          elsif fish.nil?
             @scmd = EC_Wait
             @scode = EC_Wait1_NoFish
             @scbuf = nil
@@ -5003,7 +5039,7 @@ module PandoraNet
         res = nil
         if segment and (segment.bytesize>1)
           fisher, in_lure = get_fisher_for_out_lure(out_lure)
-          p 'send_segment_to_fisher: out_lure,fisher,in_lure,segsize='+[out_lure, fisher, in_lure, segment.bytesize].inspect
+          p '&&&&& send_segment_to_fisher: out_lure,fisher,in_lure,segsize='+[out_lure, fisher, in_lure, segment.bytesize].inspect
           if fisher #and (not fisher.destroyed?)
             if fisher.donor == self
               p 'DONOR bite'
@@ -5033,9 +5069,9 @@ module PandoraNet
 
       case rcmd
         when EC_Init
-          if stage<=ST_Greeting
+          if @stage<=ST_Greeting
             if rcode<=ECC_Init_Answer
-              if (rcode==ECC_Init_Hello) and ((stage==ST_Protocol) or (stage==ST_Sign))
+              if (rcode==ECC_Init_Hello) and ((@stage==ST_Protocol) or (@stage==ST_Sign))
                 recognize_params
                 if scmd != EC_Bye
                   vers = params['version']
@@ -5051,7 +5087,7 @@ module PandoraNet
                   end
                 end
               elsif ((rcode==ECC_Init_Puzzle) or (rcode==ECC_Init_Phrase)) \
-              and ((stage==ST_Protocol) or (stage==ST_Greeting))
+              and ((@stage==ST_Protocol) or (@stage==ST_Greeting))
                 if rdata and (rdata != '')
                   rphrase = rdata
                   params['rphrase'] = rphrase
@@ -5096,7 +5132,7 @@ module PandoraNet
                 else
                   err_scmd('Empty received phrase')
                 end
-              elsif (rcode==ECC_Init_Answer) and (stage==ST_Puzzle)
+              elsif (rcode==ECC_Init_Answer) and (@stage==ST_Puzzle)
                 interval = nil
                 if $puzzle_sec_delay>0
                   start_time = params['puzzle_start']
@@ -5114,7 +5150,7 @@ module PandoraNet
                     err_scmd('Wrong sha1 solution')
                   end
                 end
-              elsif (rcode==ECC_Init_Sign) and (stage==ST_Sign)
+              elsif (rcode==ECC_Init_Sign) and (@stage==ST_Sign)
                 len = rdata[0].ord
                 sbase_id = rdata[1, len]
                 rsign = rdata[len+1..-1]
@@ -5165,7 +5201,7 @@ module PandoraNet
                 else
                   err_scmd('Cannot init your key')
                 end
-              elsif (rcode==ECC_Init_Simple) and (stage==ST_Protocol)
+              elsif (rcode==ECC_Init_Simple) and (@stage==ST_Protocol)
                 p 'ECC_Init_Simple!'
                 rphrase = rdata
                 #p 'rphrase='+rphrase.inspect
@@ -5179,7 +5215,7 @@ module PandoraNet
                 else
                   err_scmd('Node password is not setted')
                 end
-              elsif (rcode==ECC_Init_Captcha) and ((stage==ST_Protocol) or (stage==ST_Greeting))
+              elsif (rcode==ECC_Init_Captcha) and ((@stage==ST_Protocol) or (@stage==ST_Greeting))
                 p log_mes+'CAPTCHA!!!  ' #+params.inspect
                 if ((conn_mode & CM_Hunter) == 0)
                   err_scmd('Captcha for listener is denied')
@@ -5206,7 +5242,7 @@ module PandoraNet
                     err_scmd('Captcha enter canceled')
                   end
                 end
-              elsif (rcode==ECC_Init_Answer) and (stage==ST_Captcha)
+              elsif (rcode==ECC_Init_Answer) and (@stage==ST_Captcha)
                 captcha = rdata
                 p log_mes+'recived captcha='+captcha if captcha
                 if captcha.downcase==params['captcha']
@@ -5237,60 +5273,15 @@ module PandoraNet
           else
             err_scmd('Wrong stage for rcmd')
           end
-        when EC_Message, EC_Channel
-          #curpage = nil
-          p log_mes+'mes len='+@rdata.bytesize.to_s
-          if not dialog
-            #node = pool.encode_node(host_ip, port, proto)
-            panhash = @skey[PandoraCrypto::KV_Creator]
-            @dialog = PandoraGUI.show_talk_dialog(panhash, @node_panhash)
-            #curpage = dialog
-            Thread.pass
-            #sleep(0.1)
-            #Thread.pass
-            #p log_mes+'NEW dialog1='+dialog.inspect
-            #p log_mes+'NEW dialog2='+@dialog.inspect
-          end
-          if rcmd==EC_Message
-            mes = @rdata
-            talkview = nil
-            #p log_mes+'MES dialog='+dialog.inspect
-            talkview = dialog.talkview if dialog
-            if talkview
-              t = Time.now
-              talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
-              talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
-              myname = PandoraCrypto.short_name_of_person(@rkey)
-              dude_name = PandoraCrypto.short_name_of_person(@skey, nil, 0, myname)
-              talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', 'dude_bold')
-              talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
-              talkview.parent.vadjustment.value = talkview.parent.vadjustment.upper
-              talkview.show_all
-              dialog.update_state(true)
-            else
-              log_message(LM_Error, 'Пришло сообщение, но лоток чата не найдено!')
-            end
-          else #EC_Channel
-            case rcode
-              when ECC_Channel0_Open
-                p 'ECC_Channel0_Open'
-              when ECC_Channel2_Close
-                p 'ECC_Channel2_Close'
-            else
-              log_message(LM_Error, 'Неизвестный код управления каналом: '+rcode.to_s)
-            end
-          end
-        when EC_Media
-          process_media_segment(rcode, rdata)
         when EC_Request
           kind = rcode
-          p log_mes+'EC_Request  kind='+kind.to_s+'  stage='+stage.to_s
+          p log_mes+'EC_Request  kind='+kind.to_s+'  stage='+@stage.to_s
           panhash = nil
-          if (kind==PandoraModel::PK_Key) and ((stage==ST_Protocol) or (stage==ST_Greeting))
+          if (kind==PandoraModel::PK_Key) and ((@stage==ST_Protocol) or (@stage==ST_Greeting))
             panhash = params['mykey']
             p 'params[mykey]='+panhash
           end
-          if (stage==ST_Exchange) or (stage==ST_Greeting) or panhash
+          if (@stage==ST_Exchange) or (@stage==ST_Greeting) or panhash
             panhashes = nil
             if kind==0
               panhashes, len = PandoraUtils.pson_elem_to_rubyobj(panhashes)
@@ -5346,17 +5337,17 @@ module PandoraNet
           p log_mes+' EC_Record: [rcode, rdata.bytesize]='+[rcode, rdata.bytesize].inspect
           if rcode>0
             kind = rcode
-            if (stage==ST_Exchange) or ((kind==PandoraModel::PK_Key) and (stage==ST_KeyRequest))
+            if (@stage==ST_Exchange) or ((kind==PandoraModel::PK_Key) and (@stage==ST_KeyRequest))
               lang = rdata[0].ord
               values = PandoraUtils.pson_to_namehash(rdata[1..-1])
               panhash = nil
-              if stage==ST_KeyRequest
+              if @stage==ST_KeyRequest
                 panhash = params['srckey']
               end
               res = PandoraModel.save_record(kind, lang, values, @recv_models, panhash)
               if res
-                if stage==ST_KeyRequest
-                  stage = ST_Protocol
+                if @stage==ST_KeyRequest
+                  @stage = ST_Protocol
                   init_skey_or_error(false)
                 end
               elsif res==false
@@ -5368,7 +5359,7 @@ module PandoraNet
               err_scmd('Record ('+kind.to_s+') came on wrong stage')
             end
           else
-            if (stage==ST_Exchange)
+            if (@stage==ST_Exchange)
               records, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
               p log_mes+"!record2! recs="+records.inspect
               records.each do |record|
@@ -5383,44 +5374,6 @@ module PandoraNet
             else
               err_scmd('Records came on wrong stage')
             end
-          end
-        when EC_Query
-          case rcode
-            when ECC_Query0_Kinds
-              afrom_data=rdata
-              @scmd=EC_News
-              pkinds="3,7,11"
-              @scode=ECC_News0_Kinds
-              @sbuf=pkinds
-            else #(1..255) - запрос сорта/всех сортов, если 255
-              afrom_data=rdata
-              akind=rcode
-              if akind==ECC_Query255_AllChanges
-                pkind=3 #отправка первого кайнда из серии
-              else
-                pkind=akind  #отправка только запрашиваемого
-              end
-              @scmd=EC_News
-              pnoticecount=3
-              @scode=pkind
-              @sbuf=[pnoticecount].pack('N')
-          end
-        when EC_News
-          p "news!!!!"
-          if rcode==ECC_News0_Kinds
-            pcount = rcode
-            pkinds = rdata
-            @scmd=EC_Query
-            @scode=ECC_Query255_AllChanges
-            fromdate="01.01.2012"
-            @sbuf=fromdate
-          else
-            p "news more!!!!"
-            pkind = rcode
-            pnoticecount = rdata.unpack('N')
-            @scmd=EC_Sync
-            @scode=0
-            @sbuf=''
           end
         when EC_Lure
           send_segment_to_fish(rcode, rdata)
@@ -5442,16 +5395,109 @@ module PandoraNet
               log_message(LM_Error, _('Cannot find a fish'))
           end
         when EC_Bye
-          if rcode != ECC_Bye_Exit
+          errcode = ECC_Bye_Exit
+          if rcode == ECC_Bye_NoAnswer
+            errcode = ECC_Bye_Silent
+          elsif rcode != ECC_Bye_Exit
             mes = rdata
             mes ||= ''
             log_message(LM_Error, _('Error at other side')+' ErrCode='+rcode.to_s+' "'+mes+'"')
           end
-          err_scmd(nil, ECC_Bye_Exit, false)
+          err_scmd(nil, errcode, false)
           @conn_state = CS_Stoping
         else
-          err_scmd('Unknown command is recieved '+rcmd.to_s, ECC_Bye_Unknown)
-          @conn_state = CS_Stoping
+          if @stage>=ST_Exchange
+            case rcmd
+              when EC_Message, EC_Channel
+                #curpage = nil
+                p log_mes+'mes len='+@rdata.bytesize.to_s
+                if not dialog
+                  #node = pool.encode_node(host_ip, port, proto)
+                  panhash = @skey[PandoraCrypto::KV_Creator]
+                  @dialog = PandoraGUI.show_talk_dialog(panhash, @node_panhash)
+                  #curpage = dialog
+                  Thread.pass
+                  #sleep(0.1)
+                  #Thread.pass
+                  #p log_mes+'NEW dialog1='+dialog.inspect
+                  #p log_mes+'NEW dialog2='+@dialog.inspect
+                end
+                if rcmd==EC_Message
+                  mes = @rdata
+                  talkview = nil
+                  #p log_mes+'MES dialog='+dialog.inspect
+                  talkview = dialog.talkview if dialog
+                  if talkview
+                    t = Time.now
+                    talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
+                    talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
+                    myname = PandoraCrypto.short_name_of_person(@rkey)
+                    dude_name = PandoraCrypto.short_name_of_person(@skey, nil, 0, myname)
+                    talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', 'dude_bold')
+                    talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
+                    talkview.parent.vadjustment.value = talkview.parent.vadjustment.upper
+                    talkview.show_all
+                    dialog.update_state(true)
+                  else
+                    log_message(LM_Error, 'Пришло сообщение, но лоток чата не найдено!')
+                  end
+                else #EC_Channel
+                  case rcode
+                    when ECC_Channel0_Open
+                      p 'ECC_Channel0_Open'
+                    when ECC_Channel2_Close
+                      p 'ECC_Channel2_Close'
+                  else
+                    log_message(LM_Error, 'Неизвестный код управления каналом: '+rcode.to_s)
+                  end
+                end
+              when EC_Media
+                process_media_segment(rcode, rdata)
+              when EC_Query
+                case rcode
+                  when ECC_Query0_Kinds
+                    afrom_data=rdata
+                    @scmd=EC_News
+                    pkinds="3,7,11"
+                    @scode=ECC_News0_Kinds
+                    @sbuf=pkinds
+                  else #(1..255) - запрос сорта/всех сортов, если 255
+                    afrom_data=rdata
+                    akind=rcode
+                    if akind==ECC_Query255_AllChanges
+                      pkind=3 #отправка первого кайнда из серии
+                    else
+                      pkind=akind  #отправка только запрашиваемого
+                    end
+                    @scmd=EC_News
+                    pnoticecount=3
+                    @scode=pkind
+                    @sbuf=[pnoticecount].pack('N')
+                end
+              when EC_News
+                p "news!!!!"
+                if rcode==ECC_News0_Kinds
+                  pcount = rcode
+                  pkinds = rdata
+                  @scmd=EC_Query
+                  @scode=ECC_Query255_AllChanges
+                  fromdate="01.01.2012"
+                  @sbuf=fromdate
+                else
+                  p "news more!!!!"
+                  pkind = rcode
+                  pnoticecount = rdata.unpack('N')
+                  @scmd=EC_Sync
+                  @scode=0
+                  @sbuf=''
+                end
+              else
+                err_scmd('Unknown command is recieved '+rcmd.to_s, ECC_Bye_Unknown)
+                @conn_state = CS_Stoping
+            end
+          else
+            err_scmd('Wrong stage for rcmd')
+          end
       end
       #[rcmd, rcode, rdata, scmd, scode, sbuf]
     end
@@ -5784,7 +5830,11 @@ module PandoraNet
               #ssbuf = Base64.strict_encode64(@sbuf)
             end
             #p log_mes+'MAIN SEND: '+[@sindex, sscmd, sscode, ssbuf].inspect
-            @sindex = send_comm_and_data(@sindex, sscmd, sscode, ssbuf)
+            if (sscmd != EC_Bye) or (sscode != ECC_Bye_Silent)
+              @sindex = send_comm_and_data(@sindex, sscmd, sscode, ssbuf)
+            else
+              p 'SILENT!!!!!!!!'
+            end
             if (sscmd==EC_Sync) and (sscode==ECC_Sync2_Encode)
               @s_encode = true
             end
@@ -5807,7 +5857,7 @@ module PandoraNet
 
         # выполнить несколько заданий почемучки по его шагам
         processed = 0
-        while (@conn_state == CS_Connected) and (stage>=ST_Exchange) \
+        while (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
         and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$inquire_block_count) \
         and (inquirer_step<IS_Finished)
           case inquirer_step
@@ -5835,7 +5885,7 @@ module PandoraNet
         # разгрузка принятых буферов в gstreamer
         processed = 0
         cannel = 0
-        while (@conn_state == CS_Connected) and (stage>=ST_Exchange) \
+        while (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
         and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
         and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size)
           if dialog.recv_media_pipeline[cannel] and dialog.appsrcs[cannel]
@@ -5865,7 +5915,7 @@ module PandoraNet
         processed = 0
         #p log_mes+'----------send_state1='+send_state.inspect
         #sleep 1
-        if (@conn_state == CS_Connected) and (stage>=ST_Exchange) \
+        if (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
         and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
           fast_data = true
           @send_state = (send_state & (~CSF_Message))
@@ -5913,7 +5963,7 @@ module PandoraNet
 
         # пакетирование медиа буферов
         if ($send_media_queues.size>0) and $send_media_rooms \
-        and (@conn_state == CS_Connected) and (stage>=ST_Exchange) \
+        and (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
         and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
         and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
         or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
@@ -5978,25 +6028,27 @@ module PandoraNet
       @socket_thread.exit if @socket_thread
       @read_thread.exit if @read_thread
       if donor #and (not donor.destroyed?)
+        p 'DONOR free!!!!'
+        if donor.socket and (not donor.socket.closed?)
+          @sindex = send_comm_and_data(@sindex, EC_Bye, ECC_Bye_NoAnswer, nil)
+        end
         if fisher_lure
+          p 'free_out_lure fisher_lure='+fisher_lure.inspect
           donor.free_out_lure_of_fisher(self, fisher_lure)
         else
+          p 'free_fish fish_lure='+fish_lure.inspect
           donor.free_fish_of_in_lure(fish_lure)
         end
       end
-      i = fishes.size
-      while (i>0)
-        i -= 1
-        fish = fishes[i]
-        fish.free_out_lure_of_fisher(self, i) if fish #and (not fish.destroyed?)
+      fishes.each_index do |i|
+        free_fish_of_in_lure(i)
       end
-      i = fishers.size
-      while (i>0)
-        i -= 1
+      fishers.each do |val|
         fisher = nil
-        val = fishers[i]
-        fisher, out_lure = val if val.is_a? Integer
-        fisher.free_fish_of_in_lure(i) if fisher #and (not fisher.destroyed?)
+        in_lure = nil
+        fisher, in_lure = val if val.is_a? Array
+        fisher.free_fish_of_in_lure(in_lure) if (fisher and in_lure) #and (not fisher.destroyed?)
+        #fisher.free_out_lure_of_fisher(self, i) if fish #and (not fish.destroyed?)
       end
 
       @conn_state = CS_Disconnected
@@ -6462,7 +6514,7 @@ module PandoraGUI
   # Entry with allowed symbols of mask
   # RU: Поле ввода с допустимыми символами в маске
   class MaskEntry < Gtk::Entry
-    attr_accessor :tooltip, :mask
+    attr_accessor :mask
     def initialize
       super
       signal_connect('key-press-event') do |widget, event|
@@ -6476,10 +6528,10 @@ module PandoraGUI
         res
       end
       @mask = nil
-      @tooltip = nil
+      tooltip = nil
       init_mask
       if (not tooltip) and mask and (mask.size>0)
-        @tooltip = '['+mask+']'
+        tooltip = '['+mask+']'
       end
       self.tooltip_text = tooltip if tooltip
     end
@@ -6528,7 +6580,7 @@ module PandoraGUI
       super
       @mask = '0123456789.'
       self.max_length = 10
-      @tooltip = 'MM.DD.YYYY'
+      self.tooltip_text = 'MM.DD.YYYY'
     end
   end
 
@@ -6537,7 +6589,7 @@ module PandoraGUI
       super
       @mask += ' :'
       self.max_length = 16
-      @tooltip = 'MM.DD.YYYY hh:mm:ss'
+      self.tooltip_text = 'MM.DD.YYYY hh:mm:ss'
     end
   end
 
@@ -6603,7 +6655,11 @@ module PandoraGUI
               panhash = sel[0][0] if sel and (sel.size>0)
             end
           end
-          @entry.text = PandoraUtils.bytes_to_hex(panhash) if (panhash.is_a? String)
+          if PandoraUtils.panhash_nil?(panhash)
+            @entry.text = ''
+          else
+            @entry.text = PandoraUtils.bytes_to_hex(panhash) if (panhash.is_a? String)
+          end
         end
         #yield if block_given?
       end
@@ -6664,7 +6720,9 @@ module PandoraGUI
     def initialize
       super
       @latitude   = CoordEntry.new
+      latitude.tooltip_text = _('Latitude')+': 60.716, 60 43\', 60.43\'00"N'
       @longitude  = CoordEntry.new
+      longitude.tooltip_text = _('Longitude')+': -114.9, W114 54\' 0", 114.9W'
       latitude.width_request = CoordWidth
       longitude.width_request = CoordWidth
       self.pack_start(latitude, false, false, 0)
@@ -9807,7 +9865,7 @@ module PandoraGUI
   class PandoraStatusIcon < Gtk::StatusIcon
     attr_accessor :main_icon
 
-    def initialize(a_update_win_icon=false, a_flash_interval=0)
+    def initialize(a_update_win_icon=false, a_flash_on_new=true, a_flash_interval=0)
       super()
 
       @main_icon = nil
@@ -9826,8 +9884,8 @@ module PandoraGUI
       end
 
       @update_win_icon = a_update_win_icon
+      @flash_on_new = a_flash_on_new
       @flash_interval = (a_flash_interval.to_f*1000).round
-      @flash_on_mes = (@flash_interval>0)
 
       @message = nil
       @flash = false
@@ -9844,49 +9902,66 @@ module PandoraGUI
       end
 
       signal_connect('popup-menu') do |widget, button, activate_time|
-        p 'widget, button, activate_time='+[widget, button, activate_time].inspect
-        menu = Gtk::Menu.new
-        checkmenuitem = Gtk::CheckMenuItem.new('Blink')
-        checkmenuitem.signal_connect('activate') do |w|
-          if @message
-            set_message
-          else
-            set_message('Иван Петров, сообщение')
-          end
-        end
-        menu.append(checkmenuitem)
-
-        menuitem = Gtk::MenuItem.new(_('_Quit'))
-        menuitem.signal_connect('activate') do
-          widget.set_visible(false)
-          $window.destroy
-        end
-        menu.append(menuitem)
-        menu.show_all
-        menu.popup(nil, nil, button, activate_time)
+        @menu ||= create_menu
+        @menu.popup(nil, nil, button, activate_time)
       end
+    end
+
+    def create_menu
+      menu = Gtk::Menu.new
+
+      checkmenuitem = Gtk::CheckMenuItem.new(_('Flash on new'))
+      checkmenuitem.active = @flash_on_new
+      checkmenuitem.signal_connect('activate') do |w|
+        @flash_on_new = w.active?
+        set_message(@message)
+      end
+      menu.append(checkmenuitem)
+
+      checkmenuitem = Gtk::CheckMenuItem.new(_('Update window icon'))
+      checkmenuitem.active = @update_win_icon
+      checkmenuitem.signal_connect('activate') do |w|
+        @update_win_icon = w.active?
+        $window.icon = @main_icon
+      end
+      menu.append(checkmenuitem)
+
+      menuitem = Gtk::SeparatorMenuItem.new
+      menu.append(menuitem)
+
+      menuitem = Gtk::ImageMenuItem.new(Gtk::Stock::QUIT)
+      menuitem.signal_connect('activate') do |w|
+        self.set_visible(false)
+        $window.destroy
+      end
+      menu.append(menuitem)
+      menu.show_all
+      menu
     end
 
     def set_message(message=nil)
       if (message.is_a? String) and (message.size>0)
         @message = message
         set_tooltip(message)
-        set_flash(true) if @flash_on_mes
+        set_flash(@flash_on_new)
       else
         @message = nil
         set_tooltip($window.title)
         set_flash(false)
       end
-      update_icon
     end
 
     def set_flash(flash=true)
       @flash = flash
-      if flash and (not @timer)
+      if flash
         @flash_status = 1
-        update_icon
-        timeout_func
+        if not @timer
+          timeout_func
+        end
+      else
+        @flash_status = 0
       end
+      update_icon
     end
 
     def update_icon
@@ -9895,7 +9970,7 @@ module PandoraGUI
       else
         self.pixbuf = @main_icon
       end
-      $window.icon = self.pixbuf if (@update_win_icon and $window.visible?)
+      $window.icon = self.pixbuf if @update_win_icon and $window.visible?
     end
 
     def timeout_func
@@ -10583,8 +10658,9 @@ module PandoraGUI
       end
 
       update_win_icon = PandoraUtils.get_param('status_update_win_icon')
+      flash_on_new = PandoraUtils.get_param('status_flash_on_new')
       flash_interval = PandoraUtils.get_param('status_flash_interval')
-      $statusicon = PandoraGUI::PandoraStatusIcon.new(update_win_icon, flash_interval)
+      $statusicon = PandoraGUI::PandoraStatusIcon.new(update_win_icon, flash_on_new, flash_interval)
 
       $window.signal_connect('destroy') do |window|
         while (not $window.notebook.destroyed?) and ($window.notebook.children.count>0)

@@ -208,3 +208,10 @@ Cannot add segment to send queue=>Не могу добавить сегмент 
 Change password=>Сменить пароль
 New password=>Новый пароль
 Registry=>Регистрация
+Examples=>Примеры
+Example=>Пример
+Latitude=>Широта
+Longitude=>Долгота
+Flash on new=>Мигать при новых
+Update window icon=>Обновлять иконку окна
+
