@@ -1784,7 +1784,7 @@ module PandoraUtils
     param_model = PandoraUtils.get_model('Parameter')
     sel = param_model.select({'name'=>name}, false, 'value, id, type')
     if not sel[0]
-      # parameter was not found
+      #p 'parameter was not found: ['+name+']'
       ind = $pandora_parameters.index{ |row| row[PF_Name]==name }
       if ind
         # default description is found, create parameter
@@ -1799,6 +1799,7 @@ module PandoraUtils
           :section=>section, :setting=>row[PF_Setting], :modified=>Time.now.to_i }
         panhash = param_model.panhash(values)
         values['panhash'] = panhash
+        #p 'add param: '+values.inspect
         param_model.update(values, nil, nil)
         sel = param_model.select({'name'=>name}, false, 'value, id, type')
       end
@@ -2505,7 +2506,7 @@ module PandoraUtils
     #start, mplayer(9x), mplay32(xp), wmplayer(vista)
     #start c:\music\"my song.mp3"
     #mplay32 /play /close "c:\windows\media\windows xp error.wav"
-    $mp3_player = 'start'
+    $mp3_player = 'mplay32 /play /close'
   end
 
   $play_thread = nil
@@ -10695,6 +10696,12 @@ module PandoraGUI
       flash_on_new = PandoraUtils.get_param('status_flash_on_new')
       flash_interval = PandoraUtils.get_param('status_flash_interval')
       play_sounds = PandoraUtils.get_param('play_sounds')
+      if os_family=='windows'
+        $mp3_player = PandoraUtils.get_param('win_mp3_player')
+      else
+        $mp3_player = PandoraUtils.get_param('linux_mp3_player')
+      end
+
       $statusicon = PandoraGUI::PandoraStatusIcon.new(update_win_icon, flash_on_new, flash_interval, play_sounds)
 
       $window.signal_connect('destroy') do |window|
