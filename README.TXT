@@ -143,6 +143,9 @@ Warning: change "yournick" to your nick!
 
   https://github.com/yournick/Pandora/pull/new/master
 
+If your contribution will be rated as useful it will be added to next release.
+When you show yourself like active developer you will be added as collaborator.
+
 
 8. GETTING HELP
 

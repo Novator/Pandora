@@ -8,7 +8,7 @@
 # 2012 (c) Michael Galyuk
 # RU: 2012 (c) Михаил Галюк
 
-import time, termios, fcntl, sys, os, socket, threading, struct, binascii, time, hashlib
+import time, datetime, termios, fcntl, sys, os, socket, threading, struct, binascii, hashlib
 
 # Server settings
 TCP_IP = '0.0.0.0'
@@ -19,6 +19,7 @@ MAX_CONNECTIONS = 10
 PASSWORD_HASH = hashlib.sha256('123456').digest()
 OWNER_KEY_PANHASH = 'dd0308eed0743cba54d1e2f7838fcd3943be51e67b1f'.decode('hex')
 CLIENT_MEDIA_FIRST_ALLOW = False
+LOG_FLUSH_INTERVAL = 2
 
 ROOT_PATH = os.path.abspath('.')
 KEEPALIVE = 1 #(on/off)
@@ -132,10 +133,10 @@ IS_Finished      = 255
 LONG_SEG_SIGN   = 0xFFFF
 
 logfile = None
+flush_time = None
 
 def logmes(mes, show=True, addr=None):
-  if show: print(mes)
-  global logfile
+  global logfile, flush_time
   if (not logfile) and (logfile != False):
     if LOG_FILE_NAME and (len(LOG_FILE_NAME)>0):
       filename = LOG_FILE_NAME
@@ -151,11 +152,18 @@ def logmes(mes, show=True, addr=None):
     else:
       logfile = False
       print('Log-file is off.')
-  if logfile:
-    timestr = time.strftime('%Y.%m.%d %H:%M:%S')
-    addr = ''
-    if addr: addr = ' '+str(addr)
-    logfile.write(timestr+'  '+str(mes)+addr+'\n')
+  if logfile or show:
+    cur_time = datetime.datetime.now()
+    time_str = cur_time.strftime('%Y.%m.%d %H:%M:%S')
+    mes = str(mes)
+    if show: print('Log'+time_str[-11:]+': '+mes)
+    if logfile:
+      addr = ''
+      if addr: addr = ' '+str(addr)
+      logfile.write(time_str+': '+mes+addr+'\n')
+      if (not flush_time) or (cur_time >= (flush_time + datetime.timedelta(0, LOG_FLUSH_INTERVAL))):
+        logfile.flush()
+        sync_time = cur_time
 
 def closelog():
   global logfile

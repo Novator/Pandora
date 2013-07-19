@@ -264,17 +264,30 @@ def level_to_str(level)
     when LM_Trace
       mes = _('Trace')
   end
-  mes = '['+mes+'] ' if mes != ''
 end
+
+MaxLogViewLineCount = 500
 
 # Log message
 # RU: Добавить сообщение в лог
 def log_message(level, mes)
-  mes = level_to_str(level).to_s+mes
-  if $window.log_view
-    $window.log_view.buffer.insert($window.log_view.buffer.end_iter, mes+"\n")
-    #log_view.move_viewport(Gtk::SCROLL_ENDS, 1)
-    $window.log_view.parent.vadjustment.value = $window.log_view.parent.vadjustment.upper
+  time = Time.now
+  lev = level_to_str(level)
+  lev = ' ['+lev+']' if (lev.is_a? String) and (lev.size>0)
+  lev ||= ''
+  mes = time.strftime('%H:%M:%S') + lev + ': '+mes
+  log_view = $window.log_view
+  if log_view
+    value = log_view.parent.vadjustment.value
+    log_view.before_addition(time, value)
+    log_view.buffer.insert(log_view.buffer.end_iter, mes+"\n")
+    aline_count = log_view.buffer.line_count
+    if aline_count>MaxLogViewLineCount
+      first = log_view.buffer.start_iter
+      last = log_view.buffer.get_iter_at_line_offset(aline_count-MaxLogViewLineCount-1, 0)
+      log_view.buffer.delete(first, last)
+    end
+    log_view.after_addition
   else
     puts mes
   end
@@ -2516,7 +2529,7 @@ module PandoraUtils
       $play_thread = Thread.new do
         path ||= $pandora_view_dir
         full_name = File.join(path, filename)
-        system($mp3_player, full_name)
+        system($mp3_player+' "'+full_name+'"')
         $play_thread = nil
       end
     end
@@ -5449,13 +5462,14 @@ module PandoraNet
                   talkview = dialog.talkview if dialog
                   if talkview
                     t = Time.now
+                    talkview.before_addition(t)
                     talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
                     talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
                     myname = PandoraCrypto.short_name_of_person(@rkey)
                     dude_name = PandoraCrypto.short_name_of_person(@skey, nil, 0, myname)
                     talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', 'dude_bold')
                     talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
-                    talkview.parent.vadjustment.value = talkview.parent.vadjustment.upper
+                    talkview.after_addition
                     talkview.show_all
                     dialog.update_state(true)
                   else
@@ -6785,6 +6799,36 @@ module PandoraGUI
       res = longitude.size_request
       res[0] = size1[0]+1+res[0]
       res
+    end
+  end
+
+  MaxOnePlaceViewSec = 60
+
+  class ExtTextView < Gtk::TextView
+    attr_accessor :need_to_end, :middle_time, :middle_value
+
+    def before_addition(cur_time=nil, vadj_value=nil)
+      cur_time ||= Time.now
+      vadj_value ||= self.parent.vadjustment.value
+      @need_to_end = ((vadj_value + self.parent.vadjustment.page_size) == self.parent.vadjustment.upper)
+      if not @need_to_end
+        if @middle_time and @middle_value and (@middle_value == vadj_value)
+          if ((cur_time.to_i - @middle_time.to_i) > MaxOnePlaceViewSec)
+            @need_to_end = true
+            @middle_time = nil
+          end
+        else
+          @middle_time = cur_time
+          @middle_value = vadj_value
+        end
+      end
+      @need_to_end
+    end
+
+    def after_addition(go_to_end=nil)
+      go_to_end ||= @need_to_end
+      self.parent.vadjustment.value = self.parent.vadjustment.upper if go_to_end
+      go_to_end
     end
   end
 
@@ -8608,7 +8652,7 @@ module PandoraGUI
       vpaned1.pack2(hbox, false, true)
       vpaned1.set_size_request(350, 270)
 
-      @talkview = Gtk::TextView.new
+      @talkview = PandoraGUI::ExtTextView.new
       talkview.set_size_request(200, 200)
       talkview.wrap_mode = Gtk::TextTag::WRAP_WORD
       #view.cursor_visible = false
@@ -8645,7 +8689,7 @@ module PandoraGUI
               myname = PandoraCrypto.short_name_of_person(mykey)
               talkview.buffer.insert(talkview.buffer.end_iter, myname+':', 'you_bold')
               talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
-              talkview.parent.vadjustment.value = talkview.parent.vadjustment.upper
+              talkview.after_addition(true)
               editbox.buffer.text = ''
             end
           end
@@ -9884,16 +9928,27 @@ module PandoraGUI
   end
 
   class PandoraStatusIcon < Gtk::StatusIcon
-    attr_accessor :main_icon, :play_sounds
+    attr_accessor :main_icon, :play_sounds, :online
 
     def initialize(a_update_win_icon=false, a_flash_on_new=true, a_flash_interval=0, a_play_sounds=true)
       super()
 
+      @online = false
       @main_icon = nil
       if $window.icon
         @main_icon = $window.icon
       else
         @main_icon = $window.render_icon(Gtk::Stock::HOME, Gtk::IconSize::LARGE_TOOLBAR)
+      end
+      @base_icon = @main_icon
+
+      @online_icon = nil
+      begin
+        @online_icon = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'online.ico'))
+      rescue Exception
+      end
+      if not @online_icon
+        @online_icon = $window.render_icon(Gtk::Stock::INFO, Gtk::IconSize::LARGE_TOOLBAR)
       end
 
       begin
@@ -9944,7 +9999,7 @@ module PandoraGUI
       checkmenuitem.active = @update_win_icon
       checkmenuitem.signal_connect('activate') do |w|
         @update_win_icon = w.active?
-        $window.icon = @main_icon
+        $window.icon = @base_icon
       end
       menu.append(checkmenuitem)
 
@@ -9968,6 +10023,16 @@ module PandoraGUI
       menu.append(menuitem)
       menu.show_all
       menu
+    end
+
+    def set_online(state=nil)
+      base_icon0 = @base_icon
+      if state
+        @base_icon = @online_icon
+      elsif state==false
+        @base_icon = @main_icon
+      end
+      update_icon
     end
 
     def set_message(message=nil)
@@ -9996,12 +10061,18 @@ module PandoraGUI
     end
 
     def update_icon
+      stat_icon = nil
       if @message and ((not @flash) or (@flash_status==1))
-        self.pixbuf = @message_icon
+        stat_icon = @message_icon
       else
-        self.pixbuf = @main_icon
+        stat_icon = @base_icon
       end
-      $window.icon = self.pixbuf if @update_win_icon and $window.visible?
+      self.pixbuf = stat_icon if (self.pixbuf != stat_icon)
+      if @update_win_icon
+        $window.icon = stat_icon if $window.visible? and ($window.icon != stat_icon)
+      else
+        $window.icon = @main_icon if ($window.icon != @main_icon)
+      end
     end
 
     def timeout_func
@@ -10214,6 +10285,8 @@ module PandoraGUI
         @fisher_count += diff_count
       end
       set_status_field(SF_Conn, hunter_count.to_s+'/'+listener_count.to_s+'/'+fisher_count.to_s)
+      online = ((@hunter_count>0) or (@listener_count>0) or (@fisher_count>0))
+      $statusicon.set_online(online)
     end
 
     $toggle_buttons = []
@@ -10517,7 +10590,7 @@ module PandoraGUI
       ['Delegation', nil, 'Delegations'],
       ['Registry', nil, 'Registry'],
       [nil, nil, '_Pandora'],
-      ['Parameter', Gtk::Stock::PREFERENCES, 'Parameters'],
+      ['Parameter', Gtk::Stock::PROPERTIES, 'Parameters'],
       ['-', nil, '-'],
       ['Key', Gtk::Stock::DIALOG_AUTHENTICATION, 'Keys'],
       ['Sign', nil, 'Signs'],
@@ -10527,13 +10600,13 @@ module PandoraGUI
       ['Event', nil, 'Events'],
       ['Fishhook', nil, 'Fishhooks'],
       ['-', nil, '-'],
-      ['Authorize', nil, 'Authorize', '<control>I'],
+      ['Authorize', nil, 'Authorize', '<control>U'],
       ['Listen', Gtk::Stock::CONNECT, 'Listen', '<control>L', :check],
       ['Hunt', Gtk::Stock::REFRESH, 'Hunt', '<control>H', :check],
       ['Search', Gtk::Stock::FIND, 'Search'],
       ['-', nil, '-'],
       ['Profile', Gtk::Stock::HOME, 'Profile'],
-      ['Wizard', Gtk::Stock::PROPERTIES, 'Wizards'],
+      ['Wizard', Gtk::Stock::PREFERENCES, 'Wizards'],
       ['-', nil, '-'],
       ['Quit', Gtk::Stock::QUIT, '_Quit', '<control>Q'],
       ['Close', Gtk::Stock::CLOSE, '_Close', '<control>W'],
@@ -10638,7 +10711,7 @@ module PandoraGUI
         $last_page = cur_page
       end
 
-      @log_view = Gtk::TextView.new
+      @log_view = PandoraGUI::ExtTextView.new
       log_view.can_focus = false
       log_view.has_focus = false
       log_view.receives_default = true
@@ -10714,7 +10787,11 @@ module PandoraGUI
       end
 
       $window.signal_connect('key-press-event') do |widget, event|
-        if event.keyval == Gdk::Keyval::GDK_F5
+        p event.keyval
+        if ([Gdk::Keyval::GDK_m, Gdk::Keyval::GDK_M, 1752, 1784].include?(event.keyval) \
+        and event.state.control_mask?)
+          $window.hide
+        elsif event.keyval == Gdk::Keyval::GDK_F5
           PandoraNet.hunt_nodes
         elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
         and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
