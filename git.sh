@@ -1,10 +1,13 @@
 #!/bin/sh
 
-## These hot commands of Git are using for maintenance Pandora project at GitHub
+## Popular git commands are using for maintenance Pandora project at GitHub
 ## Uncomment necessary line, comment out unnecessary, and run the script.
 ## 2012(c) Michael Galyuk, Pandora, freeware
 ## RU: Популярные команды git, используемые для сопровождения Пандоры на Гитхабе
 ## RU: Раскомментируй нужные строки, закомментируй ненужные, и запусти скрипт.
+
+## WARNING! Rename this script, else it will be rewritten at next synchronization.
+## ВНИМАНИЕ! Переименуй скрипт, иначе перезатрётся при следующей синхронизации.
 
 ## Init git on your computer
 ## (Change name and email!)

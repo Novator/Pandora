@@ -37,11 +37,11 @@ Optional:
 
 Download a package:
 
-  wget http://sourceforge.net/projects/pandora-net/files/pandora-net_0.1-1precise2_all.deb/download
+  wget http://sourceforge.net/projects/pandora-net/files/pandora-net_0.1-1ubuntu_all.deb/download
 
 Install it:
 
-  sudo dpkg -i pandora-net_0.1-1precise2_all.deb
+  sudo dpkg -i pandora-net_0.1-1ubuntu_all.deb
 
 
 4. INSTALLATION IN OTHER LINUX
@@ -117,7 +117,7 @@ For example, your login is "yournick".
 
 7.4. Install git in Ubuntu:
 
-  sudo apt-get install git
+  sudo apt-get -y install git
 
 in Windows install last "Git-N.N.N-previewYYYYMMDD.exe" from:
 
