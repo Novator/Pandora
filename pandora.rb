@@ -3021,8 +3021,8 @@ module PandoraCrypto
   RSA_exponent = 65537
 
   KV_Obj   = 0
-  KV_Key1  = 1
-  KV_Key2  = 2
+  KV_Pub   = 1
+  KV_Priv  = 2
   KV_Kind  = 3
   KV_Cipher  = 4
   KV_Pass  = 5
@@ -3031,24 +3031,66 @@ module PandoraCrypto
   KV_Trust   = 8
   KV_NameFamily  = 9
 
-  def self.sym_recrypt(data, encode=true, cipher_hash=nil, cipher_key=nil)
-    #p '^^^^^^^^^^^^sym_recrypt: [cipher_hash, cipher_key]='+[cipher_hash, cipher_key].inspect
+  def self.key_recrypt(data, encode=true, cipher_hash=nil, cipherkey=nil)
+    #p '^^^^^^^^^^^^sym_recrypt: [cipher_hash, passwd]='+[cipher_hash, cipherkey].inspect
     #cipher_hash ||= encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
     if cipher_hash and (cipher_hash != 0) and data
       ckind, chash = decode_cipher_and_hash(cipher_hash)
-      hash = pan_kh_to_openssl_hash(chash)
-      #p 'hash='+hash.inspect
-      cipher_key ||= ''
-      cipher_key = hash.digest(cipher_key) if hash
-      #p 'cipher_key.hash='+cipher_key.inspect
-      cipher_vec = Array.new
-      cipher_vec[KV_Key1] = cipher_key
-      cipher_vec[KV_Kind] = ckind
-      cipher_vec = init_key(cipher_vec)
-      #p '*******'+encode.inspect
-      #p '---sym_recode data='+data.inspect
-      data = recrypt(cipher_vec, data, encode)
-      #p '+++sym_recode data='+data.inspect
+      if (chash == KH_None)
+        key_vec = current_key(false, true)
+        if key_vec and key_vec[KV_Obj] and key_vec[KV_Panhash]
+          if encode
+            data = recrypt(key_vec, data, encode)
+            if data
+              key_and_data = PandoraUtils.rubyobj_to_pson_elem([key_vec[KV_Panhash], data])
+              data = key_and_data
+            end
+          else
+            key_and_data, len = PandoraUtils.pson_elem_to_rubyobj(data)
+            if key_and_data.is_a? Array
+              keyhash, data = key_and_data
+              if (keyhash == key_vec[KV_Panhash])
+                data = recrypt(key_vec, data, encode)
+              else
+                data = nil
+              end
+            else
+              log_message(LM_Warning, _('Bad data encrypted on key'))
+              data = nil
+            end
+          end
+        else
+          data = nil
+        end
+      else
+        hash = pan_kh_to_openssl_hash(chash)
+        #p 'hash='+hash.inspect
+        cipherkey ||= ''
+        cipherkey = hash.digest(cipherkey) if hash
+        #p 'cipherkey.hash='+cipherkey.inspect
+        cipher_vec = Array.new
+        cipher_vec[KV_Priv] = cipherkey
+        cipher_vec[KV_Kind] = ckind
+        cipher_vec = init_key(cipher_vec)
+        key = cipher_vec[KV_Obj]
+        if key
+          iv = nil
+          if encode
+            iv = key.random_iv
+          else
+            data, len = PandoraUtils.pson_elem_to_rubyobj(data)   # pson to array
+            if data.is_a? Array
+              iv = AsciiString.new(data[1])
+              data = AsciiString.new(data[0])  # data from array
+            else
+              data = nil
+            end
+          end
+          cipher_vec[KV_Pub] = iv
+          data = recrypt(cipher_vec, data, encode) if data
+          data = PandoraUtils.rubyobj_to_pson_elem([data, iv]) if encode and data
+        end
+      end
     end
     data = AsciiString.new(data) if data
     data
@@ -3056,10 +3098,10 @@ module PandoraCrypto
 
   # Generate a key or key pair
   # RU: Генерирует ключ или ключевую пару
-  def self.generate_key(type_klen = KT_Rsa | KL_bit2048, cipher_hash=nil, cipher_key=nil)
+  def self.generate_key(type_klen = KT_Rsa | KL_bit2048, cipher_hash=nil, cipherkey=nil)
     key = nil
-    key1 = nil
-    key2 = nil
+    keypub = nil
+    keypriv = nil
 
     type, klen = divide_type_and_klen(type_klen)
     bitlen = klen_to_bitlen(klen)
@@ -3070,15 +3112,15 @@ module PandoraCrypto
         bitlen = 2048 if bitlen <= 0
         key = OpenSSL::PKey::RSA.generate(bitlen, RSA_exponent)
 
-        #key1 = ''
-        #key1.force_encoding('ASCII-8BIT')
-        #key2 = ''
-        #key2.force_encoding('ASCII-8BIT')
-        key1 = AsciiString.new(PandoraUtils.bigint_to_bytes(key.params['n']))
-        key2 = AsciiString.new(PandoraUtils.bigint_to_bytes(key.params['p']))
-        #p key1 = key.params['n']
-        #key2 = key.params['p']
-        #p PandoraUtils.bytes_to_bigin(key1)
+        #keypub = ''
+        #keypub.force_encoding('ASCII-8BIT')
+        #keypriv = ''
+        #keypriv.force_encoding('ASCII-8BIT')
+        keypub = AsciiString.new(PandoraUtils.bigint_to_bytes(key.params['n']))
+        keypriv = AsciiString.new(PandoraUtils.bigint_to_bytes(key.params['p']))
+        #p keypub = key.params['n']
+        #keypriv = key.params['p']
+        #p PandoraUtils.bytes_to_bigin(keypub)
         #p '************8'
 
         #puts key.to_text
@@ -3092,14 +3134,13 @@ module PandoraCrypto
       else #симметричный ключ
         #p OpenSSL::Cipher::ciphers
         key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
-        key.encrypt
-        key1 = key.random_key
-        key2 = key.random_iv
-        #p key1.size
-        #p key2.size
+        keypub  = key.random_iv
+        keypriv = key.random_key
+        #p keypub.size
+        #p keypriv.size
     end
-    key2 = sym_recrypt(key2, true, cipher_hash, cipher_key)
-    [key, key1, key2, type_klen, cipher_hash, cipher_key]
+    keypriv = key_recrypt(keypriv, true, cipher_hash, cipherkey)
+    [key, keypub, keypriv, type_klen, cipher_hash, cipherkey]
   end
 
   # Init key or key pare
@@ -3107,10 +3148,10 @@ module PandoraCrypto
   def self.init_key(key_vec)
     key = key_vec[KV_Obj]
     if not key
-      key1 = key_vec[KV_Key1]
-      key2 = key_vec[KV_Key2]
+      keypub  = key_vec[KV_Pub]
+      keypriv = key_vec[KV_Priv]
       type_klen = key_vec[KV_Kind]
-      cipher = key_vec[KV_Cipher]
+      cipher_hash = key_vec[KV_Cipher]
       pass = key_vec[KV_Pass]
       type, klen = divide_type_and_klen(type_klen)
       bitlen = klen_to_bitlen(klen)
@@ -3118,15 +3159,15 @@ module PandoraCrypto
         when KT_Rsa
           #p '------'
           #p key.params
-          n = PandoraUtils.bytes_to_bigint(key1)
+          n = PandoraUtils.bytes_to_bigint(keypub)
           #p 'n='+n.inspect
           e = OpenSSL::BN.new(RSA_exponent.to_s)
           p0 = nil
-          if key2
-            #p '[cipher, key2]='+[cipher, key2].inspect
-            key2 = sym_recrypt(key2, false, cipher, pass)
+          if keypriv
+            #p '[cipher, keypriv]='+[cipher, keypriv].inspect
+            keypriv = key_recrypt(keypriv, false, cipher_hash, pass)
             #p 'key2='+key2.inspect
-            p0 = PandoraUtils.bytes_to_bigint(key2) if key2
+            p0 = PandoraUtils.bytes_to_bigint(keypriv) if keypriv
           else
             p0 = 0
           end
@@ -3134,7 +3175,7 @@ module PandoraCrypto
           if p0
             pass = 0
             #p 'n='+n.inspect+'  p='+p0.inspect+'  e='+e.inspect
-            if key2
+            if keypriv
               q = (n / p0)[0]
               p0,q = q,p0 if p0 < q
               d = e.mod_inverse((p0-1)*(q-1))
@@ -3189,7 +3230,8 @@ module PandoraCrypto
           ])
         else
           key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
-          key.key = key1
+          key.key = keypriv
+          key.iv  = keypub if keypub
       end
       key_vec[KV_Obj] = key
     end
@@ -3234,43 +3276,22 @@ module PandoraCrypto
     key = key_vec[KV_Obj]
     #p 'encrypt key='+key.inspect
     if key.is_a? OpenSSL::Cipher
-      iv = nil
-      if encrypt
-        key.encrypt
-        key.key = key_vec[KV_Key1]
-        iv = key.random_iv
-      else
+      if data
         data = AsciiString.new(data)
-        #data.force_encoding('ASCII-8BIT')
-        #p 'before decrypt: data='+data.inspect
-        data, len = PandoraUtils.pson_elem_to_rubyobj(data)   # pson to array
-        #p 'decrypt: data='+data.inspect
-        key.decrypt
-        #p 'DDDDDDEEEEECR'
-        if data.is_a? Array
-          iv = AsciiString.new(data[1])
-          data = AsciiString.new(data[0])  # data from array
+        key.reset
+        if encrypt
+          key.encrypt
         else
-          data = nil
+          key.decrypt
         end
-        key.key = key_vec[KV_Key1]
-        key.iv = iv if iv
-      end
-
-      begin
-        #p 'BEFORE key='+key.key.inspect
-        if data
+        key.key = key_vec[KV_Priv]
+        key.iv = key_vec[KV_Pub] if key_vec[KV_Pub]
+        begin
           recrypted = key.update(data) + key.final
+        rescue
+          recrypted = nil
         end
-      rescue
-        recrypted = nil
       end
-
-      #p '[recrypted, iv]='+[recrypted, iv].inspect
-      if encrypt and recrypted
-        recrypted = PandoraUtils.rubyobj_to_pson_elem([recrypted, iv])
-      end
-
     else  #elsif key.is_a? OpenSSL::PKey
       if encrypt
         if private
@@ -3301,7 +3322,7 @@ module PandoraCrypto
   # RU: Деактивирует текущий или указанный ключ
   def self.deactivate_key(key_vec)
     if key_vec.is_a? Array
-      fill_by_zeros(key_vec[PandoraCrypto::KV_Key2])  #private key
+      fill_by_zeros(key_vec[PandoraCrypto::KV_Priv])  #private key
       fill_by_zeros(key_vec[PandoraCrypto::KV_Pass])
       key_vec.each_index do |i|
         key_vec[i] = nil
@@ -3354,8 +3375,8 @@ module PandoraCrypto
             creator = key_model.field_val('creator', sel[1])
           end
           key_vec = Array.new
-          key_vec[KV_Key1] = pub
-          key_vec[KV_Key2] = priv
+          key_vec[KV_Pub] = pub
+          key_vec[KV_Priv] = priv
           key_vec[KV_Cipher] = cipher
           key_vec[KV_Kind] = kind
           key_vec[KV_Pass] = passwd
@@ -3372,20 +3393,19 @@ module PandoraCrypto
         key_vec, cipher = read_key(panhash, passwd, key_model)
       end
       if key_vec
-        key2 = key_vec[KV_Key2]
+        key2 = key_vec[KV_Priv]
         cipher = key_vec[KV_Cipher]
         #type_klen = key_vec[KV_Kind]
         #type, klen = divide_type_and_klen(type_klen)
         #bitlen = klen_to_bitlen(klen)
         if key2
-          key2 = sym_recrypt(key2, false, cipher, passwd)
+          key2 = key_recrypt(key2, false, cipher, passwd)
           if key2
-            cipher_key = newpasswd
             cipher_hash = 0
-            if cipher_key and (cipher_key.size>0)
+            if newpasswd and (newpasswd.size>0)
               cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
             end
-            key2 = sym_recrypt(key2, true, cipher_hash, cipher_key)
+            key2 = key_recrypt(key2, true, cipher_hash, newpasswd)
             if key2
               time_now = Time.now.to_i
               filter = {:panhash=>panhash, :kind=>KT_Priv}
@@ -3393,7 +3413,7 @@ module PandoraCrypto
               values = {:panstate=>panstate, :cipher=>cipher_hash, :body=>key2, :modified=>time_now}
               res = key_model.update(values, nil, filter)
               if res
-                key_vec[KV_Key2] = key2
+                key_vec[KV_Priv] = key2
                 key_vec[KV_Cipher] = cipher_hash
                 passwd = newpasswd
               end
@@ -3557,9 +3577,9 @@ module PandoraCrypto
             creator = PandoraUtils.hex_to_bytes(user_entry.text)
             if creator.size==22
               #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
-              cipher_key = pass_entry.text
+              passwd = pass_entry.text
               cipher_hash = 0
-              if cipher_key and (cipher_key.size>0)
+              if passwd and (passwd.size>0)
                 cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
               end
               rights = rights_entry.text.to_i
@@ -3567,15 +3587,15 @@ module PandoraCrypto
               #p 'cipher_hash='+cipher_hash.to_s
               type_klen = KT_Rsa | KL_bit2048
 
-              key_vec = generate_key(type_klen, cipher_hash, cipher_key)
+              key_vec = generate_key(type_klen, cipher_hash, passwd)
 
               #p 'key_vec='+key_vec.inspect
 
-              pub  = key_vec[KV_Key1]
-              priv = key_vec[KV_Key2]
+              pub  = key_vec[KV_Pub]
+              priv = key_vec[KV_Priv]
               type_klen = key_vec[KV_Kind]
               cipher_hash = key_vec[KV_Cipher]
-              cipher_key = key_vec[KV_Pass]
+              #passwd = key_vec[KV_Pass]
 
               key_vec[KV_Creator] = creator
 
@@ -3816,7 +3836,7 @@ module PandoraCrypto
   $max_opened_keys = 1000
   $open_keys = {}
 
-  def self.open_key(panhash, models, init=true)
+  def self.open_key(panhash, models=nil, init=true)
     key_vec = nil
     if panhash.is_a? String
       key_vec = $open_keys[panhash]
@@ -3838,7 +3858,7 @@ module PandoraCrypto
               creator = model.field_val('creator', row)
 
               key_vec = Array.new
-              key_vec[KV_Key1] = pub
+              key_vec[KV_Pub] = pub
               key_vec[KV_Kind] = kind
               #key_vec[KV_Pass] = passwd
               key_vec[KV_Panhash] = panhash
@@ -6807,6 +6827,26 @@ module PandoraGUI
   class ExtTextView < Gtk::TextView
     attr_accessor :need_to_end, :middle_time, :middle_value
 
+    def initialize
+      super
+      self.receives_default = true
+      signal_connect('key-press-event') do |widget, event|
+        res = false
+        if (event.keyval == Gdk::Keyval::GDK_F9)
+          set_readonly(self.editable?)
+          res = true
+        end
+        res
+      end
+    end
+
+    def set_readonly(value=true)
+      value = (not value)
+      self.editable = value
+      #self.can_focus = value
+      self.has_focus = value
+    end
+
     def before_addition(cur_time=nil, vadj_value=nil)
       cur_time ||= Time.now
       vadj_value ||= self.parent.vadjustment.value
@@ -8653,6 +8693,7 @@ module PandoraGUI
       vpaned1.set_size_request(350, 270)
 
       @talkview = PandoraGUI::ExtTextView.new
+      talkview.set_readonly(true)
       talkview.set_size_request(200, 200)
       talkview.wrap_mode = Gtk::TextTag::WRAP_WORD
       #view.cursor_visible = false
@@ -10480,32 +10521,27 @@ module PandoraGUI
           #cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
           #p 'cipher_hash16='+cipher_hash.to_s(16)
           #type_klen = KT_Rsa | KL_bit2048
-          #cipher_key = '123'
-          #p keys = generate_key(type_klen, cipher_hash, cipher_key)
+          #passwd = '123'
+          #p keys = generate_key(type_klen, cipher_hash, passwd)
+          #type_klen = KT_Aes | KL_bit256
+          #key_vec = generate_key(type_klen, cipher_hash, passwd)
 
-          PandoraUtils.play_mp3
+          p data = 'Тестовое сообщение!'
 
-          return
+          cipher_hash = PandoraCrypto.encode_cipher_and_hash(PandoraCrypto::KT_Rsa | \
+            PandoraCrypto::KL_bit2048, PandoraCrypto::KH_None)
+          p cipher_vec = PandoraCrypto.generate_key(PandoraCrypto::KT_Bf, cipher_hash)
 
-          key = PandoraCrypto.current_key(false, true)
-          if key
-            p data = 'Тестовое сообщение!'
-            p cipher_vec = PandoraCrypto.generate_key(PandoraCrypto::KT_Bf)
-            p 'coded:'
-            p data = PandoraCrypto.recrypt(cipher_vec, data, true)
-            p '---'
-            cihper = cipher_vec[PandoraCrypto::KV_Key1]
-            p cihper.bytesize
-            p 'rsa_encode..'
-            #p cihper = PandoraCrypto.recrypt(key, cihper, true, false)
-            p cihper = PandoraCrypto.recrypt(key, cihper, true, true)
-            p 'rsa_decode..'
-            #p cihper = PandoraCrypto.recrypt(key, cihper, false, true)
-            p cihper = PandoraCrypto.recrypt(key, cihper, false, false)
-            cipher_vec[PandoraCrypto::KV_Key1] = cihper
-            p '---decoded:'
-            puts data = PandoraCrypto.recrypt(cipher_vec, data, false)
-          end
+          p 'initkey'
+          p cipher_vec = PandoraCrypto.init_key(cipher_vec)
+          p cipher_vec[PandoraCrypto::KV_Pub] = cipher_vec[PandoraCrypto::KV_Obj].random_iv
+
+          p 'coded:'
+
+          p data = PandoraCrypto.recrypt(cipher_vec, data, true)
+
+          p 'decoded:'
+          puts data = PandoraCrypto.recrypt(cipher_vec, data, false)
 
           #typ, count = encode_pson_type(PT_Str, 0x1FF)
           #p decode_pson_type(typ)
@@ -10712,9 +10748,7 @@ module PandoraGUI
       end
 
       @log_view = PandoraGUI::ExtTextView.new
-      log_view.can_focus = false
-      log_view.has_focus = false
-      log_view.receives_default = true
+      log_view.set_readonly(true)
       log_view.border_width = 0
 
       sw = Gtk::ScrolledWindow.new(nil, nil)
@@ -10787,7 +10821,6 @@ module PandoraGUI
       end
 
       $window.signal_connect('key-press-event') do |widget, event|
-        p event.keyval
         if ([Gdk::Keyval::GDK_m, Gdk::Keyval::GDK_M, 1752, 1784].include?(event.keyval) \
         and event.state.control_mask?)
           $window.hide
