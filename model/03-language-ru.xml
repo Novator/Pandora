@@ -4,7 +4,7 @@
     <Panobject name.ru="Объект Пандоры">
       <panhash name.ru="Панхэш" />
       <modified name.ru="Изменен" />
-      <panstate name.ru="Состояние" />
+      <panstate name.ru="Панопции" />
     </Panobject>
 
     <Created>
@@ -217,7 +217,8 @@
       <key_hash name.ru="Панхэш ключа" />
       <base_id name.ru="ID базы" />
       <domain name.ru="Домен" />
-      <addr name.ru="Адрес хоста" />
+      <name name.ru="Название" />
+      <addr name.ru="Адрес" />
       <tport name.ru="Порт TCP" />
       <uport name.ru="Порт UDP" />
       <addr_type name.ru="Тип адреса" />

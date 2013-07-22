@@ -5,8 +5,8 @@
 #
 # This program is distributed under the GNU GPLv2
 # RU: Эта программа распространяется под GNU GPLv2
-# 2012 (c) Michael Galyuk
-# RU: 2012 (c) Михаил Галюк
+# 2012 (c) Michael Galyuk, P2P social network Pandora, free software
+# RU: 2012 (c) Михаил Галюк, P2P социальная сеть Пандора, свободное ПО
 
 import time, datetime, termios, fcntl, sys, os, socket, threading, struct, binascii, hashlib
 
@@ -30,7 +30,7 @@ KEEPCNT = 4   #(count)
 # Internal constants
 MaxPackSize = 1500
 MaxSegSize  = 1200
-CommSize = 6
+CommSize = 7
 CommExtSize = 10
 
 # Network exchange comands
@@ -76,11 +76,16 @@ ECC_More_NoRecord     = 1
 
 ECC_Bye_Exit          = 200
 ECC_Bye_Unknown       = 201
-ECC_Bye_BadCommCRC    = 202
-ECC_Bye_BadCommLen    = 203
-ECC_Bye_BadCRC        = 204
-ECC_Bye_DataTooLong   = 205
-ECC_Wait_NoHandlerYet = 206
+ECC_Bye_BadComm       = 202
+ECC_Bye_BadCommCRC    = 203
+ECC_Bye_BadCommLen    = 204
+ECC_Bye_BadSegCRC     = 205
+ECC_Bye_BadDataCRC    = 206
+ECC_Bye_DataTooShort  = 207
+ECC_Bye_DataTooLong   = 208
+ECC_Wait_NoHandlerYet = 209
+ECC_Bye_NoAnswer      = 210
+ECC_Bye_Silent        = 211
 
 # Режимы чтения
 RM_Comm      = 0   # Базовая команда
@@ -197,10 +202,10 @@ class ClientThread(threading.Thread):
     index, cmd, code, segsign = None, None, None, None
     if len(comm) == CommSize:
       #print(comm)
-      index, cmd, code, segsign, crc8 = struct.unpack('!BBBHB', comm)
+      segsign, index, cmd, code, crc8 = struct.unpack('!HHBBB', comm)
       #segsign = byte2word(segsign1, segsign2)
       #print('index, cmd, code, segsign, crc8', index, cmd, code, segsign, crc8)
-      crc8f = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
+      crc8f = (index & 255) ^ ((index >> 8) & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
       if crc8 != crc8f:
         errcode = 1
     else:
@@ -237,10 +242,10 @@ class ClientThread(threading.Thread):
           segdata = segsize
         else:
           segdata = segsize-4  #for crc32
-    crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
-    comm = struct.pack('!BBBHB', index, cmd, code, segsign, crc8)
+    crc8 = (index & 255) ^ ((index >> 8) & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
+    comm = struct.pack('!HHBBB', segsign, index, cmd, code, crc8)
     #print('>send comm/data.len=', comm, len(comm), len(data))
-    if index<255:
+    if index<0xFFFF:
       index += 1
     else:
       index = 0
@@ -302,7 +307,7 @@ class ClientThread(threading.Thread):
         segindex = 0
       #comm = struct.pack('!BIH', index, segindex, segsize)
       comm = struct.pack('!BiH', index, segindex, segsize)
-      if index<255:
+      if index<0xFFFF:
         index += 1
       else:
         index = 0
@@ -533,6 +538,8 @@ class ClientThread(threading.Thread):
                 nextreadmode = RM_SegmentS
                 waitlen, rdatasize = rsegsign, rsegsign
                 if (self.rcmd != EC_Media): rdatasize -=4
+            else:
+              self.err_scmd('Bad command', ECC_Bye_BadComm)
           elif errcode == 1:
             self.err_scmd('Wrong CRC of recieved command', ECC_Bye_BadCommCRC)
           elif errcode == 2:
@@ -581,7 +588,7 @@ class ClientThread(threading.Thread):
             if fullcrc32 and (fullcrc32 != binascii.crc32(self.rdata)):
               self.err_scmd('Wrong CRC of received block', ECC_Bye_BadCRC)
           elif len(self.rdata) > rdatasize:
-            self.err_scmd('Too match received data ('+rdata.bytesize.to_s+'>'+rdatasize.to_s+')', \
+            self.err_scmd('Too long received data ('+rdata.bytesize.to_s+'>'+rdatasize.to_s+')', \
               ECC_Bye_DataTooLong)
 
         if ok1comm:

@@ -28,7 +28,7 @@ end
 $host = '127.0.0.1'
 $port = 5577
 $base_index = 0
-$poly_launch = false
+$poly_launch = true
 $pandora_parameters = []
 
 # Expand the arguments of command line
@@ -78,6 +78,15 @@ while (ARGV.length>0) or next_arg
   val = nil
 end
 
+$win32api = false
+def init_win32api
+  if not $win32api
+    require 'Win32API'
+    $win32api = true
+  end
+  $win32api
+end
+
 MAIN_WINDOW_TITLE = 'Pandora'
 
 # Prevent second execution
@@ -89,8 +98,7 @@ if not $poly_launch
     if res>1
       Kernel.abort('Another copy of Pandora is already runned')
     end
-  elsif os_family=='windows'
-    require 'Win32API'
+  elsif (os_family=='windows') and init_win32api
     FindWindow = Win32API.new('user32', 'FindWindow', ['P', 'P'], 'L')
     win_handle = FindWindow.call(nil, MAIN_WINDOW_TITLE)
     if (win_handle.is_a? Integer) and (win_handle>0)
@@ -144,6 +152,7 @@ $pandora_base_dir = File.join($pandora_root_dir, 'base')            # Default da
 $pandora_view_dir = File.join($pandora_root_dir, 'view')            # Media files directory
 $pandora_model_dir = File.join($pandora_root_dir, 'model')          # Model description directory
 $pandora_lang_dir = File.join($pandora_root_dir, 'lang')            # Languages directory
+$pandora_util_dir = File.join($pandora_root_dir, 'util')            # Languages directory
 $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Default database file
 $pandora_sqlite_db2 = File.join($pandora_base_dir, 'pandora2.sqlite')  # Default database file
 $pandora_sqlite_db3 = File.join($pandora_base_dir, 'pandora3.sqlite')  # Default database file
@@ -994,7 +1003,7 @@ module PandoraUtils
               len = 10
             when 'Time'
               view = 'time'
-              len = 16
+              len = 19
             when 'Byte'
               view = 'byte'
               len = 3
@@ -1884,7 +1893,7 @@ module PandoraUtils
         if val.is_a? Integer
           val = Time.at(val)
           if can_edit
-            val = val.strftime('%d.%m.%Y %R')
+            val = val.strftime('%d.%m.%Y %H:%M:%S')
           else
             val = time_to_str(val)
           end
@@ -2514,22 +2523,64 @@ module PandoraUtils
     [text, buf]
   end
 
+  def self.is_64bit_os?
+    # ENV.has_key?('ProgramFiles(x86)') && File.exist?(ENV['ProgramFiles(x86)']) && \
+    # File.directory?(['ProgramFiles(x86)'])
+    # (1.size > 4) ? true : false
+    # ENV.has_key?('ProgramFiles(x86)')
+    (['a'].pack('P').bytesize > 4) ? true : false
+  end
+
   $mp3_player = 'mpg123'
   if os_family=='windows'
     #start, mplayer(9x), mplay32(xp), wmplayer(vista)
     #start c:\music\"my song.mp3"
     #mplay32 /play /close "c:\windows\media\windows xp error.wav"
-    $mp3_player = 'mplay32 /play /close'
+    if is_64bit_os?
+      $mp3_player = 'mpg123x64.exe'
+    else
+      #$mp3_player = 'mpg123.exe'
+      $mp3_player = 'cmdmp3.exe'
+    end
+    $mp3_player = File.join($pandora_util_dir, $mp3_player)
+    if File.exist?($mp3_player)
+      $mp3_player = '"'+$mp3_player+'"'
+    else
+      $mp3_player = 'mplay32 /play /close'
+    end
+  end
+
+  $create_process_class = nil
+
+  def self.win_exec(cmd)
+    if init_win32api
+      if not $create_process_class
+        $create_process_class = Win32API.new('kernel32', 'CreateProcess', \
+          ['P', 'P', 'L', 'L', 'L', 'L', 'L', 'P', 'P', 'P'], 'L')
+      end
+      if $create_process_class
+        si = 0.chr*256
+        pi = 0.chr*256
+        res = $create_process_class.call(nil, cmd, 0, 0, 0, 8, \
+          0, nil, si, pi)
+      end
+    end
   end
 
   $play_thread = nil
 
   def self.play_mp3(filename='message.mp3', path=nil)
-    if not $play_thread
+    if (not $play_thread) and $statusicon \
+    and (not $statusicon.destroyed?) and $statusicon.play_sounds
       $play_thread = Thread.new do
         path ||= $pandora_view_dir
         full_name = File.join(path, filename)
-        system($mp3_player+' "'+full_name+'"')
+        cmd = $mp3_player+' "'+full_name+'"'
+        if os_family=='windows'
+          win_exec(cmd)
+        else
+          system(cmd)
+        end
         $play_thread = nil
       end
     end
@@ -4095,16 +4146,16 @@ module PandoraNet
                 begin
                   socket = TCPSocket.open(host, port)
                 rescue
-                  log_message(LM_Warning, _('Cannot connect to')+' '+server)
+                  log_message(LM_Warning, _('Cannot connect to')+': '+server)
                   socket = nil
                 end
                 if socket
-                  log_message(LM_Info, _('Connected to server')+' '+server)
+                  log_message(LM_Info, _('Connected to listener')+': '+server)
                   session = Session.new
                   session.run(socket, host, socket.peeraddr[2], port, proto, CM_Hunter, \
                     CS_Connected, Thread.current, node_id, dialog, keybase, send_state_add)
                   socket.close if not socket.closed?
-                  log_message(LM_Info, _('Disconnected from server')+' '+server)
+                  log_message(LM_Info, _('Disconnected from listener')+': '+server)
                 end
               end
               res = true
@@ -4225,7 +4276,7 @@ module PandoraNet
   # signs only
   EC_Data      = 256   # Ждем данные
 
-  CommSize = 6
+  CommSize = 7
   CommExtSize = 10
 
   ECC_Init_Hello       = 0
@@ -4378,8 +4429,9 @@ module PandoraNet
       index, cmd, code, segsign, crc8 = nil, nil, nil, nil, nil
       errcode = 0
       if comm.bytesize == CommSize
-        index, cmd, code, segsign, crc8 = comm.unpack('CCCnC')
-        crc8f = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
+        segsign, index, cmd, code, crc8 = comm.unpack('nnCCC')
+        crc8f = (index & 255) ^ ((index >> 8) & 255) ^ (cmd & 255) ^ (code & 255) \
+          ^ (segsign & 255) ^ ((segsign >> 8) & 255)
         if crc8 != crc8f
           errcode = 1
         end
@@ -4393,7 +4445,7 @@ module PandoraNet
       if comm.bytesize == CommExtSize
         datasize, fullcrc32, segsize = comm.unpack('NNn')
       else
-        log_message(LM_Error, 'Ошибочная длина расширения команды')
+        log_message(LM_Error, _('Wrong length of command extention'))
       end
       [datasize, fullcrc32, segsize]
     end
@@ -4434,11 +4486,11 @@ module PandoraNet
             end
           end
         end
-        crc8 = (index & 255) ^ (cmd & 255) ^ (code & 255) ^ (segsign & 255) ^ ((segsign >> 8) & 255)
-        # Команда как минимум равна 1+1+1+2+1= 6 байт (CommSize)
-        #p 'SCAB: '+[index, cmd, code, segsign, crc8].inspect
-        comm = AsciiString.new([index, cmd, code, segsign, crc8].pack('CCCnC'))
-        if index<255 then index += 1 else index = 0 end
+        crc8 = (index & 255) ^ ((index >> 8) & 255) ^ (cmd & 255) ^ (code & 255) \
+          ^ (segsign & 255) ^ ((segsign >> 8) & 255)
+        #p 'SCAB: '+[segsign, index, cmd, code, crc8].inspect
+        comm = AsciiString.new([segsign, index, cmd, code, crc8].pack('nnCCC'))
+        if index<0xFFFF then index += 1 else index = 0 end
         buf = AsciiString.new
         if datasize>0
           if segsign == LONG_SEG_SIGN
@@ -4505,7 +4557,7 @@ module PandoraNet
         if sended == buf.bytesize
           res = index
         elsif sended != -1
-          log_message(LM_Error, 'Не все данные отправлены '+sended.to_s)
+          log_message(LM_Error, _('Not all data was sent')+' '+sended.to_s)
         end
         segindex = 0
         i = segdata
@@ -4526,7 +4578,7 @@ module PandoraNet
           if segindex<0xFFFFFFFF then segindex += 1 else segindex = 0 end
           #p log_mes+'comm_ex_pack: [index, segindex, segsize]='+[index, segindex, segsize].inspect
           comm = [index, segindex, segsize].pack('CNn')
-          if index<255 then index += 1 else index = 0 end
+          if index<0xFFFF then index += 1 else index = 0 end
           buf = data[i, segdata]
           if cmd != EC_Media
             segcrc32 = Zlib.crc32(buf)
@@ -4549,9 +4601,12 @@ module PandoraNet
             #p log_mes+'SEND_ADD: ('+buf+')'
           elsif sended != -1
             res = nil
-            log_message(LM_Error, 'Не все данные отправлены2 '+sended.to_s)
+            log_message(LM_Error, _('Not all data was sent')+'2 '+sended.to_s)
           end
           i += segdata
+        end
+        if res
+          @sindex = res
         end
       end
       res
@@ -4571,10 +4626,13 @@ module PandoraNet
         @sbuf = nil
       else
         logmes = '(rcmd=' + rcmd.to_s + '/' + rcode.to_s + ' stage=' + stage.to_s + ')'
-        logmes = _(mes) + ' ' + logmes if mes and (mes.bytesize>0)
+        logmes0 = logmes
+        logmes = mes + ' ' + logmes0 if mes and (mes.bytesize>0)
         @sbuf = logmes
         mesadd = ''
         mesadd = ' err=' + code.to_s if code
+        mes = _(mes)
+        logmes = mes + ' ' + logmes0 if mes and (mes.bytesize>0)
         log_message(LM_Warning, logmes+mesadd)
       end
     end
@@ -5136,7 +5194,7 @@ module PandoraNet
                     mode = params['mode']
                     init_skey_or_error(true)
                   else
-                    err_scmd('Protocol is not supported ['+vers.to_s+']')
+                    err_scmd('Protocol is not supported ('+vers.to_s+')')
                   end
                 end
               elsif ((rcode==ECC_Init_Puzzle) or (rcode==ECC_Init_Phrase)) \
@@ -5178,6 +5236,7 @@ module PandoraNet
                     if @stage == ST_Greeting
                       @stage = ST_Exchange
                       set_max_pack_size(ST_Exchange)
+                      PandoraUtils.play_mp3
                     end
                   end
                   @scmd = EC_Init
@@ -5238,15 +5297,16 @@ module PandoraNet
                         else
                           @stage = ST_Exchange
                           set_max_pack_size(ST_Exchange)
+                          PandoraUtils.play_mp3
                         end
                         @scmd = EC_Data
                         @scode = 0
                         @sbuf = nil
                       else
-                        err_scmd('Key is not trusted')
+                        err_scmd('Key has low trust')
                       end
                     else
-                      err_scmd('Key stil is not checked')
+                      err_scmd('Key is under consideration')
                     end
                   else
                     err_scmd('Wrong sign')
@@ -5404,9 +5464,9 @@ module PandoraNet
                   init_skey_or_error(false)
                 end
               elsif res==false
-                log_message(LM_Warning, 'Пришла запись с ошибочным панхэшем')
+                log_message(LM_Warning, _('Record came with wrong panhash'))
               else
-                log_message(LM_Warning, 'Не удалось сохранить запись 1')
+                log_message(LM_Warning, _('Cannot write a record')+' 1')
               end
             else
               err_scmd('Record ('+kind.to_s+') came on wrong stage')
@@ -5420,7 +5480,7 @@ module PandoraNet
                 lang = record[1].ord
                 values = PandoraUtils.pson_to_namehash(record[2..-1])
                 if not PandoraModel.save_record(kind, lang, values, @recv_models)
-                  log_message(LM_Warning, 'Не удалось сохранить запись 2')
+                  log_message(LM_Warning, _('Cannot write a record')+' 2')
                 end
                 p 'fields='+fields.inspect
               end
@@ -5454,6 +5514,13 @@ module PandoraNet
           elsif rcode != ECC_Bye_Exit
             mes = rdata
             mes ||= ''
+            i = mes.index(' (') if mes
+            p '---------'
+            p mes
+            if i
+              p mes[0, i]
+              mes = _(mes[0, i])+mes[i..-1]
+            end
             log_message(LM_Error, _('Error at other side')+' ErrCode='+rcode.to_s+' "'+mes+'"')
           end
           err_scmd(nil, errcode, false)
@@ -5493,7 +5560,7 @@ module PandoraNet
                     talkview.show_all
                     dialog.update_state(true)
                   else
-                    log_message(LM_Error, 'Пришло сообщение, но лоток чата не найдено!')
+                    log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
                   end
                 else #EC_Channel
                   case rcode
@@ -5546,7 +5613,7 @@ module PandoraNet
                   @sbuf=''
                 end
               else
-                err_scmd('Unknown command is recieved '+rcmd.to_s, ECC_Bye_Unknown)
+                err_scmd('Unknown command is recieved', ECC_Bye_Unknown)
                 @conn_state = CS_Stoping
             end
           else
@@ -5703,7 +5770,7 @@ module PandoraNet
                         rdatasize -=4 if (rkcmd != EC_Media)
                       end
                     else
-                      serrbuf, serrcode = 'Bad command code', ECC_Bye_BadComm
+                      serrbuf, serrcode = 'Bad command', ECC_Bye_BadComm
                     end
                   elsif errcode == 1
                     serrbuf, serrcode = 'Wrong CRC of recieved command', ECC_Bye_BadCommCRC
@@ -5885,7 +5952,9 @@ module PandoraNet
             end
             #p log_mes+'MAIN SEND: '+[@sindex, sscmd, sscode, ssbuf].inspect
             if (sscmd != EC_Bye) or (sscode != ECC_Bye_Silent)
-              @sindex = send_comm_and_data(@sindex, sscmd, sscode, ssbuf)
+              if not send_comm_and_data(@sindex, sscmd, sscode, ssbuf)
+                @conn_state = CS_Disconnected
+              end
             else
               p 'SILENT!!!!!!!!'
             end
@@ -6042,9 +6111,8 @@ module PandoraNet
               mscmd = EC_Media
               mscode = cannel
               msbuf = send_media_chunk
-              @sindex = send_comm_and_data(sindex, mscmd, mscode, msbuf)
-              if not @sindex
-                log_message(LM_Error, 'Ошибка отправки буфера data.size='+send_media_chunk.size.to_s)
+              if not send_comm_and_data(sindex, mscmd, mscode, msbuf)
+                @conn_state = CS_Disconnected
               end
             else
               cannel += 1
@@ -6084,7 +6152,7 @@ module PandoraNet
       if donor #and (not donor.destroyed?)
         p 'DONOR free!!!!'
         if donor.socket and (not donor.socket.closed?)
-          @sindex = send_comm_and_data(@sindex, EC_Bye, ECC_Bye_NoAnswer, nil)
+          send_comm_and_data(@sindex, EC_Bye, ECC_Bye_NoAnswer, nil)
         end
         if fisher_lure
           p 'free_out_lure fisher_lure='+fisher_lure.inspect
@@ -6167,10 +6235,10 @@ module PandoraNet
             end
             server = TCPServer.open(host, $port)
             addr_str = server.addr[3].to_s+(':')+server.addr[1].to_s
-            log_message(LM_Info, 'Слушаю порт '+addr_str)
+            log_message(LM_Info, _('Listening address')+': '+addr_str)
           rescue
             server = nil
-            log_message(LM_Warning, 'Не могу открыть порт '+host+':'+$port.to_s)
+            log_message(LM_Warning, _('Cannot open port')+' '+host+':'+$port.to_s)
           end
           Thread.current[:listen_server_socket] = server
           Thread.current[:need_to_listen] = (server != nil)
@@ -6186,7 +6254,7 @@ module PandoraNet
 
             if Thread.current[:need_to_listen] and not server.closed? and client
               Thread.new(client) do |socket|
-                log_message(LM_Info, "Подключился клиент: "+socket.peeraddr.inspect)
+                log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
 
                 host_ip = socket.peeraddr[2]
 
@@ -6221,12 +6289,12 @@ module PandoraNet
                   log_message(LM_Info, "IP забанен: "+host_ip.to_s)
                 end
                 socket.close if not socket.closed?
-                log_message(LM_Info, "Отключился клиент: "+socket.to_s)
+                log_message(LM_Info, _('Hunter disconnects')+': '+socket.to_s)
               end
             end
           end
           server.close if server and not server.closed?
-          log_message(LM_Info, 'Слушатель остановлен '+addr_str) if server
+          log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
           $window.set_status_field(PandoraGUI::SF_Listen, 'Not listen', nil, false)
           $listen_thread = nil
         end
@@ -6582,12 +6650,15 @@ module PandoraGUI
         res
       end
       @mask = nil
-      tooltip = nil
       init_mask
-      if (not tooltip) and mask and (mask.size>0)
-        tooltip = '['+mask+']'
+      if mask and (mask.size>0)
+        prefix = self.tooltip_text
+        if prefix and (prefix != '')
+          prefix << "\n"
+        end
+        prefix ||= ''
+        self.tooltip_text = prefix+'['+mask+']'
       end
-      self.tooltip_text = tooltip if tooltip
     end
     def init_mask
       #will reinit in child
@@ -6642,7 +6713,7 @@ module PandoraGUI
     def init_mask
       super
       @mask += ' :'
-      self.max_length = 16
+      self.max_length = 19
       self.tooltip_text = 'MM.DD.YYYY hh:mm:ss'
     end
   end
@@ -6774,9 +6845,9 @@ module PandoraGUI
     def initialize
       super
       @latitude   = CoordEntry.new
-      latitude.tooltip_text = _('Latitude')+': 60.716, 60 43\', 60.43\'00"N'
+      latitude.tooltip_text = _('Latitude')+': 60.716, 60 43\', 60.43\'00"N'+"\n["+latitude.mask+']'
       @longitude  = CoordEntry.new
-      longitude.tooltip_text = _('Longitude')+': -114.9, W114 54\' 0", 114.9W'
+      longitude.tooltip_text = _('Longitude')+': -114.9, W114 54\' 0", 114.9W'+"\n["+longitude.mask+']'
       latitude.width_request = CoordWidth
       longitude.width_request = CoordWidth
       self.pack_start(latitude, false, false, 0)
@@ -7903,7 +7974,7 @@ module PandoraGUI
         File.open(pfn, 'wb+') do |file|
           file.write(response.body)
           res = true
-          log_message(LM_Info, _('File is updated')+': '+pfn)
+          log_message(LM_Info, _('File updated')+': '+pfn)
         end
       rescue => err
         puts 'Update error: '+err.message
@@ -7978,6 +8049,7 @@ module PandoraGUI
 
             if http
               $window.set_status_field(SF_Update, 'Updating')
+              log_message(LM_Info, _('Updating Pandora from')+': '+main_uri.host+'..')
               downloaded = update_file(http, main_uri.path, main_script)
               UPD_FileList.each do |fn|
                 pfn = File.join($pandora_root_dir, fn)
@@ -7990,9 +8062,9 @@ module PandoraGUI
               end
               if downloaded
                 PandoraUtils.set_param('last_update', Time.now)
-                $window.set_status_field(SF_Update, 'Need reboot')
+                $window.set_status_field(SF_Update, 'Need restart')
                 Thread.stop
-                $window.destroy
+                Kernel.abort('Pandora is updated. Run it again')
               else
                 $window.set_status_field(SF_Update, 'Updating error')
               end
@@ -8329,7 +8401,8 @@ module PandoraGUI
         btn.set_size_request(wim+2,him+2)
         btn.signal_connect('clicked') do |*args|
           yield if block_given?
-          $window.notebook.remove_page($window.notebook.children.index(child))
+          ind = $window.notebook.children.index(child)
+          $window.notebook.remove_page(ind) if ind
           label_box.destroy if not label_box.destroyed?
           child.destroy if not child.destroyed?
         end
@@ -8986,7 +9059,7 @@ module PandoraGUI
           tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
           tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
           $statusicon.set_message(_('Message')+' ['+tab_widget.label.text+']')
-          PandoraUtils.play_mp3 if $statusicon.play_sounds
+          PandoraUtils.play_mp3
         end
         # run reading thread
         timer_setted = false
@@ -9927,7 +10000,6 @@ module PandoraGUI
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
-
   # Profile panel
   # RU: Панель профиля
   class ProfileScrollWin < Gtk::ScrolledWindow
@@ -9960,6 +10032,118 @@ module PandoraGUI
     label_box = TabLabelBox.new(image, _('Profile'), sw, false, 0) do
       #store.clear
       #treeview.destroy
+      #sw.destroy
+    end
+
+    page = $window.notebook.append_page(sw, label_box)
+    sw.show_all
+    $window.notebook.page = $window.notebook.n_pages-1
+  end
+
+  # Profile panel
+  # RU: Панель профиля
+  class SessionScrollWin < Gtk::ScrolledWindow
+    attr_accessor :session
+
+    include PandoraGUI
+
+    # Show conversation dialog
+    # RU: Показать диалог общения
+    def initialize(session=nil)
+      super(nil, nil)
+
+      @session = nil
+
+      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      border_width = 0
+
+      vbox = Gtk::VBox.new
+      hbox = Gtk::HBox.new
+
+      title = _('Update')
+      update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
+      update_btn.signal_connect('clicked') do |*args|
+        p 'need update'
+      end
+      update_btn.tooltip_text = title
+      update_btn.label = title
+
+      hunted_btn = GoodCheckButton.new(_('hunted'), true)
+      hunted_btn.good_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      hunted_btn.good_set_active(true)
+
+      hunters_btn = GoodCheckButton.new(_('hunters'), true)
+      hunters_btn.good_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      hunters_btn.good_set_active(true)
+
+      fishers_btn = GoodCheckButton.new(_('fishers'), true)
+      fishers_btn.good_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      fishers_btn.good_set_active(true)
+
+      hbox.pack_start(hunted_btn, false, true, 0)
+      hbox.pack_start(hunters_btn, false, true, 0)
+      hbox.pack_start(fishers_btn, false, true, 0)
+      hbox.pack_start(update_btn, false, true, 0)
+
+      list_sw = Gtk::ScrolledWindow.new(nil, nil)
+      list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+      list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+
+      list_store = Gtk::ListStore.new(Integer, String)
+
+      # create tree view
+      list_tree = Gtk::TreeView.new(list_store)
+      #list_tree.rules_hint = true
+      #list_tree.search_column = CL_Name
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new('№', renderer, 'text' => 0)
+      column.set_sort_column_id(0)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
+      column.set_sort_column_id(1)
+      list_tree.append_column(column)
+
+      list_tree.signal_connect('row_activated') do |tree_view, path, column|
+        # download and go to record
+      end
+
+      list_sw.add(list_tree)
+
+      vbox.pack_start(hbox, false, true, 0)
+      vbox.pack_start(list_sw, true, true, 0)
+      list_sw.show_all
+
+      self.add_with_viewport(vbox)
+
+      list_tree.grab_focus
+    end
+  end
+
+  # Show session panel
+  # RU: Показать панель сеансов
+  def self.show_session_panel(session=nil)
+    $window.notebook.children.each do |child|
+      if (child.is_a? SessionScrollWin)
+        $window.notebook.page = $window.notebook.children.index(child)
+        return
+      end
+    end
+
+    sw = SessionScrollWin.new(session)
+
+    image = Gtk::Image.new(Gtk::Stock::JUSTIFY_FILL, Gtk::IconSize::MENU)
+    image.set_padding(2, 0)
+
+    label_box = TabLabelBox.new(image, _('Sessions'), sw, false, 0) do
       #sw.destroy
     end
 
@@ -10515,6 +10699,8 @@ module PandoraGUI
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
+          PandoraUtils.play_mp3
+          return
           #p OpenSSL::Cipher::ciphers
 
           #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
@@ -10554,6 +10740,8 @@ module PandoraGUI
           PandoraGUI.show_profile_panel
         when 'Search'
           PandoraGUI.show_search_panel
+        when 'Session'
+          PandoraGUI.show_session_panel
         else
           panobj_id = command
           if PandoraModel.const_defined? panobj_id
@@ -10635,6 +10823,7 @@ module PandoraGUI
       ['Patch', nil, 'Patches'],
       ['Event', nil, 'Events'],
       ['Fishhook', nil, 'Fishhooks'],
+      ['Session', Gtk::Stock::JUSTIFY_FILL, 'Sessions', '<control>S'],
       ['-', nil, '-'],
       ['Authorize', nil, 'Authorize', '<control>U'],
       ['Listen', Gtk::Stock::CONNECT, 'Listen', '<control>L', :check],
@@ -10782,7 +10971,7 @@ module PandoraGUI
         do_menu_act('Hunt')
       end
       add_status_field(SF_Conn, '0/0/0') do
-        do_menu_act('Node')
+        do_menu_act('Session')
       end
 
       vbox = Gtk::VBox.new
@@ -10803,11 +10992,13 @@ module PandoraGUI
       flash_on_new = PandoraUtils.get_param('status_flash_on_new')
       flash_interval = PandoraUtils.get_param('status_flash_interval')
       play_sounds = PandoraUtils.get_param('play_sounds')
+      mplayer = nil
       if os_family=='windows'
-        $mp3_player = PandoraUtils.get_param('win_mp3_player')
+        mplayer = PandoraUtils.get_param('win_mp3_player')
       else
-        $mp3_player = PandoraUtils.get_param('linux_mp3_player')
+        mplayer = PandoraUtils.get_param('linux_mp3_player')
       end
+      $mp3_player = mplayer if ((mplayer.is_a? String) and (mplayer.size>0))
 
       $statusicon = PandoraGUI::PandoraStatusIcon.new(update_win_icon, flash_on_new, flash_interval, play_sounds)
 

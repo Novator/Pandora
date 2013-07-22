@@ -287,11 +287,12 @@
     </Sign>
 
     <Node name="Node" parent="Created" kind="223">
-      <addr name="Host address" type="String" size="40" />
+      <addr name="Address" type="String" size="40" />
       <tport name="TCP port" type="Word" />
       <uport name="UDP port" type="Word" />
       <domain name="Domain" type="String" size="255" />
       <password name="Password" type="String" size="255" />
+      <name name="Name" type="String" size="255" />
       <key_hash name="Key panhash" type="Panhash(Key)" hash="1:phash(12)" />
       <base_id name="Base ID" type="Panhash" hash="2:raw(8)" />
       <addr_from name="Address from" type="String" size="20" />

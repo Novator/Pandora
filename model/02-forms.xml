@@ -109,6 +109,12 @@
       <sign view="base64" />
     </Sign>
 
+    <Node>
+      <domain fsize="64" />
+      <password fsize="32" />
+      <name fsize="64" />
+    </Node>
+
   </Pandora>
 
 </pandora-model>
