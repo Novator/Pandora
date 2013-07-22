@@ -32,6 +32,7 @@ MaxPackSize = 1500
 MaxSegSize  = 1200
 CommSize = 7
 CommExtSize = 10
+SegNAttrSize = 8
 
 # Network exchange comands
 # RU: Команды сетевого обмена
@@ -305,8 +306,7 @@ class ClientThread(threading.Thread):
         segindex += 1
       else:
         segindex = 0
-      #comm = struct.pack('!BIH', index, segindex, segsize)
-      comm = struct.pack('!BiH', index, segindex, segsize)
+      comm = struct.pack('!HiH', index, segindex, segsize)
       if index<0xFFFF:
         index += 1
       else:
@@ -554,8 +554,7 @@ class ClientThread(threading.Thread):
           waitlen = rsegsize
         elif readmode==RM_SegLenN:
           comm = rbuf[0: processedlen]
-          #rindex, rsegindex, rsegsize = struct.unpack('!BIH', comm)
-          rindex, rsegindex, rsegsize = struct.unpack('!BiH', comm)
+          rindex, rsegindex, rsegsize = struct.unpack('!HiH', comm)
           #print(' RM_SegLenN: ', rindex, rsegindex, rsegsize)
           nextreadmode = RM_SegmentN
           waitlen = rsegsize
@@ -563,7 +562,7 @@ class ClientThread(threading.Thread):
           #print(' RM_SegLen? [mode, buf.len] ', readmode, len(rbuf))
           if (readmode==RM_Segment1) or (readmode==RM_SegmentN):
             nextreadmode = RM_SegLenN
-            waitlen = 7    #index + segindex + rseglen (1+4+2)
+            waitlen = SegNAttrSize    #index + segindex + rseglen (2+4+2)
           if self.rcmd == EC_Media:
             self.rdata = self.rdata + rbuf[0: processedlen]
           else:

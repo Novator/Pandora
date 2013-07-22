@@ -4278,6 +4278,7 @@ module PandoraNet
 
   CommSize = 7
   CommExtSize = 10
+  SegNAttrSize = 8
 
   ECC_Init_Hello       = 0
   ECC_Init_Puzzle      = 1
@@ -4577,7 +4578,7 @@ module PandoraNet
           end
           if segindex<0xFFFFFFFF then segindex += 1 else segindex = 0 end
           #p log_mes+'comm_ex_pack: [index, segindex, segsize]='+[index, segindex, segsize].inspect
-          comm = [index, segindex, segsize].pack('CNn')
+          comm = [index, segindex, segsize].pack('nNn')
           if index<0xFFFF then index += 1 else index = 0 end
           buf = data[i, segdata]
           if cmd != EC_Media
@@ -5788,7 +5789,7 @@ module PandoraNet
                   waitlen = rsegsize
                 when RM_SegLenN
                   comm = rkbuf[0, processedlen]
-                  rkindex, rsegindex, rsegsize = comm.unpack('CNn')
+                  rkindex, rsegindex, rsegsize = comm.unpack('nNn')
                   #p log_mes+' RM_SegLenN: '+[rkindex, rsegindex, rsegsize].inspect
                   readmode = RM_SegmentN
                   waitlen = rsegsize
@@ -5819,7 +5820,7 @@ module PandoraNet
                   elsif rkdata.bytesize < rdatasize
                     if (readmode==RM_Segment1) or (readmode==RM_SegmentN)
                       readmode = RM_SegLenN
-                      waitlen = 7    #index + segindex + rseglen (1+4+2)
+                      waitlen = SegNAttrSize    #index + segindex + rseglen (2+4+2)
                     else
                       serrbuf, serrcode = 'Too short received data ('+rkdata.bytesize.to_s+'>'  \
                         +rdatasize.to_s+')', ECC_Bye_DataTooShort
