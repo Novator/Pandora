@@ -28,7 +28,7 @@ end
 $host = '127.0.0.1'
 $port = 5577
 $base_index = 0
-$poly_launch = true
+$poly_launch = false
 $pandora_parameters = []
 
 # Expand the arguments of command line
@@ -78,6 +78,15 @@ while (ARGV.length>0) or next_arg
   val = nil
 end
 
+require 'socket'
+
+PANDORA_USOCK = '/tmp/pandora_unix_socket'
+$pserver = nil
+
+def delete_psocket
+  File.delete(PANDORA_USOCK) if File.exist?(PANDORA_USOCK)
+end
+
 $win32api = false
 def init_win32api
   if not $win32api
@@ -93,10 +102,41 @@ MAIN_WINDOW_TITLE = 'Pandora'
 # RU: Предотвратить второй запуск
 if not $poly_launch
   if os_family=='unix'
-    res = `ps -few | grep pandora.rb | grep -v grep`
-    res = res.scan("\n").count if res
-    if res>1
-      Kernel.abort('Another copy of Pandora is already runned')
+    psocket = nil
+    begin
+      psocket = UNIXSocket.new(PANDORA_USOCK)
+    rescue
+      psocket = nil
+    end
+    if psocket
+      psocket.send('Activate', 0)
+      psocket.close
+      Kernel.exit
+    else
+      begin
+        delete_psocket
+        $pserver = UNIXServer.new(PANDORA_USOCK)
+        Thread.new do
+          while not $pserver.closed?
+            psocket = $pserver.accept
+            if psocket
+              Thread.new(psocket) do |psocket|
+                while not psocket.closed?
+                  sleep(0.5)
+                  command = psocket.recv(255)
+                  if ($window and command and (command != ''))
+                    $window.do_menu_act(command)
+                  else
+                    psocket.close
+                  end
+                end
+              end
+            end
+          end
+        end
+      rescue
+        $pserver = nil
+      end
     end
   elsif (os_family=='windows') and init_win32api
     FindWindow = Win32API.new('user32', 'FindWindow', ['P', 'P'], 'L')
@@ -171,7 +211,6 @@ end
 # RU: XML нужен для хранения настроек и выгрузок
 require 'rexml/document'
 require 'zlib'
-require 'socket'
 require 'digest'
 require 'base64'
 require 'net/http'
@@ -10325,10 +10364,7 @@ module PandoraGUI
           $window.present
         end
       else
-        $window.deiconify
-        $window.show_all
-        #$statusicon.visible = false
-        $window.present
+        $window.do_menu_act('Activate')
         update_icon if @update_win_icon
         if @message
           page = $window.notebook.page
@@ -10665,7 +10701,11 @@ module PandoraGUI
       end
       case command
         when 'Quit'
-          $window.destroy
+          self.destroy
+        when 'Activate'
+          self.deiconify
+          self.visible = true
+          self.present
         when 'About'
           PandoraGUI.show_about
         when 'Close'
@@ -11142,3 +11182,5 @@ Thread.abort_on_exception = true
 PandoraUtils.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
 PandoraGUI::MainWindow.new(MAIN_WINDOW_TITLE)
+$pserver.close if ($pserver and (not $pserver.closed?))
+delete_psocket
