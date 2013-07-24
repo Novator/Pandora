@@ -122,7 +122,6 @@ if not $poly_launch
             if psocket
               Thread.new(psocket) do |psocket|
                 while not psocket.closed?
-                  sleep(0.5)
                   command = psocket.recv(255)
                   if ($window and command and (command != ''))
                     $window.do_menu_act(command)
@@ -2840,7 +2839,8 @@ module PandoraModel
     trust
   end
 
-  PK_Key    = 221
+  PK_Key     = 221
+  PK_Message = 227
 
   def self.get_record_by_panhash(kind, panhash, pson_with_kind=nil, models=nil, getfields=nil)
     res = nil
@@ -4340,6 +4340,7 @@ module PandoraNet
 
   ECC_Sync1_NoRecord    = 1
   ECC_Sync2_Encode      = 2
+  ECC_Sync3_Confirm     = 3
 
   EC_Wait1_NoFish       = 1
   EC_Wait2_NoFisher     = 2
@@ -4414,8 +4415,9 @@ module PandoraNet
 
   # Inquirer steps
   # RU: Шаги почемучки
-  IS_CreatorCheck  = 0
-  IS_NewsQuery     = 1
+  IS_ResetMessage  = 0
+  IS_CreatorCheck  = 1
+  IS_NewsQuery     = 2
   IS_Finished      = 255
 
   $incoming_addr = nil
@@ -4435,7 +4437,7 @@ module PandoraNet
   class Session
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
       :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, :fisher_lure, :fish_lure, \
-      :send_models, :recv_models, :sindex, :read_queue, :send_queue, :params, \
+      :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, :params, \
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, \
       :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes, :fishers
 
@@ -4703,7 +4705,12 @@ module PandoraNet
             asbuf = nil
           end
         when EC_Message
-          asbuf = param
+          #???values = {:destination=>panhash, :text=>text, :state=>state, \
+          #  :creator=>creator, :created=>time_now, :modified=>time_now}
+          #      kind = PandoraUtils.kind_from_panhash(panhash)
+          #      record = PandoraModel.get_record_by_panhash(kind, panhash, true, @recv_models)
+          #      p log_mes+'EC_Request panhashes='+PandoraUtils.bytes_to_hex(panhash).inspect
+          asbuf = PandoraUtils.rubyobj_to_pson_elem(param)
         when EC_Bye
           ascmd = EC_Bye
           ascode = ECC_Bye_Exit
@@ -5541,6 +5548,28 @@ module PandoraNet
               p log_mes+'EC_Sync: No record: panhash='+rdata.inspect
             when ECC_Sync2_Encode
               @r_encode = true
+            when ECC_Sync3_Confirm
+              confirms = rdata
+              p log_mes+'recv confirms='+confirms
+              if confirms
+                prev_kind = nil
+                i = 0
+                while (i<confirms.bytesize)
+                  kind = confirms[i].ord
+                  if (not prev_kind) or (kind != prev_kind)
+                    panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+                    model = PandoraUtils.get_model(panobjectclass.ider, @recv_models)
+                    prev_kind = kind
+                  end
+                  id = confirms[i+1, 4].unpack('N')
+                  p log_mes+'update confirm  kind,id='+[kind, id].inspect
+                  res = model.update({:state=>2}, nil, {:id=>id})
+                  if not res
+                    log_message(LM_Warning, _('Cannot update record of confirm')+' kind,id='+[kind,id].inspect)
+                  end
+                  i += 5
+                end
+              end
           end
         when EC_Wait
           case rcode
@@ -5569,38 +5598,61 @@ module PandoraNet
           if @stage>=ST_Exchange
             case rcmd
               when EC_Message, EC_Channel
-                #curpage = nil
-                p log_mes+'mes len='+@rdata.bytesize.to_s
                 if not dialog
-                  #node = pool.encode_node(host_ip, port, proto)
                   panhash = @skey[PandoraCrypto::KV_Creator]
                   @dialog = PandoraGUI.show_talk_dialog(panhash, @node_panhash)
-                  #curpage = dialog
                   Thread.pass
-                  #sleep(0.1)
-                  #Thread.pass
-                  #p log_mes+'NEW dialog1='+dialog.inspect
-                  #p log_mes+'NEW dialog2='+@dialog.inspect
                 end
                 if rcmd==EC_Message
-                  mes = @rdata
-                  talkview = nil
-                  #p log_mes+'MES dialog='+dialog.inspect
-                  talkview = dialog.talkview if dialog
-                  if talkview
+                  row = @rdata
+                  if row.is_a? String
+                    row, len = PandoraUtils.pson_elem_to_rubyobj(row)
                     t = Time.now
-                    talkview.before_addition(t)
-                    talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
-                    talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
-                    myname = PandoraCrypto.short_name_of_person(@rkey)
-                    dude_name = PandoraCrypto.short_name_of_person(@skey, nil, 0, myname)
-                    talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', 'dude_bold')
-                    talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
-                    talkview.after_addition
-                    talkview.show_all
-                    dialog.update_state(true)
-                  else
-                    log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
+                    id = nil
+                    time_now = t.to_i
+                    creator = @skey[PandoraCrypto::KV_Creator]
+                    created = time_now
+                    destination = @rkey[PandoraCrypto::KV_Creator]
+                    text = nil
+                    if row.is_a? Array
+                      id = row[0]
+                      creator = row[1]
+                      created = row[2]
+                      text = row[3]
+                    else
+                      text = row
+                    end
+
+                    values = {:destination=>destination, :text=>text, :state=>2, \
+                      :creator=>creator, :created=>created, :modified=>time_now}
+                    model = PandoraUtils.get_model('Message', @recv_models)
+                    panhash = model.panhash(values)
+                    values['panhash'] = panhash
+                    res = model.update(values, nil, nil)
+                    if res and (id.is_a? Integer)
+                      while (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) do
+                        sleep(0.02)
+                      end
+                      @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
+                        +[id].pack('N'))
+                    end
+
+                    talkview = nil
+                    talkview = dialog.talkview if dialog
+                    if talkview
+                      talkview.before_addition(t)
+                      talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
+                      talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
+                      myname = PandoraCrypto.short_name_of_person(@rkey)
+                      dude_name = PandoraCrypto.short_name_of_person(@skey, nil, 0, myname)
+                      talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', 'dude_bold')
+                      talkview.buffer.insert(talkview.buffer.end_iter, ' '+text)
+                      talkview.after_addition
+                      talkview.show_all
+                      dialog.update_state(true)
+                    else
+                      log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
+                    end
                   end
                 else #EC_Channel
                   case rcode
@@ -5722,6 +5774,7 @@ module PandoraNet
       @sindex         = 0
       @read_queue     = PandoraUtils::RoundQueue.new
       @send_queue     = PandoraUtils::RoundQueue.new
+      @confirm_queue  = PandoraUtils::RoundQueue.new
       @send_models    = {}
       @recv_models    = {}
       @params         = {}
@@ -5890,7 +5943,7 @@ module PandoraNet
                 if rkcmd==EC_Media
                   process_media_segment(rkcode, rkdata)
                 else
-                  while (@read_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full ) \
+                  while (@read_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) \
                   and (@conn_state == CS_Connected)
                     sleep(0.03)
                     Thread.pass
@@ -5974,13 +6027,30 @@ module PandoraNet
 
       # Send cicle
       # RU: Цикл отправки
-      inquirer_step = IS_CreatorCheck
+      inquirer_step = IS_ResetMessage
       message_model = PandoraUtils.get_model('Message', @send_models)
       p log_mes+'ЦИКЛ ОТПРАВКИ начало'
 
       while (@conn_state != CS_Disconnected)
-        # отправка сформированных сегментов и их удаление
+
         fast_data = false
+
+        # формирование подтверждений
+        if (@conn_state != CS_Disconnected)
+          ssbuf = ''
+          confirm_rec = @confirm_queue.get_block_from_queue
+          while (@conn_state != CS_Disconnected) and confirm_rec
+            p log_mes+'send  confirm_rec='+confirm_rec
+            ssbuf << confirm_rec
+            confirm_rec = @confirm_queue.get_block_from_queue
+            if (not confirm_rec) or (ssbuf.bytesize+5>MaxSegSize)
+              add_send_segment(EC_Sync, true, ssbuf, ECC_Sync3_Confirm)
+              ssbuf = ''
+            end
+          end
+        end
+
+        # отправка сформированных сегментов и их удаление
         if (@conn_state != CS_Disconnected)
           send_segment = @send_queue.get_block_from_queue
           while (@conn_state != CS_Disconnected) and send_segment
@@ -6024,6 +6094,15 @@ module PandoraNet
         and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$inquire_block_count) \
         and (inquirer_step<IS_Finished)
           case inquirer_step
+            when IS_ResetMessage
+              mypanhash = PandoraCrypto.current_user_or_key(true)
+              receiver = @skey[PandoraCrypto::KV_Creator]
+              if (receiver.is_a? String) and (receiver.bytesize>0) \
+              and (((conn_mode & CM_Hunter) != 0) or (mypanhash != receiver))
+                filter = {'destination'=>receiver, 'state'=>1}
+                message_model.update({:state=>0}, nil, filter)
+              end
+              inquirer_step += 1
             when IS_CreatorCheck
               creator = @skey[PandoraCrypto::KV_Creator]
               kind = PandoraUtils.kind_from_panhash(creator)
@@ -6050,7 +6129,8 @@ module PandoraNet
         cannel = 0
         while (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
         and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
-        and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size)
+        and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size) \
+        and (inquirer_step>IS_ResetMessage)
           if dialog.recv_media_pipeline[cannel] and dialog.appsrcs[cannel]
           #and (dialog.recv_media_pipeline[cannel].get_state == Gst::STATE_PLAYING)
             processed += 1
@@ -6082,9 +6162,10 @@ module PandoraNet
         and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
           fast_data = true
           @send_state = (send_state & (~CSF_Message))
-          if @skey and @skey[PandoraCrypto::KV_Creator]
-            filter = {'destination'=>@skey[PandoraCrypto::KV_Creator], 'state'=>0}
-            fields = 'id, text'
+          receiver = @skey[PandoraCrypto::KV_Creator]
+          if @skey and receiver
+            filter = {'destination'=>receiver, 'state'=>0}
+            fields = 'id, creator, created, text'
             sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
             if sel and (sel.size>0)
               @send_state = (send_state | CSF_Messaging)
@@ -6093,28 +6174,25 @@ module PandoraNet
               and (@conn_state == CS_Connected) \
               and (@send_queue.single_read_state != PandoraUtils::RoundQueue::QS_Full)
                 processed += 1
-                id = sel[i][0]
-                text = sel[i][1]
-                #p log_mes+'send_message: [i, id, text]='+[i, id, text].inspect
-                if add_send_segment(EC_Message, true, text)
-                  res = message_model.update({:state=>1}, nil, 'id='+id.to_s)
+                row = sel[i]
+                if add_send_segment(EC_Message, true, row)
+                  id = row[0]
+                  res = message_model.update({:state=>1}, nil, {:id=>id})
                   if not res
-                    log_message(LM_Error, 'Ошибка обновления сообщения text='+text)
+                    log_message(LM_Error, _('Updating state of sent message')+' id='+id.to_s)
                   end
                 else
-                  log_message(LM_Error, 'Ошибка отправки сообщения text='+text)
+                  log_message(LM_Error, _('Adding message to send queue')+' id='+id.to_s)
                 end
                 i += 1
-                if (i>=sel.size) and (processed<$mes_block_count) and (@conn_state == CS_Connected)
-                  #sel = message_model.select('destination="'+node.to_s+'" AND state=0', \
-                  #  false, 'id, text', 'created', $mes_block_count)
-                  sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
-                  if sel and (sel.size>0)
-                    i = 0
-                  else
-                    @send_state = (send_state & (~CSF_Messaging))
-                  end
-                end
+                #if (i>=sel.size) and (processed<$mes_block_count) and (@conn_state == CS_Connected)
+                #  sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
+                #  if sel and (sel.size>0)
+                #    i = 0
+                #  else
+                #    @send_state = (send_state & (~CSF_Messaging))
+                #  end
+                #end
               end
             else
               @send_state = (send_state & (~CSF_Messaging))
@@ -6160,10 +6238,11 @@ module PandoraNet
           end
         end
 
-        if socket and socket.closed? or (@conn_state == CS_StopRead)
+        if socket and socket.closed? or (@conn_state == CS_StopRead) \
+        and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::QS_Empty)
           @conn_state = CS_Disconnected
         elsif (not fast_data)
-          sleep(0.2)
+          sleep(0.02)
         #elsif conn_state == CS_Stoping
         #  add_send_segment(EC_Bye, true)
         end
@@ -10703,8 +10782,6 @@ module PandoraGUI
         when 'Quit'
           self.destroy
         when 'Activate'
-          self.deiconify
-          self.visible = true
           self.present
         when 'About'
           PandoraGUI.show_about
@@ -11049,6 +11126,7 @@ module PandoraGUI
         end
         PandoraCrypto.reset_current_key
         $statusicon.visible = false if ($statusicon and (not $statusicon.destroyed?))
+        $window = nil
         Gtk.main_quit
       end
 

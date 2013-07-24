@@ -271,4 +271,7 @@ Listening address=>Слушаю адрес
 Hunter connects=>Охотник подключился
 Hunter disconnects=>Охотник отключился
 Listener stops=>Слушатель остановлен
+Cannot update record of confirm=>Не могу обновить запись подтверждения
+Updating state of sent message=>Обновление состояния отправленного сообщения
+Adding message to send queue=>Добавление сообщения в очередь отправки
 
