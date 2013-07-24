@@ -43,7 +43,7 @@ while (ARGV.length>0) or next_arg
   else
     arg = ARGV.shift
   end
-  if arg.is_a? String and (arg[0,1]=='-')
+  if (arg.is_a? String) and (arg[0,1]=='-')
     if ARGV.length>0
       next_arg = ARGV.shift
     end
@@ -97,6 +97,7 @@ def init_win32api
 end
 
 MAIN_WINDOW_TITLE = 'Pandora'
+GTK_WINDOW_CLASS = 'gdkWindowToplevel'
 
 # Prevent second execution
 # RU: Предотвратить второй запуск
@@ -139,12 +140,11 @@ if not $poly_launch
     end
   elsif (os_family=='windows') and init_win32api
     FindWindow = Win32API.new('user32', 'FindWindow', ['P', 'P'], 'L')
-    win_handle = FindWindow.call(nil, MAIN_WINDOW_TITLE)
+    win_handle = FindWindow.call(GTK_WINDOW_CLASS, MAIN_WINDOW_TITLE)
     if (win_handle.is_a? Integer) and (win_handle>0)
+      #ShowWindow = Win32API.new('user32', 'ShowWindow', 'L', 'V')
+      #ShowWindow.call(win_handle, 5)  #SW_SHOW=5, SW_RESTORE=9
       SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
-      SetForegroundWindow.call(win_handle)
-      ShowWindow = Win32API.new('user32', 'ShowWindow', 'L', 'V')
-      ShowWindow.call(win_handle, 5)  #WM_SHOW
       SetForegroundWindow.call(win_handle)
       Kernel.abort('Another copy of Pandora is already runned')
     end
@@ -10437,10 +10437,10 @@ module PandoraGUI
     def icon_activated
       #$window.skip_taskbar_hint = false
       if $window.visible?
-        if $window.has_toplevel_focus?    #.active?
+        if ($window.has_toplevel_focus? or (os_family=='windows'))
           $window.hide
         else
-          $window.present
+          $window.do_menu_act('Activate')
         end
       else
         $window.do_menu_act('Activate')
@@ -10782,7 +10782,12 @@ module PandoraGUI
         when 'Quit'
           self.destroy
         when 'Activate'
+          self.deiconify
+          #self.visible = true if (not self.visible?)
           self.present
+        when 'Hide'
+          #self.iconify
+          self.hide
         when 'About'
           PandoraGUI.show_about
         when 'Close'
@@ -11101,8 +11106,7 @@ module PandoraGUI
       $window.add(vbox)
 
       $window.signal_connect('delete-event') do |*args|
-        $window.iconify
-        $window.hide
+        $window.do_menu_act('Hide')
         true
       end
 
@@ -11192,9 +11196,12 @@ module PandoraGUI
 
       $window.focus_timer = $window
       $window.signal_connect('focus-in-event') do |window, event|
-        #p 'focus-in-event: ' + $window.has_toplevel_focus?.inspect
+        #p 'focus-in-event: ' + [$window.has_toplevel_focus?, \
+        #  event, $window.visible?].inspect
         if $window.focus_timer
           $window.focus_timer = nil if ($window.focus_timer == $window)
+        elsif (os_family=='windows') and (not $window.visible?)
+          $window.do_menu_act('Activate')
         else
           $window.focus_timer = GLib::Timeout.add(700) do
             #p 'read timer!!!' + $window.has_toplevel_focus?.inspect
@@ -11262,3 +11269,4 @@ PandoraModel.load_model_from_xml($lang)
 PandoraGUI::MainWindow.new(MAIN_WINDOW_TITLE)
 $pserver.close if ($pserver and (not $pserver.closed?))
 delete_psocket
+
