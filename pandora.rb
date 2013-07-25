@@ -7730,7 +7730,7 @@ module PandoraGUI
         labels_width += lw
         max_label_height = lh if max_label_height < lh
       end
-      @middle_char_width = texts_width.to_f / texts_chars
+      @middle_char_width = (texts_width.to_f*1.2 / texts_chars).round
 
       # max window size
       scr = Gdk::Screen.default
