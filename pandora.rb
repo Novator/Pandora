@@ -3986,7 +3986,7 @@ module PandoraCrypto
       #p 'nf='+nf.inspect
       aname, afamily = nf
     elsif (person or key)
-      person ||= key[KV_Creator]
+      person ||= key[KV_Creator] if key
       kind = PandoraUtils.kind_from_panhash(person)
       sel = PandoraModel.get_record_by_panhash(kind, person, nil, nil, 'first_name, last_name')
       #p 'key, person, sel='+[key, person, sel].inspect
@@ -9089,8 +9089,57 @@ module PandoraGUI
 
       show_all
 
+      load_history
+
       $window.notebook.page = $window.notebook.n_pages-1 if not known_node
       editbox.grab_focus
+    end
+
+    def load_history(max_message=4)
+      if talkview
+        messages = []
+        fields = 'creator, created, destination, state, text, panstate, modified'
+        mypanhash = PandoraCrypto.current_user_or_key(true)
+        myname = PandoraCrypto.short_name_of_person(nil, mypanhash)
+        persons = targets[CSI_Persons]
+        persons.each do |person|
+          model = PandoraUtils.get_model('Message')
+          sel = model.select({:creator=>person, :destination=>mypanhash}, false, fields, \
+            'modified DESC', max_message)
+          messages += sel
+          if (person != mypanhash)
+            sel = model.select({:creator=>mypanhash, :destination=>person}, false, fields, \
+              'modified DESC', max_message)
+            messages += sel
+          end
+        end
+        messages.sort! {|a,b| a[6]<=>b[6] }
+        talkview.before_addition
+        i = (messages.size-max_message)
+        i = 0 if i<0
+        while i<messages.size do
+          message = messages[i]
+          talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
+          t = Time.at(message[6])
+          dude_name = myname
+          creator = message[0]
+          time_style = 'you'
+          name_style = 'you_bold'
+          dude_name = myname
+          if creator != mypanhash
+            dude_name = PandoraCrypto.short_name_of_person(nil, creator, 0, myname)
+            time_style = 'dude'
+            name_style = 'dude_bold'
+          end
+          talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%d.%m.%Y  %H:%M:%S')+' ', time_style)
+          talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', name_style)
+          text = message[4]
+          talkview.buffer.insert(talkview.buffer.end_iter, ' '+text)
+          i += 1
+        end
+        talkview.after_addition
+        talkview.show_all
+      end
     end
 
     def get_name_and_family(i)
