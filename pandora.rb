@@ -922,11 +922,11 @@ module PandoraUtils
   end
 
   def self.kind_from_panhash(panhash)
-    kind = panhash[0].ord
+    kind = panhash[0].ord if (panhash.is_a? String) and (panhash.bytesize>0)
   end
 
   def self.lang_from_panhash(panhash)
-    lang = panhash[1].ord
+    lang = panhash[1].ord if (panhash.is_a? String) and (panhash.bytesize>1)
   end
 
   # Base Pandora's object
@@ -2807,7 +2807,7 @@ module PandoraModel
 
   def self.panobjectclass_by_kind(kind)
     res = nil
-    if kind>0
+    if (kind.is_a? Integer) and (kind>0)
       $panobject_list.each do |panobject_class|
         if panobject_class.kind==kind
           res = panobject_class
@@ -2845,28 +2845,32 @@ module PandoraModel
   def self.get_record_by_panhash(kind, panhash, pson_with_kind=nil, models=nil, getfields=nil)
     res = nil
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-    model = PandoraUtils.get_model(panobjectclass.ider, models)
-    filter = {'panhash'=>panhash}
-    if kind==PK_Key
-      filter['kind'] = 0x81
-    end
-    pson = (pson_with_kind != nil)
-    sel = model.select(filter, pson, getfields, nil, 1)
-    if sel and (sel.size>0)
-      if pson
-        #namesvalues = panobject.namesvalues
-        #fields = model.matter_fields
-        fields = model.clear_excess_fields(sel[0])
-        p 'get_rec: matter_fields='+fields.inspect
-        # need get all fields (except: id, panhash, modified) + kind
-        lang = PandoraUtils.lang_from_panhash(panhash)
-        res = AsciiString.new
-        res << [kind].pack('C') if pson_with_kind
-        res << [lang].pack('C')
-        p 'get_record_by_panhash|||  fields='+fields.inspect
-        res << PandoraUtils.namehash_to_pson(fields)
-      else
-        res = sel
+    if panobjectclass
+      model = PandoraUtils.get_model(panobjectclass.ider, models)
+      if model
+        filter = {'panhash'=>panhash}
+        if kind==PK_Key
+          filter['kind'] = 0x81
+        end
+        pson = (pson_with_kind != nil)
+        sel = model.select(filter, pson, getfields, nil, 1)
+        if sel and (sel.size>0)
+          if pson
+            #namesvalues = panobject.namesvalues
+            #fields = model.matter_fields
+            fields = model.clear_excess_fields(sel[0])
+            p 'get_rec: matter_fields='+fields.inspect
+            # need get all fields (except: id, panhash, modified) + kind
+            lang = PandoraUtils.lang_from_panhash(panhash)
+            res = AsciiString.new
+            res << [kind].pack('C') if pson_with_kind
+            res << [lang].pack('C')
+            p 'get_record_by_panhash|||  fields='+fields.inspect
+            res << PandoraUtils.namehash_to_pson(fields)
+          else
+            res = sel
+          end
+        end
       end
     end
     res
