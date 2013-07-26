@@ -4165,9 +4165,9 @@ module PandoraNet
         session.send_state = (session.send_state | send_state_add)
         session.dialog = nil if session.dialog and session.dialog.destroyed?
         session.dialog = dialog if dialog
-        if session.dialog and (not session.dialog.destroyed?) and session.dialog.online_button
-          session.dialog.online_button.active = ((session.socket and (not session.socket.closed?)) \
-            or session.donor)
+        if session.dialog and (not session.dialog.destroyed?) and session.dialog.online_button \
+        and ((session.socket and (not session.socket.closed?)) or session.donor)
+          session.dialog.online_button.good_set_active(true)
         end
         res = true
       elsif (node or keybase)
@@ -5809,6 +5809,10 @@ module PandoraNet
       if dialog and (not dialog.destroyed?)
         dialog.set_session(self, true)
         #dialog.online_button.active = (socket and (not socket.closed?))
+        if self.dialog and (not self.dialog.destroyed?) and self.dialog.online_button \
+        and ((self.socket and (not self.socket.closed?)) or self.donor)
+          self.dialog.online_button.good_set_active(true)
+        end
       end
 
       #Thread.critical = true
@@ -9209,7 +9213,7 @@ module PandoraGUI
       res = false
       creator = PandoraCrypto.current_user_or_key(true)
       if creator
-        online_button.active = true
+        online_button.active = true if (not online_button.active?)
         #Thread.pass
         time_now = Time.now.to_i
         state = 0
