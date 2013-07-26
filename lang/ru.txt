@@ -277,3 +277,5 @@ Adding message to send queue=>Добавление сообщения в оче�
 voucher=>поручительство
 exchange=>обмен
 Key credentials=>Полномочия ключа
+IP is banned=>IP забанен
+Node already connected=>Узел уже подключен

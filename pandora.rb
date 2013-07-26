@@ -2360,6 +2360,7 @@ module PandoraUtils
     end
     res = AsciiString.new
     res << [type].pack('C')
+    data = AsciiString.new(data) if data.is_a? String
     if elem_size
       res << PandoraUtils.fill_zeros_from_left(PandoraUtils.bigint_to_bytes(elem_size), count+1) + data
     else
@@ -4164,9 +4165,10 @@ module PandoraNet
         session.send_state = (session.send_state | send_state_add)
         session.dialog = nil if session.dialog and session.dialog.destroyed?
         session.dialog = dialog if dialog
-        #if session.dialog and session.dialog.online_button
-        #  session.dialog.online_button.active = (session.socket and (not session.socket.closed?))
-        #end
+        if session.dialog and (not session.dialog.destroyed?) and session.dialog.online_button
+          session.dialog.online_button.active = ((session.socket and (not session.socket.closed?)) \
+            or session.donor)
+        end
         res = true
       elsif (node or keybase)
         p 'NEED connect: '+[node, keybase].inspect
@@ -6397,31 +6399,20 @@ module PandoraNet
                   host_name = socket.peeraddr[3]
                   port = socket.peeraddr[1]
                   #port = socket.addr[1] if host_ip==socket.addr[2] # hack for short circuit!!!
-                  proto = "tcp"
+                  proto = 'tcp'
                   node = $window.pool.encode_node(host_ip, port, proto)
-                  p "LISTEN: node: "+node.inspect
 
                   session = $window.pool.session_of_node(node)
                   if session
-                    log_message(LM_Info, "Замкнутая петля: "+socket.to_s)
-                    while session and (session.conn_state==CS_Connected) and not socket.closed?
-                      begin
-                        buf = socket.recv(MaxPackSize) if not socket.closed?
-                      rescue
-                        buf = ''
-                      end
-                      socket.send(buf, 0) if (not socket.closed? and buf and (buf.bytesize>0))
-                      session = $window.pool.session_of_node(node)
-                    end
+                    log_message(LM_Info, _('Node already connected')+': '+node)
                   else
                     conn_mode = 0
                     session = Session.new
                     session.run(socket, host_name, host_ip, port, proto, conn_mode, \
                       CS_Connected, Thread.current, nil, nil, nil, nil)
-                    p "END LISTEN SOKET CLIENT!!!"
                   end
                 else
-                  log_message(LM_Info, "IP забанен: "+host_ip.to_s)
+                  log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
                 end
                 socket.close if not socket.closed?
                 log_message(LM_Info, _('Hunter disconnects')+': '+socket.to_s)
