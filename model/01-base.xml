@@ -372,7 +372,7 @@
     <hide_on_minimize desc="Hide on minimize" type="Boolean" section="view" setting="true" />
     <status_update_win_icon desc="Update window icon on message" type="Boolean" section="view" setting="false" />
     <status_flash_on_new desc="Flash on new" type="Boolean" section="view" setting="true" />
-    <status_flash_interval desc="Interval of status icon flash (sec or 0)" type="Real" section="view" setting="0.8" />
+    <status_flash_interval desc="Interval of status icon flash (sec)" type="Real" section="view" setting="0.8" />
     <play_sounds desc="Play sounds on events" type="Boolean" section="view" setting="true" />
     <linux_mp3_player desc="Linux mp3 player" type="String" section="view" setting="mpg123" />
     <win_mp3_player desc="Windows mp3 player" type="String" section="view" setting='' />

@@ -10380,6 +10380,7 @@ module PandoraGUI
       @update_win_icon = a_update_win_icon
       @flash_on_new = a_flash_on_new
       @flash_interval = (a_flash_interval.to_f*1000).round
+      @flash_interval = 800 if (@flash_interval<100)
       @play_sounds = a_play_sounds
 
       @message = nil
