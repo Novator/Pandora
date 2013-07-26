@@ -3125,6 +3125,9 @@ module PandoraCrypto
   KV_Trust   = 8
   KV_NameFamily  = 9
 
+  KS_Exchange  = 1
+  KS_Voucher   = 2
+
   def self.key_recrypt(data, encode=true, cipher_hash=nil, cipherkey=nil)
     #p '^^^^^^^^^^^^sym_recrypt: [cipher_hash, passwd]='+[cipher_hash, cipherkey].inspect
     #cipher_hash ||= encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
@@ -3435,9 +3438,6 @@ module PandoraCrypto
     self.the_current_key
   end
 
-  KR_Exchange  = 1
-  KR_Sign      = 2
-
   $first_key_init = true
 
   def self.current_key(switch_key=false, need_init=true)
@@ -3643,18 +3643,27 @@ module PandoraCrypto
           dialog.viewport.add(vbox)
 
           #creator = PandoraUtils.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
-          label = Gtk::Label.new(_('Your panhash'))
+          label = Gtk::Label.new(_('Person panhash'))
           vbox.pack_start(label, false, false, 2)
           user_entry = PandoraGUI::PanhashBox.new('Panhash(Person)')
           #user_entry.text = PandoraUtils.bytes_to_hex(creator)
           vbox.pack_start(user_entry, false, false, 2)
 
-          rights = KR_Exchange | KR_Sign
-          label = Gtk::Label.new(_('Rights'))
+          rights = KS_Exchange | KS_Voucher
+          label = Gtk::Label.new(_('Key credentials'))
           vbox.pack_start(label, false, false, 2)
-          rights_entry = Gtk::Entry.new
-          rights_entry.text = rights.to_s
-          vbox.pack_start(rights_entry, false, false, 2)
+
+          hbox = Gtk::HBox.new
+
+          exchange_btn = Gtk::CheckButton.new(_('exchange'), true)
+          exchange_btn.active = ((rights & KS_Exchange)>0)
+          hbox.pack_start(exchange_btn, true, true, 2)
+
+          voucher_btn = Gtk::CheckButton.new(_('voucher'), true)
+          voucher_btn.active = ((rights & KS_Voucher)>0)
+          hbox.pack_start(voucher_btn, true, true, 2)
+
+          vbox.pack_start(hbox, false, false, 2)
 
           label = Gtk::Label.new(_('Password'))
           vbox.pack_start(label, false, false, 2)
@@ -3676,7 +3685,10 @@ module PandoraCrypto
               if passwd and (passwd.size>0)
                 cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
               end
-              rights = rights_entry.text.to_i
+
+              rights = 0
+              rights = (rights | KS_Exchange) if exchange_btn.active?
+              rights = (rights | KS_Voucher) if voucher_btn.active?
 
               #p 'cipher_hash='+cipher_hash.to_s
               type_klen = KT_Rsa | KL_bit2048
@@ -6708,6 +6720,8 @@ module PandoraGUI
         self.signal_handler_block(@clicked_signal) do
           self.active = an_active
         end
+      else
+        self.active = an_active
       end
     end
   end
@@ -7544,12 +7558,12 @@ module PandoraGUI
             if PandoraCrypto.current_user_or_key(false)
               widget.inconsistent = false
               widget.active = true
-              trust0 = 0.4
+              trust0 = 0.1
             end
           end
           trust_scale.sensitive = widget.active?
           if widget.active?
-            trust0 ||= 0.4
+            trust0 ||= 0.1
             trust_scale.value = trust0
           else
             trust0 = trust_scale.value
@@ -7562,8 +7576,8 @@ module PandoraGUI
       #@scale_button.set_icons(['gtk-goto-bottom', 'gtk-goto-top', 'gtk-execute'])
       #@scale_button.signal_connect('value-changed') { |widget, value| puts "value changed: #{value}" }
 
-      tips = [_('villian'), _('destroyer'), _('dirty'), _('harmful'), _('bad'), _('vain'), \
-        _('trying'), _('useful'), _('constructive'), _('creative'), _('genius')]
+      tips = [_('evil'), _('destructive'), _('dirty'), _('harmful'), _('bad'), _('vain'), \
+        _('good'), _('useful'), _('constructive'), _('creative'), _('genial')]
 
       #@trust ||= (127*0.4).round
       #val = trust/127.0
@@ -9104,8 +9118,21 @@ module PandoraGUI
         persons = targets[CSI_Persons]
         persons.each do |person|
           model = PandoraUtils.get_model('Message')
+          max_message2 = max_message
+          max_message2 = max_message * 2 if (person == mypanhash)
           sel = model.select({:creator=>person, :destination=>mypanhash}, false, fields, \
-            'modified DESC', max_message)
+            'modified DESC', max_message2)
+          if (person == mypanhash)
+            i = sel.size-1
+            while i>0 do
+              i -= 1
+              if sel[i][4] and sel[i][6] and sel[i+1][4] and sel[i+1][6] \
+              and (AsciiString.new(sel[i][4])==AsciiString.new(sel[i+1][4])) and ((sel[i][6]-sel[i+1][6]).abs<30)
+                sel.delete_at(i)
+                i -= 1
+              end
+            end
+          end
           messages += sel
           if (person != mypanhash)
             sel = model.select({:creator=>mypanhash, :destination=>person}, false, fields, \
@@ -9117,6 +9144,7 @@ module PandoraGUI
         talkview.before_addition
         i = (messages.size-max_message)
         i = 0 if i<0
+        time_now = Time.now
         while i<messages.size do
           message = messages[i]
           talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
@@ -9131,7 +9159,9 @@ module PandoraGUI
             time_style = 'dude'
             name_style = 'dude_bold'
           end
-          talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%d.%m.%Y  %H:%M:%S')+' ', time_style)
+          time_fmt = '%H:%M:%S'
+          time_fmt = '%d.%m.%Y  '+time_fmt if ((time_now.to_i - t.to_i).abs > 12*3600)
+          talkview.buffer.insert(talkview.buffer.end_iter, t.strftime(time_fmt)+' ', time_style)
           talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', name_style)
           text = message[4]
           talkview.buffer.insert(talkview.buffer.end_iter, ' '+text)

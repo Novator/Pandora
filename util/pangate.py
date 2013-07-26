@@ -8,18 +8,50 @@
 # 2012 (c) Michael Galyuk, P2P social network Pandora, free software
 # RU: 2012 (c) Михаил Галюк, P2P социальная сеть Пандора, свободное ПО
 
-import time, datetime, termios, fcntl, sys, os, socket, threading, struct, binascii, hashlib
+import time, datetime, termios, fcntl, sys, os, socket, threading, struct, binascii, hashlib, ConfigParser
 
-# Server settings
-TCP_IP = '0.0.0.0'
-TCP_PORT = 5577
-#LOG_FILE_NAME = ''  #switch off logging
-LOG_FILE_NAME = './pangate.log'
-MAX_CONNECTIONS = 10
-PASSWORD_HASH = hashlib.sha256('123456').digest()
-OWNER_KEY_PANHASH = 'dd0308eed0743cba54d1e2f7838fcd3943be51e67b1f'.decode('hex')
-CLIENT_MEDIA_FIRST_ALLOW = False
-LOG_FLUSH_INTERVAL = 2
+config = None
+
+def getparam(sect, name, atype='str'):
+  global config
+  res = None
+  try:
+    if atype=='int':
+      res = config.getint(sect, name)
+    elif atype=='bool':
+      res = config.getboolean(sect, name)
+    elif atype=='real':
+      res = config.getfloat(sect, name)
+    else:
+      res = config.get(sect, name)
+  except:
+    res = None
+  return res
+
+config = ConfigParser.SafeConfigParser()
+res = config.read('./pangate.conf')
+if len(res):
+  host = getparam('network', 'host')
+  port = getparam('network', 'port', 'int')
+  max_conn = getparam('network', 'max_conn', 'int')
+  client_media_first = getparam('network', 'client_media_first', 'bool')
+  password = getparam('owner', 'password')
+  keyhash = getparam('owner', 'keyhash')
+  log_prefix = getparam('logfile', 'prefix')
+  max_size = getparam('logfile', 'max_size', 'int')
+  flush_interval = getparam('logfile', 'flush_interval', 'int')
+
+if not host: host = '0.0.0.0'
+if not port: port = 5577
+if not log_prefix: log_prefix = './pangate'
+if not max_conn: max_conn = 10
+if not password: password = '123456'
+if not keyhash: keyhash = 'dd0308eed0743cba54d1e2f7838fcd3943be51e67b1f'
+if not client_media_first: client_media_first = False
+if not flush_interval: flush_interval = 2
+
+password = hashlib.sha256(password).digest()
+keyhash = keyhash.decode('hex')
 
 ROOT_PATH = os.path.abspath('.')
 KEEPALIVE = 1 #(on/off)
@@ -30,6 +62,7 @@ KEEPCNT = 4   #(count)
 # Internal constants
 MaxPackSize = 1500
 MaxSegSize  = 1200
+MaxLogSize = 100*1024
 CommSize = 7
 CommExtSize = 10
 SegNAttrSize = 8
@@ -140,17 +173,44 @@ LONG_SEG_SIGN   = 0xFFFF
 
 logfile = None
 flush_time = None
+curlogindex = None
+curlogsize = None
+
+def logname_by_index(index=1):
+  global log_prefix
+  filename = log_prefix
+  if (len(filename)>1) and (filename[0:2]=='./') and ROOT_PATH and (len(ROOT_PATH)>0):
+    filename = ROOT_PATH + filename[1:]
+  filename = os.path.abspath(filename+str(index)+'.log')
+  return filename
+
+def closelog():
+  global logfile
+  if logfile:
+    logfile.close()
+    logfile = None
 
 def logmes(mes, show=True, addr=None):
-  global logfile, flush_time
+  global logfile, flush_time, curlogindex, curlogsize, log_prefix, max_size, flush_interval
   if (not logfile) and (logfile != False):
-    if LOG_FILE_NAME and (len(LOG_FILE_NAME)>0):
-      filename = LOG_FILE_NAME
-      if (len(filename)>1) and (filename[0:2]=='./') and ROOT_PATH and (len(ROOT_PATH)>0):
-        filename = ROOT_PATH + filename[1:]
-      filename = os.path.abspath(filename)
+    if log_prefix and (len(log_prefix)>0):
       try:
+        s1 = os.path.getsize(logname_by_index(1))
+      except:
+        s1 = None
+      try:
+        s2 = os.path.getsize(logname_by_index(2))
+      except:
+        s2 = None
+      curlogindex = 1
+      curlogsize = s1
+      if (s1 and ((s1>=max_size) or (s2 and (s2<s1)))):
+        curlogindex = 2
+        curlogsize = s2
+      try:
+        filename = logname_by_index(curlogindex)
         logfile = open(filename, 'a')
+        if not curlogsize: curlogsize = 0
         print('Logging to file: '+filename)
       except:
         logfile = False
@@ -166,15 +226,27 @@ def logmes(mes, show=True, addr=None):
     if logfile:
       addr = ''
       if addr: addr = ' '+str(addr)
-      logfile.write(time_str+': '+mes+addr+'\n')
-      if (not flush_time) or (cur_time >= (flush_time + datetime.timedelta(0, LOG_FLUSH_INTERVAL))):
+      logline = time_str+': '+mes+addr+'\n'
+      curlogsize += len(logline)
+      if curlogsize >= max_size:
+        curlogsize = 0
+        if curlogindex == 1:
+          curlogindex = 2
+        else:
+          curlogindex = 1
+        try:
+          filename = logname_by_index(curlogindex)
+          closelog()
+          logfile = open(filename, 'w')
+          print('Change logging to file: '+filename)
+        except:
+          logfile = False
+          print('Cannot change log-file: '+filename)
+          return
+      logfile.write(logline)
+      if (not flush_time) or (cur_time >= (flush_time + datetime.timedelta(0, flush_interval))):
         logfile.flush()
         sync_time = cur_time
-
-def closelog():
-  global logfile
-  if logfile:
-    logfile.close()
 
 def list_set(vec, ind, val):
   if ind >= len(vec):
@@ -183,6 +255,7 @@ def list_set(vec, ind, val):
 
 class ClientThread(threading.Thread):
   def __init__ (self, pool, client, addr):
+    global client_media_first
     self.client = client
     self.addr = addr
     self._stop = threading.Event()
@@ -191,7 +264,7 @@ class ClientThread(threading.Thread):
     self.authkey = None
     self.lure = None
     self.fishers = []
-    self.media_allow = CLIENT_MEDIA_FIRST_ALLOW
+    self.media_allow = client_media_first
     threading.Thread.__init__(self)
 
   def logmes(self, mes, show=True):
@@ -432,8 +505,8 @@ class ClientThread(threading.Thread):
           i = self.rdata.find('mykey')
           if i>0:
             self.srckey = self.rdata[i+7: i+7+22]
-            print('self.srckey', self.srckey, len(self.srckey), len(OWNER_KEY_PANHASH))
-            if self.srckey == OWNER_KEY_PANHASH:
+            #print('self.srckey', self.srckey, len(self.srckey), len(self.pool.keyhash))
+            if (not self.pool.keyhash) or (self.srckey == self.pool.keyhash):
               self.scmd = EC_Init
               self.scode = ECC_Init_Simple
               self.sphrase = str(os.urandom(256))
@@ -444,7 +517,7 @@ class ClientThread(threading.Thread):
             self.err_scmd('Bad hello')
       elif (self.rcode==ECC_Init_Answer) and (self.stage==ST_Protocol):
         sanswer = self.rdata
-        fanswer = hashlib.sha256(self.sphrase+PASSWORD_HASH).digest()
+        fanswer = hashlib.sha256(self.sphrase+self.pool.password).digest()
         #print('phrase,answer: ', self.sphrase, PASSWORD_HASH, fanswer)
         if sanswer == fanswer:
           if self.pool.collector:
@@ -671,7 +744,9 @@ class ClientThread(threading.Thread):
 
 
 class PoolThread(threading.Thread):
-  def __init__ (self):
+  def __init__ (self, password, keyhash=None):
+    self.password = password
+    self.keyhash = keyhash
     self.threads = []
     self.listener  = None
     self.collector = None
@@ -749,8 +824,8 @@ try:
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
     #server.setblocking(0)
-    server.bind((TCP_IP, TCP_PORT))
-    server.listen(MAX_CONNECTIONS)
+    server.bind((host, port))
+    server.listen(max_conn)
   except:
     server = None
 
@@ -758,7 +833,7 @@ try:
     saddr = server.getsockname()
     logmes('Listening at: '+str(saddr[0])+':'+str(saddr[1]))
 
-    pool = PoolThread()
+    pool = PoolThread(password, keyhash)
     pool.start()
     print('Pool runed.')
 
@@ -795,7 +870,7 @@ try:
         print('Could not terminated pool thread '+str(pool.getName()))
     logmes('Stop listen thread.')
   else:
-    print('Cannot open socket', TCP_IP, TCP_PORT)
+    print('Cannot open socket: ' + host + str(port))
 finally:
   termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
   fcntl.fcntl(fd, fcntl.F_SETFL, oldflags)
