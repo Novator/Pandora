@@ -5407,17 +5407,19 @@ module PandoraNet
                     $window.cvpaned.show_captcha(params['srckey'], captcha_buf, clue_text, @node) do |res|
                       @entered_captcha = res
                     end
-                    while @entered_captcha.nil?
+                    while $window.cvpaned.csw and @entered_captcha.nil?
+                      sleep(0.02)
                       Thread.pass
                     end
-                  end
-
-                  if @entered_captcha
-                    @scmd = EC_Init
-                    @scode = ECC_Init_Answer
-                    @sbuf = entered_captcha
+                    if @entered_captcha
+                      @scmd = EC_Init
+                      @scode = ECC_Init_Answer
+                      @sbuf = entered_captcha
+                    else
+                      err_scmd('Captcha enter canceled')
+                    end
                   else
-                    err_scmd('Captcha enter canceled')
+                    err_scmd('Captcha dock is busy')
                   end
                 end
               elsif (rcode==ECC_Init_Answer) and (@stage==ST_Captcha)
@@ -10552,15 +10554,18 @@ module PandoraGUI
 
     def show_captcha(srckey, captcha_buf=nil, clue_text=nil, node=nil)
       res = nil
-      if captcha_buf
+      if captcha_buf and (not @csw)
+        @csw = Gtk::ScrolledWindow.new(nil, nil)
+        csw = @csw
+
+        csw.signal_connect('destroy-event') do
+          show_captcha(srckey)
+        end
+
         @vbox = Gtk::VBox.new
         vbox = @vbox
 
-        @csw = Gtk::ScrolledWindow.new(nil, nil)
-        csw = @csw
         csw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-        #csw.shadow_type = Gtk::SHADOW_NONE
-        #csw.border_width = 0
         csw.add_with_viewport(vbox)
 
         pixbuf_loader = Gdk::PixbufLoader.new
@@ -10674,7 +10679,7 @@ module PandoraGUI
         self.position = full_width-250 #self.max_position #@csw.width_request
         captcha_entry.grab_focus
         Thread.new do
-          sleep(0.3)
+          sleep(0.2)
           if (not captcha_entry.destroyed?)
             captcha_entry.grab_focus
           end
@@ -10682,7 +10687,7 @@ module PandoraGUI
         res = csw
       else
         #@csw.width_request = @csw.allocation.width
-        @csw.destroy
+        @csw.destroy if (not @csw.destroyed?)
         @csw = nil
         self.position = 0
       end
