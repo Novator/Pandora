@@ -29,6 +29,7 @@ Mandatory:
 - SQLite database (MySQL, Postgree, Firebird or another)
 - Ruby script engine
 - GTK2 graphical library
+- OpenSSL crypto library
 Optional:
 - GStreamer media library
 
@@ -48,9 +49,11 @@ Install it:
 
 4.1. Download Pandora shell file, make executable and run with "--full-init":
 
-  wget https://raw.github.com/Novator/Pandora/master/pandora.rb
+  wget https://raw.github.com/Novator/Pandora/master/pandora.sh
   chmod +x ./pandora.sh
   ./pandora.sh --full-init
+
+Also see below "6. Update to last version"
 
 4.2. Install packets with Packet Manager if they didn't installed automatically:
 
