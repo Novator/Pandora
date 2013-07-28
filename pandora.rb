@@ -1887,6 +1887,17 @@ module PandoraUtils
     res
   end
 
+  def self.calc_midnight(time)
+    res = nil
+    if time
+      time = Time.at(time) if (time.is_a? Integer)
+      vals = time.to_a
+      y, m, d = [vals[5], vals[4], vals[3]]  #current day
+      res = Time.local(y, m, d)
+    end
+    res
+  end
+
   def self.time_to_str(val, time_now=nil)
     time_now ||= Time.now
     min_ago = (time_now.to_i - val.to_i) / 60
@@ -1897,9 +1908,7 @@ module PandoraUtils
     elsif min_ago == 1
       val = _('a min. ago')
     else
-      vals = time_now.to_a
-      y, m, d = [vals[5], vals[4], vals[3]]  #current day
-      midnight = Time.local(y, m, d)
+      midnight = calc_midnight(time_now)
 
       if (min_ago <= 90) and ((val >= midnight) or (min_ago <= 10))
         val = min_ago.to_s + ' ' + _('min. ago')
@@ -3248,6 +3257,8 @@ module PandoraCrypto
     if not key
       keypub  = key_vec[KV_Pub]
       keypriv = key_vec[KV_Priv]
+      keypriv = AsciiString.new(keypriv) if keypriv
+      keypub  = AsciiString.new(keypub) if keypub
       type_klen = key_vec[KV_Kind]
       cipher_hash = key_vec[KV_Cipher]
       pass = key_vec[KV_Pass]
@@ -4029,10 +4040,10 @@ module PandoraCrypto
     [aname, afamily]
   end
 
-  def self.short_name_of_person(key, person=nil, kind=0, othername=nil)
+  def self.short_name_of_person(key, person=nil, view_kind=0, othername=nil)
     aname, afamily = name_and_family_of_person(key, person)
     #p [othername, aname, afamily]
-    if kind==0
+    if view_kind==0
       if othername and (othername == aname)
         res = afamily
       else
@@ -5660,16 +5671,20 @@ module PandoraNet
                     talkview = nil
                     talkview = dialog.talkview if dialog
                     if talkview
-                      talkview.before_addition(t)
-                      talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
-                      talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
+
+                      #talkview.before_addition(t)
+                      #talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
+                      #talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
                       myname = PandoraCrypto.short_name_of_person(@rkey)
-                      dude_name = PandoraCrypto.short_name_of_person(@skey, nil, 0, myname)
-                      talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', 'dude_bold')
-                      talkview.buffer.insert(talkview.buffer.end_iter, ' '+text)
-                      talkview.after_addition
-                      talkview.show_all
-                      dialog.update_state(true)
+                      #dude_name = PandoraCrypto.short_name_of_person(@skey, nil, 0, myname)
+                      #talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', 'dude_bold')
+                      #talkview.buffer.insert(talkview.buffer.end_iter, ' '+text)
+                      #talkview.after_addition
+                      #talkview.show_all
+                      #dialog.update_state(true)
+
+                      dialog.add_mes_to_view(text, @skey, myname, time_now, created)
+
                     else
                       log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
                     end
@@ -6619,6 +6634,7 @@ module PandoraGUI
       label_box1 = TabLabelBox.new(image, _('Basic'), nil, false, 0)
 
       @notebook = Gtk::Notebook.new
+      @notebook.scrollable = true
       page = notebook.append_page(sw, label_box1)
       vpaned.pack1(notebook, true, true)
 
@@ -7029,6 +7045,14 @@ module PandoraGUI
 
   MaxOnePlaceViewSec = 60
 
+  def self.set_readonly(widget, value=true, sensitive=true)
+    value = (not value)
+    widget.editable = value if widget.class.method_defined? 'editable?'
+    widget.sensitive = value if sensitive and (widget.class.method_defined? 'sensitive?')
+    #widget.can_focus = value
+    widget.has_focus = value if widget.class.method_defined? 'has_focus?'
+  end
+
   class ExtTextView < Gtk::TextView
     attr_accessor :need_to_end, :middle_time, :middle_value
 
@@ -7046,10 +7070,7 @@ module PandoraGUI
     end
 
     def set_readonly(value=true)
-      value = (not value)
-      self.editable = value
-      #self.can_focus = value
-      self.has_focus = value
+      PandoraGUI.set_readonly(self, value, false)
     end
 
     def before_addition(cur_time=nil, vadj_value=nil)
@@ -7072,7 +7093,12 @@ module PandoraGUI
 
     def after_addition(go_to_end=nil)
       go_to_end ||= @need_to_end
-      self.parent.vadjustment.value = self.parent.vadjustment.upper if go_to_end
+      if go_to_end
+        adj = self.parent.vadjustment
+        adj.value = adj.upper
+        adj.value_changed       # bug: not scroll to end
+        adj.value = adj.upper   # if add many lines
+      end
       go_to_end
     end
   end
@@ -8772,6 +8798,16 @@ module PandoraGUI
     end
   end
 
+  def self.hack_grab_focus(widget_to_focus)
+    widget_to_focus.grab_focus
+    Thread.new do
+      sleep(0.2)
+      if (not widget_to_focus.destroyed?)
+        widget_to_focus.grab_focus
+      end
+    end
+  end
+
   $you_color = 'blue'
   $dude_color = 'red'
   $tab_color = 'blue'
@@ -8930,14 +8966,20 @@ module PandoraGUI
             #node_list.each do |node|
             sended = add_and_send_mes(mes)
             if sended
-              t = Time.now
-              talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
-              talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'you')
-              mykey = PandoraCrypto.current_key(false, false)
-              myname = PandoraCrypto.short_name_of_person(mykey)
-              talkview.buffer.insert(talkview.buffer.end_iter, myname+':', 'you_bold')
-              talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
-              talkview.after_addition(true)
+              #t = Time.now
+
+              #talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
+              #talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'you')
+
+              #mykey = PandoraCrypto.current_key(false, false)
+              #myname = PandoraCrypto.short_name_of_person(mykey)
+
+              #talkview.buffer.insert(talkview.buffer.end_iter, myname+':', 'you_bold')
+              #talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
+              #talkview.after_addition(true)
+
+              add_mes_to_view(mes)
+
               editbox.buffer.text = ''
             end
           end
@@ -9106,25 +9148,126 @@ module PandoraGUI
       editbox.grab_focus
     end
 
+    def add_mes_to_view(mes, key_or_panhash=nil, myname=nil, modified=nil, created=nil, to_end=nil)
+
+      def time_to_str(time, time_now)
+        time_fmt = '%H:%M:%S'
+        time_fmt = '%d.%m.%Y '+time_fmt if ((time_now.to_i - time.to_i).abs > 12*3600)
+        time = Time.at(time) if (time.is_a? Integer)
+        time_str = time.strftime(time_fmt)
+      end
+
+      if mes
+        notice = false
+        if not myname
+          mykey = PandoraCrypto.current_key(false, false)
+          myname = PandoraCrypto.short_name_of_person(mykey)
+        end
+
+        time_style = 'you'
+        name_style = 'you_bold'
+        user_name = nil
+        if key_or_panhash
+          if key_or_panhash.is_a? String
+            user_name = PandoraCrypto.short_name_of_person(nil, key_or_panhash, 0, myname)
+          else
+            user_name = PandoraCrypto.short_name_of_person(key_or_panhash, nil, 0, myname)
+          end
+          time_style = 'dude'
+          name_style = 'dude_bold'
+          notice = (not to_end.is_a? FalseClass)
+        else
+          user_name = myname
+          #if not user_name
+          #  mykey = PandoraCrypto.current_key(false, false)
+          #  user_name = PandoraCrypto.short_name_of_person(mykey)
+          #end
+        end
+        user_name = 'noname' if (not user_name) or (user_name=='')
+
+        time_now = Time.now
+        created = time_now if (not modified) and (not created)
+
+        #vals = time_now.to_a
+        #ny, nm, nd = vals[5], vals[4], vals[3]
+        #midnight = Time.local(y, m, d)
+        ##midnight = PandoraUtils.calc_midnight(time_now)
+
+        #if created
+        #  vals = modified.to_a
+        #  my, mm, md = vals[5], vals[4], vals[3]
+
+        #  cy, cm, cd = my, mm, md
+        #  if created
+        #    vals = created.to_a
+        #    cy, cm, cd = vals[5], vals[4], vals[3]
+        #  end
+
+        #  if [cy, cm, cd] == [my, mm, md]
+
+        #else
+        #end
+
+        #'12:30:11'
+        #'27.07.2013 15:57:56'
+
+        #'12:30:11 (12:31:05)'
+        #'27.07.2013 15:57:56 (21:05:00)'
+        #'27.07.2013 15:57:56 (28.07.2013 15:59:33)'
+
+        #'(15:59:33)'
+        #'(28.07.2013 15:59:33)'
+
+        time_str = ''
+        time_str << time_to_str(created, time_now) if created
+        if modified and ((not created) or ((modified.to_i-created.to_i).abs>30))
+          time_str << ' ' if (time_str != '')
+          time_str << '('+time_to_str(modified, time_now)+')'
+        end
+
+        talkview.before_addition(time_now) if to_end.nil?
+        talkview.buffer.insert(talkview.buffer.end_iter, "\n") if (talkview.buffer.char_count>0)
+        talkview.buffer.insert(talkview.buffer.end_iter, time_str+' ', time_style)
+        talkview.buffer.insert(talkview.buffer.end_iter, user_name+':', name_style)
+        talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
+
+        talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
+        talkview.show_all
+
+        update_state(true) if notice
+      end
+    end
+
     def load_history(max_message=4)
       if talkview
         messages = []
         fields = 'creator, created, destination, state, text, panstate, modified'
+
         mypanhash = PandoraCrypto.current_user_or_key(true)
         myname = PandoraCrypto.short_name_of_person(nil, mypanhash)
+
         persons = targets[CSI_Persons]
+        nil_create_time = false
         persons.each do |person|
           model = PandoraUtils.get_model('Message')
           max_message2 = max_message
           max_message2 = max_message * 2 if (person == mypanhash)
           sel = model.select({:creator=>person, :destination=>mypanhash}, false, fields, \
-            'modified DESC', max_message2)
+            'id DESC', max_message2)
+          sel.reverse!
           if (person == mypanhash)
             i = sel.size-1
             while i>0 do
               i -= 1
-              if sel[i][4] and sel[i][6] and sel[i+1][4] and sel[i+1][6] \
-              and (AsciiString.new(sel[i][4])==AsciiString.new(sel[i+1][4])) and ((sel[i][6]-sel[i+1][6]).abs<30)
+              time, text, time_prev, text_prev = sel[i][1], sel[i][4], sel[i+1][1], sel[i+1][4]
+              #p [time, text, time_prev, text_prev]
+              if (not time) or (not time_prev)
+                time, time_prev = sel[i][6], sel[i+1][6]
+                nil_create_time = true
+              end
+              if (not text) or (time and text and time_prev and text_prev \
+              and ((time-time_prev).abs<30) and (AsciiString.new(text)==AsciiString.new(text_prev)))
+                #p 'DEL '+[time, text, time_prev, text_prev].inspect
                 sel.delete_at(i)
                 i -= 1
               end
@@ -9137,34 +9280,32 @@ module PandoraGUI
             messages += sel
           end
         end
-        messages.sort! {|a,b| a[6]<=>b[6] }
+        if nil_create_time
+          messages.sort! {|a,b| a[6]<=>b[6] }
+        else
+          messages.sort! {|a,b| a[1]<=>b[1] }
+        end
+
         talkview.before_addition
         i = (messages.size-max_message)
         i = 0 if i<0
-        time_now = Time.now
         while i<messages.size do
           message = messages[i]
-          talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
-          t = Time.at(message[6])
-          dude_name = myname
+
           creator = message[0]
-          time_style = 'you'
-          name_style = 'you_bold'
-          dude_name = myname
-          if creator != mypanhash
-            dude_name = PandoraCrypto.short_name_of_person(nil, creator, 0, myname)
-            time_style = 'dude'
-            name_style = 'dude_bold'
-          end
-          time_fmt = '%H:%M:%S'
-          time_fmt = '%d.%m.%Y  '+time_fmt if ((time_now.to_i - t.to_i).abs > 12*3600)
-          talkview.buffer.insert(talkview.buffer.end_iter, t.strftime(time_fmt)+' ', time_style)
-          talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', name_style)
-          text = message[4]
-          talkview.buffer.insert(talkview.buffer.end_iter, ' '+text)
+          created = message[1]
+          mes = message[4]
+          modified = message[6]
+
+          key_or_panhash = nil
+          key_or_panhash = creator if (creator != mypanhash)
+
+          add_mes_to_view(mes, key_or_panhash, myname, modified, created, false)
+
           i += 1
         end
         talkview.after_addition
+
         talkview.show_all
       end
     end
@@ -9220,7 +9361,7 @@ module PandoraGUI
         time_now = Time.now.to_i
         state = 0
         targets[CSI_Persons].each do |panhash|
-          p 'ADD_MESS panhash='+panhash.inspect
+          #p 'ADD_MESS panhash='+panhash.inspect
           values = {:destination=>panhash, :text=>text, :state=>state, \
             :creator=>creator, :created=>time_now, :modified=>time_now}
           model = PandoraUtils.get_model('Message')
@@ -10122,19 +10263,123 @@ module PandoraGUI
       super(nil, nil)
 
       @text = nil
+      @search_thread = nil
 
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       border_width = 0
 
       vpaned = Gtk::VPaned.new
 
-      hbox = Gtk::HBox.new
+      search_btn = Gtk::ToolButton.new(Gtk::Stock::FIND, _('Search'))
+      search_btn.tooltip_text = _('Start searching')
+      PandoraGUI.set_readonly(search_btn, true)
+
+      stop_btn = Gtk::ToolButton.new(Gtk::Stock::STOP, _('Stop'))
+      stop_btn.tooltip_text = _('Stop searching')
+      PandoraGUI.set_readonly(stop_btn, true)
+
+      prev_btn = Gtk::ToolButton.new(Gtk::Stock::GO_BACK, _('Previous'))
+      prev_btn.tooltip_text = _('Previous seacrh')
+      PandoraGUI.set_readonly(prev_btn, true)
+
+      next_btn = Gtk::ToolButton.new(Gtk::Stock::GO_FORWARD, _('Next'))
+      next_btn.tooltip_text = _('Next seacrh')
+      PandoraGUI.set_readonly(next_btn, true)
 
       search_entry = Gtk::Entry.new
-      search_btn = Gtk::Button.new(_('Search'))
+      PandoraGUI.hack_enter_bug(search_entry)
+      search_entry.signal_connect('key-press-event') do |widget, event|
+        res = false
+        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+          search_btn.clicked
+          res = true
+        elsif (Gdk::Keyval::GDK_Escape==event.keyval)
+          stop_btn.clicked
+          res = true
+        end
+        res
+      end
+      search_entry.signal_connect('changed') do |widget, event|
+        cant_find = (@search_thread or (search_entry.text.size==0))
+        PandoraGUI.set_readonly(search_btn, cant_find)
+        false
+      end
 
+      kind_entry = Gtk::Combo.new
+      kind_entry.set_popdown_strings(['auto','person','file','all'])
+      #kind_entry.entry.select_region(0, -1)
+
+      #kind_entry = Gtk::ComboBox.new(true)
+      #kind_entry.append_text('auto')
+      #kind_entry.append_text('person')
+      #kind_entry.append_text('file')
+      #kind_entry.append_text('all')
+      #kind_entry.active = 0
+      #kind_entry.wrap_width = 3
+      #kind_entry.has_frame = true
+
+      kind_entry.set_size_request(100, -1)
+
+      hbox = Gtk::HBox.new
+      hbox.pack_start(kind_entry, false, false, 0)
+      hbox.pack_start(search_btn, false, false, 0)
       hbox.pack_start(search_entry, true, true, 0)
-      hbox.pack_start(search_btn, false, false, 1)
+      hbox.pack_start(stop_btn, false, false, 0)
+      hbox.pack_start(prev_btn, false, false, 0)
+      hbox.pack_start(next_btn, false, false, 0)
+
+      option_box = Gtk::HBox.new
+
+      vbox = Gtk::VBox.new
+      vbox.pack_start(hbox, false, true, 0)
+      vbox.pack_start(option_box, false, true, 0)
+
+      #kind_btn = PandoraGUI::GoodToggleToolButton.new(Gtk::Stock::PROPERTIES)
+      #kind_btn.tooltip_text = _('Change password')
+      #kind_btn.good_signal_clicked do |*args|
+      #  #kind_btn.active?
+      #end
+
+      #Сделать горячие клавиши:
+      #[CTRL + R], Ctrl + F5, Ctrl + Shift + R - Перезагрузить страницу
+      #[CTRL + L] Выделить УРЛ страницы
+      #[CTRL + N] Новое окно(не вкладка) - тоже что и Ctrl+T
+      #[SHIFT + ESC] (Дипетчер задач) Возможно, список текущих соединений
+      #[CTRL[+Alt] + 1] или [CTRL + 2] и т.д. - переключение между вкладками
+      #Alt+ <- / -> - Вперед/Назад
+      #Alt+Home - Домашняя страница (Профиль)
+      #Открыть файл — Ctrl + O
+      #Остановить — Esc
+      #Сохранить страницу как — Ctrl + S
+      #Найти далее — F3, Ctrl + G
+      #Найти на этой странице — Ctrl + F
+      #Отменить закрытие вкладки — Ctrl + Shift + T
+      #Перейти к предыдущей вкладке — Ctrl + Page Up
+      #Перейти к следующей вкладке — Ctrl + Page Down
+      #Журнал посещений — Ctrl + H
+      #Загрузки — Ctrl + J, Ctrl + Y
+      #Закладки — Ctrl + B, Ctrl + I
+
+      local_btn = GoodCheckButton.new(_('locally'), true)
+      local_btn.good_signal_clicked do |widget|
+        update_btn.clicked
+      end
+
+      active_btn = GoodCheckButton.new(_('active only'), true)
+      active_btn.good_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      active_btn.good_set_active(true)
+
+      hunt_btn = GoodCheckButton.new(_('hunt!'), true)
+      hunt_btn.good_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      hunt_btn.good_set_active(true)
+
+      option_box.pack_start(local_btn, false, true, 1)
+      option_box.pack_start(active_btn, false, true, 1)
+      option_box.pack_start(hunt_btn, false, true, 1)
 
       list_sw = Gtk::ScrolledWindow.new(nil, nil)
       list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
@@ -10142,11 +10387,65 @@ module PandoraGUI
 
       list_store = Gtk::ListStore.new(Integer, String)
 
-      search_btn.signal_connect('clicked') do |*args|
-        user_iter = list_store.append
-        user_iter[0] = 1
-        user_iter[1] = '<result>'
+      prev_btn.signal_connect('clicked') do |widget|
+        PandoraGUI.set_readonly(next_btn, false)
+        PandoraGUI.set_readonly(prev_btn, true)
+        false
       end
+
+      next_btn.signal_connect('clicked') do |widget|
+        PandoraGUI.set_readonly(next_btn, true)
+        PandoraGUI.set_readonly(prev_btn, false)
+        false
+      end
+
+      search_btn.signal_connect('clicked') do |widget|
+        text = search_entry.text
+        search_entry.position = search_entry.position  # deselect
+        if (text.size>0) and (not @search_thread)
+          @search_thread = Thread.new do
+            th = Thread.current
+            th[:processing] = true
+            PandoraGUI.set_readonly(stop_btn, false)
+            PandoraGUI.set_readonly(widget, true)
+            i = 4
+            while (i>0) and th[:processing] do
+              p [i, th[:processing]]
+              sleep 1
+              user_iter = list_store.append
+              user_iter[0] = 1
+              user_iter[1] = text
+              i -= 1
+            end
+            PandoraGUI.set_readonly(stop_btn, true)
+            if th[:processing]
+              th[:processing] = false
+            end
+            PandoraGUI.set_readonly(widget, false)
+            PandoraGUI.set_readonly(prev_btn, false)
+            PandoraGUI.set_readonly(next_btn, true)
+            @search_thread = nil
+          end
+        end
+        false
+      end
+
+      stop_btn.signal_connect('clicked') do |widget|
+        if @search_thread
+          if @search_thread[:processing]
+            @search_thread[:processing] = false
+          else
+            PandoraGUI.set_readonly(stop_btn, true)
+            @search_thread.exit
+            @search_thread = nil
+          end
+        else
+          search_entry.select_region(0, search_entry.text.size)
+        end
+      end
+
+      #search_btn.signal_connect('clicked') do |*args|
+      #end
 
       # create tree view
       list_tree = Gtk::TreeView.new(list_store)
@@ -10169,14 +10468,14 @@ module PandoraGUI
 
       list_sw.add(list_tree)
 
-      vpaned.pack1(hbox, false, true)
+      vpaned.pack1(vbox, false, true)
       vpaned.pack2(list_sw, true, true)
       list_sw.show_all
 
       self.add_with_viewport(vpaned)
       #self.add(hpaned)
 
-      search_entry.grab_focus
+      PandoraGUI.hack_grab_focus(search_entry)
     end
   end
 
@@ -10208,10 +10507,10 @@ module PandoraGUI
 
     # Show conversation dialog
     # RU: Показать диалог общения
-    def initialize(person=nil)
+    def initialize(a_person=nil)
       super(nil, nil)
 
-      @person = nil
+      @person = a_person
 
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       border_width = 0
@@ -10222,13 +10521,84 @@ module PandoraGUI
 
   # Show profile panel
   # RU: Показать панель профиля
-  def self.show_profile_panel(person=nil)
-    sw = ProfileScrollWin.new(person)
+  def self.show_profile_panel(a_person=nil)
+    a_person0 = a_person
+    a_person ||= PandoraCrypto.current_user_or_key(true, true)
+
+    return if not a_person
+
+    $window.notebook.children.each do |child|
+      if (child.is_a? ProfileScrollWin) and (child.person == a_person)
+        $window.notebook.page = $window.notebook.children.index(child)
+        return
+      end
+    end
+
+    short_name = ''
+    aname, afamily = nil, nil
+    if a_person0
+      mykey = nil
+      mykey = PandoraCrypto.current_key(false, false) if (not a_person0)
+      if mykey and mykey[PandoraCrypto::KV_Creator] and (mykey[PandoraCrypto::KV_Creator] != a_person)
+        aname, afamily = PandoraCrypto.name_and_family_of_person(mykey, a_person)
+      else
+        aname, afamily = PandoraCrypto.name_and_family_of_person(nil, a_person)
+      end
+
+      short_name = afamily[0, 15] if afamily
+      short_name = aname[0]+'. '+short_name if aname
+    end
+
+    sw = ProfileScrollWin.new(a_person)
+
+    hpaned = Gtk::HPaned.new
+    hpaned.border_width = 2
+    sw.add_with_viewport(hpaned)
+
+
+    list_sw = Gtk::ScrolledWindow.new(nil, nil)
+    list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+    list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+
+    list_store = Gtk::ListStore.new(String)
+
+    user_iter = list_store.append
+    user_iter[0] = _('Profile')
+    user_iter = list_store.append
+    user_iter[0] = _('Events')
+
+    # create tree view
+    list_tree = Gtk::TreeView.new(list_store)
+    #list_tree.rules_hint = true
+    #list_tree.search_column = CL_Name
+
+    renderer = Gtk::CellRendererText.new
+    column = Gtk::TreeViewColumn.new('№', renderer, 'text' => 0)
+    column.set_sort_column_id(0)
+    list_tree.append_column(column)
+
+    #renderer = Gtk::CellRendererText.new
+    #column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
+    #column.set_sort_column_id(1)
+    #list_tree.append_column(column)
+
+    list_tree.signal_connect('row_activated') do |tree_view, path, column|
+      # download and go to record
+    end
+
+    list_sw.add(list_tree)
+
+    hpaned.pack1(list_sw, false, true)
+    hpaned.pack2(Gtk::Label.new('test'), true, true)
+    list_sw.show_all
+
 
     image = Gtk::Image.new(Gtk::Stock::HOME, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
 
-    label_box = TabLabelBox.new(image, _('Profile'), sw, false, 0) do
+    short_name = _('Profile') if not((short_name.is_a? String) and (short_name.size>0))
+
+    label_box = TabLabelBox.new(image, short_name, sw, false, 0) do
       #store.clear
       #treeview.destroy
       #sw.destroy
@@ -10677,13 +11047,7 @@ module PandoraGUI
         csw.show_all
         full_width = $window.allocation.width
         self.position = full_width-250 #self.max_position #@csw.width_request
-        captcha_entry.grab_focus
-        Thread.new do
-          sleep(0.2)
-          if (not captcha_entry.destroyed?)
-            captcha_entry.grab_focus
-          end
-        end
+        PandoraGUI.hack_grab_focus(captcha_entry)
         res = csw
       else
         #@csw.width_request = @csw.allocation.width
@@ -10964,11 +11328,11 @@ module PandoraGUI
     # RU: Структура меню
     MENU_ITEMS =
       [[nil, nil, '_World'],
-      ['Person', Gtk::Stock::ORIENTATION_PORTRAIT, 'People'],
+      ['Person', Gtk::Stock::ORIENTATION_PORTRAIT, 'People', '<control>E'],
       ['Community', nil, 'Communities'],
       ['-', nil, '-'],
       ['Article', Gtk::Stock::DND, 'Articles'],
-      ['Blob', Gtk::Stock::HARDDISK, 'Files'], #Gtk::Stock::FILE
+      ['Blob', Gtk::Stock::HARDDISK, 'Files', '<control>J'], #Gtk::Stock::FILE
       ['-', nil, '-'],
       ['Country', nil, 'States'],
       ['City', nil, 'Towns'],
@@ -11035,7 +11399,7 @@ module PandoraGUI
       ['Authorize', nil, 'Authorize', '<control>U'],
       ['Listen', Gtk::Stock::CONNECT, 'Listen', '<control>L', :check],
       ['Hunt', Gtk::Stock::REFRESH, 'Hunt', '<control>H', :check],
-      ['Search', Gtk::Stock::FIND, 'Search'],
+      ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
       ['-', nil, '-'],
       ['Profile', Gtk::Stock::HOME, 'Profile'],
       ['Wizard', Gtk::Stock::PREFERENCES, 'Wizards'],
@@ -11129,6 +11493,7 @@ module PandoraGUI
       fill_toolbar(toolbar)
 
       @notebook = Gtk::Notebook.new
+      @notebook.scrollable = true
       notebook.signal_connect('switch-page') do |widget, page, page_num|
         cur_page = notebook.get_nth_page(page_num)
         if $last_page and (cur_page != $last_page) and ($last_page.is_a? PandoraGUI::DialogScrollWin)
@@ -11219,17 +11584,31 @@ module PandoraGUI
       end
 
       $window.signal_connect('key-press-event') do |widget, event|
+        res = false
         if ([Gdk::Keyval::GDK_m, Gdk::Keyval::GDK_M, 1752, 1784].include?(event.keyval) \
         and event.state.control_mask?)
           $window.hide
         elsif event.keyval == Gdk::Keyval::GDK_F5
           PandoraNet.hunt_nodes
+        elsif event.state.control_mask? and (Gdk::Keyval::GDK_0..Gdk::Keyval::GDK_9).include?(event.keyval)
+          num = $window.notebook.n_pages
+          if num>0
+            n = (event.keyval - Gdk::Keyval::GDK_1)
+            n = 0 if n<0
+            if (n<num) and (n != 8)
+              $window.notebook.page = n
+              res = true
+            else
+              $window.notebook.page = num-1
+              res = true
+            end
+          end
         elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
         and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
         1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
           $window.destroy
         end
-        false
+        res
       end
 
       #$window.signal_connect('client-event') do |widget, event_client|

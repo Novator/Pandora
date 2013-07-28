@@ -660,7 +660,7 @@ class ClientThread(threading.Thread):
             if fullcrc32 and (fullcrc32 != binascii.crc32(self.rdata)):
               self.err_scmd('Wrong CRC of received block', ECC_Bye_BadCRC)
           elif len(self.rdata) > rdatasize:
-            self.err_scmd('Too long received data ('+rdata.bytesize.to_s+'>'+rdatasize.to_s+')', \
+            self.err_scmd('Too long received data ('+self.rdata.bytesize.to_s+'>'+rdatasize.to_s+')', \
               ECC_Bye_DataTooLong)
 
         if ok1comm:

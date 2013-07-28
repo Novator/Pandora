@@ -280,3 +280,7 @@ Key credentials=>Полномочия ключа
 IP is banned=>IP забанен
 Node already connected=>Узел уже подключен
 Captcha dock is busy=>Окно капчи занято
+Feed=>Лента
+locally=>локально
+active only=>только активные
+hunt!=>охотиться!
