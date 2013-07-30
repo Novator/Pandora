@@ -28,7 +28,7 @@ end
 $host = '127.0.0.1'
 $port = 5577
 $base_index = 0
-$poly_launch = true
+$poly_launch = false
 $pandora_parameters = []
 
 # Expand the arguments of command line
