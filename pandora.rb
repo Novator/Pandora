@@ -2490,6 +2490,8 @@ module PandoraUtils
   CapSymbols = '123456789qertyupasdfghkzxvbnmQRTYUPADFGHJKLBNM'
   CapFonts = ['Sans', 'Arial', 'Times', 'Verdana', 'Tahoma']
 
+  $poor_cairo_context = false
+
   def self.generate_captcha(drawing=nil, length=6, height=70, circles=5, curves=0)
 
     def self.show_char(c, cr, x0, y0, step)
@@ -2521,11 +2523,17 @@ module PandoraUtils
     end
 
     width = height*2
+    cr = nil
     if not drawing
-      begin
-        drawing = Gdk::Pixmap.new(nil, width, height, 24)
-        cr = drawing.create_cairo_context
-      rescue Exception
+      if (not $poor_cairo_context)
+        begin
+          drawing = Gdk::Pixmap.new(nil, width, height, 24)
+          cr = drawing.create_cairo_context
+        rescue Exception
+          $poor_cairo_context = true
+        end
+      end
+      if $poor_cairo_context
         drawing = Cairo::ImageSurface.new(width, height)
         cr = Cairo::Context.new(drawing)
       end
