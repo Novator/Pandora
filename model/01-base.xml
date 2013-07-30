@@ -376,6 +376,8 @@
     <play_sounds desc="Play sounds on events" type="Boolean" section="view" setting="true" />
     <linux_mp3_player desc="Linux mp3 player" type="String" section="view" setting="mpg123" />
     <win_mp3_player desc="Windows mp3 player" type="String" section="view" setting='' />
+    <load_history_count desc="Load message history count" type="Integer" section="view" setting="6" />
+    <sort_history_mode desc="Sort history mode (0-receive, 1-create)" type="Integer" section="view" setting="0" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
     <check_interval desc="Сheck interval (days)" type="Integer" section="update" setting="2" />

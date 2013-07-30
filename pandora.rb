@@ -28,7 +28,7 @@ end
 $host = '127.0.0.1'
 $port = 5577
 $base_index = 0
-$poly_launch = false
+$poly_launch = true
 $pandora_parameters = []
 
 # Expand the arguments of command line
@@ -8626,6 +8626,8 @@ module PandoraGUI
 
   def self.get_view_params
     $hide_on_minimize = PandoraUtils.get_param('hide_on_minimize')
+    $load_history_count = PandoraUtils.get_param('load_history_count')
+    $sort_history_mode = PandoraUtils.get_param('sort_history_mode')
   end
 
   def self.get_main_params
@@ -9142,7 +9144,7 @@ module PandoraGUI
 
       show_all
 
-      load_history
+      load_history($load_history_count, $sort_history_mode)
 
       $window.notebook.page = $window.notebook.n_pages-1 if not known_node
       editbox.grab_focus
@@ -9238,8 +9240,8 @@ module PandoraGUI
       end
     end
 
-    def load_history(max_message=4)
-      if talkview
+    def load_history(max_message=6, sort_mode=0)
+      if talkview and max_message and (max_message>0)
         messages = []
         fields = 'creator, created, destination, state, text, panstate, modified'
 
@@ -9276,14 +9278,18 @@ module PandoraGUI
           messages += sel
           if (person != mypanhash)
             sel = model.select({:creator=>mypanhash, :destination=>person}, false, fields, \
-              'modified DESC', max_message)
+              'id DESC', max_message)
             messages += sel
           end
         end
-        if nil_create_time
-          messages.sort! {|a,b| a[6]<=>b[6] }
-        else
-          messages.sort! {|a,b| a[1]<=>b[1] }
+        if nil_create_time or (sort_mode==0) #sort by created
+          messages.sort! do |a,b|
+            res = (a[6]<=>b[6])
+            res = (a[1]<=>b[1]) if (res==0) and (not nil_create_time)
+            res
+          end
+        else   #sort by modified
+          messages.sort! {|a,b| res = (a[1]<=>b[1]); res = (a[6]<=>b[6]) if (res==0); res }
         end
 
         talkview.before_addition
