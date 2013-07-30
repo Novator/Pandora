@@ -2522,10 +2522,15 @@ module PandoraUtils
 
     width = height*2
     if not drawing
-      drawing = Gdk::Pixmap.new(nil, width, height, 24)
+      begin
+        drawing = Gdk::Pixmap.new(nil, width, height, 24)
+        cr = drawing.create_cairo_context
+      rescue Exception
+        drawing = Cairo::ImageSurface.new(width, height)
+        cr = Cairo::Context.new(drawing)
+      end
     end
 
-    cr = drawing.create_cairo_context
     #cr.scale(*widget.window.size)
     cr.scale(height, height)
     cr.set_line_width(0.03)
@@ -2566,7 +2571,12 @@ module PandoraUtils
       show_blur(cr, x, y, r)
     end
 
-    pixbuf = Gdk::Pixbuf.from_drawable(nil, drawing, 0, 0, width, height)
+    pixbuf = nil
+    if drawing.is_a? Gdk::Pixmap
+      pixbuf = Gdk::Pixbuf.from_drawable(nil, drawing, 0, 0, width, height)
+    else
+      pixbuf = Gdk::Pixbuf.new(drawing.data, Gdk::Pixbuf::COLORSPACE_RGB, true, 8, width, height, width*4)
+    end
     buf = pixbuf.save_to_buffer('jpeg')
     [text, buf]
   end
