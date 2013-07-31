@@ -3978,7 +3978,8 @@ module PandoraCrypto
       key_vec = $open_keys[panhash]
       #p 'openkey key='+key_vec.inspect+' $open_keys.size='+$open_keys.size.inspect
       if key_vec
-        key_vec[KV_Trust] = trust_of_panobject(panhash)
+        cur_trust = trust_of_panobject(panhash)
+        key_vec[KV_Trust] = cur_trust if cur_trust
       elsif ($open_keys.size<$max_opened_keys)
         model = PandoraUtils.get_model('Key', models)
         filter = {:panhash => panhash}
@@ -4129,12 +4130,28 @@ end
 module PandoraNet
 
   class Pool
-    attr_accessor :window, :sessions
+    attr_accessor :window, :sessions, :white_list
+
+    MaxWhiteSize = 500
 
     def initialize(main_window)
       super()
       @window = main_window
       @sessions = Array.new
+      @white_list = Array.new
+    end
+
+    def add_to_white(address)
+      while @white_list.size>MaxWhiteSize do
+        @white_list.delete_at(0)
+      end
+      @white_list << address if (address and ((not (address.is_a? String)) or (address.size>0)) \
+        and (not @white_list.include? address))
+    end
+
+    def is_white?(address)
+      res = (address and ((not (address.is_a? String)) or (address.size>0)) \
+        and (@white_list.include? address))
     end
 
     def add_session(conn)
@@ -4406,7 +4423,8 @@ module PandoraNet
   ECC_Bye_NoAnswer      = 210
   ECC_Bye_Silent        = 211
 
-  # Режимы чтения
+  # Read modes of socket
+  # RU: Режимы чтения из сокета
   RM_Comm      = 0   # Базовая команда
   RM_CommExt   = 1   # Расширение команды для нескольких сегментов
   RM_SegLenN   = 2   # Длина второго (и следующих) сегмента в серии
@@ -4418,7 +4436,7 @@ module PandoraNet
   # RU: Режим соединения
   CM_Hunter       = 1
 
-  # Connected state
+  # Connection state
   # RU: Состояние соединения
   CS_Connecting    = 0
   CS_Connected     = 1
@@ -4474,6 +4492,7 @@ module PandoraNet
   $captcha_attempts = 2
   $trust_for_captchaed = true
   $trust_for_listener = true
+  $low_conn_trust = 0.0
 
   $keep_alive = 1  #(on/off)
   $keep_idle  = 5  #(after, sec)
@@ -4541,7 +4560,7 @@ module PandoraNet
 
     LONG_SEG_SIGN   = 0xFFFF
 
-    # RU: Отправляет команду и данные, если есть !!! ДОБАВИТЬ !!! send_number!, buflen, buf
+    # RU: Отправляет команду, код и данные (если есть)
     def send_comm_and_data(index, cmd, code, data=nil)
       res = nil
       lengt = 0
@@ -5383,7 +5402,7 @@ module PandoraNet
                       @skey[PandoraCrypto::KV_Trust] = 0
                       send_captcha
                     elsif trust.is_a? Float
-                      if trust>0.0
+                      if trust>=$low_conn_trust
                         if (conn_mode & CM_Hunter) == 0
                           @stage = ST_Greeting
                           add_send_segment(EC_Init, true, params['srckey'])
@@ -6387,6 +6406,8 @@ module PandoraNet
     $captcha_attempts    = PandoraUtils.get_param('captcha_attempts')
     $trust_for_captchaed = PandoraUtils.get_param('trust_for_captchaed')
     $trust_for_listener  = PandoraUtils.get_param('trust_for_listener')
+    $low_conn_trust      = PandoraUtils.get_param('low_conn_trust')
+    $low_conn_trust ||= 0.0
   end
 
   $listen_thread = nil
