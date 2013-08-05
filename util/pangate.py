@@ -62,7 +62,6 @@ KEEPCNT = 4   #(count)
 # Internal constants
 MaxPackSize = 1500
 MaxSegSize  = 1200
-MaxLogSize = 100*1024
 CommSize = 7
 CommExtSize = 10
 SegNAttrSize = 8

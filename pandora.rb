@@ -28,7 +28,7 @@ end
 $host = '127.0.0.1'
 $port = 5577
 $base_index = 0
-$poly_launch = false
+$poly_launch = true
 $pandora_parameters = []
 
 # Expand the arguments of command line
@@ -2633,21 +2633,30 @@ module PandoraUtils
     end
   end
 
+  $poly_play   = true
   $play_thread = nil
+  Default_Mp3 = 'message.mp3'
 
-  def self.play_mp3(filename='message.mp3', path=nil)
-    if (not $play_thread) and $statusicon \
-    and (not $statusicon.destroyed?) and $statusicon.play_sounds
+  def self.play_mp3(filename, path=nil)
+    if ($poly_play or (not $play_thread)) \
+    and $statusicon and (not $statusicon.destroyed?) \
+    and $statusicon.play_sounds and (filename.is_a? String) and (filename.size>0)
       $play_thread = Thread.new do
-        path ||= $pandora_view_dir
-        full_name = File.join(path, filename)
-        cmd = $mp3_player+' "'+full_name+'"'
-        if os_family=='windows'
-          win_exec(cmd)
-        else
-          system(cmd)
+        begin
+          path ||= $pandora_view_dir
+          filename += '.mp3' unless filename.index('.')
+          filename ||= Default_Mp3
+          filename = File.join(path, filename) unless filename.index('/') or filename.index("\\")
+          filename = File.join(path, Default_Mp3) unless File.exist?(filename)
+          cmd = $mp3_player+' "'+filename+'"'
+          if os_family=='windows'
+            win_exec(cmd)
+          else
+            system(cmd)
+          end
+        ensure
+          $play_thread = nil
         end
-        $play_thread = nil
       end
     end
   end
@@ -4009,6 +4018,8 @@ module PandoraCrypto
         else  #key is not found
           key_vec = 0
         end
+      else
+        log_message(LM_Warning, _('Achieved limit of opened keys')+': '+$open_keys.size.to_s)
       end
     else
       key_vec = panhash
@@ -4230,7 +4241,7 @@ module PandoraNet
           end
           sel = node_model.select(filter, false, 'addr, tport, domain')
         end
-        if sel and sel.size>0
+        if sel and (sel.size>0)
           sel.each do |row|
             host = row[2]
             host.strip! if host
@@ -4238,29 +4249,10 @@ module PandoraNet
             host.strip! if host
             port = row[1]
             proto = 'tcp'
-            #p 'host/port/proto='+[host, port, proto].inspect
-            if host
-              port ||= 5577
-              port = port.to_i
-              Thread.new do
-                socket = nil
-                session = nil
-                server = host+':'+port.to_s
-                begin
-                  socket = TCPSocket.open(host, port)
-                rescue
-                  log_message(LM_Warning, _('Cannot connect to')+': '+server)
-                  socket = nil
-                end
-                if socket
-                  log_message(LM_Info, _('Connected to listener')+': '+server)
-                  session = Session.new
-                  session.run(socket, host, socket.peeraddr[2], port, proto, CM_Hunter, \
-                    CS_Connected, Thread.current, node_id, dialog, keybase, send_state_add)
-                  socket.close if not socket.closed?
-                  log_message(LM_Info, _('Disconnected from listener')+': '+server)
-                end
-              end
+
+            if host and (host != '')
+              session = Session.new(socket, host, socket.peeraddr[2], port, proto, CM_Hunter, \
+                CS_Connected, Thread.current, node_id, dialog, keybase, send_state_add)
               res = true
             end
           end
@@ -4336,24 +4328,11 @@ module PandoraNet
       end
     end
 
-    def init_fish_for_fisher(fisher, in_lure, keyhash=nil, baseid=nil)
+    def init_fish_for_fisher(fisher, in_lure, aim_keyhash=nil, baseid=nil)
       fish = nil
-      if (keyhash==nil) #or (keyhash==mykeyhash)   # my key
-        thread = Thread.new do
-          log_message(LM_Info, _('Create fish session for')+' '+in_lure.to_s)
-          session = Session.new
-          thread[:fish] = session
-          session.run(fisher, nil, in_lure, nil, nil, 0, CS_Connected, \
-            thread, nil, nil, nil, nil)
-          log_message(LM_Info, _('Close fish session for')+' '+in_lure.to_s)
-        end
-        Thread.pass
-        while thread.alive? and (not thread[:fish])
-          sleep(0.01)
-        end
-        if thread.alive?
-          fish = thread[:fish]
-        end
+      if (aim_keyhash==nil) #or (aim_keyhash==mykeyhash)   #
+        fish = Session.new(fisher, nil, in_lure, nil, nil, 0, CS_Connected, \
+          nil, nil, nil, nil, nil)
       else  # alien key
         fish = @sessions.index { |session| session.skey[PandoraCrypto::KV_Panhash] == keyhash }
       end
@@ -4435,6 +4414,7 @@ module PandoraNet
   # Connection mode
   # RU: Режим соединения
   CM_Hunter       = 1
+  CM_Dialog       = 2
 
   # Connection state
   # RU: Состояние соединения
@@ -5349,7 +5329,7 @@ module PandoraNet
                     if @stage == ST_Greeting
                       @stage = ST_Exchange
                       set_max_pack_size(ST_Exchange)
-                      PandoraUtils.play_mp3
+                      PandoraUtils.play_mp3('online')
                     end
                   end
                   @scmd = EC_Init
@@ -5410,7 +5390,7 @@ module PandoraNet
                         else
                           @stage = ST_Exchange
                           set_max_pack_size(ST_Exchange)
-                          PandoraUtils.play_mp3
+                          PandoraUtils.play_mp3('online')
                         end
                         @scmd = EC_Data
                         @scode = 0
@@ -5815,567 +5795,612 @@ module PandoraNet
     # RU: Число запросов за цикл
     $inquire_block_count = 1
 
-    # Start two exchange cicle of socket: read and send
-    # RU: Запускает два цикла обмена сокета: чтение и отправка
-    def run(asocket, ahost_name, ahost_ip, aport, aproto, aconn_mode, \
+    # Starts three session cicle: read from queue, read from socket, send (common)
+    # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
+    def initalize(asocket, ahost_name, ahost_ip, aport, aproto, aconn_mode, \
     aconn_state, a_send_thread, anode_id, a_dialog, tokey, send_state_add)
-      if asocket.is_a? Session
-        @donor        = asocket
-        if ahost_name
-          @fisher_lure  = ahost_name
-        else
-          @fish_lure  = ahost_ip
-        end
-      else
-        @socket       = asocket
-        @host_name    = ahost_name
-        @host_ip      = ahost_ip
-        @port         = aport
-        @proto        = aproto
-        @node         = pool.encode_node(@host_ip, @port, @proto)
-        @node_id      = anode_id
-      end
+      super
+      @send_thread = Thread.new do
+        @send_thread = Thread.current
+        need_connect = true
+        while need_connect do
 
-      @stage         = ST_Protocol  #ST_IpCheck
-      @conn_mode     = aconn_mode
-      @conn_state    = aconn_state
-      @conn_state    ||= CS_Connecting
-      @read_state     = 0
-      send_state_add ||= 0
-      @send_state     = send_state_add
-      @sindex         = 0
-      @read_queue     = PandoraUtils::RoundQueue.new
-      @send_queue     = PandoraUtils::RoundQueue.new
-      @confirm_queue  = PandoraUtils::RoundQueue.new
-      @send_models    = {}
-      @recv_models    = {}
-      @params         = {}
-      @media_send     = false
-      @node_panhash   = nil
-      @fishes         = Array.new
-      @fishers        = Array.new
-      pool.add_session(self)
-      if @socket
-        set_keepalive(@socket)
-      end
-
-      @dialog = a_dialog
-      if dialog and (not dialog.destroyed?)
-        dialog.set_session(self, true)
-        #dialog.online_button.active = (socket and (not socket.closed?))
-        if self.dialog and (not self.dialog.destroyed?) and self.dialog.online_button \
-        and ((self.socket and (not self.socket.closed?)) or self.donor)
-          self.dialog.online_button.good_set_active(true)
-        end
-      end
-
-      #Thread.critical = true
-      #PandoraGUI.add_session(self)
-      #Thread.critical = false
-
-      # Sending thread
-      @send_thread = a_send_thread
-
-      @max_pack_size = MPS_Proto
-      @log_mes = 'LIS: '
-      if (conn_mode & CM_Hunter)>0
-        @log_mes = 'HUN: '
-        @max_pack_size = MPS_Captcha
-        add_send_segment(EC_Init, true, tokey)
-      end
-
-      # Read from socket cicle
-      # RU: Цикл чтения из сокета
-      if @socket
-        @socket_thread = Thread.new do
-          readmode = RM_Comm
-          waitlen = CommSize
-          rdatasize = 0
-          fullcrc32 = nil
-          rdatasize = nil
-          ok1comm = nil
-
-          rkcmd = EC_Sync
-          rkbuf = AsciiString.new
-          rkdata = AsciiString.new
-          rkindex = 0
-          serrcode = nil
-          serrbuf = nil
-
-          p log_mes+"Цикл ЧТЕНИЯ сокета начало"
-          # Цикл обработки команд и блоков данных
-          while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
-          and (not socket.closed?)
-            recieved = socket_recv(@max_pack_size)
-            if (not recieved) or (recieved == '')
-              @conn_state = CS_Stoping
+          if asocket.is_a? Session
+            @donor = asocket
+            if ahost_name
+              @fisher_lure = ahost_name
+            else
+              @fish_lure = ahost_ip
             end
-            #p log_mes+"recieved=["+recieved+']  '+socket.closed?.to_s+'  sok='+socket.inspect
-            #p log_mes+"recieved.size, waitlen="+[recieved.bytesize, waitlen].inspect if recieved
-            rkbuf << AsciiString.new(recieved)
-            processedlen = 0
-            while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
-            and (@conn_state != CS_Stoping) and (not socket.closed?) and (rkbuf.bytesize>=waitlen)
-              #p log_mes+'readmode, rkbuf.len, waitlen='+[readmode, rkbuf.size, waitlen].inspect
-              processedlen = waitlen
+          elsif not asocket
 
-              # Определимся с данными по режиму чтения
-              case readmode
-                when RM_Comm
-                  fullcrc32 = nil
-                  rdatasize = nil
-                  comm = rkbuf[0, processedlen]
-                  rkindex, rkcmd, rkcode, rsegsign, errcode = unpack_comm(comm)
-                  if errcode == 0
-                    if (rkcmd <= EC_Sync) or (rkcmd >= EC_Wait)
-                      ok1comm ||= true
-                      #p log_mes+' RM_Comm: '+[rkindex, rkcmd, rkcode, rsegsign].inspect
-                      if rsegsign == Session::LONG_SEG_SIGN
-                        readmode = RM_CommExt
-                        waitlen = CommExtSize
-                      elsif rsegsign > 0
-                        readmode = RM_SegmentS
-                        waitlen, rdatasize = rsegsign, rsegsign
-                        rdatasize -=4 if (rkcmd != EC_Media)
-                      end
-                    else
-                      serrbuf, serrcode = 'Bad command', ECC_Bye_BadComm
-                    end
-                  elsif errcode == 1
-                    serrbuf, serrcode = 'Wrong CRC of recieved command', ECC_Bye_BadCommCRC
-                  elsif errcode == 2
-                    serrbuf, serrcode = 'Wrong length of recieved command', ECC_Bye_BadCommLen
-                  else
-                    serrbuf, serrcode = 'Wrong recieved command', ECC_Bye_Unknown
-                  end
-                when RM_CommExt
-                  comm = rkbuf[0, processedlen]
-                  rdatasize, fullcrc32, rsegsize = unpack_comm_ext(comm)
-                  #p log_mes+' RM_CommExt: '+[rdatasize, fullcrc32, rsegsize].inspect
-                  fullcrc32 = nil if (rkcmd == EC_Media)
-                  readmode = RM_Segment1
-                  waitlen = rsegsize
-                when RM_SegLenN
-                  comm = rkbuf[0, processedlen]
-                  rkindex, rsegindex, rsegsize = comm.unpack('nNn')
-                  #p log_mes+' RM_SegLenN: '+[rkindex, rsegindex, rsegsize].inspect
-                  readmode = RM_SegmentN
-                  waitlen = rsegsize
-                else  #RM_SegmentS, RM_Segment1, RM_SegmentN
-                  #p log_mes+' RM_SegLen?['+readmode.to_s+']  rkbuf.size=['+rkbuf.bytesize.to_s+']'
-                  if rkcmd == EC_Media
-                    rkdata << rkbuf[0, processedlen]
-                  else
-                    rseg = AsciiString.new(rkbuf[0, processedlen-4])
-                    #p log_mes+'rseg=['+rseg+']'
-                    rsegcrc32str = rkbuf[processedlen-4, 4]
-                    rsegcrc32 = rsegcrc32str.unpack('N')[0]
-                    fsegcrc32 = Zlib.crc32(rseg)
-                    if fsegcrc32 == rsegcrc32
-                      rkdata << rseg
-                    else
-                      serrbuf, serrcode = 'Wrong CRC of received segment', ECC_Bye_BadSegCRC
-                    end
-                  end
-                  #p log_mes+'RM_Segment?: data['+rkdata+']'+rkdata.size.to_s+'/'+rdatasize.to_s
-                  #p log_mes+'RM_Segment?: datasize='+rdatasize.to_s
-                  if rkdata.bytesize == rdatasize
-                    readmode = RM_Comm
-                    waitlen = CommSize
-                    if fullcrc32 and (fullcrc32 != Zlib.crc32(rkdata))
-                      serrbuf, serrcode = 'Wrong CRC of composed data', ECC_Bye_BadDataCRC
-                    end
-                  elsif rkdata.bytesize < rdatasize
-                    if (readmode==RM_Segment1) or (readmode==RM_SegmentN)
-                      readmode = RM_SegLenN
-                      waitlen = SegNAttrSize    #index + segindex + rseglen (2+4+2)
-                    else
-                      serrbuf, serrcode = 'Too short received data ('+rkdata.bytesize.to_s+'>'  \
-                        +rdatasize.to_s+')', ECC_Bye_DataTooShort
-                    end
-                  else
-                    serrbuf, serrcode = 'Too long received data ('+rkdata.bytesize.to_s+'>' \
-                      +rdatasize.to_s+')', ECC_Bye_DataTooLong
-                  end
+            if (not host) or (host=='')
+              host, port = pool.hunt_address(tokey)
+            end
+
+            port ||= 5577
+            port = port.to_i
+
+            socket = nil
+            server = host+':'+port.to_s
+            begin
+              socket = TCPSocket.open(host, port)
+            rescue
+              log_message(LM_Warning, _('Cannot connect to')+': '+server)
+              socket = false
+            end
+
+            if socket
+              if ((conn_mode & CM_Hunter) == 0)
+                log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
+              else
+                log_message(LM_Info, _('Connected to listener')+': '+server)
               end
-              # Очистим буфер от определившихся данных
-              rkbuf.slice!(0, processedlen)
-              if serrbuf  #there was error
-                if ok1comm
-                  res = @send_queue.add_block_to_queue([EC_Bye, serrcode, serrbuf])
-                  if not res
-                    log_message(LM_Error, _('Cannot add error segment to send queue'))
-                  end
-                end
-                @conn_state = CS_Stoping
-              elsif (readmode == RM_Comm)
-                #p log_mes+'-- from socket to read queue: [rkcmd, rcode, rkdata.size]='+[rkcmd, rkcode, rkdata.size].inspect
-                if @r_encode and rkdata and (rkdata.bytesize>0)
-                  #@rkdata = PandoraGUI.recrypt(@rkey, @rkdata, false, true)
-                  #@rkdata = Base64.strict_decode64(@rkdata)
-                  #p log_mes+'::: decode rkdata.size='+rkdata.size.to_s
-                end
 
-                if rkcmd==EC_Media
-                  process_media_segment(rkcode, rkdata)
-                else
-                  while (@read_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) \
-                  and (@conn_state == CS_Connected)
-                    sleep(0.03)
-                    Thread.pass
-                  end
-                  res = @read_queue.add_block_to_queue([rkcmd, rkcode, rkdata])
-                  if not res
-                    log_message(LM_Error, _('Cannot add socket segment to read queue'))
+              @socket       = asocket
+              @host_name    = ahost_name
+              @host_ip      = ahost_ip
+              @port         = aport
+              @proto        = aproto
+              @node         = pool.encode_node(@host_ip, @port, @proto)
+              @node_id      = anode_id
+            end
+
+          end
+
+          if socket or donor
+            @stage          = ST_Protocol  #ST_IpCheck
+            @conn_mode      = aconn_mode
+            @conn_state     = aconn_state
+            @conn_state     ||= CS_Connecting
+            @read_state     = 0
+            send_state_add  ||= 0
+            @send_state     = send_state_add
+            @sindex         = 0
+            @read_queue     = PandoraUtils::RoundQueue.new
+            @send_queue     = PandoraUtils::RoundQueue.new
+            @confirm_queue  = PandoraUtils::RoundQueue.new
+            @send_models    = {}
+            @recv_models    = {}
+            @params         = {}
+            @media_send     = false
+            @node_panhash   = nil
+            @fishes         = Array.new
+            @fishers        = Array.new
+            pool.add_session(self)
+            if @socket
+              set_keepalive(@socket)
+            end
+
+            @dialog = a_dialog
+            if dialog and (not dialog.destroyed?)
+              dialog.set_session(self, true)
+              #dialog.online_button.active = (socket and (not socket.closed?))
+              if self.dialog and (not self.dialog.destroyed?) and self.dialog.online_button \
+              and ((self.socket and (not self.socket.closed?)) or self.donor)
+                self.dialog.online_button.good_set_active(true)
+              end
+            end
+
+            #Thread.critical = true
+            #PandoraGUI.add_session(self)
+            #Thread.critical = false
+
+            @max_pack_size = MPS_Proto
+            @log_mes = 'LIS: '
+            if (conn_mode & CM_Hunter)>0
+              @log_mes = 'HUN: '
+              @max_pack_size = MPS_Captcha
+              add_send_segment(EC_Init, true, tokey)
+            end
+
+            # Read from socket cicle
+            # RU: Цикл чтения из сокета
+            if @socket
+              @socket_thread = Thread.new do
+                readmode = RM_Comm
+                waitlen = CommSize
+                rdatasize = 0
+                fullcrc32 = nil
+                rdatasize = nil
+                ok1comm = nil
+
+                rkcmd = EC_Sync
+                rkbuf = AsciiString.new
+                rkdata = AsciiString.new
+                rkindex = 0
+                serrcode = nil
+                serrbuf = nil
+
+                p log_mes+"Цикл ЧТЕНИЯ сокета начало"
+                # Цикл обработки команд и блоков данных
+                while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
+                and (not socket.closed?)
+                  recieved = socket_recv(@max_pack_size)
+                  if (not recieved) or (recieved == '')
                     @conn_state = CS_Stoping
                   end
+                  #p log_mes+"recieved=["+recieved+']  '+socket.closed?.to_s+'  sok='+socket.inspect
+                  #p log_mes+"recieved.size, waitlen="+[recieved.bytesize, waitlen].inspect if recieved
+                  rkbuf << AsciiString.new(recieved)
+                  processedlen = 0
+                  while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
+                  and (@conn_state != CS_Stoping) and (not socket.closed?) and (rkbuf.bytesize>=waitlen)
+                    #p log_mes+'readmode, rkbuf.len, waitlen='+[readmode, rkbuf.size, waitlen].inspect
+                    processedlen = waitlen
+
+                    # Определимся с данными по режиму чтения
+                    case readmode
+                      when RM_Comm
+                        fullcrc32 = nil
+                        rdatasize = nil
+                        comm = rkbuf[0, processedlen]
+                        rkindex, rkcmd, rkcode, rsegsign, errcode = unpack_comm(comm)
+                        if errcode == 0
+                          if (rkcmd <= EC_Sync) or (rkcmd >= EC_Wait)
+                            ok1comm ||= true
+                            #p log_mes+' RM_Comm: '+[rkindex, rkcmd, rkcode, rsegsign].inspect
+                            if rsegsign == Session::LONG_SEG_SIGN
+                              readmode = RM_CommExt
+                              waitlen = CommExtSize
+                            elsif rsegsign > 0
+                              readmode = RM_SegmentS
+                              waitlen, rdatasize = rsegsign, rsegsign
+                              rdatasize -=4 if (rkcmd != EC_Media)
+                            end
+                          else
+                            serrbuf, serrcode = 'Bad command', ECC_Bye_BadComm
+                          end
+                        elsif errcode == 1
+                          serrbuf, serrcode = 'Wrong CRC of recieved command', ECC_Bye_BadCommCRC
+                        elsif errcode == 2
+                          serrbuf, serrcode = 'Wrong length of recieved command', ECC_Bye_BadCommLen
+                        else
+                          serrbuf, serrcode = 'Wrong recieved command', ECC_Bye_Unknown
+                        end
+                      when RM_CommExt
+                        comm = rkbuf[0, processedlen]
+                        rdatasize, fullcrc32, rsegsize = unpack_comm_ext(comm)
+                        #p log_mes+' RM_CommExt: '+[rdatasize, fullcrc32, rsegsize].inspect
+                        fullcrc32 = nil if (rkcmd == EC_Media)
+                        readmode = RM_Segment1
+                        waitlen = rsegsize
+                      when RM_SegLenN
+                        comm = rkbuf[0, processedlen]
+                        rkindex, rsegindex, rsegsize = comm.unpack('nNn')
+                        #p log_mes+' RM_SegLenN: '+[rkindex, rsegindex, rsegsize].inspect
+                        readmode = RM_SegmentN
+                        waitlen = rsegsize
+                      else  #RM_SegmentS, RM_Segment1, RM_SegmentN
+                        #p log_mes+' RM_SegLen?['+readmode.to_s+']  rkbuf.size=['+rkbuf.bytesize.to_s+']'
+                        if rkcmd == EC_Media
+                          rkdata << rkbuf[0, processedlen]
+                        else
+                          rseg = AsciiString.new(rkbuf[0, processedlen-4])
+                          #p log_mes+'rseg=['+rseg+']'
+                          rsegcrc32str = rkbuf[processedlen-4, 4]
+                          rsegcrc32 = rsegcrc32str.unpack('N')[0]
+                          fsegcrc32 = Zlib.crc32(rseg)
+                          if fsegcrc32 == rsegcrc32
+                            rkdata << rseg
+                          else
+                            serrbuf, serrcode = 'Wrong CRC of received segment', ECC_Bye_BadSegCRC
+                          end
+                        end
+                        #p log_mes+'RM_Segment?: data['+rkdata+']'+rkdata.size.to_s+'/'+rdatasize.to_s
+                        #p log_mes+'RM_Segment?: datasize='+rdatasize.to_s
+                        if rkdata.bytesize == rdatasize
+                          readmode = RM_Comm
+                          waitlen = CommSize
+                          if fullcrc32 and (fullcrc32 != Zlib.crc32(rkdata))
+                            serrbuf, serrcode = 'Wrong CRC of composed data', ECC_Bye_BadDataCRC
+                          end
+                        elsif rkdata.bytesize < rdatasize
+                          if (readmode==RM_Segment1) or (readmode==RM_SegmentN)
+                            readmode = RM_SegLenN
+                            waitlen = SegNAttrSize    #index + segindex + rseglen (2+4+2)
+                          else
+                            serrbuf, serrcode = 'Too short received data ('+rkdata.bytesize.to_s+'>'  \
+                              +rdatasize.to_s+')', ECC_Bye_DataTooShort
+                          end
+                        else
+                          serrbuf, serrcode = 'Too long received data ('+rkdata.bytesize.to_s+'>' \
+                            +rdatasize.to_s+')', ECC_Bye_DataTooLong
+                        end
+                    end
+                    # Очистим буфер от определившихся данных
+                    rkbuf.slice!(0, processedlen)
+                    if serrbuf  #there was error
+                      if ok1comm
+                        res = @send_queue.add_block_to_queue([EC_Bye, serrcode, serrbuf])
+                        if not res
+                          log_message(LM_Error, _('Cannot add error segment to send queue'))
+                        end
+                      end
+                      @conn_state = CS_Stoping
+                    elsif (readmode == RM_Comm)
+                      #p log_mes+'-- from socket to read queue: [rkcmd, rcode, rkdata.size]='+[rkcmd, rkcode, rkdata.size].inspect
+                      if @r_encode and rkdata and (rkdata.bytesize>0)
+                        #@rkdata = PandoraGUI.recrypt(@rkey, @rkdata, false, true)
+                        #@rkdata = Base64.strict_decode64(@rkdata)
+                        #p log_mes+'::: decode rkdata.size='+rkdata.size.to_s
+                      end
+
+                      if rkcmd==EC_Media
+                        process_media_segment(rkcode, rkdata)
+                      else
+                        while (@read_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) \
+                        and (@conn_state == CS_Connected)
+                          sleep(0.03)
+                          Thread.pass
+                        end
+                        res = @read_queue.add_block_to_queue([rkcmd, rkcode, rkdata])
+                        if not res
+                          log_message(LM_Error, _('Cannot add socket segment to read queue'))
+                          @conn_state = CS_Stoping
+                        end
+                      end
+                      rkdata = AsciiString.new
+                    end
+
+                    if not ok1comm
+                      log_message(LM_Error, 'Bad first command')
+                      @conn_state = CS_Stoping
+                    end
+                  end
+                  if (@conn_state == CS_Stoping)
+                    @conn_state = CS_StopRead
+                  end
+                  #Thread.pass
                 end
-                rkdata = AsciiString.new
-              end
-
-              if not ok1comm
-                log_message(LM_Error, 'Bad first command')
-                @conn_state = CS_Stoping
+                @conn_state = CS_StopRead if (not @conn_state) or (@conn_state < CS_StopRead)
+                p log_mes+"Цикл ЧТЕНИЯ сокета конец!"
+                @socket_thread = nil
               end
             end
-            if (@conn_state == CS_Stoping)
-              @conn_state = CS_StopRead
-            end
-            #Thread.pass
-          end
-          @conn_state = CS_StopRead if (not @conn_state) or (@conn_state < CS_StopRead)
-          p log_mes+"Цикл ЧТЕНИЯ сокета конец!"
-          @socket_thread = nil
-        end
-      end
 
-      # Read from buffer cicle
-      # RU: Цикл чтения из буфера
-      @read_thread = Thread.new do
-        @rcmd = EC_Sync
-        @rdata = AsciiString.new
-        @scmd = EC_Sync
-        @sbuf = ''
+            # Read from buffer cicle
+            # RU: Цикл чтения из буфера
+            @read_thread = Thread.new do
+              @rcmd = EC_Sync
+              @rdata = AsciiString.new
+              @scmd = EC_Sync
+              @sbuf = ''
 
-        p log_mes+"Цикл ЧТЕНИЯ начало"
-        # Цикл обработки команд и блоков данных
-        while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead)
-          read_segment = @read_queue.get_block_from_queue
-          if (@conn_state != CS_Disconnected) and read_segment
-            @rcmd, @rcode, @rdata = read_segment
-            len = 0
-            len = rdata.size if rdata
-            #p log_mes+'--**** before accept: [rcmd, rcode, rdata]='+[rcmd, rcode, len].inspect
-            #rcmd, rcode, rdata, scmd, scode, sbuf = \
-              accept_segment #(rcmd, rcode, rdata, scmd, scode, sbuf)
-            len = 0
-            len = @sbuf.size if @sbuf
-            #p log_mes+'--**** after accept: [scmd, scode, sbuf]='+[@scmd, @scode, len].inspect
+              p log_mes+"Цикл ЧТЕНИЯ начало"
+              # Цикл обработки команд и блоков данных
+              while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead)
+                read_segment = @read_queue.get_block_from_queue
+                if (@conn_state != CS_Disconnected) and read_segment
+                  @rcmd, @rcode, @rdata = read_segment
+                  len = 0
+                  len = rdata.size if rdata
+                  #p log_mes+'--**** before accept: [rcmd, rcode, rdata]='+[rcmd, rcode, len].inspect
+                  #rcmd, rcode, rdata, scmd, scode, sbuf = \
+                    accept_segment #(rcmd, rcode, rdata, scmd, scode, sbuf)
+                  len = 0
+                  len = @sbuf.size if @sbuf
+                  #p log_mes+'--**** after accept: [scmd, scode, sbuf]='+[@scmd, @scode, len].inspect
 
-            if @scmd != EC_Data
-              while (@send_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) \
-              and (@conn_state == CS_Connected)
-                sleep(0.03)
-                Thread.pass
+                  if @scmd != EC_Data
+                    while (@send_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) \
+                    and (@conn_state == CS_Connected)
+                      sleep(0.03)
+                      Thread.pass
+                    end
+                    res = @send_queue.add_block_to_queue([@scmd, @scode, @sbuf])
+                    @scmd = EC_Data
+                    if not res
+                      log_message(LM_Error, 'Error while adding segment to queue')
+                      @conn_state = CS_Stoping
+                    end
+                  end
+                else  #no segment in read queue
+                  #p 'aaaaaaaaaaaaa'
+                  sleep(0.01)
+                  #Thread.pass
+                end
+                if (@conn_state == CS_Stoping)
+                  @conn_state = CS_StopRead
+                end
               end
-              res = @send_queue.add_block_to_queue([@scmd, @scode, @sbuf])
-              @scmd = EC_Data
-              if not res
-                log_message(LM_Error, 'Error while adding segment to queue')
-                @conn_state = CS_Stoping
+              @conn_state = CS_StopRead if (not @conn_state) or (@conn_state < CS_StopRead)
+              p log_mes+"Цикл ЧТЕНИЯ конец!"
+              #socket.close if not socket.closed?
+              #@conn_state = CS_Disconnected
+              @read_thread = nil
+            end
+
+            # Send cicle
+            # RU: Цикл отправки
+            inquirer_step = IS_ResetMessage
+            message_model = PandoraUtils.get_model('Message', @send_models)
+            p log_mes+'ЦИКЛ ОТПРАВКИ начало'
+
+            while (@conn_state != CS_Disconnected)
+
+              fast_data = false
+
+              # формирование подтверждений
+              if (@conn_state != CS_Disconnected)
+                ssbuf = ''
+                confirm_rec = @confirm_queue.get_block_from_queue
+                while (@conn_state != CS_Disconnected) and confirm_rec
+                  p log_mes+'send  confirm_rec='+confirm_rec
+                  ssbuf << confirm_rec
+                  confirm_rec = @confirm_queue.get_block_from_queue
+                  if (not confirm_rec) or (ssbuf.bytesize+5>MaxSegSize)
+                    add_send_segment(EC_Sync, true, ssbuf, ECC_Sync3_Confirm)
+                    ssbuf = ''
+                  end
+                end
               end
-            end
-          else  #no segment in read queue
-            #p 'aaaaaaaaaaaaa'
-            sleep(0.01)
-            #Thread.pass
-          end
-          if (@conn_state == CS_Stoping)
-            @conn_state = CS_StopRead
-          end
-        end
-        @conn_state = CS_StopRead if (not @conn_state) or (@conn_state < CS_StopRead)
-        p log_mes+"Цикл ЧТЕНИЯ конец!"
-        #socket.close if not socket.closed?
-        #@conn_state = CS_Disconnected
-        @read_thread = nil
-      end
 
-      # Send cicle
-      # RU: Цикл отправки
-      inquirer_step = IS_ResetMessage
-      message_model = PandoraUtils.get_model('Message', @send_models)
-      p log_mes+'ЦИКЛ ОТПРАВКИ начало'
-
-      while (@conn_state != CS_Disconnected)
-
-        fast_data = false
-
-        # формирование подтверждений
-        if (@conn_state != CS_Disconnected)
-          ssbuf = ''
-          confirm_rec = @confirm_queue.get_block_from_queue
-          while (@conn_state != CS_Disconnected) and confirm_rec
-            p log_mes+'send  confirm_rec='+confirm_rec
-            ssbuf << confirm_rec
-            confirm_rec = @confirm_queue.get_block_from_queue
-            if (not confirm_rec) or (ssbuf.bytesize+5>MaxSegSize)
-              add_send_segment(EC_Sync, true, ssbuf, ECC_Sync3_Confirm)
-              ssbuf = ''
-            end
-          end
-        end
-
-        # отправка сформированных сегментов и их удаление
-        if (@conn_state != CS_Disconnected)
-          send_segment = @send_queue.get_block_from_queue
-          while (@conn_state != CS_Disconnected) and send_segment
-            #p log_mes+' send_segment='+send_segment.inspect
-            sscmd, sscode, ssbuf = send_segment
-            if ssbuf and (ssbuf.bytesize>0) and @s_encode
-              #ssbuf = PandoraGUI.recrypt(@skey, ssbuf, true, false)
-              #ssbuf = Base64.strict_encode64(@sbuf)
-            end
-            #p log_mes+'MAIN SEND: '+[@sindex, sscmd, sscode, ssbuf].inspect
-            if (sscmd != EC_Bye) or (sscode != ECC_Bye_Silent)
-              if not send_comm_and_data(@sindex, sscmd, sscode, ssbuf)
-                @conn_state = CS_Disconnected
+              # отправка сформированных сегментов и их удаление
+              if (@conn_state != CS_Disconnected)
+                send_segment = @send_queue.get_block_from_queue
+                while (@conn_state != CS_Disconnected) and send_segment
+                  #p log_mes+' send_segment='+send_segment.inspect
+                  sscmd, sscode, ssbuf = send_segment
+                  if ssbuf and (ssbuf.bytesize>0) and @s_encode
+                    #ssbuf = PandoraGUI.recrypt(@skey, ssbuf, true, false)
+                    #ssbuf = Base64.strict_encode64(@sbuf)
+                  end
+                  #p log_mes+'MAIN SEND: '+[@sindex, sscmd, sscode, ssbuf].inspect
+                  if (sscmd != EC_Bye) or (sscode != ECC_Bye_Silent)
+                    if not send_comm_and_data(@sindex, sscmd, sscode, ssbuf)
+                      @conn_state = CS_Disconnected
+                    end
+                  else
+                    p 'SILENT!!!!!!!!'
+                  end
+                  if (sscmd==EC_Sync) and (sscode==ECC_Sync2_Encode)
+                    @s_encode = true
+                  end
+                  if (sscmd==EC_Bye)
+                    p log_mes+'SEND BYE!!!!!!!!!!!!!!!'
+                    send_segment = nil
+                    #if not socket.closed?
+                    #  socket.close_write
+                    #  socket.close
+                    #end
+                    @conn_state = CS_Disconnected
+                  else
+                    if (sscmd==EC_Media)
+                      fast_data = true
+                    end
+                    send_segment = @send_queue.get_block_from_queue
+                  end
+                end
               end
-            else
-              p 'SILENT!!!!!!!!'
-            end
-            if (sscmd==EC_Sync) and (sscode==ECC_Sync2_Encode)
-              @s_encode = true
-            end
-            if (sscmd==EC_Bye)
-              p log_mes+'SEND BYE!!!!!!!!!!!!!!!'
-              send_segment = nil
-              #if not socket.closed?
-              #  socket.close_write
-              #  socket.close
-              #end
-              @conn_state = CS_Disconnected
-            else
-              if (sscmd==EC_Media)
-                fast_data = true
-              end
-              send_segment = @send_queue.get_block_from_queue
-            end
-          end
-        end
 
-        # выполнить несколько заданий почемучки по его шагам
-        processed = 0
-        while (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
-        and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$inquire_block_count) \
-        and (inquirer_step<IS_Finished)
-          case inquirer_step
-            when IS_ResetMessage
-              mypanhash = PandoraCrypto.current_user_or_key(true)
-              receiver = @skey[PandoraCrypto::KV_Creator]
-              if (receiver.is_a? String) and (receiver.bytesize>0) \
-              and (((conn_mode & CM_Hunter) != 0) or (mypanhash != receiver))
-                filter = {'destination'=>receiver, 'state'=>1}
-                message_model.update({:state=>0}, nil, filter)
-              end
-              inquirer_step += 1
-            when IS_CreatorCheck
-              creator = @skey[PandoraCrypto::KV_Creator]
-              kind = PandoraUtils.kind_from_panhash(creator)
-              res = PandoraModel.get_record_by_panhash(kind, creator, nil, @send_models, 'id')
-              p log_mes+'Whyer: CreatorCheck  creator='+creator.inspect
-              if not res
-                p log_mes+'Whyer: CreatorCheck  Request!'
-                set_request(creator, true)
-              end
-              inquirer_step += 1
-            when IS_NewsQuery
-              #set_query(@query_kind_list, @last_time, true)
-              inquirer_step += 1
-            else
-              inquirer_step = IS_Finished
-          end
-          processed += 1
-        end
-
-        # обработка принятых сообщений, их удаление
-
-        # разгрузка принятых буферов в gstreamer
-        processed = 0
-        cannel = 0
-        while (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
-        and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
-        and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size) \
-        and (inquirer_step>IS_ResetMessage)
-          if dialog.recv_media_pipeline[cannel] and dialog.appsrcs[cannel]
-          #and (dialog.recv_media_pipeline[cannel].get_state == Gst::STATE_PLAYING)
-            processed += 1
-            rc_queue = dialog.recv_media_queue[cannel]
-            recv_media_chunk = rc_queue.get_block_from_queue($media_buf_size) if rc_queue
-            if recv_media_chunk #and (recv_media_chunk.size>0)
-              fast_data = true
-              #p 'LOAD MED BUF size='+recv_media_chunk.size.to_s
-              buf = Gst::Buffer.new
-              buf.data = recv_media_chunk
-              buf.timestamp = Time.now.to_i * Gst::NSECOND
-              dialog.appsrcs[cannel].push_buffer(buf)
-              #recv_media_chunk = PandoraUtils.get_block_from_queue(dialog.recv_media_queue[cannel], $media_buf_size)
-            else
-              cannel += 1
-            end
-          else
-            cannel += 1
-          end
-        end
-
-        # обработка принятых запросов, их удаление
-
-        # пакетирование текстовых сообщений
-        processed = 0
-        #p log_mes+'----------send_state1='+send_state.inspect
-        #sleep 1
-        if (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
-        and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
-          fast_data = true
-          @send_state = (send_state & (~CSF_Message))
-          receiver = @skey[PandoraCrypto::KV_Creator]
-          if @skey and receiver
-            filter = {'destination'=>receiver, 'state'=>0}
-            fields = 'id, creator, created, text'
-            sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
-            if sel and (sel.size>0)
-              @send_state = (send_state | CSF_Messaging)
-              i = 0
-              while sel and (i<sel.size) and (processed<$mes_block_count) \
-              and (@conn_state == CS_Connected) \
-              and (@send_queue.single_read_state != PandoraUtils::RoundQueue::QS_Full)
+              # выполнить несколько заданий почемучки по его шагам
+              processed = 0
+              while (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
+              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$inquire_block_count) \
+              and (inquirer_step<IS_Finished)
+                case inquirer_step
+                  when IS_ResetMessage
+                    mypanhash = PandoraCrypto.current_user_or_key(true)
+                    receiver = @skey[PandoraCrypto::KV_Creator]
+                    if (receiver.is_a? String) and (receiver.bytesize>0) \
+                    and (((conn_mode & CM_Hunter) != 0) or (mypanhash != receiver))
+                      filter = {'destination'=>receiver, 'state'=>1}
+                      message_model.update({:state=>0}, nil, filter)
+                    end
+                    inquirer_step += 1
+                  when IS_CreatorCheck
+                    creator = @skey[PandoraCrypto::KV_Creator]
+                    kind = PandoraUtils.kind_from_panhash(creator)
+                    res = PandoraModel.get_record_by_panhash(kind, creator, nil, @send_models, 'id')
+                    p log_mes+'Whyer: CreatorCheck  creator='+creator.inspect
+                    if not res
+                      p log_mes+'Whyer: CreatorCheck  Request!'
+                      set_request(creator, true)
+                    end
+                    inquirer_step += 1
+                  when IS_NewsQuery
+                    #set_query(@query_kind_list, @last_time, true)
+                    inquirer_step += 1
+                  else
+                    inquirer_step = IS_Finished
+                end
                 processed += 1
-                row = sel[i]
-                if add_send_segment(EC_Message, true, row)
-                  id = row[0]
-                  res = message_model.update({:state=>1}, nil, {:id=>id})
-                  if not res
-                    log_message(LM_Error, _('Updating state of sent message')+' id='+id.to_s)
+              end
+
+              # обработка принятых сообщений, их удаление
+
+              # разгрузка принятых буферов в gstreamer
+              processed = 0
+              cannel = 0
+              while (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
+              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
+              and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size) \
+              and (inquirer_step>IS_ResetMessage)
+                if dialog.recv_media_pipeline[cannel] and dialog.appsrcs[cannel]
+                #and (dialog.recv_media_pipeline[cannel].get_state == Gst::STATE_PLAYING)
+                  processed += 1
+                  rc_queue = dialog.recv_media_queue[cannel]
+                  recv_media_chunk = rc_queue.get_block_from_queue($media_buf_size) if rc_queue
+                  if recv_media_chunk #and (recv_media_chunk.size>0)
+                    fast_data = true
+                    #p 'LOAD MED BUF size='+recv_media_chunk.size.to_s
+                    buf = Gst::Buffer.new
+                    buf.data = recv_media_chunk
+                    buf.timestamp = Time.now.to_i * Gst::NSECOND
+                    dialog.appsrcs[cannel].push_buffer(buf)
+                    #recv_media_chunk = PandoraUtils.get_block_from_queue(dialog.recv_media_queue[cannel], $media_buf_size)
+                  else
+                    cannel += 1
                   end
                 else
-                  log_message(LM_Error, _('Adding message to send queue')+' id='+id.to_s)
+                  cannel += 1
                 end
-                i += 1
-                #if (i>=sel.size) and (processed<$mes_block_count) and (@conn_state == CS_Connected)
-                #  sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
-                #  if sel and (sel.size>0)
-                #    i = 0
-                #  else
-                #    @send_state = (send_state & (~CSF_Messaging))
-                #  end
-                #end
               end
-            else
-              @send_state = (send_state & (~CSF_Messaging))
-            end
-          else
-            @send_state = (send_state & (~CSF_Messaging))
-          end
-        end
 
-        # пакетирование медиа буферов
-        if ($send_media_queues.size>0) and $send_media_rooms \
-        and (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
-        and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
-        and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
-        or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
-          fast_data = true
-          #p 'packbuf '+cannel.to_s
-          pointer_ind = PandoraGUI.get_send_ptrind_by_room(dialog.room_id)
-          processed = 0
-          cannel = 0
-          while (@conn_state == CS_Connected) \
-          and ((send_state & CSF_Message) == 0) and (processed<$media_block_count) \
-          and (cannel<$send_media_queues.size) \
-          and dialog and (not dialog.destroyed?) \
-          and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
-          or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
-            processed += 1
-            sc_queue = $send_media_queues[cannel]
-            send_media_chunk = nil
-            #p log_mes+'[cannel, pointer_ind]='+[cannel, pointer_ind].inspect
-            send_media_chunk = sc_queue.get_block_from_queue($media_buf_size, pointer_ind) if sc_queue and pointer_ind
-            if send_media_chunk
-              #p log_mes+'[cannel, pointer_ind, chunk.size]='+[cannel, pointer_ind, send_media_chunk.size].inspect
-              mscmd = EC_Media
-              mscode = cannel
-              msbuf = send_media_chunk
-              if not send_comm_and_data(sindex, mscmd, mscode, msbuf)
+              # обработка принятых запросов, их удаление
+
+              # пакетирование текстовых сообщений
+              processed = 0
+              #p log_mes+'----------send_state1='+send_state.inspect
+              #sleep 1
+              if (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
+              and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
+                fast_data = true
+                @send_state = (send_state & (~CSF_Message))
+                receiver = @skey[PandoraCrypto::KV_Creator]
+                if @skey and receiver
+                  filter = {'destination'=>receiver, 'state'=>0}
+                  fields = 'id, creator, created, text'
+                  sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
+                  if sel and (sel.size>0)
+                    @send_state = (send_state | CSF_Messaging)
+                    i = 0
+                    while sel and (i<sel.size) and (processed<$mes_block_count) \
+                    and (@conn_state == CS_Connected) \
+                    and (@send_queue.single_read_state != PandoraUtils::RoundQueue::QS_Full)
+                      processed += 1
+                      row = sel[i]
+                      if add_send_segment(EC_Message, true, row)
+                        id = row[0]
+                        res = message_model.update({:state=>1}, nil, {:id=>id})
+                        if not res
+                          log_message(LM_Error, _('Updating state of sent message')+' id='+id.to_s)
+                        end
+                      else
+                        log_message(LM_Error, _('Adding message to send queue')+' id='+id.to_s)
+                      end
+                      i += 1
+                      #if (i>=sel.size) and (processed<$mes_block_count) and (@conn_state == CS_Connected)
+                      #  sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
+                      #  if sel and (sel.size>0)
+                      #    i = 0
+                      #  else
+                      #    @send_state = (send_state & (~CSF_Messaging))
+                      #  end
+                      #end
+                    end
+                  else
+                    @send_state = (send_state & (~CSF_Messaging))
+                  end
+                else
+                  @send_state = (send_state & (~CSF_Messaging))
+                end
+              end
+
+              # пакетирование медиа буферов
+              if ($send_media_queues.size>0) and $send_media_rooms \
+              and (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
+              and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
+              and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
+              or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
+                fast_data = true
+                #p 'packbuf '+cannel.to_s
+                pointer_ind = PandoraGUI.get_send_ptrind_by_room(dialog.room_id)
+                processed = 0
+                cannel = 0
+                while (@conn_state == CS_Connected) \
+                and ((send_state & CSF_Message) == 0) and (processed<$media_block_count) \
+                and (cannel<$send_media_queues.size) \
+                and dialog and (not dialog.destroyed?) \
+                and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
+                or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
+                  processed += 1
+                  sc_queue = $send_media_queues[cannel]
+                  send_media_chunk = nil
+                  #p log_mes+'[cannel, pointer_ind]='+[cannel, pointer_ind].inspect
+                  send_media_chunk = sc_queue.get_block_from_queue($media_buf_size, pointer_ind) if sc_queue and pointer_ind
+                  if send_media_chunk
+                    #p log_mes+'[cannel, pointer_ind, chunk.size]='+[cannel, pointer_ind, send_media_chunk.size].inspect
+                    mscmd = EC_Media
+                    mscode = cannel
+                    msbuf = send_media_chunk
+                    if not send_comm_and_data(sindex, mscmd, mscode, msbuf)
+                      @conn_state = CS_Disconnected
+                    end
+                  else
+                    cannel += 1
+                  end
+                end
+              end
+
+              if socket and socket.closed? or (@conn_state == CS_StopRead) \
+              and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::QS_Empty)
                 @conn_state = CS_Disconnected
+              elsif (not fast_data)
+                sleep(0.02)
+              #elsif conn_state == CS_Stoping
+              #  add_send_segment(EC_Bye, true)
               end
-            else
-              cannel += 1
+              Thread.pass
+            end
+
+            p log_mes+"Цикл ОТПРАВКИ конец!!!"
+
+            #Thread.critical = true
+            pool.del_session(self)
+            #Thread.critical = false
+            #p log_mes+'check close'
+            if socket and (not socket.closed?)
+              p log_mes+'before close_write'
+              #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+              #socket.flush
+              #socket.print('\000')
+              socket.close_write
+              p log_mes+'before close'
+              sleep(0.05)
+              socket.close
+              p log_mes+'closed!'
+            end
+            if socket
+              if ((conn_mode & CM_Hunter) == 0)
+                log_message(LM_Info, _('Hunter disconnects')+': '+server)
+              else
+                log_message(LM_Info, _('Disconnected from listener')+': '+server)
+              end
+            end
+            @socket_thread.exit if @socket_thread
+            @read_thread.exit if @read_thread
+            if donor #and (not donor.destroyed?)
+              p 'DONOR free!!!!'
+              if donor.socket and (not donor.socket.closed?)
+                send_comm_and_data(@sindex, EC_Bye, ECC_Bye_NoAnswer, nil)
+              end
+              if fisher_lure
+                p 'free_out_lure fisher_lure='+fisher_lure.inspect
+                donor.free_out_lure_of_fisher(self, fisher_lure)
+              else
+                p 'free_fish fish_lure='+fish_lure.inspect
+                donor.free_fish_of_in_lure(fish_lure)
+              end
+            end
+            fishes.each_index do |i|
+              free_fish_of_in_lure(i)
+            end
+            fishers.each do |val|
+              fisher = nil
+              in_lure = nil
+              fisher, in_lure = val if val.is_a? Array
+              fisher.free_fish_of_in_lure(in_lure) if (fisher and in_lure) #and (not fisher.destroyed?)
+              #fisher.free_out_lure_of_fisher(self, i) if fish #and (not fish.destroyed?)
             end
           end
-        end
 
-        if socket and socket.closed? or (@conn_state == CS_StopRead) \
-        and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::QS_Empty)
+          need_connect = ((conn_mode & CM_Dialog) != 0) and (not (socket.is_a? FalseClass))
+
           @conn_state = CS_Disconnected
-        elsif (not fast_data)
-          sleep(0.02)
-        #elsif conn_state == CS_Stoping
-        #  add_send_segment(EC_Bye, true)
+          @socket = nil
+
+          sleep(0.1+0.5*rand) if need_connect
         end
-        Thread.pass
-      end
-
-      p log_mes+"Цикл ОТПРАВКИ конец!!!"
-
-      #Thread.critical = true
-      pool.del_session(self)
-      #Thread.critical = false
-      #p log_mes+'check close'
-      if socket and (not socket.closed?)
-        p log_mes+'before close_write'
-        #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-        #socket.flush
-        #socket.print('\000')
-        socket.close_write
-        p log_mes+'before close'
-        sleep(0.05)
-        socket.close
-        p log_mes+'closed!'
-      end
-      @socket_thread.exit if @socket_thread
-      @read_thread.exit if @read_thread
-      if donor #and (not donor.destroyed?)
-        p 'DONOR free!!!!'
-        if donor.socket and (not donor.socket.closed?)
-          send_comm_and_data(@sindex, EC_Bye, ECC_Bye_NoAnswer, nil)
+        if dialog and (not dialog.destroyed?) #and (not dialog.online_button.destroyed?)
+          dialog.set_session(self, false)
+          #dialog.online_button.active = false
         end
-        if fisher_lure
-          p 'free_out_lure fisher_lure='+fisher_lure.inspect
-          donor.free_out_lure_of_fisher(self, fisher_lure)
-        else
-          p 'free_fish fish_lure='+fish_lure.inspect
-          donor.free_fish_of_in_lure(fish_lure)
-        end
+        PandoraUtils.play_mp3('offline')
+        @send_thread = nil
       end
-      fishes.each_index do |i|
-        free_fish_of_in_lure(i)
-      end
-      fishers.each do |val|
-        fisher = nil
-        in_lure = nil
-        fisher, in_lure = val if val.is_a? Array
-        fisher.free_fish_of_in_lure(in_lure) if (fisher and in_lure) #and (not fisher.destroyed?)
-        #fisher.free_out_lure_of_fisher(self, i) if fish #and (not fish.destroyed?)
-      end
-
-      @conn_state = CS_Disconnected
-      @socket = nil
-      @send_thread = nil
-
-      if dialog and (not dialog.destroyed?) #and (not dialog.online_button.destroyed?)
-        dialog.set_session(self, false)
-        #dialog.online_button.active = false
-      end
+      #??
     end
 
   end
@@ -6416,7 +6441,14 @@ module PandoraNet
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen
     PandoraNet.get_exchage_params
-    if not $listen_thread
+    if $listen_thread
+      server = $listen_thread[:listen_server_socket]
+      $listen_thread[:need_to_listen] = false
+      #server.close if not server.closed?
+      #$listen_thread.join(2) if $listen_thread
+      #$listen_thread.exit if $listen_thread
+      $window.correct_lis_btn_state
+    else
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGUI::SF_Listen, 'Listening', nil, true)
@@ -6425,7 +6457,7 @@ module PandoraNet
         $listen_thread = Thread.new do
           begin
             host = $host
-            if host==nil
+            if not host
               host = ''
             elsif host=='any'  #alse can be "", "0.0.0.0", "0", "0::0", "::"
               host = Socket::INADDR_ANY
@@ -6439,47 +6471,29 @@ module PandoraNet
           end
           Thread.current[:listen_server_socket] = server
           Thread.current[:need_to_listen] = (server != nil)
-          while Thread.current[:need_to_listen] and server and not server.closed?
-            # Создать поток при подключении клиента
-            client = get_listener_client_or_nil(server)
-            while Thread.current[:need_to_listen] and not server.closed? and not client
-              sleep 0.03
+          while Thread.current[:need_to_listen] and server and (not server.closed?)
+            socket = get_listener_client_or_nil(server)
+            while Thread.current[:need_to_listen] and not server.closed? and not socket
+              sleep 0.05
               #Thread.pass
               #Gtk.main_iteration
-              client = get_listener_client_or_nil(server)
+              socket = get_listener_client_or_nil(server)
             end
 
-            if Thread.current[:need_to_listen] and not server.closed? and client
-              Thread.new(client) do |socket|
-                log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
-
-                host_ip = socket.peeraddr[2]
-
-                if ip_is_not_banned(host_ip)
-                  host_name = socket.peeraddr[3]
-                  port = socket.peeraddr[1]
-                  #port = socket.addr[1] if host_ip==socket.addr[2] # hack for short circuit!!!
-                  proto = 'tcp'
-                  node = $window.pool.encode_node(host_ip, port, proto)
-
-                  session = $window.pool.session_of_node(node)
-                  if session
-                    log_message(LM_Info, _('Node already connected')+': '+node)
-                  else
-                    conn_mode = 0
-                    session = Session.new
-                    session.run(socket, host_name, host_ip, port, proto, conn_mode, \
-                      CS_Connected, Thread.current, nil, nil, nil, nil)
-                  end
-                else
-                  log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
-                end
-                socket.close if not socket.closed?
-                log_message(LM_Info, _('Hunter disconnects')+': '+socket.to_s)
+            if Thread.current[:need_to_listen] and (not server.closed?) and socket
+              host_ip = socket.peeraddr[2]
+              if ip_is_not_banned(host_ip)
+                host_name = socket.peeraddr[3]
+                port = socket.peeraddr[1]
+                proto = 'tcp'
+                session = Session.new(socket, host_name, host_ip, port, proto, 0, \
+                  CS_Connected, nil, nil, nil, nil, nil)
+              else
+                log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
               end
             end
           end
-          server.close if server and not server.closed?
+          server.close if server and (not server.closed?)
           log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
           $window.set_status_field(PandoraGUI::SF_Listen, 'Not listen', nil, false)
           $listen_thread = nil
@@ -6487,13 +6501,6 @@ module PandoraNet
       else
         $window.correct_lis_btn_state
       end
-    else
-      p server = $listen_thread[:listen_server_socket]
-      $listen_thread[:need_to_listen] = false
-      #server.close if not server.closed?
-      #$listen_thread.join(2) if $listen_thread
-      #$listen_thread.exit if $listen_thread
-      $window.correct_lis_btn_state
     end
   end
 
@@ -7613,6 +7620,7 @@ module PandoraGUI
       trust_box = Gtk::VBox.new
 
       trust0 = nil
+      trust_scale = nil
       @vouch_btn = Gtk::CheckButton.new(_('vouch'), true)
       vouch_btn.signal_connect('clicked') do |widget|
         if not widget.destroyed?
@@ -9032,7 +9040,6 @@ module PandoraGUI
           false
         end
       end
-
       PandoraGUI.hack_enter_bug(editbox)
 
       hpaned2 = Gtk::HPaned.new
@@ -9040,7 +9047,42 @@ module PandoraGUI
       area_send.set_size_request(120, 90)
       area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
       hpaned2.pack1(area_send, false, true)
-      hpaned2.pack2(editbox, true, true)
+
+
+      option_box = Gtk::HBox.new
+
+      sender_box = Gtk::VBox.new
+      sender_box.pack_start(option_box, false, true, 0)
+      sender_box.pack_start(editbox, true, true, 0)
+
+      vouch_btn = GoodCheckButton.new(_('vouch'), true)
+      vouch_btn.good_signal_clicked do |widget|
+        #update_btn.clicked
+      end
+      option_box.pack_start(vouch_btn, false, false, 0)
+
+      adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
+      trust_scale = Gtk::HScale.new(adjustment)
+      trust_scale.set_size_request(140, -1)
+      trust_scale.update_policy = Gtk::UPDATE_DELAYED
+      trust_scale.digits = 1
+      trust_scale.draw_value = true
+      trust_scale.value = 1.0
+      trust_scale.value_pos = Gtk::POS_RIGHT
+      option_box.pack_start(trust_scale, false, false, 0)
+
+      smile_btn = Gtk::Button.new(_('smile'))
+      option_box.pack_start(smile_btn, false, false, 4)
+      game_btn = Gtk::Button.new(_('game'))
+      option_box.pack_start(game_btn, false, false, 4)
+
+      require_sign_btn = GoodCheckButton.new(_('require sign'), true)
+      require_sign_btn.good_signal_clicked do |widget|
+        #update_btn.clicked
+      end
+      option_box.pack_start(require_sign_btn, false, false, 0)
+
+      hpaned2.pack2(sender_box, true, true)
 
       list_sw = Gtk::ScrolledWindow.new(nil, nil)
       list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
@@ -9048,10 +9090,10 @@ module PandoraGUI
       #list_sw.visible = false
 
       list_store = Gtk::ListStore.new(TrueClass, String)
-      #node_list.each do |node|
-      #  user_iter = list_store.append
-      #  user_iter[CL_Name] = node.inspect
-      #end
+      targets[CSI_Nodes].each do |keybase|
+        user_iter = list_store.append
+        user_iter[CL_Name] = PandoraUtils.bytes_to_hex(keybase)
+      end
 
       # create tree view
       list_tree = Gtk::TreeView.new(list_store)
@@ -9390,8 +9432,10 @@ module PandoraGUI
       active = (@sessions.size>0)
       online_button.good_set_active(active) if (not online_button.destroyed?)
       if not active
-        snd_button.good_set_active(false) if (not snd_button.destroyed?)
-        vid_button.good_set_active(false) if (not vid_button.destroyed?)
+        snd_button.active = false if (not snd_button.destroyed?) and snd_button.active
+        vid_button.active = false if (not vid_button.destroyed?) and vid_button.active
+        #snd_button.good_set_active(false) if (not snd_button.destroyed?)
+        #vid_button.good_set_active(false) if (not vid_button.destroyed?)
       end
     end
 
@@ -9417,6 +9461,7 @@ module PandoraGUI
         end
         dlg_sessions = $window.pool.sessions_on_dialog(self)
         dlg_sessions.each do |session|
+          session.conn_mode = (session.conn_mode | PandoraNet::CM_Dialog)
           session.send_state = (session.send_state | PandoraNet::CSF_Message)
         end
       end
@@ -9444,7 +9489,7 @@ module PandoraGUI
           tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
           tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
           $statusicon.set_message(_('Message')+' ['+tab_widget.label.text+']')
-          PandoraUtils.play_mp3
+          PandoraUtils.play_mp3('message')
         end
         # run reading thread
         timer_setted = false
@@ -10324,11 +10369,11 @@ module PandoraGUI
       PandoraGUI.set_readonly(stop_btn, true)
 
       prev_btn = Gtk::ToolButton.new(Gtk::Stock::GO_BACK, _('Previous'))
-      prev_btn.tooltip_text = _('Previous seacrh')
+      prev_btn.tooltip_text = _('Previous search')
       PandoraGUI.set_readonly(prev_btn, true)
 
       next_btn = Gtk::ToolButton.new(Gtk::Stock::GO_FORWARD, _('Next'))
-      next_btn.tooltip_text = _('Next seacrh')
+      next_btn.tooltip_text = _('Next search')
       PandoraGUI.set_readonly(next_btn, true)
 
       search_entry = Gtk::Entry.new
@@ -11315,7 +11360,14 @@ module PandoraGUI
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
-          PandoraUtils.play_mp3
+          a = rand
+          if a<0.33
+            PandoraUtils.play_mp3('online')
+          elsif a<0.66
+            PandoraUtils.play_mp3('offline')
+          else
+            PandoraUtils.play_mp3('message')
+          end
           return
           #p OpenSSL::Cipher::ciphers
 
