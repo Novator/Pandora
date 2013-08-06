@@ -4245,14 +4245,13 @@ module PandoraNet
           sel.each do |row|
             host = row[2]
             host.strip! if host
-            host = row[0] if (not host) or (host=='')
-            host.strip! if host
+            addr = row[0]
+            addr.strip! if addr
             port = row[1]
             proto = 'tcp'
-
-            if host and (host != '')
-              session = Session.new(socket, host, socket.peeraddr[2], port, proto, CM_Hunter, \
-                CS_Connected, Thread.current, node_id, dialog, keybase, send_state_add)
+            if (host and (host != '')) or (addr and (addr != ''))
+              session = Session.new(nil, host, addr, port, proto, \
+                CS_Connecting, node_id, dialog, keybase, send_state_add)
               res = true
             end
           end
@@ -4331,8 +4330,8 @@ module PandoraNet
     def init_fish_for_fisher(fisher, in_lure, aim_keyhash=nil, baseid=nil)
       fish = nil
       if (aim_keyhash==nil) #or (aim_keyhash==mykeyhash)   #
-        fish = Session.new(fisher, nil, in_lure, nil, nil, 0, CS_Connected, \
-          nil, nil, nil, nil, nil)
+        fish = Session.new(fisher, nil, in_lure, nil, nil, CS_Connected, \
+          nil, nil, nil, nil)
       else  # alien key
         fish = @sessions.index { |session| session.skey[PandoraCrypto::KV_Panhash] == keyhash }
       end
@@ -5797,9 +5796,13 @@ module PandoraNet
 
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
-    def initalize(asocket, ahost_name, ahost_ip, aport, aproto, aconn_mode, \
-    aconn_state, a_send_thread, anode_id, a_dialog, tokey, send_state_add)
-      super
+    def initialize(asocket, ahost_name, ahost_ip, aport, aproto, \
+    aconn_state, anode_id, a_dialog, tokey, send_state_add)
+      super()
+      @conn_state  = CS_Connecting
+      @socket       = nil
+      @conn_mode    = 0
+
       @send_thread = Thread.new do
         @send_thread = Thread.current
         need_connect = true
@@ -5812,47 +5815,53 @@ module PandoraNet
             else
               @fish_lure = ahost_ip
             end
-          elsif not asocket
+          else
+            if asocket and (not asocket.closed?)
+              @socket       = asocket
+            else
+              host = ahost_name
+              host = ahost_ip if ((not host) or (host == ''))
 
-            if (not host) or (host=='')
-              host, port = pool.hunt_address(tokey)
-            end
-
-            port ||= 5577
-            port = port.to_i
-
-            socket = nil
-            server = host+':'+port.to_s
-            begin
-              socket = TCPSocket.open(host, port)
-            rescue
-              log_message(LM_Warning, _('Cannot connect to')+': '+server)
-              socket = false
-            end
-
-            if socket
-              if ((conn_mode & CM_Hunter) == 0)
-                log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
-              else
-                log_message(LM_Info, _('Connected to listener')+': '+server)
+              if (not host) or (host=='')
+                host, port = pool.hunt_address(tokey)
               end
 
+              port ||= 5577
+              port = port.to_i
+
+              asocket = nil
+              server = host+':'+port.to_s
+              begin
+                asocket = TCPSocket.open(host, port)
+              rescue
+                log_message(LM_Warning, _('Cannot connect to')+': '+server)
+                asocket = false
+              end
               @socket       = asocket
-              @host_name    = ahost_name
-              @host_ip      = ahost_ip
-              @port         = aport
-              @proto        = aproto
-              @node         = pool.encode_node(@host_ip, @port, @proto)
-              @node_id      = anode_id
+              @conn_mode    = @conn_mode | CM_Hunter
+            end
+          end
+
+          if socket
+            if ((conn_mode & CM_Hunter) == 0)
+              log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
+            else
+              log_message(LM_Info, _('Connected to listener')+': '+server)
             end
 
+            @host_name    = ahost_name
+            @host_ip      = ahost_ip
+            @port         = aport
+            @proto        = aproto
+            @node         = pool.encode_node(@host_ip, @port, @proto)
+            @node_id      = anode_id
           end
+
 
           if socket or donor
             @stage          = ST_Protocol  #ST_IpCheck
-            @conn_mode      = aconn_mode
-            @conn_state     = aconn_state
-            @conn_state     ||= CS_Connecting
+            #@conn_state     = aconn_state
+            @conn_state     = CS_Connected
             @read_state     = 0
             send_state_add  ||= 0
             @send_state     = send_state_add
@@ -5926,7 +5935,7 @@ module PandoraNet
                   processedlen = 0
                   while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
                   and (@conn_state != CS_Stoping) and (not socket.closed?) and (rkbuf.bytesize>=waitlen)
-                    #p log_mes+'readmode, rkbuf.len, waitlen='+[readmode, rkbuf.size, waitlen].inspect
+                    p log_mes+'readmode, rkbuf.len, waitlen='+[readmode, rkbuf.size, waitlen].inspect
                     processedlen = waitlen
 
                     # Определимся с данными по режиму чтения
@@ -6115,9 +6124,10 @@ module PandoraNet
             # RU: Цикл отправки
             inquirer_step = IS_ResetMessage
             message_model = PandoraUtils.get_model('Message', @send_models)
-            p log_mes+'ЦИКЛ ОТПРАВКИ начало'
+            p log_mes+'ЦИКЛ ОТПРАВКИ начало: @conn_state='+@conn_state.inspect
 
             while (@conn_state != CS_Disconnected)
+              p '@conn_state='+@conn_state.inspect
 
               fast_data = false
 
@@ -6150,6 +6160,7 @@ module PandoraNet
                   if (sscmd != EC_Bye) or (sscode != ECC_Bye_Silent)
                     if not send_comm_and_data(@sindex, sscmd, sscode, ssbuf)
                       @conn_state = CS_Disconnected
+                      p log_mes+'err send comm and buf'
                     end
                   else
                     p 'SILENT!!!!!!!!'
@@ -6317,6 +6328,7 @@ module PandoraNet
                     msbuf = send_media_chunk
                     if not send_comm_and_data(sindex, mscmd, mscode, msbuf)
                       @conn_state = CS_Disconnected
+                      p log_mes+' err send media'
                     end
                   else
                     cannel += 1
@@ -6324,7 +6336,10 @@ module PandoraNet
                 end
               end
 
-              if socket and socket.closed? or (@conn_state == CS_StopRead) \
+              p '---@conn_state='+@conn_state.inspect
+              sleep 0.5
+
+              if (socket and socket.closed?) or (@conn_state == CS_StopRead) \
               and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::QS_Empty)
                 @conn_state = CS_Disconnected
               elsif (not fast_data)
@@ -6335,7 +6350,7 @@ module PandoraNet
               Thread.pass
             end
 
-            p log_mes+"Цикл ОТПРАВКИ конец!!!"
+            p log_mes+"Цикл ОТПРАВКИ конец!!!   @conn_state="+@conn_state.inspect
 
             #Thread.critical = true
             pool.del_session(self)
@@ -6354,9 +6369,9 @@ module PandoraNet
             end
             if socket
               if ((conn_mode & CM_Hunter) == 0)
-                log_message(LM_Info, _('Hunter disconnects')+': '+server)
+                log_message(LM_Info, _('Hunter disconnects')+': '+@host_ip)
               else
-                log_message(LM_Info, _('Disconnected from listener')+': '+server)
+                log_message(LM_Info, _('Disconnected from listener')+': '+@host_ip)
               end
             end
             @socket_thread.exit if @socket_thread
@@ -6486,8 +6501,9 @@ module PandoraNet
                 host_name = socket.peeraddr[3]
                 port = socket.peeraddr[1]
                 proto = 'tcp'
-                session = Session.new(socket, host_name, host_ip, port, proto, 0, \
-                  CS_Connected, nil, nil, nil, nil, nil)
+                p 'LISTEN: '+[host_name, host_ip, port, proto].inspect
+                session = Session.new(socket, host_name, host_ip, port, proto, \
+                  CS_Connected, nil, nil, nil, nil)
               else
                 log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
               end
@@ -7620,7 +7636,7 @@ module PandoraGUI
       trust_box = Gtk::VBox.new
 
       trust0 = nil
-      trust_scale = nil
+      @trust_scale = nil
       @vouch_btn = Gtk::CheckButton.new(_('vouch'), true)
       vouch_btn.signal_connect('clicked') do |widget|
         if not widget.destroyed?
@@ -9426,14 +9442,16 @@ module PandoraGUI
       @sessions ||= []
       if online
         @sessions << session if (not @sessions.include?(session))
+        session.conn_mode = (session.conn_mode | PandoraNet::CM_Dialog)
       else
         @sessions.delete(session)
+        session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Dialog))
       end
       active = (@sessions.size>0)
       online_button.good_set_active(active) if (not online_button.destroyed?)
       if not active
-        snd_button.active = false if (not snd_button.destroyed?) and snd_button.active
-        vid_button.active = false if (not vid_button.destroyed?) and vid_button.active
+        snd_button.active = false if (not snd_button.destroyed?) and snd_button.active?
+        vid_button.active = false if (not vid_button.destroyed?) and vid_button.active?
         #snd_button.good_set_active(false) if (not snd_button.destroyed?)
         #vid_button.good_set_active(false) if (not vid_button.destroyed?)
       end
