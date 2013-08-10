@@ -2633,7 +2633,7 @@ module PandoraUtils
     end
   end
 
-  $poly_play   = true
+  $poly_play   = false
   $play_thread = nil
   Default_Mp3 = 'message.mp3'
 
@@ -5802,6 +5802,8 @@ module PandoraNet
       @conn_state  = CS_Connecting
       @socket       = nil
       @conn_mode    = 0
+      @fishes         = Array.new
+      @fishers        = Array.new
 
       @send_thread = Thread.new do
         @send_thread = Thread.current
@@ -5874,8 +5876,6 @@ module PandoraNet
             @params         = {}
             @media_send     = false
             @node_panhash   = nil
-            @fishes         = Array.new
-            @fishers        = Array.new
             pool.add_session(self)
             if @socket
               set_keepalive(@socket)
@@ -6127,7 +6127,7 @@ module PandoraNet
             p log_mes+'ЦИКЛ ОТПРАВКИ начало: @conn_state='+@conn_state.inspect
 
             while (@conn_state != CS_Disconnected)
-              p '@conn_state='+@conn_state.inspect
+              #p '@conn_state='+@conn_state.inspect
 
               fast_data = false
 
@@ -6336,8 +6336,8 @@ module PandoraNet
                 end
               end
 
-              p '---@conn_state='+@conn_state.inspect
-              sleep 0.5
+              #p '---@conn_state='+@conn_state.inspect
+              #sleep 0.5
 
               if (socket and socket.closed?) or (@conn_state == CS_StopRead) \
               and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::QS_Empty)
@@ -7205,6 +7205,9 @@ module PandoraGUI
     menuitem
   end
 
+  class PanobjScrollWin < Gtk::ScrolledWindow
+  end
+
   # Showing panobject list
   # RU: Показ списка субъектов
   def self.show_panobject_list(panobject_class, widget=nil, sw=nil, auto_create=false)
@@ -7212,9 +7215,9 @@ module PandoraGUI
     single = (sw == nil)
     if single
       notebook.children.each do |child|
-        if child.name==panobject_class.ider
+        if (child.is_a? PanobjScrollWin) and (child.name==panobject_class.ider)
           notebook.page = notebook.children.index(child)
-          return
+          return nil
         end
       end
     end
@@ -7309,7 +7312,7 @@ module PandoraGUI
       end
     end
 
-    sw ||= Gtk::ScrolledWindow.new(nil, nil)
+    sw ||= PanobjScrollWin.new(nil, nil)
     sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
     sw.name = panobject.ider
     sw.add(treeview)
@@ -8594,6 +8597,8 @@ module PandoraGUI
           end
         end
       end
+    elsif action=='Dialog'
+      PandoraGUI.show_panobject_list(PandoraModel::Person)
     end
   end
 
@@ -11699,7 +11704,7 @@ module PandoraGUI
       end
 
       $window.signal_connect('key-press-event') do |widget, event|
-        res = false
+        res = true
         if ([Gdk::Keyval::GDK_m, Gdk::Keyval::GDK_M, 1752, 1784].include?(event.keyval) \
         and event.state.control_mask?)
           $window.hide
@@ -11722,6 +11727,20 @@ module PandoraGUI
         and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
         1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
           $window.destroy
+        elsif event.state.control_mask? \
+        and [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
+          curpage = nil
+          if $window.notebook.n_pages>0
+            curpage = $window.notebook.get_nth_page($window.notebook.page)
+          end
+          if curpage.is_a? PandoraGUI::PanobjScrollWin
+            res = false
+          else
+            res = PandoraGUI.show_panobject_list(PandoraModel::Person)
+            res = (res != nil)
+          end
+        else
+          res = false
         end
         res
       end
