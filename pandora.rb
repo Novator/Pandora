@@ -90,8 +90,12 @@ end
 $win32api = false
 def init_win32api
   if not $win32api
-    require 'Win32API'
-    $win32api = true
+    begin
+      require 'Win32API'
+      $win32api = true
+    rescue Exception
+      $win32api = false
+    end
   end
   $win32api
 end
@@ -278,6 +282,8 @@ end
 begin
   require 'gst'
   $gst_on = true
+  gst_vers = Gst.version
+  $gst_old = ((gst_vers.is_a? Array) and (gst_vers[0]==0))
 rescue Exception
   $gst_on = false
 end
@@ -2661,6 +2667,28 @@ module PandoraUtils
     end
   end
 
+  def self.elem_stopped?(elem)
+    res = nil
+    if $gst_old
+      res = (elem.get_state == Gst::STATE_NULL)
+    else
+      res = elem.get_state(0)[2]
+      res = ((res == Gst::State::VOID_PENDING) or (res == Gst::State::NULL))
+    end
+    res
+  end
+
+  def self.elem_playing?(elem)
+    res = nil
+    if $gst_old
+      res = (elem.get_state == Gst::STATE_PLAYING)
+    else
+      res = elem.get_state(0)[2]
+      res = (res == Gst::State::PLAYING)
+    end
+    res
+  end
+
 end
 
 # ==============================================================================
@@ -4140,6 +4168,8 @@ end
 # == RU: Сетевые классы Пандоры
 module PandoraNet
 
+  include PandoraUtils
+
   class Pool
     attr_accessor :window, :sessions, :white_list
 
@@ -4180,30 +4210,32 @@ module PandoraNet
 
     def session_of_node(node)
       host, port, proto = decode_node(node)
-      session = sessions.find do |e|
+      res = sessions.find do |e|
         ((e.host_ip == host) or (e.host_name == host)) and (e.port == port) and (e.proto == proto)
       end
-      session
+      res
     end
 
     def session_of_keybase(keybase)
-      session = sessions.find { |e| (e.node_panhash == keybase) }
-      session
+      res = sessions.find { |e| (e.node_panhash == keybase) }
+      res
     end
 
     def session_of_key(key)
-      session = sessions.find { |e| (e.skey[PandoraCrypto::KV_Panhash] == key) }
-      session
+      res = sessions.find { |e| (e.skey[PandoraCrypto::KV_Panhash] == key) }
+      res
     end
 
     def session_of_person(person)
-      session = sessions.find { |e| (e.skey[PandoraCrypto::KV_Creator] == person) }
-      session
+      res = sessions.find { |e| (e.skey[PandoraCrypto::KV_Creator] == person) }
+      res
     end
 
     def sessions_on_dialog(dialog)
-      dlg_sessions = sessions.select { |e| (e.dialog == dialog) }
-      dlg_sessions
+      res = sessions.select { |e| (e.dialog == dialog) }
+      res.uniq!
+      res.compact!
+      res
     end
 
     # Find or create session with necessary node
@@ -5088,7 +5120,7 @@ module PandoraNet
             #buf.timestamp = Time.now.to_i * Gst::NSECOND
             appsrc = dialog.appsrcs[cannel]
             appsrc.push_buffer(buf)
-            appsrc.play if (appsrc.get_state != Gst::STATE_PLAYING)
+            appsrc.play if (not PandoraUtils::elem_playing?(appsrc))
           else  #video puts to queue
             recv_buf.add_block_to_queue(mediabuf, $media_buf_size)
           end
@@ -9084,7 +9116,7 @@ module PandoraGUI
 
       adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
       trust_scale = Gtk::HScale.new(adjustment)
-      trust_scale.set_size_request(140, -1)
+      trust_scale.set_size_request(90, -1)
       trust_scale.update_policy = Gtk::UPDATE_DELAYED
       trust_scale.digits = 1
       trust_scale.draw_value = true
@@ -9648,6 +9680,13 @@ module PandoraGUI
           if not i
             elemname = nil
             elemname = factory+name_suff if name_suff
+            if $gst_old
+              if ((factory=='videoconvert') or (factory=='autovideoconvert'))
+                factory = 'ffmpegcolorspace'
+              end
+            elsif (factory=='ffmpegcolorspace')
+              factory = 'autovideoconvert'
+            end
             elem = Gst::ElementFactory.make(factory, elemname)
             if elem
               elem_desc[3] = elem
@@ -9658,7 +9697,11 @@ module PandoraGUI
                   #v = v[1,-2] if v and (v.size>1) and (v[0]=='"') and (v[-1]=='"')
                   #puts 'v='+v.inspect
                   if (k=='caps') or (v0.is_a? Gst::Caps)
-                    v = Gst::Caps.parse(v)
+                    if $gst_old
+                      v = Gst::Caps.parse(v)
+                    else
+                      v = Gst::Caps.from_string(v)
+                    end
                   elsif (v0.is_a? Integer) or (v0.is_a? Float)
                     if v.index('.')
                       v = v.to_f
@@ -9825,7 +9868,7 @@ module PandoraGUI
     def init_video_sender(start=true, just_upd_area=false)
       video_pipeline = $send_media_pipelines['video']
       if not start
-        if $webcam_xvimagesink and ($webcam_xvimagesink.get_state == Gst::STATE_PLAYING)
+        if $webcam_xvimagesink and (PandoraUtils::elem_playing?($webcam_xvimagesink))
           $webcam_xvimagesink.pause
         end
         if just_upd_area
@@ -9841,7 +9884,7 @@ module PandoraGUI
         else
           #$webcam_xvimagesink.xwindow_id = 0
           count = PandoraGUI.nil_send_ptrind_by_room(room_id)
-          if video_pipeline and (count==0) and (video_pipeline.get_state != Gst::STATE_NULL)
+          if video_pipeline and (count==0) and (not PandoraUtils::elem_stopped?(video_pipeline))
             video_pipeline.stop
             area_send.set_expose_event(nil)
             #p '==STOP!!'
@@ -9899,8 +9942,10 @@ module PandoraGUI
             if winos
               video_src = PandoraUtils.get_param('video_src_win')
               video_src ||= 'dshowvideosrc'
+              #video_src ||= 'videotestsrc'
               video_view1 = PandoraUtils.get_param('video_view1_win')
               video_view1 ||= 'queue ! directdrawsink'
+              #video_view1 ||= 'queue ! d3dvideosink'
             end
 
             $webcam_xvimagesink = nil
@@ -9918,7 +9963,11 @@ module PandoraGUI
             if $webcam_xvimagesink
               $send_media_pipelines['video'] = video_pipeline
               $send_media_queues[1] ||= PandoraUtils::RoundQueue.new(true)
+              #appsink.signal_connect('new-preroll') do |appsink|
+              #appsink.signal_connect('new-sample') do |appsink|
               appsink.signal_connect('new-buffer') do |appsink|
+                #buf = appsink.pull_preroll
+                #buf = appsink.pull_sample
                 buf = appsink.pull_buffer
                 if buf
                   data = buf.data
@@ -9943,7 +9992,8 @@ module PandoraGUI
             link_sink_to_area($webcam_xvimagesink, area_send)
           end
           if not just_upd_area
-            video_pipeline.stop if (video_pipeline.get_state != Gst::STATE_NULL)
+            #???
+            video_pipeline.stop if (not PandoraUtils::elem_stopped?(video_pipeline))
             area_send.set_expose_event(nil)
           end
           #if not area_send.expose_event
@@ -9954,13 +10004,16 @@ module PandoraGUI
           #  link_sink_to_area($webcam_xvimagesink, area_send)
           #end
           if just_upd_area
-            video_pipeline.play if (video_pipeline.get_state != Gst::STATE_PLAYING)
+            video_pipeline.play if (not PandoraUtils::elem_playing?(video_pipeline))
           else
             ptrind = PandoraGUI.set_send_ptrind_by_room(room_id)
             count = PandoraGUI.nil_send_ptrind_by_room(nil)
             if count>0
               #Gtk.main_iteration
-              video_pipeline.play if (video_pipeline.get_state != Gst::STATE_PLAYING)
+              #???
+              p 'PLAAAAAAAAAAAAAAY'
+              p PandoraUtils::elem_playing?(video_pipeline)
+              video_pipeline.play if (not PandoraUtils::elem_playing?(video_pipeline))
               #p '==*** PLAY'
             end
           end
@@ -9994,7 +10047,7 @@ module PandoraGUI
 
     def init_video_receiver(start=true, can_play=true, init=true)
       if not start
-        if ximagesink and (ximagesink.get_state == Gst::STATE_PLAYING)
+        if ximagesink and (PandoraUtils::elem_playing?(ximagesink))
           if can_play
             ximagesink.pause
           else
@@ -10069,7 +10122,7 @@ module PandoraGUI
         #p '[recv_media_pipeline[1], can_play]='+[recv_media_pipeline[1], can_play].inspect
         if recv_media_pipeline[1] and can_play and area_recv.window
           #if (not area_recv.expose_event) and
-          if (recv_media_pipeline[1].get_state != Gst::STATE_PLAYING) or (ximagesink.get_state != Gst::STATE_PLAYING)
+          if (not PandoraUtils::elem_playing?(recv_media_pipeline[1])) or (not PandoraUtils::elem_playing?(ximagesink))
             #p 'PLAYYYYYYYYYYYYYYYYYY!!!!!!!!!! '
             #ximagesink.stop
             #recv_media_pipeline[1].stop
@@ -10111,7 +10164,7 @@ module PandoraGUI
       if not start
         #count = PandoraGUI.nil_send_ptrind_by_room(room_id)
         #if audio_pipeline and (count==0) and (audio_pipeline.get_state != Gst::STATE_NULL)
-        if audio_pipeline and (audio_pipeline.get_state != Gst::STATE_NULL)
+        if audio_pipeline and (not PandoraUtils::elem_stopped?(audio_pipeline))
           audio_pipeline.stop
         end
       elsif (not self.destroyed?) and (not snd_button.destroyed?) and snd_button.active?
@@ -10197,7 +10250,7 @@ module PandoraGUI
           ptrind = PandoraGUI.set_send_ptrind_by_room(room_id)
           count = PandoraGUI.nil_send_ptrind_by_room(nil)
           #p 'AAAAAAAAAAAAAAAAAAA count='+count.to_s
-          if (count>0) and (audio_pipeline.get_state != Gst::STATE_PLAYING)
+          if (count>0) and (not PandoraUtils::elem_playing?(audio_pipeline))
           #if (audio_pipeline.get_state != Gst::STATE_PLAYING)
             audio_pipeline.play
           end
@@ -10227,7 +10280,7 @@ module PandoraGUI
 
     def init_audio_receiver(start=true, can_play=true, init=true)
       if not start
-        if recv_media_pipeline[0] and (recv_media_pipeline[0].get_state != Gst::STATE_NULL)
+        if recv_media_pipeline[0] and (not PandoraUtils::elem_stopped?(recv_media_pipeline[0]))
           recv_media_pipeline[0].stop
         end
       elsif (not self.destroyed?)
@@ -10288,7 +10341,7 @@ module PandoraGUI
           recv_media_pipeline[0].stop if recv_media_pipeline[0]  #this is a hack, else doesn't work!
         end
         if recv_media_pipeline[0] and can_play
-          recv_media_pipeline[0].play if (recv_media_pipeline[0].get_state != Gst::STATE_PLAYING)
+          recv_media_pipeline[0].play if (not PandoraUtils::elem_playing?(recv_media_pipeline[0]))
         end
       end
     end
@@ -10475,18 +10528,18 @@ module PandoraGUI
 
       local_btn = GoodCheckButton.new(_('locally'), true)
       local_btn.good_signal_clicked do |widget|
-        update_btn.clicked
+        #update_btn.clicked
       end
 
       active_btn = GoodCheckButton.new(_('active only'), true)
       active_btn.good_signal_clicked do |widget|
-        update_btn.clicked
+        #update_btn.clicked
       end
       active_btn.good_set_active(true)
 
       hunt_btn = GoodCheckButton.new(_('hunt!'), true)
       hunt_btn.good_signal_clicked do |widget|
-        update_btn.clicked
+        #update_btn.clicked
       end
       hunt_btn.good_set_active(true)
 
@@ -10919,6 +10972,12 @@ module PandoraGUI
       menu.append(checkmenuitem)
 
       menuitem = Gtk::SeparatorMenuItem.new
+      menu.append(menuitem)
+
+      menuitem = Gtk::MenuItem.new(_('Hide/Show'))
+      menuitem.signal_connect('activate') do |w|
+        icon_activated
+      end
       menu.append(menuitem)
 
       menuitem = Gtk::ImageMenuItem.new(Gtk::Stock::QUIT)
@@ -11797,12 +11856,14 @@ module PandoraGUI
         #  event, $window.visible?].inspect
         if $window.focus_timer
           $window.focus_timer = nil if ($window.focus_timer == $window)
-        elsif (os_family=='windows') and (not $window.visible?)
-          $window.do_menu_act('Activate')
         else
-          $window.focus_timer = GLib::Timeout.add(700) do
+          if (os_family=='windows') and (not $window.visible?)
+            $window.do_menu_act('Activate')
+          end
+          $window.focus_timer = GLib::Timeout.add(500) do
             #p 'read timer!!!' + $window.has_toplevel_focus?.inspect
-            if $window.has_toplevel_focus? and $window.visible?
+            toplevel = ($window.has_toplevel_focus? or (os_family=='windows'))
+            if toplevel and $window.visible?
               $window.notebook.children.each do |child|
                 if (child.is_a? DialogScrollWin) and (child.has_unread)
                   $window.notebook.page = $window.notebook.children.index(child)
@@ -11810,7 +11871,7 @@ module PandoraGUI
                 end
               end
               curpage = $window.notebook.get_nth_page($window.notebook.page)
-              if (curpage.is_a? PandoraGUI::DialogScrollWin) and $window.has_toplevel_focus?
+              if (curpage.is_a? PandoraGUI::DialogScrollWin) and toplevel
                 curpage.update_state(false, curpage)
               end
             end

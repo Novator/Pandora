@@ -292,3 +292,4 @@ Next search=>Следующий поиск
 smile=>улыбка
 game=>игра
 require sign=>требовать подпись
+Hide/Show=>Скрыть/Показать

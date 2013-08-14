@@ -400,7 +400,7 @@
     <last_auth_key desc="Last auth key" type="Bigint" section="crypto" setting=",hex" />
 
     <video_src_v4l2 desc="Video source V2L2" type="String" section="media" setting="v4l2src decimate=3" />
-    <video_src_win desc="Video source Windows" type="String" section="media" setting="dshowvideosrc" />
+    <video_src_win desc="Video source Windows" type="String" section="media" setting="d3dvideosrc" />
     <video_src_auto desc="Video source auto" type="String" section="media" setting="autovideosrc" />
     <video_src desc="Video source" type="String" section="media" setting="video_src_auto" />
     <video_send_caps_raw_320x240 desc="Video format raw 320x240" type="String" section="media" setting='"video/x-raw-rgb,width=320,height=240"' />
@@ -412,7 +412,7 @@
     <video_view1_auto desc="Video sending auto" type="String" section="media" setting="queue ! autovideosink" />
     <video_view1_x desc="Video sending X view" type="String" section="media" setting="queue ! ximagesink sync=false" />
     <video_view1_xv desc="Video sending Xv view" type="String" section="media" setting="queue ! xvimagesink force-aspect-ratio=true" />
-    <video_view1_win desc="Video sending Win view" type="String" section="media" setting="queue ! directdrawsink" />
+    <video_view1_win desc="Video sending Win view" type="String" section="media" setting="queue ! d3dvideosink" />
     <video_view1 desc="Video sending view" type="String" section="media" setting="video_view1_xv" />
     <video_can_encoder_vp8 desc="Video cannel VP8 encoder" type="String" section="media" setting="vp8enc max-latency=0.5" />
     <video_can_encoder_jpeg desc="Video cannel JPEG encoder" type="String" section="media" setting="jpegenc quality=80" />
