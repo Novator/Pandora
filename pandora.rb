@@ -4252,11 +4252,12 @@ module PandoraNet
         session = session1
         session ||= session2
         session.send_state = (session.send_state | send_state_add)
-        session.dialog = nil if session.dialog and session.dialog.destroyed?
+        session.dialog = nil if (session.dialog and session.dialog.destroyed?)
         session.dialog = dialog if dialog
         if session.dialog and (not session.dialog.destroyed?) and session.dialog.online_button \
         and ((session.socket and (not session.socket.closed?)) or session.donor)
           session.dialog.online_button.good_set_active(true)
+          session.conn_mode = (session.conn_mode | PandoraNet::CM_Dialog)
         end
         res = true
       elsif (node or keybase)
@@ -4294,7 +4295,7 @@ module PandoraNet
 
     # Stop session with a node
     # RU: Останавливает соединение с заданным узлом
-    def stop_session(node=nil, keybase=nil)  #, wait_disconnect=true)
+    def stop_session(node=nil, keybase=nil, disconnect=true)  #, wait_disconnect=true)
       p 'stop_session1 keybase='+keybase.inspect
       session1 = nil
       session2 = nil
@@ -4306,7 +4307,12 @@ module PandoraNet
         session ||= session2
         if session and (session.conn_state != CS_Disconnected)
           #p 'stop_session3 session='+session.inspect
-          session.conn_state = CS_StopRead
+          if disconnect
+            session.conn_state = CS_StopRead
+          else
+            session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Dialog))
+          end
+
           #while wait_disconnect and session and (session.conn_state != CS_Disconnected)
           #  sleep 0.05
           #  #Thread.pass
@@ -4576,7 +4582,7 @@ module PandoraNet
       res = nil
       lengt = 0
       lengt = data.bytesize if data
-      #p log_mes+'SEND_ALL: [cmd, code, data.len]='+[cmd, code, lengt].inspect
+      p log_mes+'SEND_ALL: [cmd, code, data.len]='+[cmd, code, lengt].inspect
       if donor
         segment = [cmd, code].pack('CC')
         segment << data if data
@@ -4605,6 +4611,7 @@ module PandoraNet
             end
           end
         end
+        p [segsign, segdata, segsize].inspect
         crc8 = (index & 255) ^ ((index >> 8) & 255) ^ (cmd & 255) ^ (code & 255) \
           ^ (segsign & 255) ^ ((segsign >> 8) & 255)
         #p 'SCAB: '+[segsign, index, cmd, code, crc8].inspect
@@ -5096,11 +5103,13 @@ module PandoraNet
 
       def process_media_segment(cannel, mediabuf)
         if not dialog
+          @conn_mode = (@conn_mode | PandoraNet::CM_Dialog)
           #node = PandoraNet.encode_node(host_ip, port, proto)
           panhash = @skey[PandoraCrypto::KV_Creator]
           @dialog = PandoraGUI.show_talk_dialog(panhash, @node_panhash)
           dialog.update_state(true)
           Thread.pass
+          #PandoraUtils.play_mp3('online')
         end
         recv_buf = dialog.recv_media_queue[cannel]
         if not recv_buf
@@ -5421,7 +5430,7 @@ module PandoraNet
                         else
                           @stage = ST_Exchange
                           set_max_pack_size(ST_Exchange)
-                          PandoraUtils.play_mp3('online')
+                          #PandoraUtils.play_mp3('online')
                         end
                         @scmd = EC_Data
                         @scode = 0
@@ -5449,6 +5458,7 @@ module PandoraNet
                   @scmd = EC_Init
                   @scode = ECC_Init_Answer
                   @sbuf = answer
+                  @conn_mode = (@conn_mode | PandoraNet::CM_Dialog)
                 else
                   err_scmd('Node password is not setted')
                 end
@@ -5677,10 +5687,12 @@ module PandoraNet
           if @stage>=ST_Exchange
             case rcmd
               when EC_Message, EC_Channel
-                if not dialog
+                if (not dialog) or dialog.destroyed?
+                  @conn_mode = (@conn_mode | PandoraNet::CM_Dialog)
                   panhash = @skey[PandoraCrypto::KV_Creator]
                   @dialog = PandoraGUI.show_talk_dialog(panhash, @node_panhash)
                   Thread.pass
+                  #PandoraUtils.play_mp3('online')
                 end
                 if rcmd==EC_Message
                   row = @rdata
@@ -5836,10 +5848,17 @@ module PandoraNet
       @conn_mode    = 0
       @fishes         = Array.new
       @fishers        = Array.new
+      @read_queue     = PandoraUtils::RoundQueue.new
+      @send_queue     = PandoraUtils::RoundQueue.new
+      @confirm_queue  = PandoraUtils::RoundQueue.new
+      @send_models    = {}
+      @recv_models    = {}
 
       @send_thread = Thread.new do
         @send_thread = Thread.current
         need_connect = true
+        attempt = 0
+        work_time = nil
         while need_connect do
 
           if asocket.is_a? Session
@@ -5864,17 +5883,25 @@ module PandoraNet
               port = port.to_i
 
               asocket = nil
-              server = host+':'+port.to_s
-              begin
-                asocket = TCPSocket.open(host, port)
-              rescue
-                log_message(LM_Warning, _('Cannot connect to')+': '+server)
+              if (host.is_a? String) and (host.size>0) and port
+                server = host+':'+port.to_s
+                begin
+                  asocket = TCPSocket.open(host, port)
+                rescue
+                  if (not work_time) or ((Time.now.to_i - work_time.to_i)>15)
+                    log_message(LM_Warning, _('Cannot connect to')+': '+server)
+                  end
+                  asocket = nil
+                end
+                @socket       = asocket
+                @conn_mode    = @conn_mode | CM_Hunter
+              else
                 asocket = false
               end
-              @socket       = asocket
-              @conn_mode    = @conn_mode | CM_Hunter
             end
           end
+
+          work_time = Time.now
 
           if socket
             if ((conn_mode & CM_Hunter) == 0)
@@ -5900,11 +5927,6 @@ module PandoraNet
             send_state_add  ||= 0
             @send_state     = send_state_add
             @sindex         = 0
-            @read_queue     = PandoraUtils::RoundQueue.new
-            @send_queue     = PandoraUtils::RoundQueue.new
-            @confirm_queue  = PandoraUtils::RoundQueue.new
-            @send_models    = {}
-            @recv_models    = {}
             @params         = {}
             @media_send     = false
             @node_panhash   = nil
@@ -5913,8 +5935,8 @@ module PandoraNet
               set_keepalive(@socket)
             end
 
-            @dialog = a_dialog
-            if dialog and (not dialog.destroyed?)
+            if a_dialog and (not a_dialog.destroyed?)
+              @dialog = a_dialog
               dialog.set_session(self, true)
               #dialog.online_button.active = (socket and (not socket.closed?))
               if self.dialog and (not self.dialog.destroyed?) and self.dialog.online_button \
@@ -6433,19 +6455,27 @@ module PandoraNet
             end
           end
 
-          need_connect = ((conn_mode & CM_Dialog) != 0) and (not (socket.is_a? FalseClass))
+          need_connect = ((@conn_mode & CM_Dialog) != 0) and (not (@socket.is_a? FalseClass))
+          p 'NEED??? [need_connect, @conn_mode, @socket]='+[need_connect, @conn_mode, @socket].inspect
+
+          if need_connect and (not @socket) and work_time and ((Time.now.to_i - work_time.to_i)<15)
+            p 'sleep!'
+            sleep(3.1+0.5*rand)
+          end
 
           @conn_state = CS_Disconnected
           @socket = nil
 
-          sleep(0.1+0.5*rand) if need_connect
+          attempt += 1
         end
         if dialog and (not dialog.destroyed?) #and (not dialog.online_button.destroyed?)
           dialog.set_session(self, false)
           #dialog.online_button.active = false
+        else
+          @dialog = nil
         end
-        PandoraUtils.play_mp3('offline')
         @send_thread = nil
+        PandoraUtils.play_mp3('offline')
       end
       #??
     end
@@ -8996,7 +9026,7 @@ module PandoraGUI
           end
         else
           targets[CSI_Nodes].each do |keybase|
-            $window.pool.stop_session(nil, keybase)
+            $window.pool.stop_session(nil, keybase, false)
           end
         end
       end
@@ -9262,7 +9292,7 @@ module PandoraGUI
 
         targets[CSI_Nodes].each do |keybase|
         #node_list.each do |node|
-          $window.pool.stop_session(nil, keybase)
+          $window.pool.stop_session(nil, keybase, false)
         end
       end
 
@@ -9479,10 +9509,10 @@ module PandoraGUI
       @sessions ||= []
       if online
         @sessions << session if (not @sessions.include?(session))
-        session.conn_mode = (session.conn_mode | PandoraNet::CM_Dialog)
       else
         @sessions.delete(session)
         session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Dialog))
+        session.dialog = nil
       end
       active = (@sessions.size>0)
       online_button.good_set_active(active) if (not online_button.destroyed?)
@@ -9685,7 +9715,7 @@ module PandoraGUI
                 factory = 'ffmpegcolorspace'
               end
             elsif (factory=='ffmpegcolorspace')
-              factory = 'autovideoconvert'
+              factory = 'videoconvert'
             end
             elem = Gst::ElementFactory.make(factory, elemname)
             if elem

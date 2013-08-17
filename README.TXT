@@ -9,7 +9,7 @@ Contents
 4) installation in other Linux
 5) installation in Windows
 6) update to last version
-7) recommendation to developers
+7) join as developer
 8) getting help
 
 
@@ -53,8 +53,6 @@ Install it:
   chmod +x ./pandora.sh
   ./pandora.sh --full-init
 
-Also see below "6. Update to last version"
-
 4.2. Install packets with Packet Manager if they didn't installed automatically:
 
   ruby, ruby-sqlite3, ruby-gtk2, ruby-gstreamer, openssl, gstreamer0.10-x,
@@ -64,6 +62,8 @@ Also see below "6. Update to last version"
 
   ./pandora.sh
 
+Also see below "6. Update to last version"
+
 
 5. INSTALLATION IN WINDOWS
 
@@ -71,11 +71,11 @@ Also see below "6. Update to last version"
 
   http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe/download
 
-5.2. Run Pandora from menu:
+5.2. Install with administrator rights and run Pandora from menu:
 
   "Start" - "Programs" - "Pandora"
 
-5.3. Also you can run Pandora with bat-file:
+Also you can run Pandora with bat-file:
 
   .\pandora.bat
 
@@ -102,7 +102,7 @@ For Windows:
   C:\Program Files\Pandora\
 
 
-7. RECOMMENDATION TO DEVELOPERS
+7. JOIN AS DEVELOPER
 
 7.1. See current technical tasks at file:
 
