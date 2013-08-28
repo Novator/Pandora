@@ -57,8 +57,8 @@ while (ARGV.length>0) or next_arg
       $host = val if val
     when '-p','--port'
       $port = val.to_i if val
-    when '-bi'
-      $base_index = val.to_i if val
+    when '-b', '--base'
+      $pandora_sqlite_db = val if val
     when '-pl', '--poly', '--poly-launch'
       $poly_launch = true
     when '--shell', '--help', '/?', '-?'
@@ -70,9 +70,9 @@ while (ARGV.length>0) or next_arg
       end
       runit += ' '
       puts 'Оriginal Pandora params for examples:'
-      puts runit+'-h localhost   - set listen address'
-      puts runit+'-p 5577        - set listen port'
-      puts runit+'-bi 0          - set index of database'
+      puts runit+'-h localhost    - set listen address'
+      puts runit+'-p 5577         - set listen port'
+      puts runit+'-b file.sqlite  - set filename of database'
       Kernel.exit!
   end
   val = nil
@@ -197,8 +197,6 @@ $pandora_model_dir = File.join($pandora_root_dir, 'model')          # Model desc
 $pandora_lang_dir = File.join($pandora_root_dir, 'lang')            # Languages directory
 $pandora_util_dir = File.join($pandora_root_dir, 'util')            # Languages directory
 $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Default database file
-$pandora_sqlite_db2 = File.join($pandora_base_dir, 'pandora2.sqlite')  # Default database file
-$pandora_sqlite_db3 = File.join($pandora_base_dir, 'pandora3.sqlite')  # Default database file
 
 # If it's runned under WinOS, redirect console output to file, because of rubyw.exe crush
 # RU: Если под Виндой, то перенаправить консольный вывод в файл из-за краша rubyw.exe
@@ -745,24 +743,15 @@ module PandoraUtils
   # Repository manager
   # RU: Менеджер хранилищ
   class RepositoryManager
-    attr_accessor :base_list
-    def initialize
-      super
-      @base_list = # динамический список баз
-        [['robux', 'sqlite3,', $pandora_sqlite_db, nil],
-         ['robux', 'sqlite3,', $pandora_sqlite_db2, nil],
-         ['robux', 'sqlite3,', $pandora_sqlite_db3, nil],
-         ['robux', 'mysql', ['robux.biz', 'user', 'pass', 'oscomm'], nil]]
-    end
+    attr_accessor :adapter
     def get_adapter(panobj, table_ptr, recreate=false)
       adap = nil
-      base_des = base_list[$base_index]
-      if not base_des[3]
-        adap = SQLiteDbSession.new
-        adap.conn_param = base_des[2]
-        base_des[3] = adap
+      if @adapter
+        adap = @adapter
       else
-        adap = base_des[3]
+        adap = SQLiteDbSession.new
+        adap.conn_param = $pandora_sqlite_db
+        @adapter = adap
       end
       table_name = table_ptr[1]
       adap.def_flds[table_name] = panobj.def_fields
@@ -2206,7 +2195,7 @@ module PandoraUtils
   class RoundQueue < Mutex
     # Init empty queue. Poly read is possible
     # RU: Создание пустой очереди. Возможно множественное чтение
-    attr_accessor :mutex, :queue, :write_ind, :read_ind
+    attr_accessor :queue, :write_ind, :read_ind
 
     def initialize(poly_read=false)   #init_empty_queue
       super()
@@ -4580,9 +4569,11 @@ module PandoraNet
     # RU: Отправляет команду, код и данные (если есть)
     def send_comm_and_data(index, cmd, code, data=nil)
       res = nil
+      index ||= 0  #нужно ли??!!
+      code ||= 0   #нужно ли??!!
       lengt = 0
       lengt = data.bytesize if data
-      p log_mes+'SEND_ALL: [cmd, code, data.len]='+[cmd, code, lengt].inspect
+      p log_mes+'SEND_ALL: [index, cmd, code, lengt]='+[index, cmd, code, lengt].inspect
       if donor
         segment = [cmd, code].pack('CC')
         segment << data if data
@@ -5787,17 +5778,17 @@ module PandoraNet
                 if rcode==ECC_News0_Kinds
                   pcount = rcode
                   pkinds = rdata
-                  @scmd=EC_Query
-                  @scode=ECC_Query255_AllChanges
-                  fromdate="01.01.2012"
-                  @sbuf=fromdate
+                  @scmd = EC_Query
+                  @scode = ECC_Query255_AllChanges
+                  fromdate = "01.01.2012"
+                  @sbuf = fromdate
                 else
                   p "news more!!!!"
                   pkind = rcode
                   pnoticecount = rdata.unpack('N')
-                  @scmd=EC_Sync
-                  @scode=0
-                  @sbuf=''
+                  @scmd = EC_Sync
+                  @scode = 0
+                  @sbuf = ''
                 end
               else
                 err_scmd('Unknown command is recieved', ECC_Bye_Unknown)
@@ -5844,8 +5835,8 @@ module PandoraNet
     aconn_state, anode_id, a_dialog, tokey, send_state_add)
       super()
       @conn_state  = CS_Connecting
-      @socket       = nil
-      @conn_mode    = 0
+      @socket      = nil
+      @conn_mode   = 0
       @fishes         = Array.new
       @fishers        = Array.new
       @read_queue     = PandoraUtils::RoundQueue.new
@@ -5861,43 +5852,51 @@ module PandoraNet
         work_time = nil
         while need_connect do
 
+          @donor = nil
+          @socket = nil
+          @conn_mode = (@conn_mode & (~CM_Hunter))
+
           if asocket.is_a? Session
-            @donor = asocket
-            if ahost_name
-              @fisher_lure = ahost_name
-            else
-              @fish_lure = ahost_ip
-            end
-          else
-            if asocket and (not asocket.closed?)
-              @socket       = asocket
-            else
-              host = ahost_name
-              host = ahost_ip if ((not host) or (host == ''))
-
-              if (not host) or (host=='')
-                host, port = pool.hunt_address(tokey)
-              end
-
-              port ||= 5577
-              port = port.to_i
-
+            if (not asocket.socket) or (asocket.socket.closed?)
               asocket = nil
-              if (host.is_a? String) and (host.size>0) and port
-                server = host+':'+port.to_s
-                begin
-                  asocket = TCPSocket.open(host, port)
-                rescue
-                  if (not work_time) or ((Time.now.to_i - work_time.to_i)>15)
-                    log_message(LM_Warning, _('Cannot connect to')+': '+server)
-                  end
-                  asocket = nil
-                end
-                @socket       = asocket
-                @conn_mode    = @conn_mode | CM_Hunter
+            else
+              @donor = asocket
+              if ahost_name
+                @fisher_lure = ahost_name
               else
-                asocket = false
+                @fish_lure = ahost_ip
               end
+            end
+          end
+
+          if (asocket.is_a? IPSocket) and (not asocket.closed?)
+            @socket = asocket
+          else
+            host = ahost_name
+            host = ahost_ip if ((not host) or (host == ''))
+
+            if (not host) or (host=='')
+              host, port = pool.hunt_address(tokey)
+            end
+
+            port ||= 5577
+            port = port.to_i
+
+            asocket = nil
+            if (host.is_a? String) and (host.size>0) and port
+              @conn_mode = (@conn_mode | CM_Hunter)
+              server = host+':'+port.to_s
+              begin
+                asocket = TCPSocket.open(host, port)
+              rescue
+                if (not work_time) or ((Time.now.to_i - work_time.to_i)>15)
+                  log_message(LM_Warning, _('Cannot connect to')+': '+server)
+                end
+                asocket = nil
+              end
+              @socket = asocket
+            else
+              asocket = false
             end
           end
 
@@ -5968,7 +5967,8 @@ module PandoraNet
                 rdatasize = nil
                 ok1comm = nil
 
-                rkcmd = EC_Sync
+                rkcmd = EC_Data
+                rkcode = 0
                 rkbuf = AsciiString.new
                 rkdata = AsciiString.new
                 rkindex = 0
@@ -6125,7 +6125,7 @@ module PandoraNet
             # Read from buffer cicle
             # RU: Цикл чтения из буфера
             @read_thread = Thread.new do
-              @rcmd = EC_Sync
+              @rcmd = EC_Data
               @rdata = AsciiString.new
               @scmd = EC_Sync
               @sbuf = ''
@@ -9968,6 +9968,9 @@ module PandoraGUI
             video_src, video_send_caps, video_send_tee, video_view1, video_can_encoder, video_can_sink \
               = get_video_sender_params(src_param, send_caps_param, send_tee_param, view1_param, \
                 can_encoder_param, can_sink_param)
+            p [src_param, send_caps_param, send_tee_param, view1_param, \
+                can_encoder_param, can_sink_param]
+            p [video_src, video_send_caps, video_send_tee, video_view1, video_can_encoder, video_can_sink]
 
             if winos
               video_src = PandoraUtils.get_param('video_src_win')
@@ -9982,11 +9985,16 @@ module PandoraGUI
             webcam, pad = add_elem_to_pipe(video_src, video_pipeline)
             if webcam
               capsfilter, pad = add_elem_to_pipe(video_send_caps, video_pipeline, webcam, pad)
+              p 'capsfilter='+capsfilter.inspect
               tee, teepad = add_elem_to_pipe(video_send_tee, video_pipeline, capsfilter, pad)
+              p 'tee='+tee.inspect
               encoder, pad = add_elem_to_pipe(video_can_encoder, video_pipeline, tee, teepad)
+              p 'encoder='+encoder.inspect
               if encoder
                 appsink, pad = add_elem_to_pipe(video_can_sink, video_pipeline, encoder, pad)
+                p 'appsink='+appsink.inspect
                 $webcam_xvimagesink, pad = add_elem_to_pipe(video_view1, video_pipeline, tee, teepad)
+                p '$webcam_xvimagesink='+$webcam_xvimagesink.inspect
               end
             end
 
@@ -9996,9 +10004,10 @@ module PandoraGUI
               #appsink.signal_connect('new-preroll') do |appsink|
               #appsink.signal_connect('new-sample') do |appsink|
               appsink.signal_connect('new-buffer') do |appsink|
+                p 'appsink new buf!!!'
                 #buf = appsink.pull_preroll
                 #buf = appsink.pull_sample
-                buf = appsink.pull_buffer
+                p buf = appsink.pull_buffer
                 if buf
                   data = buf.data
                   $send_media_queues[1].add_block_to_queue(data, $media_buf_size)
@@ -10041,9 +10050,10 @@ module PandoraGUI
             if count>0
               #Gtk.main_iteration
               #???
-              p 'PLAAAAAAAAAAAAAAY'
+              p 'PLAAAAAAAAAAAAAAY 1'
               p PandoraUtils::elem_playing?(video_pipeline)
               video_pipeline.play if (not PandoraUtils::elem_playing?(video_pipeline))
+              p 'PLAAAAAAAAAAAAAAY 2'
               #p '==*** PLAY'
             end
           end
@@ -10092,6 +10102,7 @@ module PandoraGUI
         if (not recv_media_pipeline[1]) and init
           begin
             Gst.init
+            p 'init_video_receiver INIT'
             winos = (os_family == 'windows')
             @recv_media_queue[1] ||= PandoraUtils::RoundQueue.new
             dialog_id = '_v'+PandoraUtils.bytes_to_hex(room_id[-6..-1])

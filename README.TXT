@@ -5,21 +5,24 @@ Contents
 
 1) overview
 2) system requirements
-3) installation in Ubuntu/Debian
-4) installation in other Linux
-5) installation in Windows
-6) update to last version
+3) installation in Ubuntu
+4) installation in Windows
+5) installation in Debian
+6) manual installation or update
 7) join as developer
 8) getting help
 
 
 1. OVERVIEW
 
-Pandora is a free multiplatform distributed (p2p) information system.
+Pandora is a free multiplatform distributed p2p (peer-to-peer) information system.
 Pandora includes functions of social network, instant messanger, audio and
-video chatting system, commercial system, distributed development system,
-file exchange system and vote system.
-Read more in the guide at /doc/guide.ru.odt (Russian version yet only)
+video chat, commercial system, distributed development system, file exchange
+and vote system. Pandora has its own binary protocol and uses cryptography and
+trust networks.
+
+Pandora is not "yet another geek thing". It is designed for ordinary people,
+has a graphical user interface (GUI) and works "out of the box".
 
 
 2. SYSTEM REQUIREMENTS
@@ -34,72 +37,56 @@ Optional:
 - GStreamer media library
 
 
-3. INSTALLATION IN UBUNTU/DEBIAN
+3. INSTALLATION IN UBUNTU
 
-Download a package:
+Do commands in terminal:
 
-  wget http://sourceforge.net/projects/pandora-net/files/pandora-net_0.1-1ubuntu_all.deb/download
-
-Install it:
-
-  sudo dpkg -i pandora-net_0.1-1ubuntu_all.deb
+  sudo apt-add-repository ppa:pandora-net/ppa
+  sudo apt-get update
+  sudo apt-get install pandora-net
 
 
-4. INSTALLATION IN OTHER LINUX
+4. INSTALLATION IN WINDOWS
 
-4.1. Download Pandora shell file, make executable and run with "--full-init":
+Download installation and run it with administrator:
 
-  wget https://raw.github.com/Novator/Pandora/master/pandora.sh
-  chmod +x ./pandora.sh
-  ./pandora.sh --full-init
+  http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe/download
 
-4.2. Install packets with Packet Manager if they didn't installed automatically:
+
+5. INSTALLATION IN DEBIAN
+
+Download a package and install it with root:
+
+  http://sourceforge.net/projects/pandora-net/files/pandora-net_0.1-1ubuntu_all.deb/download
+  dpkg -i pandora-net_0.1-1ubuntu_all.deb
+
+
+6. MANUAL INSTALLATION OR UPDATE
+
+6.1. Download archive and upack it:
+
+  https://github.com/Novator/Pandora/archive/master.zip
+
+6.2. Install packets:
 
   ruby, ruby-sqlite3, ruby-gtk2, ruby-gstreamer, openssl, gstreamer0.10-x,
   gstreamer0.10-ffmpeg, gstreamer0.10-plugins-good, gstreamer0.10-plugins-bad
 
-4.3. Run Pandora from menu "Start-Network-Pandora" or use shell:
+6.3. Set executable rights:
 
-  ./pandora.sh
+  chmod +x ./pandora.sh
 
-Also see below "6. Update to last version"
+6.4. Copy shortcut to desktop with root and edit paths inside:
 
-
-5. INSTALLATION IN WINDOWS
-
-5.1. Download full installation from here:
-
-  http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe/download
-
-5.2. Install with administrator rights and run Pandora from menu:
-
-  "Start" - "Programs" - "Pandora"
-
-Also you can run Pandora with bat-file:
-
-  .\pandora.bat
-
-
-6. UPDATE TO LAST VERSION
+  cp ./view/pandora.desktop /usr/share/applications/
+  nano /usr/share/applications/pandora.desktop
 
 Pandora updates itself automatically, but partly (only main working files).
-Full update, including documentation and language files, requires manual acts.
+Full update, including documentation and language files, can require manual downloads.
 
-6.1. For semi-automatic update run shell in Linux:
+6.5. Also you can run shell for semi-automatic update:
 
   ./pandora.sh --full-init
-
-6.2. For manual update download and extract archive:
-
-  https://github.com/Novator/Pandora/archive/master.zip
-
-6.3. Overwrite old files. The default directory for Linux is:
-
-  /opt/pandora/
-
-For Windows:
-
-  C:\Program Files\Pandora\
 
 
 7. JOIN AS DEVELOPER
