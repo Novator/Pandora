@@ -12,6 +12,7 @@
 
 # Platform detection
 # RU: Определение платформы
+
 def os_family
   case RUBY_PLATFORM
     when /ix/i, /ux/i, /gnu/i, /sysv/i, /solaris/i, /sunos/i, /bsd/i
@@ -2594,13 +2595,9 @@ module PandoraUtils
 
   $mp3_player = 'mpg123'
   if os_family=='windows'
-    #start, mplayer(9x), mplay32(xp), wmplayer(vista)
-    #start c:\music\"my song.mp3"
-    #mplay32 /play /close "c:\windows\media\windows xp error.wav"
     if is_64bit_os?
       $mp3_player = 'mpg123x64.exe'
     else
-      #$mp3_player = 'mpg123.exe'
       $mp3_player = 'cmdmp3.exe'
     end
     $mp3_player = File.join($pandora_util_dir, $mp3_player)
@@ -2608,6 +2605,15 @@ module PandoraUtils
       $mp3_player = '"'+$mp3_player+'"'
     else
       $mp3_player = 'mplay32 /play /close'
+    end
+  else
+    res = `which #{$mp3_player}`
+    unless (res.is_a? String) and (res.size>0)
+      $mp3_player = 'mplayer'
+      res = `which #{$mp3_player}`
+      unless (res.is_a? String) and (res.size>0)
+        $mp3_player = 'ffplay -autoexit -nodisp'
+      end
     end
   end
 
@@ -6688,7 +6694,7 @@ module PandoraGUI
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = "0.1"
+    dlg.version = '0.2'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
@@ -8303,7 +8309,7 @@ module PandoraGUI
               PandoraUtils.set_param('last_check', Time.now)
               if (response.content_length == curr_size)
                 http = nil
-                $window.set_status_field(SF_Update, 'Updated', true)
+                $window.set_status_field(SF_Update, 'Ok', true)
                 PandoraUtils.set_param('last_update', Time.now)
               else
                 time = Time.now.to_i
@@ -8336,7 +8342,7 @@ module PandoraGUI
             end
 
             if http
-              $window.set_status_field(SF_Update, 'Updating')
+              $window.set_status_field(SF_Update, 'Doing')
               log_message(LM_Info, _('Updating Pandora from')+': '+main_uri.host+'..')
               downloaded = update_file(http, main_uri.path, main_script)
               UPD_FileList.each do |fn|
@@ -8354,7 +8360,7 @@ module PandoraGUI
                 Thread.stop
                 Kernel.abort('Pandora is updated. Run it again')
               else
-                $window.set_status_field(SF_Update, 'Updating error')
+                $window.set_status_field(SF_Update, 'Load error')
               end
             end
           end
@@ -11308,7 +11314,7 @@ module PandoraGUI
 
     def add_status_field(index, text)
       $statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0) if ($status_fields != [])
-      btn = Gtk::Button.new(_(text))
+      btn = Gtk::Button.new(text)
       btn.relief = Gtk::RELIEF_NONE
       if block_given?
         btn.signal_connect('clicked') do |*args|
@@ -11322,7 +11328,9 @@ module PandoraGUI
     def set_status_field(index, text, enabled=nil, toggle=nil)
       btn = $status_fields[index]
       if btn
-        btn.label = _(text) if $status_fields[index]
+        str = _(text)
+        str = _('Version') + ': ' + str if (index==SF_Update)
+        btn.label = str
         if (enabled != nil)
           btn.sensitive = enabled
         end
@@ -11750,16 +11758,16 @@ module PandoraGUI
       $statusbar = Gtk::Statusbar.new
       PandoraGUI.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
 
-      add_status_field(SF_Update, 'Not checked') do
+      add_status_field(SF_Update, _('Version') + ': ' + _('Not checked')) do
         PandoraGUI.start_updating(true)
       end
-      add_status_field(SF_Auth, 'Not logged') do
+      add_status_field(SF_Auth, _('Not logged')) do
         do_menu_act('Authorize')
       end
-      add_status_field(SF_Listen, 'Not listen') do
+      add_status_field(SF_Listen, _('Not listen')) do
         do_menu_act('Listen')
       end
-      add_status_field(SF_Hunt, 'No hunt') do
+      add_status_field(SF_Hunt, _('No hunt')) do
         do_menu_act('Hunt')
       end
       add_status_field(SF_Conn, '0/0/0') do
@@ -11939,7 +11947,7 @@ module PandoraGUI
         time_now = Time.now.to_i
         need_check = ((time_now - last_check.to_i) >= check_interval*24*3600)
         if (time_now - last_update.to_i) < update_period*24*3600
-          set_status_field(SF_Update, 'Updated', need_check)
+          set_status_field(SF_Update, 'Ok', need_check)
         elsif need_check
           PandoraGUI.start_updating(false)
         end

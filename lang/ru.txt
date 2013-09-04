@@ -293,3 +293,6 @@ smile=>улыбка
 game=>игра
 require sign=>требовать подпись
 Hide/Show=>Скрыть/Показать
+Version=>Версия
+Ok=>Ок
+Doing=>Выполняется

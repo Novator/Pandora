@@ -21,8 +21,11 @@ video chat, commercial system, distributed development system, file exchange
 and vote system. Pandora has its own binary protocol and uses cryptography and
 trust networks.
 
-Pandora is not "yet another geek thing". It is designed for ordinary people,
+Pandora is not "yet another geek thing". It was designed for ordinary people,
 has a graphical user interface (GUI) and works "out of the box".
+
+See manual with pictures in wiki to quick start:
+https://github.com/Novator/Pandora/wiki/Install-and-first-run
 
 
 2. SYSTEM REQUIREMENTS
