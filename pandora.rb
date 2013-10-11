@@ -196,7 +196,7 @@ $pandora_base_dir = File.join($pandora_root_dir, 'base')            # Default da
 $pandora_view_dir = File.join($pandora_root_dir, 'view')            # Media files directory
 $pandora_model_dir = File.join($pandora_root_dir, 'model')          # Model description directory
 $pandora_lang_dir = File.join($pandora_root_dir, 'lang')            # Languages directory
-$pandora_util_dir = File.join($pandora_root_dir, 'util')            # Languages directory
+$pandora_util_dir = File.join($pandora_root_dir, 'util')            # Utilites directory
 $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Default database file
 
 # If it's runned under WinOS, redirect console output to file, because of rubyw.exe crush
@@ -346,8 +346,8 @@ def log_message(level, mes)
 end
 
 # ==============================================================================
-# == Base module of Pandora
-# == RU: Базовый модуль Пандора
+# == Utilites module of Pandora
+# == RU: Вспомогательный модуль Пандоры
 module PandoraUtils
 
   # Load translated phrases
@@ -795,10 +795,30 @@ module PandoraUtils
     sname, pname = name.split('|')
     if plural==false
       res = sname
-    elsif (not pname) or (pname=='')
-      res = sname
-      res[-1]='ie' if res[-1,1]=='y'
-      res = res+'s'
+    elsif ((not pname) or (pname=='')) and sname
+      case $lang
+        when 'ru'
+          res = sname
+          if ['ка', 'га', 'ча'].include? res[-2,2]
+            res[-1] = 'и'
+          elsif ['г', 'к'].include? res[-1]
+            res += 'и'
+          elsif ['о'].include? res[-1]
+            res[-1] = 'а'
+          elsif ['а'].include? res[-1]
+            res[-1] = 'ы'
+          elsif ['ь', 'я'].include? res[-1]
+            res[-1] = 'и'
+          elsif ['е'].include? res[-1]
+            res[-1] = 'я'
+          else
+            res += 'ы'
+          end
+        else
+          res = sname
+          res[-1]='ie' if res[-1,1]=='y'
+          res += 's'
+      end
     else
       res = pname
     end
@@ -3050,6 +3070,8 @@ module PandoraModel
 end
 
 #===================================================================================
+# == Cryptography module of Pandora
+# == RU: Криптографический модуль Пандоры
 module PandoraCrypto
 
   KH_None   = 0
@@ -5851,13 +5873,17 @@ module PandoraNet
       @send_models    = {}
       @recv_models    = {}
 
+      # Main thread of session
+      # RU: Главный поток сессии
       @send_thread = Thread.new do
         @send_thread = Thread.current
         need_connect = true
         attempt = 0
         work_time = nil
-        while need_connect do
 
+        # Main cicle of session
+        # RU: Главный цикл сессии
+        while need_connect do
           @donor = nil
           @socket = nil
           @conn_mode = (@conn_mode & (~CM_Hunter))
@@ -6661,7 +6687,7 @@ end
 
 # ==============================================================================
 # == Graphical user interface of Pandora
-# == RU: Графический интерфейс Пандора
+# == RU: Графический интерфейс Пандоры
 module PandoraGUI
   include PandoraUtils
   include PandoraModel
@@ -9297,7 +9323,6 @@ module PandoraGUI
         area_recv.destroy if not area_recv.destroyed?
 
         targets[CSI_Nodes].each do |keybase|
-        #node_list.each do |node|
           $window.pool.stop_session(nil, keybase, false)
         end
       end
@@ -10822,8 +10847,8 @@ module PandoraGUI
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
-  # Profile panel
-  # RU: Панель профиля
+  # List of session
+  # RU: Список сеансов
   class SessionScrollWin < Gtk::ScrolledWindow
     attr_accessor :session
 
@@ -10910,8 +10935,8 @@ module PandoraGUI
     end
   end
 
-  # Show session panel
-  # RU: Показать панель сеансов
+  # Show session list
+  # RU: Показать список сеансов
   def self.show_session_panel(session=nil)
     $window.notebook.children.each do |child|
       if (child.is_a? SessionScrollWin)
@@ -10934,6 +10959,8 @@ module PandoraGUI
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
+  # Status icon
+  # RU: Иконка в трее
   class PandoraStatusIcon < Gtk::StatusIcon
     attr_accessor :main_icon, :play_sounds, :online
 
@@ -11023,7 +11050,7 @@ module PandoraGUI
 
       menuitem = Gtk::MenuItem.new(_('Hide/Show'))
       menuitem.signal_connect('activate') do |w|
-        icon_activated
+        icon_activated(false)
       end
       menu.append(menuitem)
 
@@ -11104,10 +11131,11 @@ module PandoraGUI
       end
     end
 
-    def icon_activated
+    def icon_activated(top_sens=true)
       #$window.skip_taskbar_hint = false
+      p $window.visible?
       if $window.visible?
-        if ($window.has_toplevel_focus? or (os_family=='windows'))
+        if (not top_sens) or ($window.has_toplevel_focus? or (os_family=='windows'))
           $window.hide
         else
           $window.do_menu_act('Activate')
