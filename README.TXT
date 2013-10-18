@@ -15,23 +15,22 @@ Contents
 
 1. OVERVIEW
 
-Pandora is a free multiplatform distributed p2p (peer-to-peer) information system.
-Pandora includes functions of social network, instant messanger, audio and
-video chat, commercial system, distributed development system, file exchange
-and vote system. Pandora has its own binary protocol and uses cryptography and
-trust networks.
+Pandora is a free peer-to-peer (P2P) social network application.
+It affords functions of instant messanger, audio and video chat, commercial
+system, distributed development system, file exchange and vote system.
+Pandora has its own binary protocol and uses cryptography and trust networks.
 
-Pandora is not "yet another geek thing". It was designed for ordinary people,
+Pandora is not yet another "geek thing". It is designed for ordinary people,
 has a graphical user interface (GUI) and works "out of the box".
 
-See manual with pictures in wiki to quick start:
+See user manual with pictures in wiki to quick start:
 https://github.com/Novator/Pandora/wiki/Install-and-first-run
 
 
 2. SYSTEM REQUIREMENTS
 
 Mandatory:
-- Linux or Windows (another also possible)
+- Linux or Windows OS (another also possible)
 - SQLite database (MySQL, Postgree, Firebird or another)
 - Ruby script engine
 - GTK2 graphical library

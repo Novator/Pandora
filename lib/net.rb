@@ -12,7 +12,7 @@
 
 
 require 'socket'
-require './lib/utils.rb'
+require File.expand_path('../utils.rb',  __FILE__)
 
 module PandoraNet
 
@@ -41,6 +41,10 @@ module PandoraNet
     def is_white?(address)
       res = (address and ((not (address.is_a? String)) or (address.size>0)) \
         and (@white_list.include? address))
+    end
+
+    def ip_is_not_banned(host_ip)
+      true
     end
 
     def add_session(conn)
@@ -1710,7 +1714,7 @@ module PandoraNet
       # Main thread of session
       # RU: Главный поток сессии
       @send_thread = Thread.new do
-        @send_thread = Thread.current
+        #@send_thread = Thread.current
         need_connect = true
         attempt = 0
         work_time = nil
@@ -2348,12 +2352,6 @@ module PandoraNet
 
   end
 
-  # Check ip is not banned
-  # RU: Проверяет, не забанен ли ip
-  def self.ip_is_not_banned(host_ip)
-    true
-  end
-
   # Take next client socket from listener, or return nil
   # RU: Взять следующий сокет клиента со слушателя, или вернуть nil
   def self.get_listener_client_or_nil(server)
@@ -2425,7 +2423,7 @@ module PandoraNet
 
             if Thread.current[:need_to_listen] and (not server.closed?) and socket
               host_ip = socket.peeraddr[2]
-              if ip_is_not_banned(host_ip)
+              if $window.pool.ip_is_not_banned(host_ip)
                 host_name = socket.peeraddr[3]
                 port = socket.peeraddr[1]
                 proto = 'tcp'

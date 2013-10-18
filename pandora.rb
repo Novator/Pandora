@@ -2,8 +2,8 @@
 # encoding: UTF-8
 # coding: UTF-8
 
-# The Pandora. Free peer-to-peer information system
-# RU: Пандора. Свободная пиринговая информационная система
+# The Pandora. Free peer-to-peer social network
+# RU: Пандора. Свободная пиринговая социальная сеть
 #
 # This program is distributed under the GNU GPLv2
 # RU: Эта программа распространяется под GNU GPLv2
@@ -15,8 +15,6 @@ require 'socket'
 
 require './lib/utils.rb'
 require './lib/model.rb'
-require './lib/crypto.rb'
-require './lib/net.rb'
 require './lib/gtk.rb'
 
 
@@ -67,6 +65,8 @@ while (ARGV.length>0) or next_arg
   val = nil
 end
 
+# Check second launch
+# RU: Проверить второй запуск
 
 PANDORA_USOCK = '/tmp/pandora_unix_socket'
 $pserver = nil
@@ -143,6 +143,9 @@ if not $poly_launch
   end
 end
 
+# Check Ruby version and init ASCII string class
+# RU: Проверить версию Ruby и объявить класс ASCII-строки
+
 if RUBY_VERSION<'1.9'
   puts 'The Pandora needs Ruby 1.9 or higher (current '+RUBY_VERSION+')'
   exit(10)
@@ -172,32 +175,34 @@ else
 end
 
 
-# If it's runned under WinOS, redirect console output to file, because of rubyw.exe crush
-# RU: Если под Виндой, то перенаправить консольный вывод в файл из-за краша rubyw.exe
+# Redirect console output to file, because of rubyw.exe crush
+# RU: Перенаправить консольный вывод в файл из-за краша rubyw.exe
 if PandoraUtils.os_family=='windows'
   $stdout.reopen(File.join($pandora_base_dir, 'stdout.log'), 'w')
   $stderr = $stdout
 end
 
-# Define environment parameters  
-# RU: Определить переменные окружения  
+# Get language from environment parameters
+# RU: Взять язык из переменных окружения  
 lang = ENV['LANG']  
 if (lang.is_a? String) and (lang.size>1)  
   $lang = lang[0, 2].downcase  
 end  
 #$lang = 'en'  
 
-# Some module settings
-# RU: Некоторые настройки модулей
+# Some settings
+# RU: Некоторые настройки
 BasicSocket.do_not_reverse_lookup = true
 Thread.abort_on_exception = true
 
 # == Running the Pandora!
 # == RU: Запуск Пандоры!
-#$lang = 'en'
 PandoraUtils.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
 PandoraGtk::MainWindow.new(MAIN_WINDOW_TITLE)
+
+# Free unix-socket on exit
+# Освободить unix-сокет при выходе
 $pserver.close if ($pserver and (not $pserver.closed?))
 delete_psocket
 

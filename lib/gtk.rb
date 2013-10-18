@@ -11,6 +11,9 @@
 # RU: 2012 (c) Михаил Галюк
 
 
+require File.expand_path('../crypto.rb',  __FILE__)
+require File.expand_path('../net.rb',  __FILE__)
+
 module PandoraGtk
   # GTK is cross platform graphical user interface
   # RU: Кроссплатформенный оконный интерфейс
