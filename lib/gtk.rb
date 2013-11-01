@@ -11,6 +11,8 @@
 # RU: 2012 (c) Михаил Галюк
 
 
+require 'fileutils'
+
 require File.expand_path('../crypto.rb',  __FILE__)
 require File.expand_path('../net.rb',  __FILE__)
 
@@ -1608,7 +1610,8 @@ module PandoraGtk
   $update_interval = 30
   $download_thread = nil
 
-  UPD_FileList = ['model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'pandora.bat']
+  UPD_FileList = ['lib/gtk.rb', 'lib/net.rb', 'lib/model.rb', 'lib/utils.rb', \
+    'lib/crypto.rb', 'model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'pandora.bat']
   UPD_FileList.concat(['model/03-language-'+$lang+'.xml', 'lang/'+$lang+'.txt']) if ($lang and ($lang != 'en'))
 
   # Check updated files and download them
@@ -1617,16 +1620,22 @@ module PandoraGtk
 
     def self.update_file(http, path, pfn)
       res = false
-      begin
-        #p [path, pfn]
-        response = http.request_get(path)
-        File.open(pfn, 'wb+') do |file|
-          file.write(response.body)
-          res = true
-          PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
+    path = File.dirname(pfn)
+    FileUtils.mkdir_p(path) unless Dir.exists?(path)
+      if Dir.exists?(path)
+        begin
+          #p [path, pfn]
+          response = http.request_get(path)
+          File.open(pfn, 'wb+') do |file|
+            file.write(response.body)
+            res = true
+            PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
+          end
+        rescue => err
+          puts 'Update error: '+err.message
         end
-      rescue => err
-        puts 'Update error: '+err.message
+      else
+        puts 'Cannot create directory: '+path
       end
       res
     end
@@ -1699,7 +1708,9 @@ module PandoraGtk
             if http
               $window.set_status_field(SF_Update, 'Doing')
               PandoraUtils.log_message(LM_Info, _('Updating Pandora from')+': '+main_uri.host+'..')
+              # updating pandora.rb
               downloaded = update_file(http, main_uri.path, main_script)
+              # updating other files
               UPD_FileList.each do |fn|
                 pfn = File.join($pandora_root_dir, fn)
                 if File.exist?(pfn) and File.stat(pfn).writable?
@@ -2291,6 +2302,8 @@ module PandoraGtk
     end
   end
 
+  # Correct bug with non working focus set
+  # RU: Исправляет баг с неработающей постановкой фокуса
   def self.hack_grab_focus(widget_to_focus)
     widget_to_focus.grab_focus
     Thread.new do
@@ -2455,24 +2468,9 @@ module PandoraGtk
         and (not event.state.control_mask?) and (not event.state.shift_mask?) and (not event.state.mod1_mask?)
           if editbox.buffer.text != ''
             mes = editbox.buffer.text
-            #sended = false
-            #node_list.each do |node|
             sended = add_and_send_mes(mes)
             if sended
-              #t = Time.now
-
-              #talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
-              #talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'you')
-
-              #mykey = PandoraCrypto.current_key(false, false)
-              #myname = PandoraCrypto.short_name_of_person(mykey)
-
-              #talkview.buffer.insert(talkview.buffer.end_iter, myname+':', 'you_bold')
-              #talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
-              #talkview.after_addition(true)
-
               add_mes_to_view(mes)
-
               editbox.buffer.text = ''
             end
           end

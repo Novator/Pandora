@@ -370,7 +370,7 @@ module PandoraNet
 
 
   class Session
-  
+
     include PandoraUtils
 
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
@@ -1726,10 +1726,16 @@ module PandoraNet
           @socket = nil
           @conn_mode = (@conn_mode & (~CM_Hunter))
 
-          if asocket.is_a? Session
+          if (asocket.is_a? IPSocket) and (not asocket.closed?)
+            # подключено через сетевой сокет
+            @socket = asocket
+          elsif asocket.is_a? Session
+            # Указана донор-сессия
             if (not asocket.socket) or (asocket.socket.closed?)
+              # но её сокет закрыт
               asocket = nil
             else
+              # задать её как донара
               @donor = asocket
               if ahost_name
                 @fisher_lure = ahost_name
@@ -1737,11 +1743,13 @@ module PandoraNet
                 @fish_lure = ahost_ip
               end
             end
+          else
+            asocket = nil
           end
 
-          if (asocket.is_a? IPSocket) and (not asocket.closed?)
-            @socket = asocket
-          else
+          if not asocket
+            # нет подключения ни через сокет, ни через донора
+            # значит, нужно подключаться самому
             host = ahost_name
             host = ahost_ip if ((not host) or (host == ''))
 

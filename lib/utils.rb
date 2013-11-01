@@ -61,6 +61,7 @@ module PandoraUtils
   # Paths and files  ('join' gets '/' for Linux and '\' for Windows)
   # RU: Пути и файлы ('join' дает '/' для Линукса и '\' для Винды)
   $pandora_root_dir = Dir.pwd                                       # Current Pandora directory
+  #$pandora_root_dir = File.expand_path('..',  __FILE__)
   $pandora_base_dir = File.join($pandora_root_dir, 'base')            # Default database directory
   $pandora_view_dir = File.join($pandora_root_dir, 'view')            # Media files directory
   $pandora_model_dir = File.join($pandora_root_dir, 'model')          # Model description directory

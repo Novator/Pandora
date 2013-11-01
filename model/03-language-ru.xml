@@ -111,10 +111,34 @@
   </World>
   <Business name.ru="Дело">
 
-    <Store name.ru="Склады">
-      <name name.ru="" />
-      <producers name.ru="" />
-    </Store>
+    <Partner name.ru="Партнёр">
+    </Partner>
+
+    <Company name.ru="Компания">
+    </Company>
+
+    <Storage name.ru="Склад">
+    </Storage>
+
+    <Product name.ru="Товар|Товары">
+    </Product>
+
+    <Service name.ru="Услуга|Услуги">
+    </Service>
+
+    <Currency name.ru="Валюта|Валюты">
+      <name name.ru="Название" />
+      <code name.ru="Код" />
+      <country name.ru="Страна" />
+      <issuer name.ru="Эммитент" />
+    </Currency>
+
+    <Contract name.ru="Договор|Договоры">
+    </Contract>
+
+    <Advertisement name.ru="Объявление">
+      <body name.ru="Суть" />
+    </Advertisement>
 
     <Order name.ru="Заказ|Заказы">
       <advertisement name.ru="Объявление" />
@@ -123,18 +147,27 @@
       <sum name.ru="Сумма" />
     </Order>
 
-    <Contract name.ru="Договор|Договоры">
-    </Contract>
+    <Deal name.ru="Сделка">
+      <creator name.ru="Инициатор" />
+      <recipient name.ru="Получатель" />
+      <contract name.ru="Договор" />
+      <body name.ru="Текст" />
+      <currency name.ru="Валюта" />
+      <sum name.ru="Сумма" />
+    </Deal>
 
-    <Product name.ru="Товар|Товары">
-    </Product>
+    <Debenture name.ru="Расписка">
+      <creator name.ru="Издатель" />
+      <created name.ru="Выпустил" />
+    </Debenture>
 
-    <Currency name.ru="Валюта|Валюты">
-      <name name.ru="Название" />
-      <code name.ru="Код" />
-      <country name.ru="Страна" />
-      <issuer name.ru="Эммитент" />
-    </Currency>
+    <Transfer name.ru="Передача">
+      <creator name.ru="Плательщик" />
+      <debenture name.ru="Расписка" />
+      <deal name.ru="Сделка" />
+      <currency name.ru="Валюта" />
+      <sum name.ru="Сумма" />
+    </Transfer>
 
     <Deposit name.ru="Залог|Залоги">
       <creator name.ru="Залогодатель" />
@@ -156,6 +189,16 @@
       <creator name.ru="Основатель" />
       <condition name.ru="Условия" />
     </Insurer>
+
+    <Waybill name.ru="Накладная">
+      <deal name.ru="Сделка" />
+      <goods name.ru="Товары и услуги" />
+      <currency name.ru="Валюта" />
+      <sum name.ru="Сумма" />
+    </Waybill>
+
+    <Report name.ru="Отчёт">
+    </Report>
 
   </Business>
   <Region name.ru="Регион">
