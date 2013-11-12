@@ -1702,6 +1702,7 @@ module PandoraNet
       super()
       @conn_state  = CS_Connecting
       @socket      = nil
+      @donor       = nil
       @conn_mode   = 0
       @fishes         = Array.new
       @fishers        = Array.new
@@ -1719,35 +1720,32 @@ module PandoraNet
         attempt = 0
         work_time = nil
 
+        # Определение - сокет или донор
+        if asocket.is_a? IPSocket
+          # сокет
+          @socket = asocket if asocket.closed?
+        elsif asocket.is_a? Session
+          # донор-сессия
+          if asocket.socket and (not asocket.socket.closed?)
+            # задать донора
+            @donor = asocket
+            # задать канал
+            if ahost_name
+              @fisher_lure = ahost_name
+            else
+              @fish_lure = ahost_ip
+            end
+          end
+        end
+
         # Main cicle of session
         # RU: Главный цикл сессии
         while need_connect do
-          @donor = nil
-          @socket = nil
           @conn_mode = (@conn_mode & (~CM_Hunter))
 
-          if (asocket.is_a? IPSocket) and (not asocket.closed?)
-            # подключено через сетевой сокет
-            @socket = asocket
-          elsif asocket.is_a? Session
-            # Указана донор-сессия
-            if (not asocket.socket) or (asocket.socket.closed?)
-              # но её сокет закрыт
-              asocket = nil
-            else
-              # задать её как донара
-              @donor = asocket
-              if ahost_name
-                @fisher_lure = ahost_name
-              else
-                @fish_lure = ahost_ip
-              end
-            end
-          else
-            asocket = nil
-          end
-
-          if not asocket
+          # есть ли подключение?
+          if ((not @socket) or (@socket.closed?)) \
+          and ((not @donor) or (not @donor.socket) or (@donor.socket.closed?))
             # нет подключения ни через сокет, ни через донора
             # значит, нужно подключаться самому
             host = ahost_name
@@ -1786,7 +1784,6 @@ module PandoraNet
             else
               PandoraUtils.log_message(LM_Info, _('Connected to listener')+': '+server)
             end
-
             @host_name    = ahost_name
             @host_ip      = ahost_ip
             @port         = aport
@@ -1795,8 +1792,9 @@ module PandoraNet
             @node_id      = anode_id
           end
 
-
-          if socket or donor
+          # есть ли подключение?
+          if (socket and (not socket.closed?)) \
+          or (donor and donor.socket and (not donor.socket.closed?))
             @stage          = ST_Protocol  #ST_IpCheck
             #@conn_state     = aconn_state
             @conn_state     = CS_Connected
@@ -2124,6 +2122,7 @@ module PandoraNet
               and (inquirer_step<IS_Finished)
                 case inquirer_step
                   when IS_ResetMessage
+                    # если что-то отправлено, но не получено, то повторить
                     mypanhash = PandoraCrypto.current_user_or_key(true)
                     receiver = @skey[PandoraCrypto::KV_Creator]
                     if (receiver.is_a? String) and (receiver.bytesize>0) \
@@ -2133,6 +2132,7 @@ module PandoraNet
                     end
                     inquirer_step += 1
                   when IS_CreatorCheck
+                    # если собеседник неизвестен, запросить анкету
                     creator = @skey[PandoraCrypto::KV_Creator]
                     kind = PandoraUtils.kind_from_panhash(creator)
                     res = PandoraModel.get_record_by_panhash(kind, creator, nil, @send_models, 'id')
@@ -2343,6 +2343,7 @@ module PandoraNet
 
           @conn_state = CS_Disconnected
           @socket = nil
+          @donor  = nil
 
           attempt += 1
         end

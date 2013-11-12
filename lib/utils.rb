@@ -18,7 +18,10 @@ require 'base64'
 require 'net/http'
 require 'net/https'
 require 'sqlite3'
-require 'gst'
+begin
+  require 'gst'
+rescue Exception
+end
 
 # Array of localization phrases
 # RU: Вектор переведеных фраз
@@ -49,7 +52,7 @@ module PandoraUtils
         'other'
     end
   end
-  
+
   # Default values of variables
   # RU: Значения переменных по умолчанию
   $host = '127.0.0.1'
@@ -57,7 +60,7 @@ module PandoraUtils
   $base_index = 0
   $poly_launch = true
   $pandora_parameters = []
-  
+
   # Paths and files  ('join' gets '/' for Linux and '\' for Windows)
   # RU: Пути и файлы ('join' дает '/' для Линукса и '\' для Винды)
   $pandora_root_dir = Dir.pwd                                       # Current Pandora directory
@@ -69,13 +72,13 @@ module PandoraUtils
   $pandora_util_dir = File.join($pandora_root_dir, 'util')            # Utilites directory
   $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Default database file
   $lang = 'ru'
-  
-    
+
+
   LM_Error    = 0
   LM_Warning  = 1
   LM_Info     = 2
   LM_Trace    = 3
-  
+
   def self.level_to_str(level)
     mes = ''
     case level
@@ -87,9 +90,9 @@ module PandoraUtils
         mes = _('Trace')
     end
   end
-  
+
   MaxLogViewLineCount = 500
-  
+
   # Log message
   # RU: Добавить сообщение в лог
   def self.log_message(level, mes)
@@ -2448,8 +2451,12 @@ module PandoraUtils
     end
   end
 
-  gst_vers = Gst.version
-  $gst_old = ((gst_vers.is_a? Array) and (gst_vers[0]==0))
+  begin
+    Gst.init
+    gst_vers = Gst.version
+    $gst_old = ((gst_vers.is_a? Array) and (gst_vers[0]==0))
+  rescue Exception
+  end
 
   def self.elem_stopped?(elem)
     res = nil

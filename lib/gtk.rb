@@ -1620,8 +1620,8 @@ module PandoraGtk
 
     def self.update_file(http, path, pfn)
       res = false
-    path = File.dirname(pfn)
-    FileUtils.mkdir_p(path) unless Dir.exists?(path)
+      path = File.dirname(pfn)
+      FileUtils.mkdir_p(path) unless Dir.exists?(path)
       if Dir.exists?(path)
         begin
           #p [path, pfn]
@@ -1713,11 +1713,11 @@ module PandoraGtk
               # updating other files
               UPD_FileList.each do |fn|
                 pfn = File.join($pandora_root_dir, fn)
-                if File.exist?(pfn) and File.stat(pfn).writable?
-                  downloaded = downloaded and update_file(http, '/Novator/Pandora/master/'+fn, pfn)
-                else
+                if File.exist?(pfn) and (not File.stat(pfn).writable?)
                   downloaded = false
                   PandoraUtils.log_message(LM_Warning, _('Not exist or read only')+': '+pfn)
+                else
+                  downloaded = downloaded and update_file(http, '/Novator/Pandora/master/'+fn, pfn)
                 end
               end
               if downloaded

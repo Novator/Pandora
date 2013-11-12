@@ -183,12 +183,12 @@ if PandoraUtils.os_family=='windows'
 end
 
 # Get language from environment parameters
-# RU: Взять язык из переменных окружения  
-lang = ENV['LANG']  
-if (lang.is_a? String) and (lang.size>1)  
-  $lang = lang[0, 2].downcase  
-end  
-#$lang = 'en'  
+# RU: Взять язык из переменных окружения
+lang = ENV['LANG']
+if (lang.is_a? String) and (lang.size>1)
+  $lang = lang[0, 2].downcase
+end
+#$lang = 'en'
 
 # Some settings
 # RU: Некоторые настройки
