@@ -1,20 +1,17 @@
 #!/bin/sh
 
-## Popular git commands are using for maintenance Pandora project at GitHub
+## The popular git commands using for maintenance Pandora project at GitHub
 ## Uncomment necessary line, comment out unnecessary, and run the script.
-## 2012(c) Michael Galyuk, Pandora, freeware
 ## RU: Популярные команды git, используемые для сопровождения Пандоры на Гитхабе
 ## RU: Раскомментируй нужные строки, закомментируй ненужные, и запусти скрипт.
-
-## WARNING! Rename this script, else it will be rewritten at next synchronization.
-## ВНИМАНИЕ! Переименуй скрипт, иначе перезатрётся при следующей синхронизации.
+## 2012(c) Michael Galyuk, Pandora, freeware
 
 ## Init git on your computer
 ## (Change name and email!)
 #git config --global user.name "Michael Galyuk"
 #git config --global user.email ironsoft@mail.ru
 #git config --global color.ui true
-#git config --global core.autocrlf input
+#git config --global core.autocrlf false
 #git config --global core.safecrlf true
 #git config --global credential.helper cache
 #git config credential.helper 'cache --timeout=3600'
