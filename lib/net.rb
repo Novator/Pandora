@@ -30,21 +30,21 @@ module PandoraNet
       @white_list = Array.new
     end
 
-    def add_to_white(address)
+    def add_to_white(ip)
       while @white_list.size>MaxWhiteSize do
         @white_list.delete_at(0)
       end
-      @white_list << address if (address and ((not (address.is_a? String)) or (address.size>0)) \
-        and (not @white_list.include? address))
+      @white_list << ip if (ip and ((not (ip.is_a? String)) or (ip.size>0)) \
+        and (not @white_list.include? ip))
     end
 
-    def is_white?(address)
-      res = (address and ((not (address.is_a? String)) or (address.size>0)) \
-        and (@white_list.include? address))
+    def is_white?(ip)
+      res = (ip and ((not (ip.is_a? String)) or (ip.size>0)) \
+        and (@white_list.include? ip))
     end
 
-    def ip_is_not_banned(host_ip)
-      true
+    def is_black?(ip)
+      false
     end
 
     def add_session(conn)
@@ -315,15 +315,15 @@ module PandoraNet
 
   # Stage of exchange
   # RU: Стадия обмена
-  ST_Begin        = 0
-  ST_IpCheck      = 1
-  ST_Protocol     = 3
-  ST_Puzzle       = 4
-  ST_KeyRequest   = 5
-  ST_Sign         = 6
-  ST_Captcha      = 7
-  ST_Greeting     = 8
-  ST_Exchange     = 9
+  ES_Begin        = 0
+  ES_IpCheck      = 1
+  ES_Protocol     = 3
+  ES_Puzzle       = 4
+  ES_KeyRequest   = 5
+  ES_Sign         = 6
+  ES_Captcha      = 7
+  ES_Greeting     = 8
+  ES_Exchange     = 9
 
   # Max recv pack size for stadies
   # RU: Максимально допустимые порции для стадий
@@ -392,15 +392,19 @@ module PandoraNet
       $window.pool
     end
 
+    ST_Hunter   = 0
+    ST_Listener = 1
+    ST_Fisher   = 2
+
     def get_type
       res = nil
       if donor
-        res = 2
+        res = ST_Fisher
       else
         if ((conn_mode & CM_Hunter)>0)
-          res = 0
+          res = ST_Hunter
         else
-          res = 1
+          res = ST_Listener
         end
       end
     end
@@ -737,15 +741,15 @@ module PandoraNet
 
       def set_max_pack_size(stage)
         case @stage
-          when ST_Protocol
+          when ES_Protocol
             @max_pack_size = MPS_Proto
-          when ST_Puzzle
+          when ES_Puzzle
             @max_pack_size = MPS_Puzzle
-          when ST_Sign
+          when ES_Sign
             @max_pack_size = MPS_Sign
-          when ST_Captcha
+          when ES_Captcha
             @max_pack_size = MPS_Captcha
-          when ST_Exchange
+          when ES_Exchange
             @max_pack_size = MPS_Exchange
         end
       end
@@ -763,17 +767,17 @@ module PandoraNet
         skey_panhash = params['srckey']
         #p log_mes+'     skey_panhash='+skey_panhash.inspect
         if (skey_panhash.is_a? String) and (skey_panhash.bytesize>0)
-          if first and (@stage == ST_Protocol) and $puzzle_bit_length \
+          if first and (@stage == ES_Protocol) and $puzzle_bit_length \
           and ($puzzle_bit_length>0) and ((conn_mode & CM_Hunter) == 0)
             phrase, init = get_sphrase(true)
             phrase[-1] = $puzzle_bit_length.chr
             phrase[-2] = $puzzle_sec_delay.chr
-            @stage = ST_Puzzle
+            @stage = ES_Puzzle
             @scode = ECC_Init_Puzzle
             @scmd  = EC_Init
             @sbuf = phrase
             params['puzzle_start'] = Time.now.to_i
-            set_max_pack_size(ST_Puzzle)
+            set_max_pack_size(ES_Puzzle)
           else
             @skey = PandoraCrypto.open_key(skey_panhash, @recv_models, false)
             # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
@@ -783,14 +787,14 @@ module PandoraNet
               kind = PandoraModel::PK_Key
               @scode = kind
               @sbuf = nil
-              @stage = ST_KeyRequest
-              set_max_pack_size(ST_Exchange)
+              @stage = ES_KeyRequest
+              set_max_pack_size(ES_Exchange)
             elsif @skey
               #phrase = PandoraUtils.bigint_to_bytes(phrase)
-              @stage = ST_Sign
+              @stage = ES_Sign
               @scode = ECC_Init_Phrase
               @scmd  = EC_Init
-              set_max_pack_size(ST_Sign)
+              set_max_pack_size(ES_Sign)
               phrase, init = get_sphrase(false)
               p log_mes+'send phrase len='+phrase.bytesize.to_s
               if init
@@ -819,8 +823,8 @@ module PandoraNet
           clue_text = 'You may enter small letters|'+$captcha_length.to_s+'|'+PandoraGtk::CapSymbols
           clue_text = clue_text[0,255]
           @sbuf = [clue_text.bytesize].pack('C')+clue_text+buf
-          @stage = ST_Captcha
-          set_max_pack_size(ST_Captcha)
+          @stage = ES_Captcha
+          set_max_pack_size(ES_Captcha)
         else
           err_scmd('Captcha attempts is exhausted')
         end
@@ -1170,9 +1174,9 @@ module PandoraNet
 
       case rcmd
         when EC_Init
-          if @stage<=ST_Greeting
+          if @stage<=ES_Greeting
             if rcode<=ECC_Init_Answer
-              if (rcode==ECC_Init_Hello) and ((@stage==ST_Protocol) or (@stage==ST_Sign))
+              if (rcode==ECC_Init_Hello) and ((@stage==ES_Protocol) or (@stage==ES_Sign))
                 recognize_params
                 if scmd != EC_Bye
                   vers = params['version']
@@ -1188,7 +1192,7 @@ module PandoraNet
                   end
                 end
               elsif ((rcode==ECC_Init_Puzzle) or (rcode==ECC_Init_Phrase)) \
-              and ((@stage==ST_Protocol) or (@stage==ST_Greeting))
+              and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
                 if rdata and (rdata != '')
                   rphrase = rdata
                   params['rphrase'] = rphrase
@@ -1223,18 +1227,18 @@ module PandoraNet
                     len = 255 if len>255
                     @sbuf = [len].pack('C')+$base_id[0,len]+sign
                     @scode = ECC_Init_Sign
-                    if @stage == ST_Greeting
-                      @stage = ST_Exchange
-                      set_max_pack_size(ST_Exchange)
+                    if @stage == ES_Greeting
+                      @stage = ES_Exchange
+                      set_max_pack_size(ES_Exchange)
                       PandoraUtils.play_mp3('online')
                     end
                   end
                   @scmd = EC_Init
-                  #@stage = ST_Check
+                  #@stage = ES_Check
                 else
                   err_scmd('Empty received phrase')
                 end
-              elsif (rcode==ECC_Init_Answer) and (@stage==ST_Puzzle)
+              elsif (rcode==ECC_Init_Answer) and (@stage==ES_Puzzle)
                 interval = nil
                 if $puzzle_sec_delay>0
                   start_time = params['puzzle_start']
@@ -1252,7 +1256,7 @@ module PandoraNet
                     err_scmd('Wrong sha1 solution')
                   end
                 end
-              elsif (rcode==ECC_Init_Sign) and (@stage==ST_Sign)
+              elsif (rcode==ECC_Init_Sign) and (@stage==ES_Sign)
                 len = rdata[0].ord
                 sbase_id = rdata[1, len]
                 rsign = rdata[len+1..-1]
@@ -1281,12 +1285,12 @@ module PandoraNet
                     elsif trust.is_a? Float
                       if trust>=$low_conn_trust
                         if (conn_mode & CM_Hunter) == 0
-                          @stage = ST_Greeting
+                          @stage = ES_Greeting
                           add_send_segment(EC_Init, true, params['srckey'])
-                          set_max_pack_size(ST_Sign)
+                          set_max_pack_size(ES_Sign)
                         else
-                          @stage = ST_Exchange
-                          set_max_pack_size(ST_Exchange)
+                          @stage = ES_Exchange
+                          set_max_pack_size(ES_Exchange)
                           #PandoraUtils.play_mp3('online')
                         end
                         @scmd = EC_Data
@@ -1304,7 +1308,7 @@ module PandoraNet
                 else
                   err_scmd('Cannot init your key')
                 end
-              elsif (rcode==ECC_Init_Simple) and (@stage==ST_Protocol)
+              elsif (rcode==ECC_Init_Simple) and (@stage==ES_Protocol)
                 p 'ECC_Init_Simple!'
                 rphrase = rdata
                 #p 'rphrase='+rphrase.inspect
@@ -1319,7 +1323,7 @@ module PandoraNet
                 else
                   err_scmd('Node password is not setted')
                 end
-              elsif (rcode==ECC_Init_Captcha) and ((@stage==ST_Protocol) or (@stage==ST_Greeting))
+              elsif (rcode==ECC_Init_Captcha) and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
                 p log_mes+'CAPTCHA!!!  ' #+params.inspect
                 if ((conn_mode & CM_Hunter) == 0)
                   err_scmd('Captcha for listener is denied')
@@ -1348,11 +1352,11 @@ module PandoraNet
                     err_scmd('Captcha dock is busy')
                   end
                 end
-              elsif (rcode==ECC_Init_Answer) and (@stage==ST_Captcha)
+              elsif (rcode==ECC_Init_Answer) and (@stage==ES_Captcha)
                 captcha = rdata
                 p log_mes+'recived captcha='+captcha if captcha
                 if captcha.downcase==params['captcha']
-                  @stage = ST_Greeting
+                  @stage = ES_Greeting
                   if not (@skey[PandoraCrypto::KV_Trust].is_a? Float)
                     if $trust_for_captchaed
                       @skey[PandoraCrypto::KV_Trust] = 0.01
@@ -1383,11 +1387,11 @@ module PandoraNet
           kind = rcode
           p log_mes+'EC_Request  kind='+kind.to_s+'  stage='+@stage.to_s
           panhash = nil
-          if (kind==PandoraModel::PK_Key) and ((@stage==ST_Protocol) or (@stage==ST_Greeting))
+          if (kind==PandoraModel::PK_Key) and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
             panhash = params['mykey']
             p 'params[mykey]='+panhash
           end
-          if (@stage==ST_Exchange) or (@stage==ST_Greeting) or panhash
+          if (@stage==ES_Exchange) or (@stage==ES_Greeting) or panhash
             panhashes = nil
             if kind==0
               panhashes, len = PandoraUtils.pson_elem_to_rubyobj(panhashes)
@@ -1443,17 +1447,17 @@ module PandoraNet
           p log_mes+' EC_Record: [rcode, rdata.bytesize]='+[rcode, rdata.bytesize].inspect
           if rcode>0
             kind = rcode
-            if (@stage==ST_Exchange) or ((kind==PandoraModel::PK_Key) and (@stage==ST_KeyRequest))
+            if (@stage==ES_Exchange) or ((kind==PandoraModel::PK_Key) and (@stage==ES_KeyRequest))
               lang = rdata[0].ord
               values = PandoraUtils.pson_to_namehash(rdata[1..-1])
               panhash = nil
-              if @stage==ST_KeyRequest
+              if @stage==ES_KeyRequest
                 panhash = params['srckey']
               end
               res = PandoraModel.save_record(kind, lang, values, @recv_models, panhash)
               if res
-                if @stage==ST_KeyRequest
-                  @stage = ST_Protocol
+                if @stage==ES_KeyRequest
+                  @stage = ES_Protocol
                   init_skey_or_error(false)
                 end
               elsif res==false
@@ -1465,7 +1469,7 @@ module PandoraNet
               err_scmd('Record ('+kind.to_s+') came on wrong stage')
             end
           else
-            if (@stage==ST_Exchange)
+            if (@stage==ES_Exchange)
               records, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
               p log_mes+"!record2! recs="+records.inspect
               records.each do |record|
@@ -1541,7 +1545,7 @@ module PandoraNet
           err_scmd(nil, errcode, false)
           @conn_state = CS_Stoping
         else
-          if @stage>=ST_Exchange
+          if @stage>=ES_Exchange
             case rcmd
               when EC_Message, EC_Channel
                 if (not dialog) or dialog.destroyed?
@@ -1723,7 +1727,7 @@ module PandoraNet
         # Определение - сокет или донор
         if asocket.is_a? IPSocket
           # сокет
-          @socket = asocket if asocket.closed?
+          @socket = asocket if (not asocket.closed?)
         elsif asocket.is_a? Session
           # донор-сессия
           if asocket.socket and (not asocket.socket.closed?)
@@ -1743,8 +1747,8 @@ module PandoraNet
         while need_connect do
           @conn_mode = (@conn_mode & (~CM_Hunter))
 
-          # есть ли подключение?
-          if ((not @socket) or (@socket.closed?)) \
+          # есть ли подключение?   or (@socket.closed?)
+          if ((not @socket) ) \
           and ((not @donor) or (not @donor.socket) or (@donor.socket.closed?))
             # нет подключения ни через сокет, ни через донора
             # значит, нужно подключаться самому
@@ -1778,7 +1782,16 @@ module PandoraNet
 
           work_time = Time.now
 
-          if socket
+
+            sss = [@socket, @donor].inspect
+            sss += '|1:'+[@socket.closed?].inspect if @socket
+            sss += '|2:'+[@donor.socket].inspect if @donor
+            sss += '|3:'+[@donor.socket.closed?].inspect if @donor and @donor.socket
+            p '==reconn: '+sss
+            sleep 0.5
+
+
+          if @socket
             if ((conn_mode & CM_Hunter) == 0)
               PandoraUtils.log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
             else
@@ -1793,9 +1806,9 @@ module PandoraNet
           end
 
           # есть ли подключение?
-          if (socket and (not socket.closed?)) \
-          or (donor and donor.socket and (not donor.socket.closed?))
-            @stage          = ST_Protocol  #ST_IpCheck
+          if (@socket and (not @socket.closed?)) \
+          or (@donor and @donor.socket and (not @donor.socket.closed?))
+            @stage          = ES_Protocol  #ES_IpCheck
             #@conn_state     = aconn_state
             @conn_state     = CS_Connected
             @read_state     = 0
@@ -2117,7 +2130,7 @@ module PandoraNet
 
               # выполнить несколько заданий почемучки по его шагам
               processed = 0
-              while (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
+              while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$inquire_block_count) \
               and (inquirer_step<IS_Finished)
                 case inquirer_step
@@ -2156,7 +2169,7 @@ module PandoraNet
               # разгрузка принятых буферов в gstreamer
               processed = 0
               cannel = 0
-              while (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
+              while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
               and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size) \
               and (inquirer_step>IS_ResetMessage)
@@ -2187,7 +2200,7 @@ module PandoraNet
               processed = 0
               #p log_mes+'----------send_state1='+send_state.inspect
               #sleep 1
-              if (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
+              if (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
                 fast_data = true
                 @send_state = (send_state & (~CSF_Message))
@@ -2233,7 +2246,7 @@ module PandoraNet
 
               # пакетирование медиа буферов
               if ($send_media_queues.size>0) and $send_media_rooms \
-              and (@conn_state == CS_Connected) and (@stage>=ST_Exchange) \
+              and (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
               and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
               or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
@@ -2432,7 +2445,7 @@ module PandoraNet
 
             if Thread.current[:need_to_listen] and (not server.closed?) and socket
               host_ip = socket.peeraddr[2]
-              if $window.pool.ip_is_not_banned(host_ip)
+              unless $window.pool.is_black?(host_ip)
                 host_name = socket.peeraddr[3]
                 port = socket.peeraddr[1]
                 proto = 'tcp'
