@@ -8097,8 +8097,7 @@ module PandoraGtk
   $update_interval = 30
   $download_thread = nil
 
-  UPD_FileList = ['lib/gtk.rb', 'lib/net.rb', 'lib/model.rb', 'lib/utils.rb', \
-    'lib/crypto.rb', 'model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'pandora.bat']
+  UPD_FileList = ['model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'pandora.bat']
   UPD_FileList.concat(['model/03-language-'+$lang+'.xml', 'lang/'+$lang+'.txt']) if ($lang and ($lang != 'en'))
 
   # Check updated files and download them
