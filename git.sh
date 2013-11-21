@@ -33,7 +33,7 @@
 ## Push files from local to repository
 #git add --all
 git commit -a -m "version 0.2 alfa"
-git push -u origin develop
+git push -u origin master
 
 ##Modify last commit
 #git commit --amend
