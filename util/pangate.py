@@ -45,13 +45,12 @@ if not host: host = '0.0.0.0'
 if not port: port = 5577
 if not log_prefix: log_prefix = './pangate'
 if not max_conn: max_conn = 10
-if not password: password = '123456'
-if not keyhash: keyhash = 'dd0308eed0743cba54d1e2f7838fcd3943be51e67b1f'
+if not password: password = '12345'
 if not client_media_first: client_media_first = False
 if not flush_interval: flush_interval = 2
 
 password = hashlib.sha256(password).digest()
-keyhash = keyhash.decode('hex')
+if keyhash: keyhash = keyhash.decode('hex')
 
 ROOT_PATH = os.path.abspath('.')
 KEEPALIVE = 1 #(on/off)

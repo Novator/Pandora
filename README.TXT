@@ -43,9 +43,9 @@ Optional:
 
 Do commands in terminal:
 
-  sudo apt-add-repository ppa:pandora-net/ppa
+  sudo apt-add-repository -y ppa:pandora-net/ppa
   sudo apt-get update
-  sudo apt-get install pandora-net
+  sudo apt-get install -y pandora-net
 
 
 4. INSTALLATION IN WINDOWS

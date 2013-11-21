@@ -2,8 +2,8 @@
 # encoding: UTF-8
 # coding: UTF-8
 
-# The Pandora. Free peer-to-peer social network
-# RU: Пандора. Свободная пиринговая социальная сеть
+# National network Pandora
+# RU: Народная сеть Пандора
 #
 # This program is distributed under the GNU GPLv2
 # RU: Эта программа распространяется под GNU GPLv2
@@ -6544,7 +6544,7 @@ module PandoraGtk
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
-    dlg.comments = _('Distributed Social Network')
+    dlg.comments = _('National network')
     dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
     begin
       file = File.open(File.join($pandora_root_dir, 'LICENSE.TXT'), 'r')
@@ -8301,8 +8301,8 @@ module PandoraGtk
             store.remove(iter)
             #iter.next!
             pt = path.indices[0]
-            pt = tree_view.sel.size-1 if pt>tree_view.sel.size-1
-            tree_view.set_cursor(Gtk::TreePath.new(pt), column, false)
+            pt = tree_view.sel.size-1 if (pt > tree_view.sel.size-1)
+            tree_view.set_cursor(Gtk::TreePath.new(pt), column, false) if (pt >= 0)
           end
           dialog.destroy
         end
@@ -11459,6 +11459,7 @@ module PandoraGtk
       ['Sign', nil, 'Signs'],
       ['Node', Gtk::Stock::NETWORK, 'Nodes'],
       ['Message', nil, 'Messages'],
+      ['Task', nil, 'Tasks'],
       ['Patch', nil, 'Patches'],
       ['Event', nil, 'Events'],
       ['Fishhook', nil, 'Fishhooks'],
@@ -11472,8 +11473,8 @@ module PandoraGtk
       ['Profile', Gtk::Stock::HOME, 'Profile'],
       ['Wizard', Gtk::Stock::PREFERENCES, 'Wizards'],
       ['-', nil, '-'],
-      ['Quit', Gtk::Stock::QUIT, '_Quit', '<control>Q'],
       ['Close', Gtk::Stock::CLOSE, '_Close', '<control>W'],
+      ['Quit', Gtk::Stock::QUIT, '_Quit', '<control>Q'],
       ['-', nil, '-'],
       ['About', Gtk::Stock::ABOUT, '_About']
       ]
@@ -11525,6 +11526,69 @@ module PandoraGtk
               end
             end
           end
+        end
+      end
+    end
+
+    def init_scheduler(interval=nil)
+      if (not @scheduler) and interval
+        @scheduler_interval = interval if interval
+        @scheduler_interval ||= 1000
+        @scheduler = Thread.new do
+          while ((@scheduler_interval.is_a? Integer) and @scheduler_interval>=100)
+            next_step = true
+
+            Thread.new do
+              message = 'Message here'
+              #dialog = Gtk::MessageDialog.new($window, \
+              #  Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
+              #  Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
+              #  message)
+              #dialog.title = _('Task')
+              #dialog.default_response = Gtk::Dialog::RESPONSE_OK
+              #dialog.icon = $window.icon
+              #if (dialog.run == Gtk::Dialog::RESPONSE_OK)
+              #  p 'Here need to switch of the task'
+              #end
+              #dialog.destroy
+
+              if not @scheduler_dialog
+                @scheduler_dialog = PandoraGtk::AdvancedDialog.new(_('Tasks'))
+                dialog = @scheduler_dialog
+                dialog.set_default_size(420, 250)
+                vbox = Gtk::VBox.new
+                dialog.viewport.add(vbox)
+
+                label = Gtk::Label.new(_('Message'))
+                vbox.pack_start(label, false, false, 2)
+                user_entry = Gtk::Entry.new
+                user_entry.text = message
+                vbox.pack_start(user_entry, false, false, 2)
+
+
+                label = Gtk::Label.new(_('Here'))
+                vbox.pack_start(label, false, false, 2)
+                pass_entry = Gtk::Entry.new
+                pass_entry.width_request = 250
+                align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+                align.add(pass_entry)
+                vbox.pack_start(align, false, false, 2)
+                vbox.pack_start(pass_entry, false, false, 2)
+
+                dialog.def_widget = user_entry
+
+                dialog.run(true) do
+                  p 'reset dialog flag'
+                end
+                @scheduler_dialog = nil
+              end
+
+            end
+
+            sleep(@scheduler_interval/1000)
+            Thread.pass
+          end
+          @scheduler = nil
         end
       end
     end
@@ -11640,6 +11704,10 @@ module PandoraGtk
       $mp3_player = mplayer if ((mplayer.is_a? String) and (mplayer.size>0))
 
       $statusicon = PandoraGtk::PandoraStatusIcon.new(update_win_icon, flash_on_new, flash_interval, play_sounds)
+
+      @chech_tasks = false
+      @gabage_clear = false
+      init_scheduler(1000) if (@chech_tasks or @gabage_clear)
 
       $window.signal_connect('destroy') do |window|
         while (not $window.notebook.destroyed?) and ($window.notebook.children.count>0)

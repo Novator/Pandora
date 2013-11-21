@@ -349,6 +349,13 @@
       <text name="Text" type="Text" hash="3:crc32(4)" />
     </Message>
 
+    <Task parent="Created" kind="90">
+      <executor name="Executor" type="Panhash(Person)" />
+      <time name="Time" type="Time" />
+      <mode name="Mode" type="Integer" />
+      <message name="Message" type="Text" />
+    </Task>
+
     <Fishhook name="Fishhook|Fishhooks" parent="Created" kind="228">
       <creator name="Fisher" />
       <catch name="Catch" type="String" size="32" />

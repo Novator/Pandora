@@ -313,6 +313,13 @@
       <text name.ru="Текст" />
     </Message>
 
+    <Task name.ru="Задача">
+      <executor name.ru="Исполнитель" />
+      <time name.ru="Время" />
+      <mode name.ru="Режим" />
+      <message name.ru="Сообщение" />
+    </Task>
+
     <Fishhook name.ru="Рыбалка|Рыбалки">
       <creator name.ru="Рыбак" />
       <catch name.ru="Добыча" />
