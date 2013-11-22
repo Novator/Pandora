@@ -8110,7 +8110,7 @@ module PandoraGtk
       FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
       if Dir.exists?(dir)
         begin
-          p [http, tail, pfn]
+          #p [http, tail, pfn]
           response = http.request_get(tail)
           File.open(pfn, 'wb+') do |file|
             file.write(response.body)
@@ -8121,7 +8121,7 @@ module PandoraGtk
           puts 'Update error: '+err.message
         end
       else
-        puts 'Cannot create directory: '+tail
+        puts 'Cannot create directory: '+dir
       end
       res
     end
