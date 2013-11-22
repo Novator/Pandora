@@ -65,7 +65,7 @@ Download a package and install it with root:
 
 6. MANUAL INSTALLATION OR UPDATE
 
-6.1. Download archive and upack it:
+6.1. Download the archive and unpack it:
 
   https://github.com/Novator/Pandora/archive/master.zip
 

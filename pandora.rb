@@ -8104,14 +8104,14 @@ module PandoraGtk
   # RU: Проверить обновления и скачать их
   def self.start_updating(all_step=true)
 
-    def self.update_file(http, path, pfn)
+    def self.update_file(http, tail, pfn)
       res = false
-      path = File.dirname(pfn)
-      FileUtils.mkdir_p(path) unless Dir.exists?(path)
-      if Dir.exists?(path)
+      dir = File.dirname(pfn)
+      FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
+      if Dir.exists?(dir)
         begin
-          #p [path, pfn]
-          response = http.request_get(path)
+          p [http, tail, pfn]
+          response = http.request_get(tail)
           File.open(pfn, 'wb+') do |file|
             file.write(response.body)
             res = true
@@ -8121,7 +8121,7 @@ module PandoraGtk
           puts 'Update error: '+err.message
         end
       else
-        puts 'Cannot create directory: '+path
+        puts 'Cannot create directory: '+tail
       end
       res
     end
