@@ -8610,10 +8610,7 @@ module PandoraGtk
     res.size
   end
 
-  $hide_on_minimize = true
-
   def self.get_view_params
-    $hide_on_minimize = PandoraUtils.get_param('hide_on_minimize')
     $load_history_count = PandoraUtils.get_param('load_history_count')
     $sort_history_mode = PandoraUtils.get_param('sort_history_mode')
   end
@@ -10775,9 +10772,10 @@ module PandoraGtk
   # Status icon
   # RU: Иконка в трее
   class PandoraStatusIcon < Gtk::StatusIcon
-    attr_accessor :main_icon, :play_sounds, :online
+    attr_accessor :main_icon, :play_sounds, :online, :hide_on_minimize
 
-    def initialize(a_update_win_icon=false, a_flash_on_new=true, a_flash_interval=0, a_play_sounds=true)
+    def initialize(a_update_win_icon=false, a_flash_on_new=true, \
+    a_flash_interval=0, a_play_sounds=true, a_hide_on_minimize=true)
       super()
 
       @online = false
@@ -10811,6 +10809,7 @@ module PandoraGtk
       @flash_interval = (a_flash_interval.to_f*1000).round
       @flash_interval = 800 if (@flash_interval<100)
       @play_sounds = a_play_sounds
+      @hide_on_minimize = a_hide_on_minimize
 
       @message = nil
       @flash = false
@@ -10858,10 +10857,26 @@ module PandoraGtk
       end
       menu.append(checkmenuitem)
 
+      checkmenuitem = Gtk::CheckMenuItem.new(_('Hide on minimize'))
+      checkmenuitem.active = @hide_on_minimize
+      checkmenuitem.signal_connect('activate') do |w|
+        @hide_on_minimize = w.active?
+      end
+      menu.append(checkmenuitem)
+
+      menuitem = Gtk::ImageMenuItem.new(Gtk::Stock::PROPERTIES)
+      alabel = menuitem.children[0]
+      alabel.set_text(_('All parameters')+'..', true)
+      menuitem.signal_connect('activate') do |w|
+        icon_activated(false, true)
+        PandoraGtk.show_panobject_list(PandoraModel::Parameter, nil, nil, true)
+      end
+      menu.append(menuitem)
+
       menuitem = Gtk::SeparatorMenuItem.new
       menu.append(menuitem)
 
-      menuitem = Gtk::MenuItem.new(_('Hide/Show'))
+      menuitem = Gtk::MenuItem.new(_('Show/Hide'))
       menuitem.signal_connect('activate') do |w|
         icon_activated(false)
       end
@@ -10875,6 +10890,7 @@ module PandoraGtk
         $window.destroy
       end
       menu.append(menuitem)
+
       menu.show_all
       menu
     end
@@ -10944,9 +10960,9 @@ module PandoraGtk
       end
     end
 
-    def icon_activated(top_sens=true)
+    def icon_activated(top_sens=true, force_show=false)
       #$window.skip_taskbar_hint = false
-      if $window.visible?
+      if $window.visible? and (not force_show)
         if (not top_sens) or ($window.has_toplevel_focus? or (PandoraUtils.os_family=='windows'))
           $window.hide
         else
@@ -10955,7 +10971,7 @@ module PandoraGtk
       else
         $window.do_menu_act('Activate')
         update_icon if @update_win_icon
-        if @message
+        if @message and (not force_show)
           page = $window.notebook.page
           if (page >= 0)
             cur_page = $window.notebook.get_nth_page(page)
@@ -11695,6 +11711,7 @@ module PandoraGtk
       flash_on_new = PandoraUtils.get_param('status_flash_on_new')
       flash_interval = PandoraUtils.get_param('status_flash_interval')
       play_sounds = PandoraUtils.get_param('play_sounds')
+      hide_on_minimize = PandoraUtils.get_param('hide_on_minimize')
       mplayer = nil
       if PandoraUtils.os_family=='windows'
         mplayer = PandoraUtils.get_param('win_mp3_player')
@@ -11703,7 +11720,8 @@ module PandoraGtk
       end
       $mp3_player = mplayer if ((mplayer.is_a? String) and (mplayer.size>0))
 
-      $statusicon = PandoraGtk::PandoraStatusIcon.new(update_win_icon, flash_on_new, flash_interval, play_sounds)
+      $statusicon = PandoraGtk::PandoraStatusIcon.new(update_win_icon, flash_on_new, \
+        flash_interval, play_sounds, hide_on_minimize)
 
       @chech_tasks = false
       @gabage_clear = false
@@ -11776,7 +11794,7 @@ module PandoraGtk
               sw.init_video_receiver(false) if not sw.area_recv.destroyed?
             end
           end
-          if widget.visible? and widget.active? and $hide_on_minimize
+          if widget.visible? and widget.active? and $statusicon.hide_on_minimize
             $window.hide
             #$window.skip_taskbar_hint = true
           end
