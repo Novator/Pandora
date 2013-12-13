@@ -299,3 +299,5 @@ Doing=>Выполняется
 Tasks=>Задачи
 Hide on minimize=>Скрыть при сворачивании
 All parameters=>Все параметры
+Estimates=>Издержки
+Exchange=>Биржа
