@@ -625,7 +625,7 @@ module PandoraUtils
   # RU: Преобрзует большое целое в строку байт
   def self.bigint_to_bytes(bigint)
     bytes = AsciiString.new
-    if bigint<=0xFF
+    if (bigint>=0) and (bigint<=0xFF)
       bytes << [bigint].pack('C')
     else
       hexstr = bigint.to_s(16)
@@ -1329,8 +1329,11 @@ module PandoraUtils
           else
             res = Time.parse(fval)
           end
+          p '----fval=res='+fval.inspect+'='+res.inspect
           res = res.to_i / (24*60*60)   #obtain days, drop hours and seconds
+          p 'drop='+res.inspect
           res += (1970-1900)*365   #mesure data from 1900
+          p 'minus='+res.inspect
         else
           if fval.is_a? Integer
             fval = PandoraUtils.bigint_to_bytes(fval)
@@ -1377,7 +1380,9 @@ module PandoraUtils
           end
         end
         if res.is_a? Integer
+          p '*** to_byte res='+res.inspect
           res = AsciiString.new(PandoraUtils.bigint_to_bytes(res))
+          p '*** res='+res.inspect
           res = PandoraUtils.fill_zeros_from_left(res, hlen)
         elsif not fval.is_a? String
           res = AsciiString.new(res.to_s)
