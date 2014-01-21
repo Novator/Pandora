@@ -658,6 +658,20 @@ module PandoraUtils
     res
   end
 
+  def self.date_to_str(date)
+    res = date.strftime('%d.%m.%Y')
+  end
+
+  def self.str_to_date(str)
+    res = nil
+    begin
+      res = Time.parse(str)  #Time.strptime(defval, '%d.%m.%Y')
+    rescue Exception
+      res = nil
+    end
+    res
+  end
+
   # Fill string by zeros from left to defined size
   # RU: Заполнить строку нулями слева до нужного размера
   def self.fill_zeros_from_left(data, size)
@@ -3483,7 +3497,7 @@ module PandoraCrypto
 
             key_vec0 = key_vec
             key_vec = nil
-            dialog.run do
+            dialog.run2 do
               if (dialog.response == 3)
                 getting = true
               else
@@ -3552,7 +3566,7 @@ module PandoraCrypto
 
           dialog.def_widget = user_entry.entry
 
-          dialog.run do
+          dialog.run2 do
             creator = PandoraUtils.hex_to_bytes(user_entry.text)
             if creator.size==22
               #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
@@ -4815,18 +4829,18 @@ module PandoraNet
         readflds = 'id, state, sended, received, one_ip_count, bad_attempts,' \
            +'ban_time, panhash, key_hash, base_id, creator, created, addr, domain, tport, uport'
 
-        #trusted = ((trust.is_a? Float) and (trust>0))
+        trusted = ((trust.is_a? Float) and (trust>0))
         filter = {:key_hash=>skey_panhash, :base_id=>sbase_id}
         #if not trusted
         #  filter[:addr_from] = host_ip
         #end
         sel = node_model.select(filter, false, readflds, nil, 1)
-        if (not sel) or (sel.size==0) and @node_id
-          filter = {:id=>@node_id}
+        if ((not sel) or (sel.size==0)) and @node_id
+          filter = {:id => @node_id}
           sel = node_model.select(filter, false, readflds, nil, 1)
         end
 
-        if sel and sel.size>0
+        if sel and (sel.size>0)
           row = sel[0]
           anode_id = row[0]
           astate = row[1]
@@ -4849,6 +4863,8 @@ module PandoraNet
           filter = nil
         end
 
+        p '=====%%%% %%%: [aaddr, adomain, @host_ip, @host_name]'+[aaddr, adomain, @host_ip, @host_name].inspect
+
         values = {}
         if (not acreator) or (not acreated)
           acreator ||= PandoraCrypto.current_user_or_key(true)
@@ -4857,11 +4873,6 @@ module PandoraNet
         end
         abase_id = sbase_id if (not abase_id) or (abase_id=='')
         akey_hash = skey_panhash if (not akey_hash) or (akey_hash=='')
-
-        #adomain = @host_name if (not adomain) or (adomain=='')
-        adomain = aaddr if (not adomain) or (adomain=='')
-        aaddr = @host_ip if ((not aaddr) or (aaddr=='')) and adomain and (adomain != '')
-        #adomain = @host_ip if (not adomain) or (adomain=='')
 
         values[:base_id] = abase_id
         values[:key_hash] = akey_hash
@@ -4881,13 +4892,12 @@ module PandoraNet
         if inaddr and (inaddr != '')
           host, port, proto = pool.decode_node(inaddr)
           #p log_mes+'ADDR [addr, host, port, proto]='+[addr, host, port, proto].inspect
-          if (host and (host != '')) and (port and (port != 0))
-            host = @host_ip if (not host) or (host=='')
+          if host and (host != '') and ((not adomain) or (adomain=='') or trusted)
+            adomain = host
             port = 5577 if (not port) or (port==0)
-            values[:domain] = host
             proto ||= ''
-            values[:tport] = port if (proto != 'udp')
-            values[:uport] = port if (proto != 'tcp')
+            atport = port if (proto != 'udp')
+            auport = port if (proto != 'tcp')
             #values[:addr_type] = AT_Ip4
           end
         end
@@ -4896,19 +4906,27 @@ module PandoraNet
           filter2 = {:id=>@node_id}
           @node_id = nil
           sel = node_model.select(filter2, false, 'addr, domain, tport, uport, addr_type', nil, 1)
-          if sel and sel.size>0
+          if sel and (sel.size>0)
             baddr = sel[0][0]
             bdomain = sel[0][1]
             btport = sel[0][2]
             buport = sel[0][3]
             baddr_type = sel[0][4]
 
-            adomain = bdomain if (not bdomain) or (bdomain=='')
-            aaddr = baddr if (not baddr) or (baddr=='')
-            adomain = baddr if (not adomain) or (adomain=='')
+            aaddr = baddr if (not aaddr) or (aaddr=='')
+            adomain = bdomain if (not adomain) or (adomain=='')
 
             values[:addr_type] ||= baddr_type
             node_model.update(nil, nil, filter2)
+          end
+        end
+
+        if (not adomain) or (adomain=='')
+          if (not aaddr) or (aaddr=='')
+            aaddr = @host_ip
+            adomain = @host_name
+          else
+            adomain = aaddr
           end
         end
 
@@ -6580,12 +6598,15 @@ module PandoraGtk
 
   # Advanced dialog window
   # RU: Продвинутое окно диалога
-  class AdvancedDialog < Gtk::Window
-    attr_accessor :response, :window, :notebook, :vpaned, :viewport, :hbox, :enter_like_tab, :enter_like_ok, \
-      :panelbox, :okbutton, :cancelbutton, :def_widget, :main_sw
+  class AdvancedDialog < Gtk::Window #Gtk::Dialog
+    attr_accessor :response, :window, :notebook, :vpaned, :viewport, :hbox, \
+      :enter_like_tab, :enter_like_ok, :panelbox, :okbutton, :cancelbutton, \
+      :def_widget, :main_sw
 
     def initialize(*args)
+      p '0----------'
       super(*args)
+      p '1----------'
       @response = 0
       @window = self
       @enter_like_tab = false
@@ -6600,7 +6621,9 @@ module PandoraGtk
 
       @vpaned = Gtk::VPaned.new
       vpaned.border_width = 2
+
       window.add(vpaned)
+      #window.vbox.add(vpaned)
 
       @main_sw = Gtk::ScrolledWindow.new(nil, nil)
       sw = main_sw
@@ -6629,15 +6652,35 @@ module PandoraGtk
 
       @okbutton = Gtk::Button.new(Gtk::Stock::OK)
       okbutton.width_request = 110
-      okbutton.signal_connect('clicked') { |*args| @response=2 }
+      okbutton.signal_connect('clicked') { |*args|
+        @response=2
+        #finish
+      }
       bbox.pack_start(okbutton, false, false, 0)
 
       @cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
       cancelbutton.width_request = 110
-      cancelbutton.signal_connect('clicked') { |*args| @response=1 }
+      cancelbutton.signal_connect('clicked') { |*args|
+        @response=1
+        #finish
+      }
       bbox.pack_start(cancelbutton, false, false, 0)
 
       hbox.pack_start(bbox, true, false, 1.0)
+
+      #self.signal_connect('response') do |widget, response|
+      #  case response
+      #    when Gtk::Dialog::RESPONSE_OK
+      #      p "OK"
+      #    when Gtk::Dialog::RESPONSE_CANCEL
+      #      p "Cancel"
+      #    when Gtk::Dialog::RESPONSE_CLOSE
+      #      p "Close"
+      #      dialog.destroy
+      #  end
+      #end
+
+      p '2----------'
 
       window.signal_connect('delete-event') { |*args|
         @response=1
@@ -6672,22 +6715,30 @@ module PandoraGtk
           false
         end
       end
+
     end
 
     # show dialog until key pressed
-    def run(alien_thread=false)
-      res = false
+    def run2
+      res = nil
       show_all
       if @def_widget
         #focus = @def_widget
         @def_widget.grab_focus
       end
+
+      p '111--'
+
+      #p res = self.run
+
       while (not destroyed?) and (@response == 0) do
-        unless alien_thread
+        #unless alien_thread
           Gtk.main_iteration
-        end
+        #end
+        sleep(0.001)
         Thread.pass
       end
+
       if not destroyed?
         if (@response > 1)
           yield(@response) if block_given?
@@ -6695,6 +6746,9 @@ module PandoraGtk
         end
         self.destroy
       end
+
+      p '222=='
+
       res
     end
   end
@@ -6829,7 +6883,7 @@ module PandoraGtk
     end
   end
 
-  class DateEntry < MaskEntry
+  class DateEntrySimple < MaskEntry
     def init_mask
       super
       @mask = '0123456789.'
@@ -6838,12 +6892,127 @@ module PandoraGtk
     end
   end
 
-  class TimeEntry < DateEntry
+  class TimeEntry < DateEntrySimple
     def init_mask
       super
       @mask += ' :'
       self.max_length = 19
       self.tooltip_text = 'MM.DD.YYYY hh:mm:ss'
+    end
+  end
+
+  class DateEntry < Gtk::HBox
+    attr_accessor :entry, :button
+    def initialize(*args)
+      super(*args)
+      @entry = MaskEntry.new
+      @entry.mask = '0123456789.'
+      @entry.max_length = 10
+      @entry.tooltip_text = 'MM.DD.YYYY'
+
+      @button = Gtk::Button.new('D')
+      @button.can_focus = false
+
+      @entry.instance_variable_set('@button', @button)
+      def @entry.key_event(widget, event)
+        res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
+          and (event.keyval==65364)))
+        @button.activate if res
+        false
+      end
+      self.pack_start(entry, true, true, 0)
+      align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+      align.add(@button)
+      self.pack_start(align, false, false, 1)
+      esize = entry.size_request
+      h = esize[1]-2
+      @button.set_size_request(h, h)
+
+      #if panclasses==[]
+      #  panclasses = $panobject_list
+      #end
+
+      button.signal_connect('clicked') do |*args|
+        if @calwin and (not @calwin.destroyed?)
+          p 'DDDD'
+          @calwin.destroy
+          @calwin = nil
+        else
+          p 'CCCC'
+          @cal = Gtk::Calendar.new
+
+          cal = @cal
+
+          date = PandoraUtils.str_to_date(@entry.text)
+          date ||= Time.new
+          @month = date.month
+          @year = date.year
+
+          cal.select_month(date.month, date.year)
+          cal.select_day(date.day)
+          #cal.mark_day(date.day)
+          cal.display_options = Gtk::Calendar::SHOW_HEADING | \
+            Gtk::Calendar::SHOW_DAY_NAMES | Gtk::Calendar::WEEK_START_MONDAY
+
+          cal.signal_connect('day_selected') do
+            year, month, day = @cal.date
+            if (@month==month) and (@year==year)
+              @entry.text = PandoraUtils.date_to_str(Time.local(year, month, day))
+              @calwin.destroy
+              @calwin = nil
+            else
+              @month=month
+              @year=year
+            end
+          end
+
+          #menuitem = Gtk::ImageMenuItem.new
+          #menuitem.add(cal)
+          #menuitem.show_all
+
+          #menu = Gtk::Menu.new
+          #menu.append(menuitem)
+          #menu.show_all
+          #menu.popup(nil, nil, 0, Gdk::Event::CURRENT_TIME)
+
+
+          @calwin = Gtk::Window.new(Gtk::Window::POPUP)
+          calwin = @calwin
+          calwin.transient_for = $window
+          calwin.modal = true
+
+          calwin.add(cal)
+          calwin.signal_connect('delete_event') { @calwin.destroy; @calwin=nil }
+
+          pos = @button.window.origin
+          all = @button.allocation.to_a
+          calwin.move(pos[0]+all[0], pos[1]+all[1]+all[3]+1)
+
+          calwin.show_all
+        end
+      end
+    end
+
+    def max_length=(maxlen)
+      entry.max_length = maxlen
+    end
+    def text=(text)
+      entry.text = text
+    end
+    def text
+      entry.text
+    end
+    def width_request=(wr)
+      entry.set_width_request(wr)
+    end
+    def modify_text(*args)
+      entry.modify_text(*args)
+    end
+    def size_request
+      esize = entry.size_request
+      res = button.size_request
+      res[0] = esize[0]+1+res[0]
+      res
     end
   end
 
@@ -6856,6 +7025,7 @@ module PandoraGtk
       @types = panhash_type
       @entry = HexEntry.new
       @button = Gtk::Button.new('...')
+      @button.can_focus = false
       @entry.instance_variable_set('@button', @button)
       def @entry.key_event(widget, event)
         res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
@@ -6894,7 +7064,7 @@ module PandoraGtk
           end
         end
         dialog.notebook.page = 0
-        dialog.run do
+        dialog.run2 do
           panhash = nil
           sw = dialog.notebook.get_nth_page(dialog.notebook.page)
           treeview = sw.children[0]
@@ -7287,7 +7457,9 @@ module PandoraGtk
     menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], treeview))
     menu.append(create_menu_item(['Relate', Gtk::Stock::INDEX, _('Relate'), '<control>R'], treeview))
     menu.append(create_menu_item(['-', nil, nil], treeview))
-    menu.append(create_menu_item(['Clone', Gtk::Stock::CONVERT, _('Recreate the table')], treeview))
+    menu.append(create_menu_item(['Convert', Gtk::Stock::CONVERT, _('Convert')], treeview))
+    menu.append(create_menu_item(['Import', Gtk::Stock::OPEN, _('Import')], treeview))
+    menu.append(create_menu_item(['Export', Gtk::Stock::SAVE, _('Export')], treeview))
     menu.show_all
 
     treeview.add_events(Gdk::Event::BUTTON_PRESS_MASK)
@@ -8406,7 +8578,7 @@ module PandoraGtk
         end
         dialog.title += ' ('+titadd+')' if titadd and (titadd != '')
 
-        dialog.run do
+        dialog.run2 do
           # take value from form
           dialog.fields.each do |field|
             entry = field[FI_Widget]
@@ -11327,16 +11499,20 @@ module PandoraGtk
             close_btn = tab.children[tab.children.size-1].children[0]
             close_btn.clicked
           end
-        when 'Create','Edit','Delete','Copy', 'Dialog', 'Clone'
+        when 'Create','Edit','Delete','Copy', 'Dialog', 'Convert', 'Import', 'Export'
           if (not treeview) and (notebook.page >= 0)
             sw = notebook.get_nth_page(notebook.page)
             treeview = sw.children[0]
           end
           if treeview and (treeview.is_a? SubjTreeView)
-            if command=='Clone'
+            if command=='Convert'
               panobject = treeview.panobject
               panobject.update(nil, nil, nil)
               panobject.class.tab_fields(true)
+            elsif command=='Import'
+              p 'import'
+            elsif command=='Export'
+              p 'export'
             else
               PandoraGtk.act_panobject(treeview, command)
             end
@@ -11600,7 +11776,7 @@ module PandoraGtk
 
                 dialog.def_widget = user_entry
 
-                dialog.run(true) do
+                dialog.run2 do
                   p 'reset dialog flag'
                 end
                 @scheduler_dialog = nil
@@ -11706,6 +11882,9 @@ module PandoraGtk
       vbox.pack_start(toolbar, false, false, 0)
       vbox.pack_start(cvpaned, true, true, 0)
       vbox.pack_start($statusbar, false, false, 0)
+
+      #dat = DateEntry.new
+      #vbox.pack_start(dat, false, false, 0)
 
       $window.add(vbox)
 
