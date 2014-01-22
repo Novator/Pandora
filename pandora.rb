@@ -6618,6 +6618,7 @@ module PandoraGtk
       #window.skip_taskbar_hint = true
       window.window_position = Gtk::Window::POS_CENTER
       #window.type_hint = Gdk::Window::TYPE_HINT_DIALOG
+      window.destroy_with_parent = true
 
       @vpaned = Gtk::VPaned.new
       vpaned.border_width = 2
@@ -6933,14 +6934,12 @@ module PandoraGtk
       #end
 
       button.signal_connect('clicked') do |*args|
+        @entry.grab_focus
         if @calwin and (not @calwin.destroyed?)
-          p 'DDDD'
           @calwin.destroy
           @calwin = nil
         else
-          p 'CCCC'
           @cal = Gtk::Calendar.new
-
           cal = @cal
 
           date = PandoraUtils.str_to_date(@entry.text)
@@ -6966,6 +6965,51 @@ module PandoraGtk
             end
           end
 
+          cal.signal_connect('key-press-event') do |widget, event|
+            if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+              @cal.signal_emit('day-selected')
+            elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+              ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
+            then
+              @calwin.destroy
+              @calwin = nil
+              false
+            elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
+              ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
+            then
+              @calwin.destroy
+              @calwin = nil
+              $window.destroy
+              false
+            elsif (event.keyval>=65360) and (event.keyval<=65367)
+              if event.keyval==65360
+                if @cal.month>0
+                  @cal.month = @cal.month-1
+                else
+                  @cal.month = 11
+                  @cal.year = @cal.year-1
+                end
+              elsif event.keyval==65367
+                if @cal.month<11
+                  @cal.month = @cal.month+1
+                else
+                  @cal.month = 0
+                  @cal.year = @cal.year+1
+                end
+              elsif event.keyval==65365
+                @cal.year = @cal.year-1
+              elsif event.keyval==65366
+                @cal.year = @cal.year+1
+              end
+              year, month, day = @cal.date
+              @month=month
+              @year=year
+              false
+            else
+              true
+            end
+          end
+
           #menuitem = Gtk::ImageMenuItem.new
           #menuitem.add(cal)
           #menuitem.show_all
@@ -6976,13 +7020,20 @@ module PandoraGtk
           #menu.popup(nil, nil, 0, Gdk::Event::CURRENT_TIME)
 
 
-          @calwin = Gtk::Window.new(Gtk::Window::POPUP)
+          @calwin = Gtk::Window.new #(Gtk::Window::POPUP)
           calwin = @calwin
           calwin.transient_for = $window
           calwin.modal = true
+          calwin.decorated = false
 
           calwin.add(cal)
           calwin.signal_connect('delete_event') { @calwin.destroy; @calwin=nil }
+
+          calwin.signal_connect('focus-out-event') do |win, event|
+            @calwin.destroy
+            @calwin = nil
+            false
+          end
 
           pos = @button.window.origin
           all = @button.allocation.to_a
@@ -7046,6 +7097,7 @@ module PandoraGtk
       #end
 
       button.signal_connect('clicked') do |*args|
+        @entry.grab_focus
         set_classes
         dialog = PandoraGtk::AdvancedDialog.new(_('Choose object'))
         dialog.set_default_size(600, 400)

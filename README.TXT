@@ -145,9 +145,10 @@ Help to Pandora project like a programmer, translator, journalist or donator:
 
   http://robux.biz/pandora.html
 
-Communicate together in facebook:
+Communicate together in facebook or vkontakte:
 
   https://www.facebook.com/p2pandora
+  https://vk.com/pandoranet
 
 Ask a help from author:
 
