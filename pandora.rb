@@ -335,7 +335,8 @@ module PandoraUtils
       end
       @connected
     end
-    def create_table(table_name, recreate=false)
+    def create_table(table_name, recreate=false, arch_table=nil, \
+    arch_fields=nil, new_fields=nil)
       connect
       tfd = db.table_info(table_name)
       #p tfd
@@ -351,7 +352,11 @@ module PandoraUtils
         if exist[table_name] and recreate
           res = db.execute('DROP TABLE '+table_name)
         end
-        p 'CREATE TABLE '+table_name+' '+tab_def
+        #p 'CREATE TABLE '+table_name+' '+tab_def
+        #p 'ALTER TABLE '+table_name+' RENAME TO '+arch_table
+        #p 'INSERT INTO '+table_name+' ('+new_fields+') SELECT '+new_fields+' FROM '+arch_table
+        #INSERT INTO t1(val1,val2) SELECT t2.val1, t2.val2 FROM t2 WHERE t2.id = @id
+        #p 'ALTER TABLE OLD_COMPANY ADD COLUMN SEX char(1)'
         res = db.execute('CREATE TABLE '+table_name+' '+tab_def)
         @exist[table_name] = TRUE
       end
@@ -7006,7 +7011,7 @@ module PandoraGtk
               @year=year
               false
             else
-              true
+              false
             end
           end
 
