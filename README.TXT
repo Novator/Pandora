@@ -18,7 +18,7 @@ Contents
 Pandora is a free peer-to-peer (P2P) social network application.
 It affords functions of instant messenger, audio and video chat, commercial
 system, distributed development system, file exchange and vote system.
-Pandora has its own binary protocol and uses cryptography and trust networks.
+Pandora has its own binary protocol, uses a cryptography and a web of trust.
 
 Pandora is not yet another "geek thing". It is designed for ordinary people,
 has a graphical user interface (GUI) and works "out of the box".
@@ -50,7 +50,7 @@ Do commands in terminal:
 
 4. INSTALLATION IN WINDOWS
 
-Download installation and run it with administrator:
+Download an installation and run it with administrator:
 
   http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe/download
 

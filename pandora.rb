@@ -143,7 +143,7 @@ module PandoraUtils
       str
     end
 
-    def self.spaces_after(line, pos)
+    def self.spaces_after?(line, pos)
       i = line.size-1
       while (i>=pos) and ((line[i, 1]==' ') or (line[i, 1]=="\t"))
         i -= 1
@@ -192,7 +192,7 @@ module PandoraUtils
             if scanmode==2
               k = line.rindex('"')
               if k and ((k==0) or (line[k-1, 1] != "\\"))
-                end_is_found = ((k+1)==line.size) or spaces_after(line, k+1)
+                end_is_found = ((k+1)==line.size) or spaces_after?(line, k+1)
                 if end_is_found
                   trans = addline(trans, line[0, k])
                 end
@@ -224,7 +224,7 @@ module PandoraUtils
       str.gsub('"', '\"')
     end
 
-    def self.there_are_end_space(str)
+    def self.there_are_end_space?(str)
       lastchar = str[str.size-1, 1]
       (lastchar==' ') or (lastchar=="\t")
     end
@@ -235,7 +235,7 @@ module PandoraUtils
       $lang_trans.each do |value|
         if (not value[0].index('"')) and (not value[1].index('"')) \
           and (not value[0].index("\n")) and (not value[1].index("\n")) \
-          and (not there_are_end_space(value[0])) and (not there_are_end_space(value[1]))
+          and (not there_are_end_space?(value[0])) and (not there_are_end_space?(value[1]))
         then
           str = value[0]+'=>'+value[1]
         else
@@ -246,327 +246,30 @@ module PandoraUtils
     end
   end
 
-  # Type translation Ruby->SQLite
-  # RU: Трансляция типа Ruby->SQLite
-  def self.ruby_type_to_sqlite_type(rt, size)
-    rt_str = rt.to_s
-    size_i = size.to_i
-    case rt_str
-      when 'Integer', 'Word', 'Byte', 'Coord'
-        'INTEGER'
-      when 'Float'
-        'REAL'
-      when 'Number', 'Panhash'
-        'NUMBER'
-      when 'Date', 'Time'
-        'DATE'
-      when 'String'
-        if (1<=size_i) and (size_i<=127)
-          'VARCHAR('+size.to_s+')'
-        else
-          'TEXT'
-        end
-      when 'Text'
-        'TEXT'
-      when '',nil
-        'NUMBER'
-      when 'Blob'
-        'BLOB'
-      else
-        'NUMBER'
+  # RU: Панхэш не нулевой?
+  def self.panhash_nil?(panhash)
+    res = true
+    if panhash.is_a? String
+      i = 2
+      while res and (i<panhash.size)
+        res = (panhash[i] == 0.chr)
+        i += 1
+      end
+    elsif panhash.is_a? Integer
+      res = (panhash == 0)
     end
-  end
-
-  def self.ruby_val_to_sqlite_val(v)
-    if v.is_a? Time
-      v = v.to_i
-    elsif v.is_a? TrueClass
-      v = 1
-    elsif v.is_a? FalseClass
-      v = 0
-    end
-    v
-  end
-
-  # Table definitions of SQLite from fields definitions
-  # RU: Описание таблицы SQLite из описания полей
-  def self.panobj_fld_to_sqlite_tab(panobj_flds)
-    res = ''
-    panobj_flds.each do |fld|
-      res = res + ', ' if res != ''
-      res = res + fld[FI_Id].to_s + ' ' + PandoraUtils::ruby_type_to_sqlite_type(fld[FI_Type], fld[FI_Size])
-    end
-    res = '(id INTEGER PRIMARY KEY AUTOINCREMENT, ' + res + ')' if res != ''
     res
   end
 
-  # Abstract database adapter
-  # RU:Абстрактный адаптер к БД
-  class DatabaseSession
-    NAME = "Сеанс подключения"
-    attr_accessor :connected, :conn_param, :def_flds
-    def initialize
-      @connected = FALSE
-      @conn_param = ''
-      @def_flds = {}
-    end
-    def connect
-    end
-    def create_table(table_name)
-    end
-    def select_table(table_name, afilter=nil, fields=nil, sort=nil, limit=nil)
-    end
+  # RU: Тип записи по панхэшу
+  def self.kind_from_panhash(panhash)
+    kind = panhash[0].ord if (panhash.is_a? String) and (panhash.bytesize>0)
   end
 
-  TI_Name  = 0
-  TI_Type  = 1
-  TI_Desc  = 2
-
-  # SQLite adapter
-  # RU: Адаптер SQLite
-  class SQLiteDbSession < DatabaseSession
-    NAME = "Сеанс SQLite"
-    attr_accessor :db, :exist
-    def connect
-      if not @connected
-        @db = SQLite3::Database.new(conn_param)
-        @connected = true
-        @exist = {}
-      end
-      @connected
-    end
-    def create_table(table_name, recreate=false, arch_table=nil, \
-    arch_fields=nil, new_fields=nil)
-      connect
-      tfd = db.table_info(table_name)
-      #p tfd
-      tfd.collect! { |x| x['name'] }
-      if (not tfd) or (tfd == [])
-        @exist[table_name] = FALSE
-      else
-        @exist[table_name] = TRUE
-      end
-      tab_def = PandoraUtils::panobj_fld_to_sqlite_tab(def_flds[table_name])
-      #p tab_def
-      if (! exist[table_name] or recreate) and tab_def
-        if exist[table_name] and recreate
-          res = db.execute('DROP TABLE '+table_name)
-        end
-        #p 'CREATE TABLE '+table_name+' '+tab_def
-        #p 'ALTER TABLE '+table_name+' RENAME TO '+arch_table
-        #p 'INSERT INTO '+table_name+' ('+new_fields+') SELECT '+new_fields+' FROM '+arch_table
-        #INSERT INTO t1(val1,val2) SELECT t2.val1, t2.val2 FROM t2 WHERE t2.id = @id
-        #p 'ALTER TABLE OLD_COMPANY ADD COLUMN SEX char(1)'
-        res = db.execute('CREATE TABLE '+table_name+' '+tab_def)
-        @exist[table_name] = TRUE
-      end
-      exist[table_name]
-    end
-    def fields_table(table_name)
-      connect
-      tfd = db.table_info(table_name)
-      tfd.collect { |x| [x['name'], x['type']] }
-    end
-    def escape_like_mask(mask)
-      #SELECT * FROM mytable WHERE myblob LIKE X'0025';
-      #SELECT * FROM mytable WHERE quote(myblob) LIKE 'X''00%';     end
-      #Is it possible to pre-process your 10 bytes and insert e.g. symbol '\'
-      #before any '\', '_' and '%' symbol? After that you can query
-      #SELECT * FROM mytable WHERE myblob LIKE ? ESCAPE '\'
-      #SELECT * FROM mytable WHERE substr(myblob, 1, 1) = X'00';
-      #SELECT * FROM mytable WHERE substr(myblob, 1, 10) = ?;
-      if mask.is_a? String
-        mask.gsub!('$', '$$')
-        mask.gsub!('_', '$_')
-        mask.gsub!('%', '$%')
-        #query = AsciiString.new(query)
-        #i = query.size
-        #while i>0
-        #  if ['$', '_', '%'].include? query[i]
-        #    query = query[0,i+1]+'$'+query[i+1..-1]
-        #  end
-        #  i -= 1
-        #end
-      end
-      mask
-    end
-    def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil, like_filter=nil)
-      res = nil
-      connect
-      tfd = fields_table(table_name)
-      #p '[tfd, table_name, filter, fields, sort, limit, like_filter]='+[tfd, table_name, filter, fields, sort, limit, like_filter].inspect
-      if tfd and (tfd != [])
-        sql_values = Array.new
-        if filter.is_a? Hash
-          sql2 = ''
-          filter.each do |n,v|
-            if n
-              sql2 = sql2 + ' AND ' if sql2 != ''
-              sql2 = sql2 + n.to_s + '=?'
-              sql_values << v
-            end
-          end
-          filter = sql2
-        end
-        if like_filter.is_a? Hash
-          sql2 = ''
-          like_filter.each do |n,v|
-            if n
-              sql2 = sql2 + ' AND ' if sql2 != ''
-              sql2 = sql2 + n.to_s + 'LIKE ?'
-              sql_values << v
-            end
-          end
-          like_filter = sql2
-        end
-        fields ||= '*'
-        sql = 'SELECT '+fields+' FROM '+table_name
-        filter = nil if (filter and (filter == ''))
-        like_filter = nil if (like_filter and (like_filter == ''))
-        if filter or like_filter
-          sql = sql + ' WHERE'
-          sql = sql + ' ' + filter if filter
-          if like_filter
-            sql = sql + ' AND' if filter
-            sql = sql + ' ' + like_filter
-          end
-        end
-        if sort and (sort > '')
-          sql = sql + ' ORDER BY '+sort
-        end
-        if limit
-          sql = sql + ' LIMIT '+limit.to_s
-        end
-        #p 'select  sql='+sql.inspect+'  values='+sql_values.inspect+' db='+db.inspect
-        res = db.execute(sql, sql_values)
-      end
-      #p 'res='+res.inspect
-      res
-    end
-    def update_table(table_name, values, names=nil, filter=nil)
-      res = false
-      connect
-      sql = ''
-      sql_values = Array.new
-      sql_values2 = Array.new
-
-      if filter.is_a? Hash
-        sql2 = ''
-        filter.each do |n,v|
-          if n
-            sql2 = sql2 + ' AND ' if sql2 != ''
-            sql2 = sql2 + n.to_s + '=?'
-            #v.force_encoding('ASCII-8BIT')  and v.is_a? String
-            #v = AsciiString.new(v) if v.is_a? String
-            sql_values2 << v
-          end
-        end
-        filter = sql2
-      end
-
-      if (not values) and (not names) and filter
-        sql = 'DELETE FROM ' + table_name + ' where '+filter
-      elsif values.is_a? Array and names.is_a? Array
-        tfd = db.table_info(table_name)
-        tfd_name = tfd.collect { |x| x['name'] }
-        tfd_type = tfd.collect { |x| x['type'] }
-        if filter
-          values.each_with_index do |v,i|
-            fname = names[i]
-            if fname
-              sql = sql + ',' if sql != ''
-              #v.is_a? String
-              #v.force_encoding('ASCII-8BIT')  and v.is_a? String
-              #v = AsciiString.new(v) if v.is_a? String
-              v = PandoraUtils.ruby_val_to_sqlite_val(v)
-              sql_values << v
-              sql = sql + fname.to_s + '=?'
-            end
-          end
-
-          sql = 'UPDATE ' + table_name + ' SET ' + sql
-          if filter and filter != ''
-            sql = sql + ' where '+filter
-          end
-        else
-          sql2 = ''
-          values.each_with_index do |v,i|
-            fname = names[i]
-            if fname
-              sql = sql + ',' if sql != ''
-              sql2 = sql2 + ',' if sql2 != ''
-              sql = sql + fname.to_s
-              sql2 = sql2 + '?'
-              #v.force_encoding('ASCII-8BIT')  and v.is_a? String
-              #v = AsciiString.new(v) if v.is_a? String
-              v = PandoraUtils.ruby_val_to_sqlite_val(v)
-              sql_values << v
-            end
-          end
-          sql = 'INSERT INTO ' + table_name + '(' + sql + ') VALUES(' + sql2 + ')'
-        end
-      end
-      tfd = fields_table(table_name)
-      if tfd and (tfd != [])
-        sql_values = sql_values+sql_values2
-        p '1upd_tab: sql='+sql.inspect
-        p '2upd_tab: sql_values='+sql_values.inspect
-        res = db.execute(sql, sql_values)
-        #p 'upd_tab: db.execute.res='+res.inspect
-        res = true
-      end
-      #p 'upd_tab: res='+res.inspect
-      res
-    end
+  # RU: Язык объекта по панхэшу
+  def self.lang_from_panhash(panhash)
+    lang = panhash[1].ord if (panhash.is_a? String) and (panhash.bytesize>1)
   end
-
-  # Repository manager
-  # RU: Менеджер хранилищ
-  class RepositoryManager
-    attr_accessor :adapter
-    def get_adapter(panobj, table_ptr, recreate=false)
-      adap = nil
-      if @adapter
-        adap = @adapter
-      else
-        adap = SQLiteDbSession.new
-        adap.conn_param = $pandora_sqlite_db
-        @adapter = adap
-      end
-      table_name = table_ptr[1]
-      adap.def_flds[table_name] = panobj.def_fields
-      if (not table_name) or (table_name=='') then
-        puts 'No table name for ['+panobj.name+']'
-      else
-        adap.create_table(table_name, recreate)
-        #adap.create_table(table_name, TRUE)
-      end
-      adap
-    end
-    def get_tab_select(panobj, table_ptr, filter=nil, fields=nil, sort=nil, limit=nil)
-      adap = get_adapter(panobj, table_ptr)
-      adap.select_table(table_ptr[1], filter, fields, sort, limit)
-    end
-    def get_tab_update(panobj, table_ptr, values, names, filter='')
-      res = false
-      recreate = ((not values) and (not names) and (not filter))
-      adap = get_adapter(panobj, table_ptr, recreate)
-      if recreate
-        res = (adap != nil)
-      else
-        res = adap.update_table(table_ptr[1], values, names, filter)
-      end
-      res
-    end
-    def get_tab_fields(panobj, table_ptr)
-      adap = get_adapter(panobj, table_ptr)
-      adap.fields_table(table_ptr[1])
-    end
-  end
-
-  # Global poiter to repository manager
-  # RU: Глобальный указатель на менеджер хранилищ
-  $repositories = RepositoryManager.new
 
   # Plural or single name
   # RU: Имя во множественном или единственном числе
@@ -653,6 +356,8 @@ module PandoraUtils
     res
   end
 
+  # Convert string of bytes to integer
+  # RU: Преобрзует строку байт в целое
   def self.bytes_to_int(bytes)
     res = 0
     i = bytes.size
@@ -663,10 +368,14 @@ module PandoraUtils
     res
   end
 
+  # Convert ruby date to string
+  # RU: Преобрзует ruby-дату в строку
   def self.date_to_str(date)
     res = date.strftime('%d.%m.%Y')
   end
 
+  # Obtain date value from string
+  # RU: Извлекает дату из строки
   def self.str_to_date(str)
     res = nil
     begin
@@ -688,6 +397,350 @@ module PandoraUtils
     #data.ljust(size, 0.chr)
     data = AsciiString.new(data)
   end
+
+  # Abstract database adapter
+  # RU:Абстрактный адаптер к БД
+  class DatabaseSession
+    NAME = "Сеанс подключения"
+    attr_accessor :connected, :conn_param, :def_flds
+    def initialize
+      @connected = FALSE
+      @conn_param = ''
+      @def_flds = {}
+    end
+    def connect
+    end
+    def create_table(table_name)
+    end
+    def select_table(table_name, afilter=nil, fields=nil, sort=nil, limit=nil, like_filter=nil)
+    end
+  end
+
+  TI_Name  = 0
+  TI_Type  = 1
+  TI_Desc  = 2
+
+  # SQLite adapter
+  # RU: Адаптер SQLite
+  class SQLiteDbSession < DatabaseSession
+    NAME = "Сеанс SQLite"
+    attr_accessor :db, :exist
+
+    # Type translation Ruby->SQLite
+    # RU: Трансляция типа Ruby->SQLite
+    def pan_type_to_sqlite_type(rt, size)
+      rt_str = rt.to_s
+      size_i = size.to_i
+      case rt_str
+        when 'Integer', 'Word', 'Byte', 'Coord'
+          'INTEGER'
+        when 'Float'
+          'REAL'
+        when 'Number', 'Panhash'
+          'NUMBER'
+        when 'Date', 'Time'
+          'DATE'
+        when 'String'
+          if (1<=size_i) and (size_i<=127)
+            'VARCHAR('+size.to_s+')'
+          else
+            'TEXT'
+          end
+        when 'Text'
+          'TEXT'
+        when '',nil
+          'NUMBER'
+        when 'Blob'
+          'BLOB'
+        else
+          'NUMBER'
+      end
+    end
+
+    # RU: Преобразует значения ruby в значения sqlite
+    def ruby_val_to_sqlite_val(v)
+      if v.is_a? Time
+        v = v.to_i
+      elsif v.is_a? TrueClass
+        v = 1
+      elsif v.is_a? FalseClass
+        v = 0
+      end
+      v
+    end
+
+    # Table definitions of SQLite from fields definitions
+    # RU: Описание таблицы SQLite из описания полей
+    def panobj_fld_to_sqlite_tab(panobj_flds)
+      res = ''
+      panobj_flds.each do |fld|
+        res = res + ', ' if res != ''
+        res = res + fld[FI_Id].to_s + ' ' + pan_type_to_sqlite_type(fld[FI_Type], fld[FI_Size])
+      end
+      res = '(id INTEGER PRIMARY KEY AUTOINCREMENT, ' + res + ')' if res != ''
+      res
+    end
+
+    # RU: Подключается к базе
+    def connect
+      if not @connected
+        @db = SQLite3::Database.new(conn_param)
+        @connected = true
+        @exist = {}
+      end
+      @connected
+    end
+
+    # RU: Создает таблицу в базе
+    def create_table(table_name, recreate=false, arch_table=nil, \
+    arch_fields=nil, new_fields=nil)
+      connect
+      tfd = db.table_info(table_name)
+      #p tfd
+      tfd.collect! { |x| x['name'] }
+      if (not tfd) or (tfd == [])
+        @exist[table_name] = FALSE
+      else
+        @exist[table_name] = TRUE
+      end
+      tab_def = panobj_fld_to_sqlite_tab(def_flds[table_name])
+      #p tab_def
+      if (! exist[table_name] or recreate) and tab_def
+        if exist[table_name] and recreate
+          res = db.execute('DROP TABLE '+table_name)
+        end
+        #p 'CREATE TABLE '+table_name+' '+tab_def
+        #p 'ALTER TABLE '+table_name+' RENAME TO '+arch_table
+        #p 'INSERT INTO '+table_name+' ('+new_fields+') SELECT '+new_fields+' FROM '+arch_table
+        #INSERT INTO t1(val1,val2) SELECT t2.val1, t2.val2 FROM t2 WHERE t2.id = @id
+        #p 'ALTER TABLE OLD_COMPANY ADD COLUMN SEX char(1)'
+        res = db.execute('CREATE TABLE '+table_name+' '+tab_def)
+        @exist[table_name] = TRUE
+      end
+      exist[table_name]
+    end
+
+    # RU: Поля таблицы
+    def fields_table(table_name)
+      connect
+      tfd = db.table_info(table_name)
+      tfd.collect { |x| [x['name'], x['type']] }
+    end
+
+    # RU: Экранирует спецсимволы маски для LIKE символом $
+    def escape_like_mask(mask)
+      #SELECT * FROM mytable WHERE myblob LIKE X'0025';
+      #SELECT * FROM mytable WHERE quote(myblob) LIKE 'X''00%';     end
+      #Is it possible to pre-process your 10 bytes and insert e.g. symbol '\'
+      #before any '\', '_' and '%' symbol? After that you can query
+      #SELECT * FROM mytable WHERE myblob LIKE ? ESCAPE '\'
+      #SELECT * FROM mytable WHERE substr(myblob, 1, 1) = X'00';
+      #SELECT * FROM mytable WHERE substr(myblob, 1, 10) = ?;
+      if mask.is_a? String
+        mask.gsub!('$', '$$')
+        mask.gsub!('_', '$_')
+        mask.gsub!('%', '$%')
+        #query = AsciiString.new(query)
+        #i = query.size
+        #while i>0
+        #  if ['$', '_', '%'].include? query[i]
+        #    query = query[0,i+1]+'$'+query[i+1..-1]
+        #  end
+        #  i -= 1
+        #end
+      end
+      mask
+    end
+
+    # RU: Делает выборку из таблицы
+    def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil, like_filter=nil)
+      res = nil
+      connect
+      tfd = fields_table(table_name)
+      #p '[tfd, table_name, filter, fields, sort, limit, like_filter]='+[tfd, table_name, filter, fields, sort, limit, like_filter].inspect
+      if tfd and (tfd != [])
+        sql_values = Array.new
+        if filter.is_a? Hash
+          sql2 = ''
+          filter.each do |n,v|
+            if n
+              sql2 = sql2 + ' AND ' if sql2 != ''
+              sql2 = sql2 + n.to_s + '=?'
+              sql_values << v
+            end
+          end
+          filter = sql2
+        end
+        if like_filter.is_a? Hash
+          sql2 = ''
+          like_filter.each do |n,v|
+            if n
+              sql2 = sql2 + ' AND ' if sql2 != ''
+              sql2 = sql2 + n.to_s + ' LIKE ?'
+              sql_values << v
+            end
+          end
+          like_filter = sql2
+        end
+        fields ||= '*'
+        sql = 'SELECT '+fields+' FROM '+table_name
+        filter = nil if (filter and (filter == ''))
+        like_filter = nil if (like_filter and (like_filter == ''))
+        if filter or like_filter
+          sql = sql + ' WHERE'
+          sql = sql + ' ' + filter if filter
+          if like_filter
+            sql = sql + ' AND' if filter
+            sql = sql + ' ' + like_filter
+          end
+        end
+        if sort and (sort > '')
+          sql = sql + ' ORDER BY '+sort
+        end
+        if limit
+          sql = sql + ' LIMIT '+limit.to_s
+        end
+        #p 'select  sql='+sql.inspect+'  values='+sql_values.inspect+' db='+db.inspect
+        res = db.execute(sql, sql_values)
+      end
+      #p 'res='+res.inspect
+      res
+    end
+
+    # RU: Записывает данные в таблицу
+    def update_table(table_name, values, names=nil, filter=nil)
+      res = false
+      connect
+      sql = ''
+      sql_values = Array.new
+      sql_values2 = Array.new
+
+      if filter.is_a? Hash
+        sql2 = ''
+        filter.each do |n,v|
+          if n
+            sql2 = sql2 + ' AND ' if sql2 != ''
+            sql2 = sql2 + n.to_s + '=?'
+            #v.force_encoding('ASCII-8BIT')  and v.is_a? String
+            #v = AsciiString.new(v) if v.is_a? String
+            sql_values2 << v
+          end
+        end
+        filter = sql2
+      end
+
+      if (not values) and (not names) and filter
+        sql = 'DELETE FROM ' + table_name + ' where '+filter
+      elsif values.is_a? Array and names.is_a? Array
+        tfd = db.table_info(table_name)
+        tfd_name = tfd.collect { |x| x['name'] }
+        tfd_type = tfd.collect { |x| x['type'] }
+        if filter
+          values.each_with_index do |v,i|
+            fname = names[i]
+            if fname
+              sql = sql + ',' if sql != ''
+              #v.is_a? String
+              #v.force_encoding('ASCII-8BIT')  and v.is_a? String
+              #v = AsciiString.new(v) if v.is_a? String
+              v = ruby_val_to_sqlite_val(v)
+              sql_values << v
+              sql = sql + fname.to_s + '=?'
+            end
+          end
+
+          sql = 'UPDATE ' + table_name + ' SET ' + sql
+          if filter and filter != ''
+            sql = sql + ' where '+filter
+          end
+        else
+          sql2 = ''
+          values.each_with_index do |v,i|
+            fname = names[i]
+            if fname
+              sql = sql + ',' if sql != ''
+              sql2 = sql2 + ',' if sql2 != ''
+              sql = sql + fname.to_s
+              sql2 = sql2 + '?'
+              #v.force_encoding('ASCII-8BIT')  and v.is_a? String
+              #v = AsciiString.new(v) if v.is_a? String
+              v = ruby_val_to_sqlite_val(v)
+              sql_values << v
+            end
+          end
+          sql = 'INSERT INTO ' + table_name + '(' + sql + ') VALUES(' + sql2 + ')'
+        end
+      end
+      tfd = fields_table(table_name)
+      if tfd and (tfd != [])
+        sql_values = sql_values+sql_values2
+        p '1upd_tab: sql='+sql.inspect
+        p '2upd_tab: sql_values='+sql_values.inspect
+        res = db.execute(sql, sql_values)
+        #p 'upd_tab: db.execute.res='+res.inspect
+        res = true
+      end
+      #p 'upd_tab: res='+res.inspect
+      res
+    end
+  end
+
+  # Repository manager
+  # RU: Менеджер хранилищ
+  class RepositoryManager
+    attr_accessor :adapter
+
+    # RU: Инициировать адаптер к базе
+    def get_adapter(panobj, table_ptr, recreate=false)
+      adap = nil
+      if @adapter
+        adap = @adapter
+      else
+        adap = SQLiteDbSession.new
+        adap.conn_param = $pandora_sqlite_db
+        @adapter = adap
+      end
+      table_name = table_ptr[1]
+      adap.def_flds[table_name] = panobj.def_fields
+      if (not table_name) or (table_name=='') then
+        puts 'No table name for ['+panobj.name+']'
+      else
+        adap.create_table(table_name, recreate)
+        #adap.create_table(table_name, TRUE)
+      end
+      adap
+    end
+
+    # RU: Сделать выборку из таблицы
+    def get_tab_select(panobj, table_ptr, filter=nil, fields=nil, sort=nil, \
+    limit=nil, like_filter=nil)
+      adap = get_adapter(panobj, table_ptr)
+      adap.select_table(table_ptr[1], filter, fields, sort, limit, like_filter)
+    end
+
+    # RU: Записать данные в таблицу
+    def get_tab_update(panobj, table_ptr, values, names, filter='')
+      res = false
+      recreate = ((not values) and (not names) and (not filter))
+      adap = get_adapter(panobj, table_ptr, recreate)
+      if recreate
+        res = (adap != nil)
+      else
+        res = adap.update_table(table_ptr[1], values, names, filter)
+      end
+      res
+    end
+
+    # RU: Взять список полей
+    def get_tab_fields(panobj, table_ptr)
+      adap = get_adapter(panobj, table_ptr)
+      adap.fields_table(table_ptr[1])
+    end
+  end
+
+  # Global poiter to repository manager
+  # RU: Глобальный указатель на менеджер хранилищ
+  $repositories = RepositoryManager.new
 
   # Property indexes of field definition array
   # RU: Индексы свойств в массиве описания полей
@@ -715,28 +768,6 @@ module PandoraUtils
   FI_Color   = 21
 
   $max_hash_len = 20
-
-  def self.panhash_nil?(panhash)
-    res = true
-    if panhash.is_a? String
-      i = 2
-      while res and (i<panhash.size)
-        res = (panhash[i] == 0.chr)
-        i += 1
-      end
-    elsif panhash.is_a? Integer
-      res = (panhash == 0)
-    end
-    res
-  end
-
-  def self.kind_from_panhash(panhash)
-    kind = panhash[0].ord if (panhash.is_a? String) and (panhash.bytesize>0)
-  end
-
-  def self.lang_from_panhash(panhash)
-    lang = panhash[1].ord if (panhash.is_a? String) and (panhash.bytesize>1)
-  end
 
   # Base Pandora's object
   # RU: Базовый объект Пандоры
@@ -985,6 +1016,7 @@ module PandoraUtils
           @def_fields = df
         end
       end
+
       def def_hash(fd)
         len = 0
         hash = ''
@@ -1213,8 +1245,10 @@ module PandoraUtils
     def tab_fields
       self.class.tab_fields
     end
-    def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil, limit=nil)
-      res = self.class.repositories.get_tab_select(self, self.class.tables[0], afilter, fields, sort, limit)
+    def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil, \
+    limit=nil, like_filter=nil)
+      res = self.class.repositories.get_tab_select(self, self.class.tables[0], \
+        afilter, fields, sort, limit, like_filter)
       if set_namesvalues and res[0].is_a? Array
         @namesvalues = {}
         tab_fields.each_with_index do |td, i|
@@ -10539,6 +10573,20 @@ module PandoraGtk
 
     include PandoraGtk
 
+    def search_in_bases(text, th, bases='auto')
+      res = nil
+      while th[:processing] and (not res)
+        model = PandoraUtils.get_model('Person')
+        fields = nil
+        sort = nil
+        limit = nil
+        like_filter = {'first_name'=>text}
+        res = model.select(nil, false, fields, sort, limit, like_filter)
+        res ||= []
+      end
+      res
+    end
+
     # Show conversation dialog
     # RU: Показать диалог общения
     def initialize(text=nil)
@@ -10690,14 +10738,13 @@ module PandoraGtk
             th[:processing] = true
             PandoraGtk.set_readonly(stop_btn, false)
             PandoraGtk.set_readonly(widget, true)
-            i = 4
-            while (i>0) and th[:processing] do
-              p [i, th[:processing]]
-              sleep 1
-              user_iter = list_store.append
-              user_iter[0] = 1
-              user_iter[1] = text
-              i -= 1
+            res = search_in_bases(text, th, 'auto')
+            if res.is_a? Array
+              res.each_with_index do |row, i|
+                user_iter = list_store.append
+                user_iter[0] = i
+                user_iter[1] = row.to_s
+              end
             end
             PandoraGtk.set_readonly(stop_btn, true)
             if th[:processing]
