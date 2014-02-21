@@ -246,35 +246,10 @@ module PandoraUtils
     end
   end
 
-  # RU: Панхэш не нулевой?
-  def self.panhash_nil?(panhash)
-    res = true
-    if panhash.is_a? String
-      i = 2
-      while res and (i<panhash.size)
-        res = (panhash[i] == 0.chr)
-        i += 1
-      end
-    elsif panhash.is_a? Integer
-      res = (panhash == 0)
-    end
-    res
-  end
-
-  # RU: Тип записи по панхэшу
-  def self.kind_from_panhash(panhash)
-    kind = panhash[0].ord if (panhash.is_a? String) and (panhash.bytesize>0)
-  end
-
-  # RU: Язык объекта по панхэшу
-  def self.lang_from_panhash(panhash)
-    lang = panhash[1].ord if (panhash.is_a? String) and (panhash.bytesize>1)
-  end
-
   # Plural or single name
   # RU: Имя во множественном или единственном числе
-  def self.get_name_or_names(name, plural=false)
-    sname, pname = name.split('|')
+  def self.get_name_or_names(mes, plural=false)
+    sname, pname = mes.split('|')
     if plural==false
       res = sname
     elsif ((not pname) or (pname=='')) and sname
@@ -305,6 +280,34 @@ module PandoraUtils
       res = pname
     end
     res
+  end
+
+  # Panhash is nil?
+  # RU: Панхэш не нулевой?
+  def self.panhash_nil?(panhash)
+    res = true
+    if panhash.is_a? String
+      i = 2
+      while res and (i<panhash.size)
+        res = (panhash[i] == 0.chr)
+        i += 1
+      end
+    elsif panhash.is_a? Integer
+      res = (panhash == 0)
+    end
+    res
+  end
+
+  # Kind from panhash
+  # RU: Тип записи по панхэшу
+  def self.kind_from_panhash(panhash)
+    kind = panhash[0].ord if (panhash.is_a? String) and (panhash.bytesize>0)
+  end
+
+  # Language from panhash
+  # RU: Язык объекта по панхэшу
+  def self.lang_from_panhash(panhash)
+    lang = panhash[1].ord if (panhash.is_a? String) and (panhash.bytesize>1)
   end
 
   # Convert string of bytes to hex string
@@ -346,7 +349,7 @@ module PandoraUtils
   end
 
   # Convert string of bytes to big integer
-  # RU: Преобрзует строку байт в большое целое
+  # RU: Преобразует строку байт в большое целое
   def self.bytes_to_bigint(bytes)
     res = nil
     if bytes
@@ -396,6 +399,596 @@ module PandoraUtils
     end
     #data.ljust(size, 0.chr)
     data = AsciiString.new(data)
+  end
+
+  PT_Int   = 0
+  PT_Str   = 1
+  PT_Bool  = 2
+  PT_Time  = 3
+  PT_Array = 4
+  PT_Hash  = 5
+  PT_Sym   = 6
+  PT_Real  = 7
+  PT_Unknown = 15
+  PT_Negative = 16
+
+  # Convert type to code
+  # RU: Преобразует тип в код
+  def self.string_to_pantype(type)
+    res = PT_Unknown
+    case type
+      when 'Integer', 'Word', 'Byte', 'Coord'
+        res = PT_Int
+      when 'String', 'Text', 'Blob'
+        res = PT_Str
+      when 'Boolean'
+        res = PT_Bool
+      when 'Time', 'Date'
+        res = PT_Time
+      when 'Array'
+        res = PT_Array
+      when 'Hash'
+        res = PT_Hash
+      when 'Symbol'
+        res = PT_Sym
+      when 'Real', 'Float', 'Double'
+        res = PT_Real
+    end
+    res
+  end
+
+  # Code of type to view method
+  # RU: Код типа в метод отображение
+  def self.pantype_to_view(type)
+    res = nil
+    case type
+      when PT_Int
+        res = 'integer'
+      when PT_Bool
+        res = 'boolean'
+      when PT_Time
+        res = 'time'
+      when PT_Real
+        res = 'real'
+    end
+    res
+  end
+
+  # Any value to boolean
+  # RU: Любое значение в логическое
+  def self.any_value_to_boolean(val)
+    val = (((val.is_a? String) and (val.downcase != 'false') and (val != '0')) \
+      or ((val.is_a? Numeric) and (val != 0)))
+    val
+  end
+
+  # Round time to midnight
+  # RU: Округлить время к полуночи
+  def self.calc_midnight(time)
+    res = nil
+    if time
+      time = Time.at(time) if (time.is_a? Integer)
+      vals = time.to_a
+      y, m, d = [vals[5], vals[4], vals[3]]
+      res = Time.local(y, m, d)
+    end
+    res
+  end
+
+  # Time to human view
+  # RU: Время в человеческий вид
+  def self.time_to_str(val, time_now=nil)
+    time_now ||= Time.now
+    min_ago = (time_now.to_i - val.to_i) / 60
+    if min_ago < 0
+      val = val.strftime('%d.%m.%Y')
+    elsif min_ago == 0
+      val = _('just now')
+    elsif min_ago == 1
+      val = _('a min. ago')
+    else
+      midnight = calc_midnight(time_now)
+      if (min_ago <= 90) and ((val >= midnight) or (min_ago <= 10))
+        val = min_ago.to_s + ' ' + _('min. ago')
+      elsif val >= midnight
+        val = _('today')+' '+val.strftime('%R')
+      elsif val.to_i >= (midnight.to_i-24*3600)  #last midnight
+        val = _('yester')+' '+val.strftime('%R')
+      else
+        val = val.strftime('%d.%m.%y %R')
+      end
+    end
+    val
+  end
+
+  # Value to view
+  # RU: Значение для отображения
+  def self.val_to_view(val, type, view, can_edit=true)
+    color = nil
+    if val and view
+      if view=='date'
+        if val.is_a? Integer
+          val = Time.at(val)
+          if can_edit
+            val = val.strftime('%d.%m.%Y')
+          else
+            val = val.strftime('%d.%m.%y')
+          end
+          color = '#551111'
+        end
+      elsif view=='time'
+        if val.is_a? Integer
+          val = Time.at(val)
+          if can_edit
+            val = val.strftime('%d.%m.%Y %H:%M:%S')
+          else
+            val = time_to_str(val)
+          end
+          color = '#338833'
+        end
+      elsif view=='base64'
+        val = val.to_s
+        if (not type) or (type=='text')
+          val = Base64.encode64(val)
+        else
+          val = Base64.strict_encode64(val)
+        end
+        color = 'brown'
+      elsif view=='phash'
+        if val.is_a? String
+          if can_edit
+            val = PandoraUtils.bytes_to_hex(val)
+            color = 'dark blue'
+          else
+            val = PandoraUtils.bytes_to_hex(val[2,16])
+            color = 'blue'
+          end
+        end
+      elsif view=='panhash'
+        if val.is_a? String
+          if can_edit
+            val = PandoraUtils.bytes_to_hex(val)
+          else
+            val = PandoraUtils.bytes_to_hex(val[0,2])+' '+PandoraUtils.bytes_to_hex(val[2,16])
+          end
+          color = 'navy'
+        end
+      elsif view=='hex'
+        #val = val.to_i
+        val = PandoraUtils.bigint_to_bytes(val) if val.is_a? Integer
+        val = PandoraUtils.bytes_to_hex(val)
+        #end
+        color = 'dark blue'
+      elsif view=='boolean'
+        if not val.is_a? String
+          if ((val.is_a? Integer) and (val != 0)) or (val.is_a? TrueClass)
+            val = 'true'
+          else
+            val = 'false'
+          end
+        end
+      elsif not can_edit and (view=='text')
+        val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
+        val = val.rstrip
+        color = '#226633'
+      end
+    end
+    val ||= ''
+    val = val.to_s
+    [val, color]
+  end
+
+  # Convert any value to concerted view
+  # RU: Преобразовать значение в согласованный вид
+  def self.view_to_val(val, type, view)
+    val = nil if val==''
+    if val and view
+      case view
+        when 'byte', 'word', 'integer', 'coord'
+          val = val.to_i
+        when 'real'
+          val = val.to_f
+        when 'date', 'time'
+          begin
+            val = Time.parse(val)  #Time.strptime(defval, '%d.%m.%Y')
+            val = val.to_i
+          rescue
+            val = 0
+          end
+        when 'base64'
+          if (not type) or (type=='Text')
+            val = Base64.decode64(val)
+          else
+            val = Base64.strict_decode64(val)
+          end
+          color = 'brown'
+        when 'hex', 'panhash', 'phash'
+          #p 'type='+type.inspect
+          if (['Bigint', 'Panhash', 'String', 'Blob', 'Text'].include? type) or (type[0,7]=='Panhash')
+            #val = AsciiString.new(PandoraUtils.bigint_to_bytes(val))
+            val = PandoraUtils.hex_to_bytes(val)
+          else
+            val = val.to_i(16)
+          end
+        when 'boolean'
+          val = any_value_to_boolean(val)
+      end
+    end
+    val
+  end
+
+  # Coordinate as text to float value
+  # RU: Координата как текст в число
+  def self.text_coord_to_float(text)
+    res = 0
+    if text.is_a? String
+      text.strip!
+      if text.size>0
+        negative = false
+        if 'SWsw-'.include? text[0]
+          negative = true
+          text = text[1..-1]
+          text.strip!
+        end
+        if (text.size>0) and ('SWsw'.include? text[-1])
+          negative = true
+          text = text[0..-2]
+          text.strip!
+        end
+        #text = text[1..-1] if ('NEne'.include? text[0])
+        if text.size>0
+          text.gsub!('′', "'")
+          text.gsub!('″', '"')
+          text.gsub!('"', "''")
+          text.gsub!('`', "'")
+          text.gsub!(',', ".")
+        end
+        deg = nil
+        text = text[/[ 1234567890'\.]+/]
+        text.strip!
+        i = text.index(" ")
+        if i
+          begin
+            deg = text[0, i].to_f
+          rescue
+            deg = 0
+          end
+          text = text[i+1..-1]
+        end
+        i = text.index("'")
+        if i
+          d = 0
+          m = 0
+          s = 0
+          if deg
+            d = deg
+          else
+            prefix = text[0, i]
+            j = prefix.index(".")
+            if j
+              begin
+                d = text[0, j].to_f
+              rescue
+                d = 0
+              end
+              text = text[j+1..-1]
+              i = text.index("'")
+            else
+              d = 0
+            end
+          end
+          begin
+            a = text[0..i-1].to_f
+          rescue
+            s = 0
+          end
+          if (i<text.size-1) and (text[i+1]=="'")
+            s = a
+          else
+            m = a
+            text = text[i+1..-1].delete("'")
+            begin
+              s = text.to_f
+            rescue
+              s = 0
+            end
+          end
+          #p '[d, m, s]='+[d, m, s].inspect
+          res = d + m.fdiv(60) + s.fdiv(3600)
+        else
+          begin
+            text = text.to_f
+          rescue
+            text = 0
+          end
+          if deg
+            res = deg + text.fdiv(100)
+          else
+            res = text
+          end
+        end
+        res = -(res.abs) if negative
+      end
+    else
+      begin
+        res = text.to_f
+      rescue
+        res = 0
+      end
+    end
+    res
+  end
+
+  DegX = 360
+  DegY = 180
+  MultX = 92681
+  MultY = 46340
+
+  NilCoord = 0x7ffe4d8e
+
+  # Coordinate to 4-byte integer
+  # RU: Координату в 4-байтовое целое
+  def self.coord_to_int(y, x)
+    begin
+      x = text_coord_to_float(x)
+      while x>180
+        x = x-360.0
+      end
+      while x<(-180)
+        x = x+360.0
+      end
+      x = x + 180.0
+    rescue
+      x = 0
+    end
+    begin
+      y = text_coord_to_float(y)
+      while y.abs>90
+        if y>90
+          y = 180.0-y
+        end
+        while y<(-90)
+          y = -(180.0+y)
+        end
+      end
+      y = y + 90.0
+    rescue
+      y = 0
+    end
+    if (y==0) or (x==0)
+      x = 360
+    end
+    xp = (MultX * x.fdiv(DegX)).round
+    yp = (MultY * y.fdiv(DegY)).round
+    res = MultX*(yp-1)+xp
+    res = nil if res==NilCoord
+    res
+  end
+
+  CoordRound = 2
+
+  # Integer to coordinate
+  # RU: Целое в координату
+  def self.int_to_coord(int)
+    h = (int.fdiv(MultX)).truncate + 1
+    s = int - (h-1)*MultX
+    x = s.fdiv(MultX)*DegX - 180.0
+    y = h.fdiv(MultY)*DegY - 90.0
+    x = x.round(CoordRound)
+    x = 180.0 if (x==(-180.0))
+    y = y.round(CoordRound)
+    [y, x]
+  end
+
+  # Simplify coordinate
+  # RU: Упростить координату
+  def self.simplify_coord(val)
+    val = val.round(1)
+  end
+
+  # Encode data type and size to PSON type and count of size in bytes (1..8)-1
+  # RU: Кодирует тип данных и размер в тип PSON и число байт размера
+  def self.encode_pson_type(basetype, int)
+    count = 0
+    neg = 0
+    if int<0
+      neg = PT_Negative
+      int = -int
+    end
+    while (int>0xFF) and (count<8)
+      int = (int >> 8)
+      count +=1
+    end
+    if count >= 8
+      puts '[encode_pan_type] Too big int='+int.to_s
+      count = 7
+    end
+    [basetype ^ neg ^ (count << 5), count, (neg>0)]
+  end
+
+  # Decode PSON type to data type and count of size in bytes (1..8)-1
+  # RU: Раскодирует тип PSON в тип данных и число байт размера
+  def self.decode_pson_type(type)
+    basetype = type & 0xF
+    negative = ((type & PT_Negative)>0)
+    count = (type >> 5)
+    [basetype, count, negative]
+  end
+
+  # Convert ruby object to PSON (Pandora Simple Object Notation)
+  # RU: Конвертирует объект руби в PSON ("простая нотация объектов в Пандоре")
+  def self.rubyobj_to_pson_elem(rubyobj)
+    type = PT_Unknown
+    count = 0
+    data = AsciiString.new
+    elem_size = nil
+    case rubyobj
+      when String
+        data << rubyobj
+        elem_size = data.bytesize
+        type, count = encode_pson_type(PT_Str, elem_size)
+      when Symbol
+        data << rubyobj.to_s
+        elem_size = data.bytesize
+        type, count = encode_pson_type(PT_Sym, elem_size)
+      when Integer
+        type, count, neg = encode_pson_type(PT_Int, rubyobj)
+        rubyobj = -rubyobj if neg
+        data << PandoraUtils.bigint_to_bytes(rubyobj)
+      when Time
+        rubyobj = rubyobj.to_i
+        type, count, neg = encode_pson_type(PT_Time, rubyobj)
+        rubyobj = -rubyobj if neg
+        data << PandoraUtils.bigint_to_bytes(rubyobj)
+      when TrueClass, FalseClass
+        if rubyobj
+          data << [1].pack('C')
+        else
+          data << [0].pack('C')
+        end
+        type = PT_Bool
+      when Float
+        data << [rubyobj].pack('D')
+        elem_size = data.bytesize
+        type, count = encode_pson_type(PT_Real, elem_size)
+      when Array
+        rubyobj.each do |a|
+          data << rubyobj_to_pson_elem(a)
+        end
+        elem_size = rubyobj.size
+        type, count = encode_pson_type(PT_Array, elem_size)
+      when Hash
+        rubyobj = rubyobj.sort_by {|k,v| k.to_s}
+        rubyobj.each do |a|
+          data << rubyobj_to_pson_elem(a[0]) << rubyobj_to_pson_elem(a[1])
+        end
+        elem_size = rubyobj.bytesize
+        type, count = encode_pson_type(PT_Hash, elem_size)
+      else
+        puts 'Unknown elem type: ['+rubyobj.class.name+']'
+    end
+    res = AsciiString.new
+    res << [type].pack('C')
+    data = AsciiString.new(data) if data.is_a? String
+    if elem_size
+      res << PandoraUtils.fill_zeros_from_left(PandoraUtils.bigint_to_bytes(elem_size), count+1) + data
+    else
+      res << PandoraUtils.fill_zeros_from_left(data, count+1)
+    end
+    res = AsciiString.new(res)
+  end
+
+  # Convert PSON to ruby object
+  # RU: Конвертирует PSON в объект руби
+  def self.pson_elem_to_rubyobj(data)
+    data = AsciiString.new(data)
+    val = nil
+    len = 0
+    if data.bytesize>0
+      type = data[0].ord
+      len = 1
+      basetype, vlen, neg = decode_pson_type(type)
+      #p 'basetype, vlen='+[basetype, vlen].inspect
+      vlen += 1
+      if data.bytesize >= len+vlen
+        int = PandoraUtils.bytes_to_int(data[len, vlen])
+        case basetype
+          when PT_Int
+            val = int
+            val = -val if neg
+          when PT_Bool
+            val = (int != 0)
+          when PT_Time
+            val = int
+            val = -val if neg
+            val = Time.at(val)
+          when PT_Str, PT_Sym, PT_Real
+            pos = len+vlen
+            if pos+int>data.bytesize
+              int = data.bytesize-pos
+            end
+            val = ''
+            val << data[pos, int]
+            vlen += int
+            if basetype == PT_Sym
+              val = data[pos, int].to_sym
+            elsif basetype == PT_Real
+              val = data[pos, int].unpack['D']
+            end
+          when PT_Array, PT_Hash
+            val = Array.new
+            int *= 2 if basetype == PT_Hash
+            while (data.bytesize-1-vlen>0) and (int>0)
+              int -= 1
+              aval, alen = pson_elem_to_rubyobj(data[len+vlen..-1])
+              val << aval
+              vlen += alen
+            end
+            val = Hash[*val] if basetype == PT_Hash
+        end
+        len += vlen
+        #p '[val,len]='+[val,len].inspect
+      else
+        len = data.bytesize
+      end
+    end
+    [val, len]
+  end
+
+  # Value is empty?
+  # RU: Значение пустое?
+  def self.value_is_empty?(val)
+    res = (val==nil) or (val.is_a? String and (val=='')) or (val.is_a? Integer and (val==0)) \
+      or (val.is_a? Array and (val==[])) or (val.is_a? Hash and (val=={})) \
+      or (val.is_a? Time and (val.to_i==0))
+    res
+  end
+
+  # Pack PanObject fields to PSON binary format
+  # RU: Пакует поля панобъекта в бинарный формат PSON
+  def self.namehash_to_pson(fldvalues, pack_empty=false)
+    #bytes = ''
+    #bytes.force_encoding('ASCII-8BIT')
+    bytes = AsciiString.new
+    fldvalues = fldvalues.sort_by {|k,v| k.to_s } # sort by key
+    fldvalues.each { |nam, val|
+      if pack_empty or (not value_is_empty?(val))
+        nam = nam.to_s
+        nsize = nam.bytesize
+        nsize = 255 if nsize>255
+        bytes << [nsize].pack('C') + nam[0, nsize]
+        pson_elem = rubyobj_to_pson_elem(val)
+        #pson_elem.force_encoding('ASCII-8BIT')
+        bytes << pson_elem
+      end
+    }
+    bytes = AsciiString.new(bytes)
+  end
+
+  # Convert PSON block to PanObject fields
+  # RU: Преобразует PSON блок в поля панобъекта
+  def self.pson_to_namehash(pson)
+    hash = {}
+    while pson and (pson.bytesize>1)
+      flen = pson[0].ord
+      fname = pson[1, flen]
+      #p '[flen, fname]='+[flen, fname].inspect
+      if (flen>0) and fname and (fname.bytesize>0)
+        val = nil
+        if pson.bytesize-flen>1
+          pson = pson[1+flen..-1]  # drop getted name
+          val, len = pson_elem_to_rubyobj(pson)
+          pson = pson[len..-1]     # drop getted value
+        else
+          pson = nil
+        end
+        hash[fname] = val
+      else
+        pson = nil
+        hash = nil if hash == {}
+      end
+    end
+    hash
   end
 
   # Abstract database adapter
@@ -782,8 +1375,8 @@ module PandoraUtils
         @def_fields = Array.new
         @def_fields_expanded = false
         @panhash_pattern = nil
-        @panhash_ind = nil
-        @modified_ind = nil
+        #@panhash_ind = nil
+        #@modified_ind = nil
       end
       def ider
         @ider
@@ -803,29 +1396,33 @@ module PandoraUtils
       def sort=(x)
         @sort = x
       end
-      def panhash_ind
-        @panhash_ind
-      end
-      def modified_ind
-        @modified_ind
-      end
+      #def panhash_ind
+      #  @panhash_ind
+      #end
+      #def modified_ind
+      #  @modified_ind
+      #end
       #def lang
       #  @lang
       #end
       #def lang=(x)
       #  @lang = x
       #end
+
       def def_fields
         @def_fields
       end
+
       def get_parent
         res = superclass
         res = nil if res == Object
         res
       end
+
       def field_des(fld_name)
         df = def_fields.detect{ |e| (e.is_a? Array) and (e[FI_Id].to_s == fld_name) or (e.to_s == fld_name) }
       end
+
       # The title of field in current language
       # "fd" must be field id or field description
       def field_title(fd)
@@ -845,9 +1442,15 @@ module PandoraUtils
         res ||= ''
         res
       end
+
+      # Set field description from parent, if own is empty
+      # RU: Установить описание поля из родителя, если своё пустое
       def set_if_nil(f, fi, pfd)
         f[fi] ||= pfd[fi]
       end
+
+      # Recognize label position near input widget
+      # RU: Разгадывает позицию метки по отношению к полю ввода
       def decode_pos(pos=nil)
         pos ||= ''
         pos = pos.to_s
@@ -870,6 +1473,9 @@ module PandoraUtils
         end
         [ind, lab_or, new_row]
       end
+
+      # Define view method and size of widget for field
+      # RU: Определяет способ отображения и размер ввода для поля
       def set_view_and_len(fd)
         view = nil
         len = nil
@@ -925,6 +1531,9 @@ module PandoraUtils
         #p 'name,type,fsize,view,len='+[fd[FI_Name], fd[FI_Type], fd[FI_FSize], view, len].inspect
         [view, len]
       end
+
+      # Get filed definition from sql table
+      # RU: Берет описание полей из sql-таблицы
       def tab_fields(reinit=false)
         if (not @last_tab_fields) or reinit
           @last_tab_fields = repositories.get_tab_fields(self, tables[0])
@@ -934,6 +1543,9 @@ module PandoraUtils
         end
         @last_tab_fields
       end
+
+      # Expand field definitions taking non-defined values from parent
+      # RU: Расширяет описание полей, беря недостающие значения от родителя
       def expand_def_fields_to_parent(reinit=false)
         if (not @def_fields_expanded) or reinit
           @def_fields_expanded = true
@@ -1017,6 +1629,8 @@ module PandoraUtils
         end
       end
 
+      # Formula for panhash component by filed type
+      # RU: Формула для компонента панхэша по типу поля
       def def_hash(fd)
         len = 0
         hash = ''
@@ -1054,6 +1668,9 @@ module PandoraUtils
         end
         [len, hash]
       end
+
+      # Pattern for calculating panhash
+      # RU: Шаблон для вычиисления панхэша
       def panhash_pattern(auto_calc=true)
         res = []
         last_ind = 0
@@ -1167,44 +1784,57 @@ module PandoraUtils
         #p 'pan_pattern='+res.inspect
         res
       end
+
       def def_fields=(x)
         @def_fields = x
       end
+
       def tables
         @tables
       end
+
       def tables=(x)
         @tables = x
       end
+
       def name
         @name
       end
+
       def name=(x)
         @name = x
       end
+
       def repositories
         $repositories
       end
     end
+
     def initialize(*args)
       super(*args)
       self.class.expand_def_fields_to_parent
     end
+
     def ider
       self.class.ider
     end
+
     def ider=(x)
       self.class.ider = x
     end
+
     def kind
       self.class.kind
     end
+
     def kind=(x)
       self.class.kind = x
     end
+
     def sort
       self.class.sort
     end
+
     def sort=(x)
       self.class.sort = x
     end
@@ -1214,37 +1844,50 @@ module PandoraUtils
     #def lang=(x)
     #  self.class.lang = x
     #end
+
     def def_fields
       self.class.def_fields
     end
+
     def def_fields=(x)
       self.class.def_fields = x
     end
+
     def tables
       self.class.tables
     end
+
     def tables=(x)
       self.class.tables = x
     end
+
     def name
       self.class.name
     end
+
     def name=(x)
       self.class.name = x
     end
+
     def repositories
       $repositories
     end
+
     def sname
       _(PandoraUtils.get_name_or_names(name))
     end
+
     def pname
       _(PandoraUtils.get_name_or_names(name, true))
     end
+
     attr_accessor :namesvalues
+
     def tab_fields
       self.class.tab_fields
     end
+
+    # RU: Делает выборку из таблицы
     def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil, \
     limit=nil, like_filter=nil)
       res = self.class.repositories.get_tab_select(self, self.class.tables[0], \
@@ -1257,6 +1900,8 @@ module PandoraUtils
       end
       res
     end
+
+    # RU: Записывает данные в таблицу
     def update(values, names=nil, filter='', set_namesvalues=false)
       if values.is_a? Hash
         names = values.keys
@@ -1273,6 +1918,9 @@ module PandoraUtils
       end
       res
     end
+
+    # Choose a value by field name
+    # RU: Выбирает значение по имени поля
     def field_val(fld_name, values)
       res = nil
       if values.is_a? Array
@@ -1281,18 +1929,24 @@ module PandoraUtils
       end
       res
     end
+
     def field_des(fld_name)
       self.class.field_des(fld_name)
     end
+
     def field_title(fd)
       self.class.field_title(fd)
     end
+
     def panhash_pattern
       if not @panhash_pattern
         @panhash_pattern = self.class.panhash_pattern
       end
       @panhash_pattern
     end
+
+    # Strict language name from its code
+    # RU: Краткое обозначение языка по его коду
     def lang_to_str(lang)
       case lang
         when 0
@@ -1305,6 +1959,9 @@ module PandoraUtils
           _('lang')
       end
     end
+
+    # Panhash formula for show
+    # RU: Формула панхэша для показа
     def panhash_formula
       res = ''
       pp = panhash_pattern
@@ -1351,6 +2008,9 @@ module PandoraUtils
       end
       res
     end
+
+    # Calculate panhash component
+    # RU: Рассчитывает компоненту панхэша
     def calc_hash(hfor, hlen, fval)
       res = nil
       #fval = [fval].pack('C*') if fval.is_a? Fixnum
@@ -1451,6 +2111,9 @@ module PandoraUtils
       end
       res = AsciiString.new(res)
     end
+
+    # Panhash for show
+    # RU: Панхэш для показа
     def show_panhash(val, prefix=true)
       res = ''
       if prefix
@@ -1468,6 +2131,9 @@ module PandoraUtils
       end
       res << res2
     end
+
+    # Calculate panhash
+    # RU: Рассчитывает панхэш
     def panhash(values, lang=0, prefix=true, hexview=false)
       res = AsciiString.new
       if prefix
@@ -1498,6 +2164,9 @@ module PandoraUtils
       res = show_panhash(res, prefix) if hexview
       res
     end
+
+    # Matter fields (including to panhash)
+    # RU: Сущностные поля (входящие в панхэш)
     def matter_fields
       res = {}
       if namesvalues.is_a? Hash
@@ -1511,6 +2180,9 @@ module PandoraUtils
       end
       res
     end
+
+    # Clear excess fields
+    # RU: Удалить избыточные поля
     def clear_excess_fields(row)
       #row.delete_at(0)
       #row.delete_at(self.class.panhash_ind) if self.class.panhash_ind
@@ -1528,58 +2200,11 @@ module PandoraUtils
     end
   end
 
+  # Create new base ID
+  # RU: Создаёт новый идентификатор базы
   def self.create_base_id
     res = PandoraUtils.fill_zeros_from_left(PandoraUtils.bigint_to_bytes(Time.now.to_i), 4)[0,4]
     res << OpenSSL::Random.random_bytes(12)
-    res
-  end
-
-  PT_Int   = 0
-  PT_Str   = 1
-  PT_Bool  = 2
-  PT_Time  = 3
-  PT_Array = 4
-  PT_Hash  = 5
-  PT_Sym   = 6
-  PT_Real  = 7
-  PT_Unknown = 15
-  PT_Negative = 16
-
-  def self.string_to_pantype(type)
-    res = PT_Unknown
-    case type
-      when 'Integer', 'Word', 'Byte', 'Coord'
-        res = PT_Int
-      when 'String', 'Text', 'Blob'
-        res = PT_Str
-      when 'Boolean'
-        res = PT_Bool
-      when 'Time', 'Date'
-        res = PT_Time
-      when 'Array'
-        res = PT_Array
-      when 'Hash'
-        res = PT_Hash
-      when 'Symbol'
-        res = PT_Sym
-      when 'Real', 'Float', 'Double'
-        res = PT_Real
-    end
-    res
-  end
-
-  def self.pantype_to_view(type)
-    res = nil
-    case type
-      when PT_Int
-        res = 'integer'
-      when PT_Bool
-        res = 'boolean'
-      when PT_Time
-        res = 'time'
-      when PT_Real
-        res = 'real'
-    end
     res
   end
 
@@ -1601,12 +2226,6 @@ module PandoraUtils
       end
     end
     res
-  end
-
-  def self.any_value_to_boolean(val)
-    val = (((val.is_a? String) and (val.downcase != 'false') and (val != '0')) \
-      or ((val.is_a? Numeric) and (val != 0)))
-    val
   end
 
   def self.normalize_param_value(val, type)
@@ -1735,316 +2354,8 @@ module PandoraUtils
     res
   end
 
-  def self.calc_midnight(time)
-    res = nil
-    if time
-      time = Time.at(time) if (time.is_a? Integer)
-      vals = time.to_a
-      y, m, d = [vals[5], vals[4], vals[3]]  #current day
-      res = Time.local(y, m, d)
-    end
-    res
-  end
-
-  def self.time_to_str(val, time_now=nil)
-    time_now ||= Time.now
-    min_ago = (time_now.to_i - val.to_i) / 60
-    if min_ago < 0
-      val = val.strftime('%d.%m.%Y')
-    elsif min_ago == 0
-      val = _('just now')
-    elsif min_ago == 1
-      val = _('a min. ago')
-    else
-      midnight = calc_midnight(time_now)
-
-      if (min_ago <= 90) and ((val >= midnight) or (min_ago <= 10))
-        val = min_ago.to_s + ' ' + _('min. ago')
-      elsif val >= midnight
-        val = _('today')+' '+val.strftime('%R')
-      elsif val.to_i >= (midnight.to_i-24*3600)  #last midnight
-        val = _('yester')+' '+val.strftime('%R')
-      else
-        val = val.strftime('%d.%m.%y %R')
-      end
-    end
-    val
-  end
-
-  def self.val_to_view(val, type, view, can_edit=true)
-    color = nil
-    if val and view
-      if view=='date'
-        if val.is_a? Integer
-          val = Time.at(val)
-          if can_edit
-            val = val.strftime('%d.%m.%Y')
-          else
-            val = val.strftime('%d.%m.%y')
-          end
-          color = '#551111'
-        end
-      elsif view=='time'
-        if val.is_a? Integer
-          val = Time.at(val)
-          if can_edit
-            val = val.strftime('%d.%m.%Y %H:%M:%S')
-          else
-            val = time_to_str(val)
-          end
-          color = '#338833'
-        end
-      elsif view=='base64'
-        val = val.to_s
-        if (not type) or (type=='text')
-          val = Base64.encode64(val)
-        else
-          val = Base64.strict_encode64(val)
-        end
-        color = 'brown'
-      elsif view=='phash'
-        if val.is_a? String
-          if can_edit
-            val = PandoraUtils.bytes_to_hex(val)
-            color = 'dark blue'
-          else
-            val = PandoraUtils.bytes_to_hex(val[2,16])
-            color = 'blue'
-          end
-        end
-      elsif view=='panhash'
-        if val.is_a? String
-          if can_edit
-            val = PandoraUtils.bytes_to_hex(val)
-          else
-            val = PandoraUtils.bytes_to_hex(val[0,2])+' '+PandoraUtils.bytes_to_hex(val[2,16])
-          end
-          color = 'navy'
-        end
-      elsif view=='hex'
-        #val = val.to_i
-        val = PandoraUtils.bigint_to_bytes(val) if val.is_a? Integer
-        val = PandoraUtils.bytes_to_hex(val)
-        #end
-        color = 'dark blue'
-      elsif view=='boolean'
-        if not val.is_a? String
-          if ((val.is_a? Integer) and (val != 0)) or (val.is_a? TrueClass)
-            val = 'true'
-          else
-            val = 'false'
-          end
-        end
-      elsif not can_edit and (view=='text')
-        val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
-        val = val.rstrip
-        color = '#226633'
-      end
-    end
-    val ||= ''
-    val = val.to_s
-    [val, color]
-  end
-
-  def self.view_to_val(val, type, view)
-    #p '---val1='+val.inspect
-    val = nil if val==''
-    if val and view
-      case view
-        when 'byte', 'word', 'integer', 'coord'
-          val = val.to_i
-        when 'real'
-          val = val.to_f
-        when 'date', 'time'
-          begin
-            val = Time.parse(val)  #Time.strptime(defval, '%d.%m.%Y')
-            val = val.to_i
-          rescue
-            val = 0
-          end
-        when 'base64'
-          if (not type) or (type=='Text')
-            val = Base64.decode64(val)
-          else
-            val = Base64.strict_decode64(val)
-          end
-          color = 'brown'
-        when 'hex', 'panhash', 'phash'
-          #p 'type='+type.inspect
-          if (['Bigint', 'Panhash', 'String', 'Blob', 'Text'].include? type) or (type[0,7]=='Panhash')
-            #val = AsciiString.new(PandoraUtils.bigint_to_bytes(val))
-            val = PandoraUtils.hex_to_bytes(val)
-          else
-            val = val.to_i(16)
-          end
-        when 'boolean'
-          val = any_value_to_boolean(val)
-      end
-    end
-    val
-  end
-
-  def self.text_coord_to_float(text)
-    res = 0
-    if text.is_a? String
-      text.strip!
-      if text.size>0
-        negative = false
-        if 'SWsw-'.include? text[0]
-          negative = true
-          text = text[1..-1]
-          text.strip!
-        end
-        if (text.size>0) and ('SWsw'.include? text[-1])
-          negative = true
-          text = text[0..-2]
-          text.strip!
-        end
-        #text = text[1..-1] if ('NEne'.include? text[0])
-        if text.size>0
-          text.gsub!('′', "'")
-          text.gsub!('″', '"')
-          text.gsub!('"', "''")
-          text.gsub!('`', "'")
-          text.gsub!(',', ".")
-        end
-        deg = nil
-        text = text[/[ 1234567890'\.]+/]
-        text.strip!
-        i = text.index(" ")
-        if i
-          begin
-            deg = text[0, i].to_f
-          rescue
-            deg = 0
-          end
-          text = text[i+1..-1]
-        end
-        i = text.index("'")
-        if i
-          d = 0
-          m = 0
-          s = 0
-          if deg
-            d = deg
-          else
-            prefix = text[0, i]
-            j = prefix.index(".")
-            if j
-              begin
-                d = text[0, j].to_f
-              rescue
-                d = 0
-              end
-              text = text[j+1..-1]
-              i = text.index("'")
-            else
-              d = 0
-            end
-          end
-          begin
-            a = text[0..i-1].to_f
-          rescue
-            s = 0
-          end
-          if (i<text.size-1) and (text[i+1]=="'")
-            s = a
-          else
-            m = a
-            text = text[i+1..-1].delete("'")
-            begin
-              s = text.to_f
-            rescue
-              s = 0
-            end
-          end
-          #p '[d, m, s]='+[d, m, s].inspect
-          res = d + m.fdiv(60) + s.fdiv(3600)
-        else
-          begin
-            text = text.to_f
-          rescue
-            text = 0
-          end
-          if deg
-            res = deg + text.fdiv(100)
-          else
-            res = text
-          end
-        end
-        res = -(res.abs) if negative
-      end
-    else
-      begin
-        res = text.to_f
-      rescue
-        res = 0
-      end
-    end
-    res
-  end
-
-  DegX = 360
-  DegY = 180
-  MultX = 92681
-  MultY = 46340
-
-  NilCoord = 0x7ffe4d8e
-
-  def self.coord_to_int(y, x)
-    begin
-      x = text_coord_to_float(x)
-      while x>180
-        x = x-360.0
-      end
-      while x<(-180)
-        x = x+360.0
-      end
-      x = x + 180.0
-    rescue
-      x = 0
-    end
-    begin
-      y = text_coord_to_float(y)
-      while y.abs>90
-        if y>90
-          y = 180.0-y
-        end
-        while y<(-90)
-          y = -(180.0+y)
-        end
-      end
-      y = y + 90.0
-    rescue
-      y = 0
-    end
-    if (y==0) or (x==0)
-      x = 360
-    end
-    xp = (MultX * x.fdiv(DegX)).round
-    yp = (MultY * y.fdiv(DegY)).round
-    res = MultX*(yp-1)+xp
-    res = nil if res==NilCoord
-    res
-  end
-
-  CoordRound = 2
-
-  def self.int_to_coord(int)
-    h = (int.fdiv(MultX)).truncate + 1
-    s = int - (h-1)*MultX
-    x = s.fdiv(MultX)*DegX - 180.0
-    y = h.fdiv(MultY)*DegY - 90.0
-    x = x.round(CoordRound)
-    x = 180.0 if (x==(-180.0))
-    y = y.round(CoordRound)
-    [y, x]
-  end
-
-  def self.simplify_coord(val)
-    val = val.round(1)
-  end
-
+  # Round queue buffer
+  # RU: Циклические буфер
   class RoundQueue < Mutex
     # Init empty queue. Poly read is possible
     # RU: Создание пустой очереди. Возможно множественное чтение
@@ -2085,6 +2396,8 @@ module PandoraUtils
     QS_NotEmpty  = 1
     QS_Full      = 2
 
+    # State of single queue
+    # RU: Состояние одиночной очереди
     def single_read_state(max=MaxQueue)
       res = QS_NotEmpty
       if read_ind.is_a? Integer
@@ -2134,212 +2447,13 @@ module PandoraUtils
     end
   end
 
-  # Encode data type and size to PSON type and count of size in bytes (1..8)-1
-  # RU: Кодирует тип данных и размер в тип PSON и число байт размера
-  def self.encode_pson_type(basetype, int)
-    count = 0
-    neg = 0
-    if int<0
-      neg = PT_Negative
-      int = -int
-    end
-    while (int>0xFF) and (count<8)
-      int = (int >> 8)
-      count +=1
-    end
-    if count >= 8
-      puts '[encode_pan_type] Too big int='+int.to_s
-      count = 7
-    end
-    [basetype ^ neg ^ (count << 5), count, (neg>0)]
-  end
-
-  # Decode PSON type to data type and count of size in bytes (1..8)-1
-  # RU: Раскодирует тип PSON в тип данных и число байт размера
-  def self.decode_pson_type(type)
-    basetype = type & 0xF
-    negative = ((type & PT_Negative)>0)
-    count = (type >> 5)
-    [basetype, count, negative]
-  end
-
-  # Convert ruby object to PSON (Pandora Simple Object Notation)
-  # RU: Конвертирует объект руби в PSON ("простая нотация объектов в Пандоре")
-  def self.rubyobj_to_pson_elem(rubyobj)
-    type = PT_Unknown
-    count = 0
-    data = AsciiString.new
-    elem_size = nil
-    case rubyobj
-      when String
-        data << rubyobj
-        elem_size = data.bytesize
-        type, count = encode_pson_type(PT_Str, elem_size)
-      when Symbol
-        data << rubyobj.to_s
-        elem_size = data.bytesize
-        type, count = encode_pson_type(PT_Sym, elem_size)
-      when Integer
-        type, count, neg = encode_pson_type(PT_Int, rubyobj)
-        rubyobj = -rubyobj if neg
-        data << PandoraUtils.bigint_to_bytes(rubyobj)
-      when Time
-        rubyobj = rubyobj.to_i
-        type, count, neg = encode_pson_type(PT_Time, rubyobj)
-        rubyobj = -rubyobj if neg
-        data << PandoraUtils.bigint_to_bytes(rubyobj)
-      when TrueClass, FalseClass
-        if rubyobj
-          data << [1].pack('C')
-        else
-          data << [0].pack('C')
-        end
-        type = PT_Bool
-      when Float
-        data << [rubyobj].pack('D')
-        elem_size = data.bytesize
-        type, count = encode_pson_type(PT_Real, elem_size)
-      when Array
-        rubyobj.each do |a|
-          data << rubyobj_to_pson_elem(a)
-        end
-        elem_size = rubyobj.size
-        type, count = encode_pson_type(PT_Array, elem_size)
-      when Hash
-        rubyobj = rubyobj.sort_by {|k,v| k.to_s}
-        rubyobj.each do |a|
-          data << rubyobj_to_pson_elem(a[0]) << rubyobj_to_pson_elem(a[1])
-        end
-        elem_size = rubyobj.bytesize
-        type, count = encode_pson_type(PT_Hash, elem_size)
-      else
-        puts 'Unknown elem type: ['+rubyobj.class.name+']'
-    end
-    res = AsciiString.new
-    res << [type].pack('C')
-    data = AsciiString.new(data) if data.is_a? String
-    if elem_size
-      res << PandoraUtils.fill_zeros_from_left(PandoraUtils.bigint_to_bytes(elem_size), count+1) + data
-    else
-      res << PandoraUtils.fill_zeros_from_left(data, count+1)
-    end
-    res = AsciiString.new(res)
-  end
-
-  # Convert PSON to ruby object
-  # RU: Конвертирует PSON в объект руби
-  def self.pson_elem_to_rubyobj(data)
-    data = AsciiString.new(data)
-    val = nil
-    len = 0
-    if data.bytesize>0
-      type = data[0].ord
-      len = 1
-      basetype, vlen, neg = decode_pson_type(type)
-      #p 'basetype, vlen='+[basetype, vlen].inspect
-      vlen += 1
-      if data.bytesize >= len+vlen
-        int = PandoraUtils.bytes_to_int(data[len, vlen])
-        case basetype
-          when PT_Int
-            val = int
-            val = -val if neg
-          when PT_Bool
-            val = (int != 0)
-          when PT_Time
-            val = int
-            val = -val if neg
-            val = Time.at(val)
-          when PT_Str, PT_Sym, PT_Real
-            pos = len+vlen
-            if pos+int>data.bytesize
-              int = data.bytesize-pos
-            end
-            val = ''
-            val << data[pos, int]
-            vlen += int
-            if basetype == PT_Sym
-              val = data[pos, int].to_sym
-            elsif basetype == PT_Real
-              val = data[pos, int].unpack['D']
-            end
-          when PT_Array, PT_Hash
-            val = Array.new
-            int *= 2 if basetype == PT_Hash
-            while (data.bytesize-1-vlen>0) and (int>0)
-              int -= 1
-              aval, alen = pson_elem_to_rubyobj(data[len+vlen..-1])
-              val << aval
-              vlen += alen
-            end
-            val = Hash[*val] if basetype == PT_Hash
-        end
-        len += vlen
-        #p '[val,len]='+[val,len].inspect
-      else
-        len = data.bytesize
-      end
-    end
-    [val, len]
-  end
-
-  def self.value_is_empty(val)
-    res = (val==nil) or (val.is_a? String and (val=='')) or (val.is_a? Integer and (val==0)) \
-      or (val.is_a? Array and (val==[])) or (val.is_a? Hash and (val=={})) \
-      or (val.is_a? Time and (val.to_i==0))
-    res
-  end
-
-  # Pack PanObject fields to PSON binary format
-  # RU: Пакует поля ПанОбъекта в бинарный формат PSON
-  def self.namehash_to_pson(fldvalues, pack_empty=false)
-    #bytes = ''
-    #bytes.force_encoding('ASCII-8BIT')
-    bytes = AsciiString.new
-    fldvalues = fldvalues.sort_by {|k,v| k.to_s } # sort by key
-    fldvalues.each { |nam, val|
-      if pack_empty or (not value_is_empty(val))
-        nam = nam.to_s
-        nsize = nam.bytesize
-        nsize = 255 if nsize>255
-        bytes << [nsize].pack('C') + nam[0, nsize]
-        pson_elem = rubyobj_to_pson_elem(val)
-        #pson_elem.force_encoding('ASCII-8BIT')
-        bytes << pson_elem
-      end
-    }
-    bytes = AsciiString.new(bytes)
-  end
-
-  def self.pson_to_namehash(pson)
-    hash = {}
-    while pson and (pson.bytesize>1)
-      flen = pson[0].ord
-      fname = pson[1, flen]
-      #p '[flen, fname]='+[flen, fname].inspect
-      if (flen>0) and fname and (fname.bytesize>0)
-        val = nil
-        if pson.bytesize-flen>1
-          pson = pson[1+flen..-1]  # drop getted name
-          val, len = pson_elem_to_rubyobj(pson)
-          pson = pson[len..-1]     # drop getted value
-        else
-          pson = nil
-        end
-        hash[fname] = val
-      else
-        pson = nil
-        hash = nil if hash == {}
-      end
-    end
-    hash
-  end
-
   CapSymbols = '123456789qertyupasdfghkzxvbnmQRTYUPADFGHJKLBNM'
   CapFonts = ['Sans', 'Arial', 'Times', 'Verdana', 'Tahoma']
 
   $poor_cairo_context = false
 
+  # Generate captcha
+  # RU: Сгенерировать капчу
   def self.generate_captcha(drawing=nil, length=6, height=70, circles=5, curves=0)
 
     def self.show_char(c, cr, x0, y0, step)
@@ -2437,6 +2551,8 @@ module PandoraUtils
     [text, buf]
   end
 
+  # OS is 64-bit?
+  # RU: ОС является 64-битной?
   def self.is_64bit_os?
     # ENV.has_key?('ProgramFiles(x86)') && File.exist?(ENV['ProgramFiles(x86)']) && \
     # File.directory?(['ProgramFiles(x86)'])
@@ -2471,6 +2587,8 @@ module PandoraUtils
 
   $create_process_class = nil
 
+  # Execute in Windows
+  # RU: Запустить в Винде
   def self.win_exec(cmd)
     if init_win32api
       if not $create_process_class
@@ -2490,6 +2608,8 @@ module PandoraUtils
   $play_thread = nil
   Default_Mp3 = 'message.mp3'
 
+  # Play mp3
+  # RU: Проиграть mp3
   def self.play_mp3(filename, path=nil)
     if ($poly_play or (not $play_thread)) \
     and $statusicon and (not $statusicon.destroyed?) \
@@ -2514,6 +2634,8 @@ module PandoraUtils
     end
   end
 
+  # Initialize Gstreamer
+  # RU: Инициализировать Gstreamer
   begin
     Gst.init
     gst_vers = Gst.version
@@ -2521,6 +2643,8 @@ module PandoraUtils
   rescue Exception
   end
 
+  # Element stopped?
+  # RU: Элемент остановлен
   def self.elem_stopped?(elem)
     res = nil
     if $gst_old
@@ -2532,6 +2656,8 @@ module PandoraUtils
     res
   end
 
+  # Element playing?
+  # RU: Элемент проигрывается
   def self.elem_playing?(elem)
     res = nil
     if $gst_old
@@ -2726,6 +2852,8 @@ module PandoraModel
     end
   end
 
+  # Panobject class by kind code
+  # RU: Класс панобъекта по коду типа
   def self.panobjectclass_by_kind(kind)
     res = nil
     if (kind.is_a? Integer) and (kind>0)
@@ -2739,6 +2867,8 @@ module PandoraModel
     res
   end
 
+  # Normalize and convert trust
+  # RU: Нормализовать и преобразовать доверие
   def self.normalize_trust(trust, to_int=nil)
     if trust.is_a? Integer
       if trust<(-127)
@@ -2763,6 +2893,8 @@ module PandoraModel
   PK_Key     = 221
   PK_Message = 227
 
+  # Read record by panhash
+  # RU: Читает запись по панхэшу
   def self.get_record_by_panhash(kind, panhash, pson_with_kind=nil, models=nil, getfields=nil)
     res = nil
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
@@ -2797,6 +2929,8 @@ module PandoraModel
     res
   end
 
+  # Save record
+  # RU: Сохранить запись
   def self.save_record(kind, lang, values, models=nil, require_panhash=nil)
     res = false
     p '=======save_record  [kind, lang, values]='+[kind, lang, values].inspect
@@ -2839,7 +2973,7 @@ module PandoraModel
 
   # Relation is symmetric
   # RU: Связь симметрична
-  def self.relation_is_symmetric(relation)
+  def self.relation_is_symmetric?(relation)
     res = [RK_Equal, RK_Similar, RK_Unknown].include? relation
   end
 
@@ -2865,7 +2999,7 @@ module PandoraModel
         if relation_model
           filter = {:first => panhash1, :second => panhash2, :kind => rel_kind}
           filter2 = nil
-          if relation_is_symmetric(rel_kind) and (panhash1 != panhash2)
+          if relation_is_symmetric?(rel_kind) and (panhash1 != panhash2)
             filter2 = {:first => panhash2, :second => panhash1, :kind => rel_kind}
           end
           #p 'relat2 [p1,p2,t]='+[PandoraUtils.bytes_to_hex(panhash1), PandoraUtils.bytes_to_hex(panhash2), rel_kind].inspect
@@ -2946,6 +3080,8 @@ module PandoraCrypto
 
   KL_BitLens = [128, 160, 224, 256, 384, 512, 1024, 2048, 4096]
 
+  # Key length code to byte length
+  # RU: Код длины ключа в байтовую длину
   def self.klen_to_bitlen(len)
     res = nil
     ind = len >> 4
@@ -2953,6 +3089,8 @@ module PandoraCrypto
     res
   end
 
+  # Byte length of key to code
+  # RU: Байтовая длина ключа в код длины
   def self.bitlen_to_klen(len)
     res = KL_None
     ind = KL_BitLens.index(len)
@@ -2960,6 +3098,8 @@ module PandoraCrypto
     res
   end
 
+  # Divide type and code of length
+  # RU: Разделить тип и код длины
   def self.divide_type_and_klen(tnl)
     type = tnl & 0x0F
     klen  = tnl & 0xF0
@@ -4217,16 +4357,16 @@ module PandoraNet
       [host, port, proto]
     end
 
-    def check_incoming_addr(addr, host_ip)
+    def check_callback_addr(addr, host_ip)
       res = false
-      #p 'check_incoming_addr  [addr, host_ip]='+[addr, host_ip].inspect
+      #p 'check_callback_addr  [addr, host_ip]='+[addr, host_ip].inspect
       if (addr.is_a? String) and (addr.size>0)
         host, port, proto = decode_node(addr)
         host.strip!
         host = host_ip if (not host) or (host=='')
-        #p 'check_incoming_addr  [host, port, proto]='+[host, port, proto].inspect
+        #p 'check_callback_addr  [host, port, proto]='+[host, port, proto].inspect
         if (host.is_a? String) and (host.size>0)
-          p 'check_incoming_addr DONE [host, port, proto]='+[host, port, proto].inspect
+          p 'check_callback_addr DONE [host, port, proto]='+[host, port, proto].inspect
           res = true
         end
       end
@@ -4369,7 +4509,7 @@ module PandoraNet
   IS_NewsQuery     = 2
   IS_Finished      = 255
 
-  $incoming_addr = nil
+  $callback_addr = nil
   $puzzle_bit_length = 0  #8..24  (recommended 14)
   $puzzle_sec_delay = 2   #0..255 (recommended 2)
   $captcha_length = 4     #4..8   (recommended 6)
@@ -4657,7 +4797,7 @@ module PandoraNet
             params['mykey'] = key_hash
             params['tokey'] = param
             hparams = {:version=>0, :mode=>0, :mykey=>key_hash, :tokey=>param}
-            hparams[:addr] = $incoming_addr if $incoming_addr and (not ($incoming_addr != ''))
+            hparams[:addr] = $callback_addr if $callback_addr and (not ($callback_addr != ''))
             asbuf = PandoraUtils.namehash_to_pson(hparams)
           else
             ascmd = EC_Bye
@@ -5203,7 +5343,7 @@ module PandoraNet
                     addr = params['addr']
                     p log_mes+'addr='+addr.inspect
                     # need to change an ip checking
-                    pool.check_incoming_addr(addr, host_ip) if addr
+                    pool.check_callback_addr(addr, host_ip) if addr
                     mode = params['mode']
                     init_skey_or_error(true)
                   else
@@ -5298,7 +5438,8 @@ module PandoraNet
                       @skey[PandoraCrypto::KV_Trust] = trust
                     end
                     p log_mes+'----trust='+trust.inspect
-                    if ($captcha_length>0) and (trust.is_a? Integer) and ((conn_mode & CM_Hunter) == 0)
+                    if ($captcha_length>0) and (trust.is_a? Integer) \
+                    and ((conn_mode & CM_Hunter) == 0)
                       @skey[PandoraCrypto::KV_Trust] = 0
                       send_captcha
                     elsif trust.is_a? Float
@@ -6406,7 +6547,7 @@ module PandoraNet
   end
 
   def self.get_exchage_params
-    $incoming_addr       = PandoraUtils.get_param('incoming_addr')
+    $callback_addr       = PandoraUtils.get_param('callback_addr')
     $puzzle_bit_length   = PandoraUtils.get_param('puzzle_bit_length')
     $puzzle_sec_delay    = PandoraUtils.get_param('puzzle_sec_delay')
     $captcha_length      = PandoraUtils.get_param('captcha_length')
