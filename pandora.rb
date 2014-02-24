@@ -3994,7 +3994,7 @@ module PandoraCrypto
               if (creator != prev_creator) or (i==last_i)
                 p 'sign3: [creator, created, last_trust]='+[creator, created, last_trust].inspect
                 person_trust = 1.0 #trust_of_person(creator, my_key_hash)
-                rate += normalize_trust(last_trust, false) * person_trust
+                rate += PandoraModel.normalize_trust(last_trust, false) * person_trust
                 prev_creator = creator
                 last_date = created
                 last_trust = trust
@@ -4173,6 +4173,8 @@ module PandoraNet
 
   include PandoraUtils
 
+  # Pool
+  # RU: Пул
   class Pool
     attr_accessor :window, :sessions, :white_list
 
@@ -7734,7 +7736,8 @@ module PandoraGtk
     include PandoraUtils
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
-      :support_btn, :vouch_btn, :trust_scale, :trust0, :public_btn, :lang_entry, :format, :view_buffer
+      :support_btn, :rate_label, :vouch_btn, :trust_scale, :trust0, :public_btn, \
+      :lang_entry, :format, :view_buffer
 
     def add_menu_item(label, menu, text)
       mi = Gtk::MenuItem.new(text)
@@ -7941,7 +7944,7 @@ module PandoraGtk
       @statusbar = Gtk::Statusbar.new
       PandoraGtk.set_statusbar_text(statusbar, '')
       statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
-      panhash_btn = Gtk::Button.new(_('Panhash'))
+      panhash_btn = Gtk::Button.new(_('Rate: '))
       panhash_btn.relief = Gtk::RELIEF_NONE
       statusbar.pack_start(panhash_btn, false, false, 0)
 
@@ -7955,7 +7958,11 @@ module PandoraGtk
       #  p "support"
       #end
       #rbvbox.pack_start(support_btn, false, false, 0)
-      hbox.pack_start(support_btn, false, false, 0)
+      @rate_label = Gtk::Label.new('-')
+      support_box = Gtk::VBox.new
+      support_box.pack_start(support_btn, false, false, 0)
+      support_box.pack_start(rate_label, false, false, 0)
+      hbox.pack_start(support_box, false, false, 0)
 
       trust_box = Gtk::VBox.new
 
@@ -8752,7 +8759,8 @@ module PandoraGtk
 
         if edit
           pub_exist = PandoraModel.act_relation(nil, panhash0, RK_MaxPublic, :check)
-          #count, rate, querist_rate = rate_of_panobj(panhash0)
+
+          count, rate, querist_rate = PandoraCrypto.rate_of_panobj(panhash0)
           trust = nil
           res = PandoraCrypto.trust_of_panobject(panhash0)
           trust = res if res.is_a? Float
@@ -8762,6 +8770,7 @@ module PandoraGtk
           #dialog.trust_scale.signal_emit('value-changed')
           trust ||= 0.0
           dialog.trust_scale.value = trust
+          dialog.rate_label.text = rate.to_s
 
           dialog.support_btn.active = (PandoraModel::PSF_Support & panstate)>0
           dialog.public_btn.active = pub_exist
@@ -11982,6 +11991,7 @@ module PandoraGtk
           while ((@scheduler_interval.is_a? Integer) and @scheduler_interval>=100)
             next_step = true
 
+            # Scheduler (task executer)
             Thread.new do
               message = 'Message here'
               #dialog = Gtk::MessageDialog.new($window, \
@@ -12028,6 +12038,12 @@ module PandoraGtk
               end
 
             end
+
+            # Base gabager
+
+            # List gabager
+
+            # GUI updater (list, traffic)
 
             sleep(@scheduler_interval/1000)
             Thread.pass
