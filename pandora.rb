@@ -401,6 +401,16 @@ module PandoraUtils
     data = AsciiString.new(data)
   end
 
+  # Rewrite string with zeros
+  # RU: Перебивает строку нулями
+  def self.fill_by_zeros(str)
+    if str.is_a? String
+      (str.size).times do |i|
+        str[i] = 0.chr
+      end
+    end
+  end
+
   PT_Int   = 0
   PT_Str   = 1
   PT_Bool  = 2
@@ -499,6 +509,15 @@ module PandoraUtils
       end
     end
     val
+  end
+
+  # Convert time to string for dialog
+  # RU: Преобразует время в строку для диалога
+  def self.time_to_dialog_str(time, time_now)
+    time_fmt = '%H:%M:%S'
+    time_fmt = '%d.%m.%Y '+time_fmt if ((time_now.to_i - time.to_i).abs > 12*3600)
+    time = Time.at(time) if (time.is_a? Integer)
+    time_str = time.strftime(time_fmt)
   end
 
   # Value to view
@@ -3106,16 +3125,22 @@ module PandoraCrypto
     [type, klen]
   end
 
+  # Encode method codes of cipher and hash
+  # RU: Упаковать коды методов шифровки и хэширования
   def self.encode_cipher_and_hash(cipher, hash)
     res = cipher & 0xFF | ((hash & 0xFF) << 8)
   end
 
+  # Decode method codes of cipher and hash
+  # RU: Распаковать коды методов шифровки и хэширования
   def self.decode_cipher_and_hash(cnh)
     cipher = cnh & 0xFF
     hash  = (cnh >> 8) & 0xFF
     [cipher, hash]
   end
 
+  # Get OpenSSL object by Pandora code of hash
+  # RU: Получает объект OpenSSL по коду хэша Пандоры
   def self.pan_kh_to_openssl_hash(hash_len)
     res = nil
     #p 'hash_len='+hash_len.inspect
@@ -3156,6 +3181,8 @@ module PandoraCrypto
     res
   end
 
+  # Convert Pandora type of hash to OpenSSL name
+  # RU: Преобразует тип хэша Пандоры в имя OpenSSL
   def self.pankt_to_openssl(type)
     res = nil
     case type
@@ -3173,6 +3200,8 @@ module PandoraCrypto
     res
   end
 
+  # Convert Pandora type of hash to OpenSSL string
+  # RU: Преобразует тип хэша Пандоры в строку OpenSSL
   def self.pankt_len_to_full_openssl(type, len)
     res = pankt_to_openssl(type)
     res += '-'+len.to_s if len
@@ -3195,6 +3224,8 @@ module PandoraCrypto
   KS_Exchange  = 1
   KS_Voucher   = 2
 
+  # Encode or decode key
+  # RU: Зашифровать или расшифровать ключ
   def self.key_recrypt(data, encode=true, cipher_hash=nil, cipherkey=nil)
     #p '^^^^^^^^^^^^sym_recrypt: [cipher_hash, passwd]='+[cipher_hash, cipherkey].inspect
     #cipher_hash ||= encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
@@ -3435,8 +3466,8 @@ module PandoraCrypto
   #  [key, type, klen, cipher, hash, hlen]
   #end
 
-  # Encrypt data
-  # RU: Шифрует данные
+  # Encode or decode data
+  # RU: Зашифровывает или расшифровывает данные
   def self.recrypt(key_vec, data, encrypt=true, private=false)
     recrypted = nil
     key = key_vec[KV_Obj]
@@ -3476,20 +3507,12 @@ module PandoraCrypto
     recrypted
   end
 
-  def self.fill_by_zeros(str)
-    if str.is_a? String
-      (str.size).times do |i|
-        str[i] = 0.chr
-      end
-    end
-  end
-
   # Deactivate current or target key
   # RU: Деактивирует текущий или указанный ключ
   def self.deactivate_key(key_vec)
     if key_vec.is_a? Array
-      fill_by_zeros(key_vec[PandoraCrypto::KV_Priv])  #private key
-      fill_by_zeros(key_vec[PandoraCrypto::KV_Pass])
+      PandoraUtils.fill_by_zeros(key_vec[PandoraCrypto::KV_Priv])  #private key
+      PandoraUtils.fill_by_zeros(key_vec[PandoraCrypto::KV_Pass])
       key_vec.each_index do |i|
         key_vec[i] = nil
       end
@@ -3501,6 +3524,8 @@ module PandoraCrypto
     attr_accessor :the_current_key
   end
 
+  # Deactivate current key
+  # RU: Деактивирует текущий ключ
   def self.reset_current_key
     self.the_current_key = deactivate_key(self.the_current_key)
     $window.set_status_field(PandoraGtk::SF_Auth, 'Not logged', nil, false)
@@ -3509,7 +3534,12 @@ module PandoraCrypto
 
   $first_key_init = true
 
+  # Return current key or allow to choose and activate a key
+  # RU: Возвращает текущий ключ или позволяет выбрать и активировать ключ
   def self.current_key(switch_key=false, need_init=true)
+
+    # Read a key from database
+    # RU: Считывает ключ из базы
     def self.read_key(panhash, passwd, key_model)
       key_vec = nil
       cipher = nil
@@ -3551,6 +3581,8 @@ module PandoraCrypto
       [key_vec, cipher]
     end
 
+    # Recode a key
+    # RU: Перекодирует ключ
     def self.recrypt_key(key_model, key_vec, cipher, panhash, passwd, newpasswd)
       if not key_vec
         key_vec, cipher = read_key(panhash, passwd, key_model)
@@ -3586,6 +3618,8 @@ module PandoraCrypto
       end
       [key_vec, cipher, passwd]
     end
+
+    # body of current_key
 
     key_vec = self.the_current_key
     if key_vec and switch_key
@@ -3850,6 +3884,8 @@ module PandoraCrypto
     key_vec
   end
 
+  # Get panhash of current user or key
+  # RU: Возвращает панхэш текущего пользователя или ключа
   def self.current_user_or_key(user=true, init=true)
     panhash = nil
     key = current_key(false, init)
@@ -3865,8 +3901,8 @@ module PandoraCrypto
 
   PT_Pson1   = 1
 
-  # Sign PSON of PanObject and save sign record
-  # RU: Подписывает PSON ПанОбъекта и сохраняет запись подписи
+  # Sign PSON of PanObject and save a sign as record
+  # RU: Подписывает PSON ПанОбъекта и сохраняет подпись как запись
   def self.sign_panobject(panobject, trust=0, models=nil)
     res = false
     key = current_key
@@ -3899,6 +3935,8 @@ module PandoraCrypto
     res
   end
 
+  # Delete sign records by the panhash
+  # RU: Удаляет подписи по заданному панхэшу
   def self.unsign_panobject(obj_hash, delete_all=false, models=nil)
     res = true
     key_hash = current_user_or_key(false, (not delete_all))
@@ -3911,6 +3949,10 @@ module PandoraCrypto
     res
   end
 
+  $person_trusts = {}
+
+  # Get trust to panobject by its panhash
+  # RU: Возвращает доверие к панобъекту по его панхэшу
   def self.trust_of_panobject(panhash, models=nil)
     res = nil
     if panhash and (panhash != '')
@@ -3941,23 +3983,10 @@ module PandoraCrypto
     res
   end
 
-  $person_trusts = {}
-
-  def self.trust_of_person(panhash, level=0)
-    res = $person_trusts[panhash]
-    if res
-      res = 0.0
-      trust_level = 0
-      if not my_key_hash
-        my_key_hash = current_user_or_key(false, false)
-        p 'trust of person'
-      end
-    end
-    res
-  end
-
   $query_depth = 3
 
+  # Calculate a rate of the panobject
+  # RU: Вычислить рейтинг панобъекта
   def self.rate_of_panobj(panhash, depth=$query_depth, querist=nil, models=nil)
     count = 0
     rate = 0.0
@@ -4011,6 +4040,8 @@ module PandoraCrypto
   $max_opened_keys = 1000
   $open_keys = {}
 
+  # Activate a key with given panhash
+  # RU: Активировать ключ по заданному панхэшу
   def self.open_key(panhash, models=nil, init=true)
     key_vec = nil
     if panhash.is_a? String
@@ -4061,6 +4092,8 @@ module PandoraCrypto
     key_vec
   end
 
+  # Get first name and last name of person
+  # RU: Возвращает имя и фамилию человека
   def self.name_and_family_of_person(key, person=nil)
     nf = nil
     #p 'person, key='+[person, key].inspect
@@ -4100,6 +4133,8 @@ module PandoraCrypto
     [aname, afamily]
   end
 
+  # Get short name of person
+  # RU: Возвращает короткое имя человека
   def self.short_name_of_person(key, person=nil, view_kind=0, othername=nil)
     aname, afamily = name_and_family_of_person(key, person)
     #p [othername, aname, afamily]
@@ -4119,6 +4154,8 @@ module PandoraCrypto
     res
   end
 
+  # Find sha1-solution
+  # RU: Находит sha1-загадку
   def self.find_sha1_solution(phrase)
     res = nil
     lenbit = phrase[phrase.size-1].ord
@@ -4143,6 +4180,8 @@ module PandoraCrypto
     res
   end
 
+  # Check sha1-solution
+  # RU: Проверяет sha1-загадку
   def self.check_sha1_solution(phrase, add)
     res = false
     lenbit = phrase[phrase.size-1].ord
@@ -4187,6 +4226,8 @@ module PandoraNet
       @white_list = Array.new
     end
 
+    # Add ip to white list
+    # RU: Добавляет ip в белый список
     def add_to_white(ip)
       while @white_list.size>MaxWhiteSize do
         @white_list.delete_at(0)
@@ -4195,15 +4236,21 @@ module PandoraNet
         and (not @white_list.include? ip))
     end
 
+    # Is ip in white list?
+    # RU: Ip в белом списке?
     def is_white?(ip)
       res = (ip and ((not (ip.is_a? String)) or (ip.size>0)) \
         and (@white_list.include? ip))
     end
 
+    # Is ip in black list?
+    # RU: Ip в черном списке?
     def is_black?(ip)
       false
     end
 
+    # Add a session to list
+    # RU: Добавляет сессию в список
     def add_session(conn)
       if not sessions.include?(conn)
         sessions << conn
@@ -4211,12 +4258,16 @@ module PandoraNet
       end
     end
 
+    # Delete the session from list
+    # RU: Удаляет сессию из списка
     def del_session(conn)
       if sessions.delete(conn)
         window.update_conn_status(conn, conn.get_type, -1)
       end
     end
 
+    # Get a session for the node
+    # RU: Возвращает сессию для узла
     def session_of_node(node)
       host, port, proto = decode_node(node)
       res = sessions.find do |e|
@@ -4225,21 +4276,29 @@ module PandoraNet
       res
     end
 
+    # Get a session by the key and base id
+    # RU: Возвращает сессию по ключу и идентификатору базы
     def session_of_keybase(keybase)
       res = sessions.find { |e| (e.node_panhash == keybase) }
       res
     end
 
+    # Get a session by the key panhash
+    # RU: Возвращает сессию по панхэшу ключа
     def session_of_key(key)
       res = sessions.find { |e| (e.skey[PandoraCrypto::KV_Panhash] == key) }
       res
     end
 
+    # Get a session by the person panhash
+    # RU: Возвращает сессию по панхэшу человека
     def session_of_person(person)
       res = sessions.find { |e| (e.skey[PandoraCrypto::KV_Creator] == person) }
       res
     end
 
+    # Get a session by the dialog
+    # RU: Возвращает сессию по диалогу
     def sessions_on_dialog(dialog)
       res = sessions.select { |e| (e.dialog == dialog) }
       res.uniq!
@@ -4335,7 +4394,7 @@ module PandoraNet
     end
 
     # Form node marker
-    # RU: Сформировать маркер узла
+    # RU: Формирует маркер узла
     def encode_node(host, port, proto)
       host ||= ''
       port ||= ''
@@ -4344,7 +4403,7 @@ module PandoraNet
     end
 
     # Unpack node marker
-    # RU: Распаковать маркер узла
+    # RU: Распаковывает маркер узла
     def decode_node(node)
       i = node.index('=')
       if i
@@ -4359,6 +4418,8 @@ module PandoraNet
       [host, port, proto]
     end
 
+    # Call callback address
+    # RU: Стукануться по обратному адресу
     def check_callback_addr(addr, host_ip)
       res = false
       #p 'check_callback_addr  [addr, host_ip]='+[addr, host_ip].inspect
@@ -4374,6 +4435,8 @@ module PandoraNet
       end
     end
 
+    # Initialize a fish for the required fisher
+    # RU: Инициализирует рыбку для заданного рыбака
     def init_fish_for_fisher(fisher, in_lure, aim_keyhash=nil, baseid=nil)
       fish = nil
       if (aim_keyhash==nil) #or (aim_keyhash==mykeyhash)   #
@@ -9320,6 +9383,8 @@ module PandoraGtk
     started
   end
 
+  # Construct room id
+  # RU: Создать идентификатор комнаты
   def self.construct_room_id(persons)
     res = nil
     if (persons.is_a? Array) and (persons.size>0)
@@ -9332,6 +9397,8 @@ module PandoraGtk
     res
   end
 
+  # Find active sender
+  # RU: Найти активного отправителя
   def self.find_active_sender(not_this=nil)
     res = nil
     $window.notebook.children.each do |child|
@@ -9373,6 +9440,8 @@ module PandoraGtk
   $read_time = 1.5
   $last_page = nil
 
+  # DrawingArea for video output
+  # RU: DrawingArea для вывода видео
   class ViewDrawingArea < Gtk::DrawingArea
     attr_accessor :expose_event
 
@@ -9386,6 +9455,8 @@ module PandoraGtk
       #end
     end
 
+    # Set expose event handler
+    # RU: Устанавливает обработчик события expose
     def set_expose_event(value)
       signal_handler_disconnect(@expose_event) if @expose_event
       @expose_event = value
@@ -9725,14 +9796,10 @@ module PandoraGtk
       editbox.grab_focus
     end
 
-    def add_mes_to_view(mes, key_or_panhash=nil, myname=nil, modified=nil, created=nil, to_end=nil)
-
-      def time_to_str(time, time_now)
-        time_fmt = '%H:%M:%S'
-        time_fmt = '%d.%m.%Y '+time_fmt if ((time_now.to_i - time.to_i).abs > 12*3600)
-        time = Time.at(time) if (time.is_a? Integer)
-        time_str = time.strftime(time_fmt)
-      end
+    # Put message to dialog
+    # RU: Добавляет сообщение в диалог
+    def add_mes_to_view(mes, key_or_panhash=nil, myname=nil, modified=nil, \
+    created=nil, to_end=nil)
 
       if mes
         notice = false
@@ -9796,10 +9863,10 @@ module PandoraGtk
         #'(28.07.2013 15:59:33)'
 
         time_str = ''
-        time_str << time_to_str(created, time_now) if created
+        time_str << PandoraUtils.time_to_dialog_str(created, time_now) if created
         if modified and ((not created) or ((modified.to_i-created.to_i).abs>30))
           time_str << ' ' if (time_str != '')
-          time_str << '('+time_to_str(modified, time_now)+')'
+          time_str << '('+PandoraUtils.time_to_dialog_str(modified, time_now)+')'
         end
 
         talkview.before_addition(time_now) if to_end.nil?
@@ -9815,6 +9882,8 @@ module PandoraGtk
       end
     end
 
+    # Load history of messages
+    # RU: Подгрузить историю сообщений
     def load_history(max_message=6, sort_mode=0)
       if talkview and max_message and (max_message>0)
         messages = []
@@ -9891,6 +9960,8 @@ module PandoraGtk
       end
     end
 
+    # Get name and family
+    # RU: Определить имя и фамилию
     def get_name_and_family(i)
       person = nil
       if i.is_a? String
@@ -9916,6 +9987,8 @@ module PandoraGtk
       [aname, afamily]
     end
 
+    # Set session
+    # RU: Задать сессию
     def set_session(session, online=true)
       @sessions ||= []
       if online
@@ -10034,6 +10107,8 @@ module PandoraGtk
       end
     end
 
+    # Parse Gstreamer string
+    # RU: Распознаёт строку Gstreamer
     def parse_gst_string(text)
       elements = Array.new
       text.strip!
@@ -10110,6 +10185,8 @@ module PandoraGtk
       elements
     end
 
+    # Append elements to pipeline
+    # RU: Добавляет элементы в конвейер
     def append_elems_to_pipe(elements, pipeline, prev_elem=nil, prev_pad=nil, name_suff=nil)
       # create elements and add to pipeline
       #p '---- begin add&link elems='+elements.inspect
@@ -10226,13 +10303,20 @@ module PandoraGtk
       [elem1, pad1]
     end
 
+    # Append element to pipeline
+    # RU: Добавляет элемент в конвейер
     def add_elem_to_pipe(str, pipeline, prev_elem=nil, prev_pad=nil, name_suff=nil)
       elements = parse_gst_string(str)
       elem, pad = append_elems_to_pipe(elements, pipeline, prev_elem, prev_pad, name_suff)
       [elem, pad]
     end
 
+    # Link sink element to area of widget
+    # RU: Прицепляет сливной элемент к области виджета
     def link_sink_to_area(sink, area, pipeline=nil)
+
+      # Set handle of window
+      # RU: Устанавливает дескриптор окна
       def set_xid(area, sink)
         if (not area.destroyed?) and area.window and sink and (sink.class.method_defined? 'set_xwindow_id')
           win_id = nil
@@ -10276,6 +10360,8 @@ module PandoraGtk
       res
     end
 
+    # Get video sender parameters
+    # RU: Берёт параметры отправителя видео
     def get_video_sender_params(src_param = 'video_src_v4l2', \
       send_caps_param = 'video_send_caps_raw_320x240', send_tee_param = 'video_send_tee_def', \
       view1_param = 'video_view1_xv', can_encoder_param = 'video_can_encoder_vp8', \
@@ -10306,6 +10392,8 @@ module PandoraGtk
     $send_media_pipelines = {}
     $webcam_xvimagesink   = nil
 
+    # Initialize video sender
+    # RU: Инициализирует отправщика видео
     def init_video_sender(start=true, just_upd_area=false)
       video_pipeline = $send_media_pipelines['video']
       if not start
@@ -10477,6 +10565,8 @@ module PandoraGtk
       video_pipeline
     end
 
+    # Get video receiver parameters
+    # RU: Берёт параметры приёмщика видео
     def get_video_receiver_params(can_src_param = 'video_can_src_app', \
       can_decoder_param = 'video_can_decoder_vp8', recv_tee_param = 'video_recv_tee_def', \
       view2_param = 'video_view2_x')
@@ -10496,6 +10586,8 @@ module PandoraGtk
       [can_src, can_decoder, recv_tee, view2]
     end
 
+    # Initialize video receiver
+    # RU: Инициализирует приёмщика видео
     def init_video_receiver(start=true, can_play=true, init=true)
       if not start
         if ximagesink and (PandoraUtils::elem_playing?(ximagesink))
@@ -10585,6 +10677,8 @@ module PandoraGtk
       end
     end
 
+    # Get audio sender parameters
+    # RU: Берёт параметры отправителя аудио
     def get_audio_sender_params(src_param = 'audio_src_alsa', \
       send_caps_param = 'audio_send_caps_8000', send_tee_param = 'audio_send_tee_def', \
       can_encoder_param = 'audio_can_encoder_vorbis', can_sink_param = 'audio_can_sink_app')
@@ -10610,6 +10704,8 @@ module PandoraGtk
       [src, send_caps, send_tee, can_encoder, can_sink]
     end
 
+    # Initialize audio sender
+    # RU: Инициализирует отправителя аудио
     def init_audio_sender(start=true, just_upd_area=false)
       audio_pipeline = $send_media_pipelines['audio']
       #p 'init_audio_sender pipe='+audio_pipeline.inspect+'  btn='+snd_button.active?.inspect
@@ -10711,6 +10807,8 @@ module PandoraGtk
       audio_pipeline
     end
 
+    # Get audio receiver parameters
+    # RU: Берёт параметры приёмщика аудио
     def get_audio_receiver_params(can_src_param = 'audio_can_src_app', \
       can_decoder_param = 'audio_can_decoder_vorbis', recv_tee_param = 'audio_recv_tee_def', \
       phones_param = 'audio_phones_auto')
@@ -10730,6 +10828,8 @@ module PandoraGtk
       [can_src, can_decoder, recv_tee, phones]
     end
 
+    # Initialize audio receiver
+    # RU: Инициализирует приёмщика аудио
     def init_audio_receiver(start=true, can_play=true, init=true)
       if not start
         if recv_media_pipeline[0] and (not PandoraUtils::elem_stopped?(recv_media_pipeline[0]))
@@ -10799,75 +10899,6 @@ module PandoraGtk
     end
   end  #--class DialogScrollWin
 
-  # Show conversation dialog
-  # RU: Показать диалог общения
-  def self.show_talk_dialog(panhashes, known_node=nil)
-    sw = nil
-    p 'show_talk_dialog: [panhashes, known_node]='+[panhashes, known_node].inspect
-    targets = [[], [], []]
-    persons, keys, nodes = targets
-    if known_node and (panhashes.is_a? String)
-      persons << panhashes
-      nodes << known_node
-    else
-      extract_targets_from_panhash(targets, panhashes)
-    end
-    if nodes.size==0
-      extend_targets_by_relations(targets)
-    end
-    if nodes.size==0
-      start_extending_targets_by_hunt(targets)
-    end
-    targets.each do |list|
-      list.sort!
-    end
-    persons.uniq!
-    persons.compact!
-    keys.uniq!
-    keys.compact!
-    nodes.uniq!
-    nodes.compact!
-    p 'targets='+targets.inspect
-
-    if (persons.size>0) and (nodes.size>0)
-      room_id = construct_room_id(persons)
-      if known_node
-        creator = PandoraCrypto.current_user_or_key(true)
-        if (persons.size==1) and (persons[0]==creator)
-          room_id[-1] = (room_id[-1].ord ^ 1).chr
-        end
-      end
-      p 'room_id='+room_id.inspect
-      $window.notebook.children.each do |child|
-        if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
-          child.targets = targets
-          child.online_button.safe_set_active(known_node != nil)
-          $window.notebook.page = $window.notebook.children.index(child) if (not known_node)
-          sw = child
-          break
-        end
-      end
-      if not sw
-        sw = DialogScrollWin.new(known_node, room_id, targets)
-      end
-    elsif (not known_node)
-      mes = _('node') if nodes.size == 0
-      mes = _('person') if persons.size == 0
-      dialog = Gtk::MessageDialog.new($window, \
-        Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
-        Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-        mes = _('No one')+' '+mes+' '+_('is not found')+".\n"+_('Add nodes and do hunt'))
-      dialog.title = _('Note')
-      dialog.default_response = Gtk::Dialog::RESPONSE_OK
-      dialog.icon = $window.icon
-      if (dialog.run == Gtk::Dialog::RESPONSE_OK)
-        PandoraGtk.show_panobject_list(PandoraModel::Node, nil, nil, true)
-      end
-      dialog.destroy
-    end
-    sw
-  end
-
   # Search panel
   # RU: Панель поиска
   class SearchScrollWin < Gtk::ScrolledWindow
@@ -10875,6 +10906,8 @@ module PandoraGtk
 
     include PandoraGtk
 
+    # Search in bases
+    # RU: Поиск в базах
     def search_in_bases(text, th, bases='auto')
       res = nil
       while th[:processing] and (not res)
@@ -10889,8 +10922,8 @@ module PandoraGtk
       res
     end
 
-    # Show conversation dialog
-    # RU: Показать диалог общения
+    # Show search window
+    # RU: Показать окно поиска
     def initialize(text=nil)
       super(nil, nil)
 
@@ -11110,6 +11143,184 @@ module PandoraGtk
     end
   end
 
+  # Profile panel
+  # RU: Панель профиля
+  class ProfileScrollWin < Gtk::ScrolledWindow
+    attr_accessor :person
+
+    include PandoraGtk
+
+    # Show profile window
+    # RU: Показать окно профиля
+    def initialize(a_person=nil)
+      super(nil, nil)
+
+      @person = a_person
+
+      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      border_width = 0
+
+      #self.add_with_viewport(vpaned)
+    end
+  end
+
+  # List of session
+  # RU: Список сеансов
+  class SessionScrollWin < Gtk::ScrolledWindow
+    attr_accessor :session
+
+    include PandoraGtk
+
+    # Show session window
+    # RU: Показать окно сессий
+    def initialize(session=nil)
+      super(nil, nil)
+
+      @session = nil
+
+      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      border_width = 0
+
+      vbox = Gtk::VBox.new
+      hbox = Gtk::HBox.new
+
+      title = _('Update')
+      update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
+      update_btn.signal_connect('clicked') do |*args|
+        p 'need update'
+      end
+      update_btn.tooltip_text = title
+      update_btn.label = title
+
+      hunted_btn = SafeCheckButton.new(_('hunted'), true)
+      hunted_btn.safe_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      hunted_btn.safe_set_active(true)
+
+      hunters_btn = SafeCheckButton.new(_('hunters'), true)
+      hunters_btn.safe_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      hunters_btn.safe_set_active(true)
+
+      fishers_btn = SafeCheckButton.new(_('fishers'), true)
+      fishers_btn.safe_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      fishers_btn.safe_set_active(true)
+
+      hbox.pack_start(hunted_btn, false, true, 0)
+      hbox.pack_start(hunters_btn, false, true, 0)
+      hbox.pack_start(fishers_btn, false, true, 0)
+      hbox.pack_start(update_btn, false, true, 0)
+
+      list_sw = Gtk::ScrolledWindow.new(nil, nil)
+      list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+      list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+
+      list_store = Gtk::ListStore.new(Integer, String)
+
+      # create tree view
+      list_tree = Gtk::TreeView.new(list_store)
+      #list_tree.rules_hint = true
+      #list_tree.search_column = CL_Name
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new('№', renderer, 'text' => 0)
+      column.set_sort_column_id(0)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
+      column.set_sort_column_id(1)
+      list_tree.append_column(column)
+
+      list_tree.signal_connect('row_activated') do |tree_view, path, column|
+        # download and go to record
+      end
+
+      list_sw.add(list_tree)
+
+      vbox.pack_start(hbox, false, true, 0)
+      vbox.pack_start(list_sw, true, true, 0)
+      list_sw.show_all
+
+      self.add_with_viewport(vbox)
+
+      list_tree.grab_focus
+    end
+  end
+
+  # Show conversation dialog
+  # RU: Показать диалог общения
+  def self.show_talk_dialog(panhashes, known_node=nil)
+    sw = nil
+    p 'show_talk_dialog: [panhashes, known_node]='+[panhashes, known_node].inspect
+    targets = [[], [], []]
+    persons, keys, nodes = targets
+    if known_node and (panhashes.is_a? String)
+      persons << panhashes
+      nodes << known_node
+    else
+      extract_targets_from_panhash(targets, panhashes)
+    end
+    if nodes.size==0
+      extend_targets_by_relations(targets)
+    end
+    if nodes.size==0
+      start_extending_targets_by_hunt(targets)
+    end
+    targets.each do |list|
+      list.sort!
+    end
+    persons.uniq!
+    persons.compact!
+    keys.uniq!
+    keys.compact!
+    nodes.uniq!
+    nodes.compact!
+    p 'targets='+targets.inspect
+
+    if (persons.size>0) and (nodes.size>0)
+      room_id = construct_room_id(persons)
+      if known_node
+        creator = PandoraCrypto.current_user_or_key(true)
+        if (persons.size==1) and (persons[0]==creator)
+          room_id[-1] = (room_id[-1].ord ^ 1).chr
+        end
+      end
+      p 'room_id='+room_id.inspect
+      $window.notebook.children.each do |child|
+        if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
+          child.targets = targets
+          child.online_button.safe_set_active(known_node != nil)
+          $window.notebook.page = $window.notebook.children.index(child) if (not known_node)
+          sw = child
+          break
+        end
+      end
+      if not sw
+        sw = DialogScrollWin.new(known_node, room_id, targets)
+      end
+    elsif (not known_node)
+      mes = _('node') if nodes.size == 0
+      mes = _('person') if persons.size == 0
+      dialog = Gtk::MessageDialog.new($window, \
+        Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
+        Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
+        mes = _('No one')+' '+mes+' '+_('is not found')+".\n"+_('Add nodes and do hunt'))
+      dialog.title = _('Note')
+      dialog.default_response = Gtk::Dialog::RESPONSE_OK
+      dialog.icon = $window.icon
+      if (dialog.run == Gtk::Dialog::RESPONSE_OK)
+        PandoraGtk.show_panobject_list(PandoraModel::Node, nil, nil, true)
+      end
+      dialog.destroy
+    end
+    sw
+  end
+
   # Showing search panel
   # RU: Показать панель поиска
   def self.show_search_panel(text=nil)
@@ -11127,27 +11338,6 @@ module PandoraGtk
     page = $window.notebook.append_page(sw, label_box)
     sw.show_all
     $window.notebook.page = $window.notebook.n_pages-1
-  end
-
-  # Profile panel
-  # RU: Панель профиля
-  class ProfileScrollWin < Gtk::ScrolledWindow
-    attr_accessor :person
-
-    include PandoraGtk
-
-    # Show conversation dialog
-    # RU: Показать диалог общения
-    def initialize(a_person=nil)
-      super(nil, nil)
-
-      @person = a_person
-
-      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-      border_width = 0
-
-      #self.add_with_viewport(vpaned)
-    end
   end
 
   # Show profile panel
@@ -11240,94 +11430,6 @@ module PandoraGtk
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
-  # List of session
-  # RU: Список сеансов
-  class SessionScrollWin < Gtk::ScrolledWindow
-    attr_accessor :session
-
-    include PandoraGtk
-
-    # Show conversation dialog
-    # RU: Показать диалог общения
-    def initialize(session=nil)
-      super(nil, nil)
-
-      @session = nil
-
-      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-      border_width = 0
-
-      vbox = Gtk::VBox.new
-      hbox = Gtk::HBox.new
-
-      title = _('Update')
-      update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
-      update_btn.signal_connect('clicked') do |*args|
-        p 'need update'
-      end
-      update_btn.tooltip_text = title
-      update_btn.label = title
-
-      hunted_btn = SafeCheckButton.new(_('hunted'), true)
-      hunted_btn.safe_signal_clicked do |widget|
-        update_btn.clicked
-      end
-      hunted_btn.safe_set_active(true)
-
-      hunters_btn = SafeCheckButton.new(_('hunters'), true)
-      hunters_btn.safe_signal_clicked do |widget|
-        update_btn.clicked
-      end
-      hunters_btn.safe_set_active(true)
-
-      fishers_btn = SafeCheckButton.new(_('fishers'), true)
-      fishers_btn.safe_signal_clicked do |widget|
-        update_btn.clicked
-      end
-      fishers_btn.safe_set_active(true)
-
-      hbox.pack_start(hunted_btn, false, true, 0)
-      hbox.pack_start(hunters_btn, false, true, 0)
-      hbox.pack_start(fishers_btn, false, true, 0)
-      hbox.pack_start(update_btn, false, true, 0)
-
-      list_sw = Gtk::ScrolledWindow.new(nil, nil)
-      list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
-      list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
-
-      list_store = Gtk::ListStore.new(Integer, String)
-
-      # create tree view
-      list_tree = Gtk::TreeView.new(list_store)
-      #list_tree.rules_hint = true
-      #list_tree.search_column = CL_Name
-
-      renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new('№', renderer, 'text' => 0)
-      column.set_sort_column_id(0)
-      list_tree.append_column(column)
-
-      renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
-      column.set_sort_column_id(1)
-      list_tree.append_column(column)
-
-      list_tree.signal_connect('row_activated') do |tree_view, path, column|
-        # download and go to record
-      end
-
-      list_sw.add(list_tree)
-
-      vbox.pack_start(hbox, false, true, 0)
-      vbox.pack_start(list_sw, true, true, 0)
-      list_sw.show_all
-
-      self.add_with_viewport(vbox)
-
-      list_tree.grab_focus
-    end
-  end
-
   # Show session list
   # RU: Показать список сеансов
   def self.show_session_panel(session=nil)
@@ -11357,6 +11459,8 @@ module PandoraGtk
   class PandoraStatusIcon < Gtk::StatusIcon
     attr_accessor :main_icon, :play_sounds, :online, :hide_on_minimize
 
+    # Create status icon
+    # RU: Создает иконку в трее
     def initialize(a_update_win_icon=false, a_flash_on_new=true, \
     a_flash_interval=0, a_play_sounds=true, a_hide_on_minimize=true)
       super()
@@ -11414,6 +11518,8 @@ module PandoraGtk
       end
     end
 
+    # Create and show popup menu
+    # RU: Создает и показывает всплывающее меню
     def create_menu
       menu = Gtk::Menu.new
 
@@ -11478,6 +11584,8 @@ module PandoraGtk
       menu
     end
 
+    # Set status "online"
+    # RU: Задаёт статус "онлайн"
     def set_online(state=nil)
       base_icon0 = @base_icon
       if state
@@ -11488,6 +11596,8 @@ module PandoraGtk
       update_icon
     end
 
+    # Set status "message comes"
+    # RU: Задаёт статус "есть сообщение"
     def set_message(message=nil)
       if (message.is_a? String) and (message.size>0)
         @message = message
@@ -11500,6 +11610,8 @@ module PandoraGtk
       end
     end
 
+    # Set flash mode
+    # RU: Задаёт мигание
     def set_flash(flash=true)
       @flash = flash
       if flash
@@ -11513,6 +11625,8 @@ module PandoraGtk
       update_icon
     end
 
+    # Update icon
+    # RU: Обновляет иконку
     def update_icon
       stat_icon = nil
       if @message and ((not @flash) or (@flash_status==1))
@@ -11528,6 +11642,8 @@ module PandoraGtk
       end
     end
 
+    # Set timer on a flash step
+    # RU: Ставит таймер на шаг мигания
     def timeout_func
       @timer = GLib::Timeout.add(@flash_interval) do
         next_step = true
@@ -11543,6 +11659,8 @@ module PandoraGtk
       end
     end
 
+    # Action on icon click
+    # RU: Действия при нажатии на иконку
     def icon_activated(top_sens=true, force_show=false)
       #$window.skip_taskbar_hint = false
       if $window.visible? and (not force_show)
@@ -11567,12 +11685,15 @@ module PandoraGtk
         end
       end
     end
-
   end  #--PandoraStatusIcon
 
+  # Captcha panel
+  # RU: Панель с капчой
   class CaptchaHPaned < Gtk::HPaned
     attr_accessor :csw
 
+    # Show panel
+    # RU: Показать панель
     def initialize(first_child)
       super()
       @first_child = first_child
@@ -11580,6 +11701,8 @@ module PandoraGtk
       @csw = nil
     end
 
+    # Show capcha
+    # RU: Показать капчу
     def show_captcha(srckey, captcha_buf=nil, clue_text=nil, node=nil)
       res = nil
       if captcha_buf and (not @csw)
@@ -11717,12 +11840,16 @@ module PandoraGtk
     end
   end  #--CaptchaHPaned
 
+  # Main window
+  # RU: Главное окно
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
       :cvpaned, :pool, :focus_timer, :title_view, :do_on_show
 
     include PandoraUtils
 
+    # Update status of connections
+    # RU: Обновить состояние подключений
     def update_conn_status(conn, session_type, diff_count)
       if session_type==0
         @hunter_count += diff_count
@@ -11738,11 +11865,15 @@ module PandoraGtk
 
     $toggle_buttons = []
 
+    # Change listener button state
+    # RU: Изменить состояние кнопки слушателя
     def correct_lis_btn_state
       tool_btn = $toggle_buttons[PandoraGtk::SF_Listen]
       tool_btn.safe_set_active($listen_thread != nil) if tool_btn
     end
 
+    # Change hunter button state
+    # RU: Изменить состояние кнопки охотника
     def correct_hunt_btn_state
       tool_btn = $toggle_buttons[SF_Hunt]
       tool_btn.safe_set_active($hunter_thread != nil) if tool_btn
@@ -11751,6 +11882,8 @@ module PandoraGtk
     $statusbar = nil
     $status_fields = []
 
+    # Add field to statusbar
+    # RU: Добавляет поле в статусбар
     def add_status_field(index, text)
       $statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0) if ($status_fields != [])
       btn = Gtk::Button.new(text)
@@ -11764,6 +11897,8 @@ module PandoraGtk
       $status_fields[index] = btn
     end
 
+    # Set properties of fiels in statusbar
+    # RU: Задаёт свойства поля в статусбаре
     def set_status_field(index, text, enabled=nil, toggle=nil)
       btn = $status_fields[index]
       if btn
@@ -11779,6 +11914,8 @@ module PandoraGtk
       end
     end
 
+    # Get fiels of statusbar
+    # RU: Возвращает поле статусбара
     def get_status_field(index)
       $status_fields[index]
     end
@@ -11790,6 +11927,8 @@ module PandoraGtk
 
     MaxTitleLen = 15
 
+    # Construct room title
+    # RU: Задаёт осмысленный заголовок окна
     def construct_room_title(dialog, check_all=true)
       res = 'unknown'
       persons = dialog.targets[CSI_Persons]
@@ -12084,6 +12223,8 @@ module PandoraGtk
       ['About', Gtk::Stock::ABOUT, '_About']
       ]
 
+    # Fill main menu
+    # RU: Заполнить главное меню
     def fill_menubar(menubar)
       menu = nil
       MENU_ITEMS.each do |mi|
@@ -12099,6 +12240,8 @@ module PandoraGtk
       end
     end
 
+    # Fill toolbar
+    # RU: Заполнить панель инструментов
     def fill_toolbar(toolbar)
       MENU_ITEMS.each do |mi|
         stock = mi[1]
@@ -12135,6 +12278,8 @@ module PandoraGtk
       end
     end
 
+    # Initialize scheduler
+    # RU: Инициировать планировщик
     def init_scheduler(interval=nil)
       if (not @scheduler) and interval
         @scheduler_interval = interval if interval
@@ -12543,11 +12688,16 @@ end
 PANDORA_USOCK = '/tmp/pandora_unix_socket'
 $pserver = nil
 
+# Delete Pandora unix socket
+# RU: Удаляет unix-сокет Пандоры
 def delete_psocket
   File.delete(PANDORA_USOCK) if File.exist?(PANDORA_USOCK)
 end
 
 $win32api = false
+
+# Initialize win32 unit
+# RU: Инициализирует модуль win32
 def init_win32api
   if not $win32api
     begin
@@ -12617,7 +12767,6 @@ end
 
 # Check Ruby version and init ASCII string class
 # RU: Проверить версию Ruby и объявить класс ASCII-строки
-
 if RUBY_VERSION<'1.9'
   puts 'The Pandora needs Ruby 1.9 or higher (current '+RUBY_VERSION+')'
   exit(10)
