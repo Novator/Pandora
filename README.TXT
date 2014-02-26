@@ -16,9 +16,10 @@ Contents
 1. OVERVIEW
 
 Pandora is a free peer-to-peer (P2P) social network application.
-It affords functions of instant messenger, audio and video chat, commercial
-system, distributed development system, file exchange and vote system.
-Pandora has its own binary protocol, uses a cryptography and a web of trust.
+It affords functions of instant messenger, audio and video chat, trading
+platform, commercial system, payment system, distributed development
+system, file exchange and vote system. Pandora has its own binary protocol,
+uses a cryptography and a web of trust.
 
 Pandora is not yet another "geek thing". It is designed for ordinary people,
 has a graphical user interface (GUI) and works "out of the box".
@@ -127,7 +128,7 @@ Warning: change "yournick" to your nick!
 
 7.7. Update your github repository:
 
-  git push
+  git commit -a -m "your comment" && git push
 
 (see more useful git commands in the file "git.sh")
 
@@ -150,7 +151,7 @@ Communicate together in facebook or vkontakte:
   https://www.facebook.com/p2pandora
   https://vk.com/pandoranet
 
-Ask a help from author:
+Ask author for help:
 
   http://facebook.com/robux
   http://vk.com/robux

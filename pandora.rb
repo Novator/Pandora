@@ -3644,9 +3644,9 @@ module PandoraCrypto
               dialog.def_widget = pass_entry
             end
 
-            changebtn = PandoraGtk::GoodToggleToolButton.new(Gtk::Stock::EDIT)
+            changebtn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::EDIT)
             changebtn.tooltip_text = _('Change password')
-            changebtn.good_signal_clicked do |*args|
+            changebtn.safe_signal_clicked do |*args|
               if not new_label
                 new_label = Gtk::Label.new(_('New password'))
                 vbox.pack_start(new_label, false, false, 2)
@@ -4265,7 +4265,7 @@ module PandoraNet
         session.dialog = dialog if dialog
         if session.dialog and (not session.dialog.destroyed?) and session.dialog.online_button \
         and ((session.socket and (not session.socket.closed?)) or session.donor)
-          session.dialog.online_button.good_set_active(true)
+          session.dialog.online_button.safe_set_active(true)
           session.conn_mode = (session.conn_mode | PandoraNet::CM_Dialog)
         end
         res = true
@@ -4536,6 +4536,8 @@ module PandoraNet
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, \
       :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes, :fishers
 
+    # Set socket options
+    # RU: Установить опции сокета
     def set_keepalive(client)
       client.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, $keep_alive)
       if PandoraUtils.os_family != 'windows'
@@ -4545,6 +4547,8 @@ module PandoraNet
       end
     end
 
+    # Link to pool
+    # RU: Ссылка на пул
     def pool
       $window.pool
     end
@@ -4553,6 +4557,8 @@ module PandoraNet
     ST_Listener = 1
     ST_Fisher   = 2
 
+    # Type of session
+    # RU: Тип сессии
     def get_type
       res = nil
       if donor
@@ -4566,6 +4572,8 @@ module PandoraNet
       end
     end
 
+    # Unpack command
+    # RU: Распаковать команду
     def unpack_comm(comm)
       index, cmd, code, segsign, crc8 = nil, nil, nil, nil, nil
       errcode = 0
@@ -4582,6 +4590,8 @@ module PandoraNet
       [index, cmd, code, segsign, errcode]
     end
 
+    # Unpack command extention
+    # RU: Распаковать расширение команды
     def unpack_comm_ext(comm)
       if comm.bytesize == CommExtSize
         datasize, fullcrc32, segsize = comm.unpack('NNn')
@@ -4593,6 +4603,7 @@ module PandoraNet
 
     LONG_SEG_SIGN   = 0xFFFF
 
+    # Send command, code and date (if exists)
     # RU: Отправляет команду, код и данные (если есть)
     def send_comm_and_data(index, cmd, code, data=nil)
       res = nil
@@ -4756,7 +4767,8 @@ module PandoraNet
       res
     end
 
-    # compose error command and add log message
+    # Compose error command and add log message
+    # RU: Компонует команду ошибки и логирует сообщение
     def err_scmd(mes=nil, code=nil, buf=nil)
       @scmd = EC_Bye
       if code
@@ -4835,13 +4847,17 @@ module PandoraNet
       res
     end
 
+    # Compose command of request of record/records
+    # RU: Компонует команду запроса записи/записей
     def set_request(panhashes, send_now=false)
       ascmd = EC_Request
       ascode = 0
       asbuf = nil
       if panhashes.is_a? Array
+        # any panhashes
         asbuf = PandoraUtils.rubyobj_to_pson_elem(panhashes)
       else
+        # one panhash
         ascode = PandoraUtils.kind_from_panhash(panhashes)
         asbuf = panhashes[1..-1]
       end
@@ -4856,6 +4872,8 @@ module PandoraNet
       end
     end
 
+    # Compose command of query of kind/kinds
+    # RU: Компонует команду запроса сорта/сортов
     def set_query(list, time, send_now=false)
       ascmd = EC_Query
       ascode = 0
@@ -4868,7 +4886,7 @@ module PandoraNet
       end
       if send_now
         if not add_send_segment(ascmd, true, asbuf, ascode)
-          PandoraUtils.log_message(LM_Error, _('Cannot add request'))
+          PandoraUtils.log_message(LM_Error, _('Cannot add query'))
         end
       else
         @scmd = ascmd
@@ -4881,6 +4899,8 @@ module PandoraNet
     # RU: Принять полученный сегмент
     def accept_segment
 
+      # Recognize hello data
+      # RU: Распознает данные приветствия
       def recognize_params
         hash = PandoraUtils.pson_to_namehash(rdata)
         if not hash
@@ -4896,6 +4916,8 @@ module PandoraNet
         p log_mes+'RECOGNIZE_params: '+hash.inspect
       end
 
+      # Sel limit of allowed pack size
+      # RU: Ставит лимит на допустимый размер пакета
       def set_max_pack_size(stage)
         case @stage
           when ES_Protocol
@@ -4911,7 +4933,12 @@ module PandoraNet
         end
       end
 
+      # React to hello
+      # RU: Отреагировать на приветствие
       def init_skey_or_error(first=true)
+
+        # Generate random phrase
+        # RU: Сгенерировать случайную фразу
         def get_sphrase(init=false)
           phrase = params['sphrase'] if not init
           if init or (not phrase)
@@ -4921,11 +4948,12 @@ module PandoraNet
           end
           [phrase, init]
         end
+
         skey_panhash = params['srckey']
-        #p log_mes+'     skey_panhash='+skey_panhash.inspect
         if (skey_panhash.is_a? String) and (skey_panhash.bytesize>0)
           if first and (@stage == ES_Protocol) and $puzzle_bit_length \
           and ($puzzle_bit_length>0) and ((conn_mode & CM_Hunter) == 0)
+            # first need to puzzle
             phrase, init = get_sphrase(true)
             phrase[-1] = $puzzle_bit_length.chr
             phrase[-2] = $puzzle_sec_delay.chr
@@ -4940,6 +4968,7 @@ module PandoraNet
             # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
             # or just 4? other later!
             if (@skey.is_a? Integer) and (@skey==0)
+              # unknown key, need request
               @scmd = EC_Request
               kind = PandoraModel::PK_Key
               @scode = kind
@@ -4947,7 +4976,7 @@ module PandoraNet
               @stage = ES_KeyRequest
               set_max_pack_size(ES_Exchange)
             elsif @skey
-              #phrase = PandoraUtils.bigint_to_bytes(phrase)
+              # ok, send a phrase
               @stage = ES_Sign
               @scode = ECC_Init_Phrase
               @scmd  = EC_Init
@@ -4968,6 +4997,8 @@ module PandoraNet
         end
       end
 
+      # Compose a captcha command
+      # RU: Компоновать команду с капчой
       def send_captcha
         attempts = @skey[PandoraCrypto::KV_Trust]
         p log_mes+'send_captcha:  attempts='+attempts.to_s
@@ -4987,6 +5018,8 @@ module PandoraNet
         end
       end
 
+      # Update record about node
+      # RU: Обновить запись об узле
       def update_node(skey_panhash=nil, sbase_id=nil, trust=nil, session_key=nil)
         node_model = PandoraUtils.get_model('Node', @recv_models)
         time_now = Time.now.to_i
@@ -5123,6 +5156,8 @@ module PandoraNet
         res = node_model.update(values, nil, filter)
       end
 
+      # Process media segment
+      # RU: Обработать медиа сегмент
       def process_media_segment(cannel, mediabuf)
         if not dialog
           @conn_mode = (@conn_mode | PandoraNet::CM_Dialog)
@@ -5158,6 +5193,8 @@ module PandoraNet
         end
       end
 
+      # Get a password for simple authority
+      # RU: Взять пароль для упрощенной авторизации
       def get_simple_answer_to_node
         password = nil
         if @node_id
@@ -5172,12 +5209,15 @@ module PandoraNet
         password
       end
 
+      # Take out lure by input lure for the fisher
+      # RU: Взять исходящую наживку по входящей наживке для заданного рыбака
       def take_out_lure_for_fisher(fisher, in_lure)
         out_lure = nil
         val = [fisher, in_lure]
         out_lure = @fishers.index(val)
         p '-===--take_out_lure_for_fisher  in_lure, out_lure='+[in_lure, out_lure].inspect
         if not out_lure
+          # need to registrate output lure
           i = 0
           while (i<@fishers.size)
             break if (not (@fishers[i].is_a? Array))  #or (@fishers[i][0].destroyed?))
@@ -5189,6 +5229,8 @@ module PandoraNet
         out_lure
       end
 
+      # Check out lure by input lure and the fisher
+      # RU: Проверить исходящую наживку по входящей наживке и рыбаку
       def get_out_lure_for_fisher(fisher, in_lure)
         val = [fisher, in_lure]
         out_lure = @fishers.index(val)
@@ -5196,6 +5238,8 @@ module PandoraNet
         out_lure
       end
 
+      # Get fisher for out lure
+      # RU: Определить рыбака по исходящей наживке
       def get_fisher_for_out_lure(out_lure)
         fisher, in_lure = nil, nil
         val = @fishers[out_lure] if out_lure.is_a? Integer
@@ -5204,6 +5248,8 @@ module PandoraNet
         [fisher, in_lure]
       end
 
+      # Clear out lures for the fisher and input lure
+      # RU: Очистить исходящие наживки для рыбака и входящей наживки
       def free_out_lure_of_fisher(fisher, in_lure)
         val = [fisher, in_lure]
         p '====//// free_out_lure_of_fisher(in_lure)='+in_lure.inspect
@@ -5219,11 +5265,15 @@ module PandoraNet
         end
       end
 
+      # Set a fish of the input lure
+      # RU: Поставить рыбку на входящую наживку
       def set_fish_of_in_lure(in_lure, fish)
         p '+++++set_fish_of_in_lure(in_lure)='+in_lure.inspect
         @fishes[in_lure] = fish if in_lure.is_a? Integer
       end
 
+      # Get a fish by the input lure
+      # RU: Взять рыбку по входящей наживке
       def get_fish_for_in_lure(in_lure)
         fish = nil
         p '+++++get_fish_for_in_lure(in_lure)='+in_lure.inspect
@@ -5241,6 +5291,8 @@ module PandoraNet
       #  lure = @fishes.index(fish) if lure.is_a? Integer
       #end
 
+      # Clear the fish on the input lure
+      # RU: Очистить рыбку для входящей наживки
       def free_fish_of_in_lure(in_lure)
         if in_lure.is_a? Integer
           fish = @fishes[in_lure]
@@ -5991,7 +6043,7 @@ module PandoraNet
               #dialog.online_button.active = (socket and (not socket.closed?))
               if self.dialog and (not self.dialog.destroyed?) and self.dialog.online_button \
               and ((self.socket and (not self.socket.closed?)) or self.donor)
-                self.dialog.online_button.good_set_active(true)
+                self.dialog.online_button.safe_set_active(true)
               end
             end
 
@@ -6548,7 +6600,9 @@ module PandoraNet
     client
   end
 
-  def self.get_exchage_params
+  # Get exchange params
+  # RU: Взять параметры обмена
+  def self.get_exchange_params
     $callback_addr       = PandoraUtils.get_param('callback_addr')
     $puzzle_bit_length   = PandoraUtils.get_param('puzzle_bit_length')
     $puzzle_sec_delay    = PandoraUtils.get_param('puzzle_sec_delay')
@@ -6565,7 +6619,7 @@ module PandoraNet
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen
-    PandoraNet.get_exchage_params
+    PandoraNet.get_exchange_params
     if $listen_thread
       server = $listen_thread[:listen_server_socket]
       $listen_thread[:need_to_listen] = false
@@ -6773,6 +6827,8 @@ module PandoraGtk
     $window.present
   end
 
+  # Set statusbat text
+  # RU: Задает текст статусной строки
   def self.set_statusbar_text(statusbar, text)
     statusbar.pop(0)
     statusbar.push(0, text)
@@ -6785,6 +6841,8 @@ module PandoraGtk
       :enter_like_tab, :enter_like_ok, :panelbox, :okbutton, :cancelbutton, \
       :def_widget, :main_sw
 
+    # Create method
+    # RU: Метод создания
     def initialize(*args)
       p '0----------'
       super(*args)
@@ -6901,7 +6959,8 @@ module PandoraGtk
 
     end
 
-    # show dialog until key pressed
+    # Show dialog in modal mode
+    # RU: Показать диалог в модальном режиме
     def run2
       res = nil
       show_all
@@ -6937,14 +6996,20 @@ module PandoraGtk
   end
 
   # ToggleToolButton with safety "active" switching
-  # ToggleToolButton с безопасным переключением "active"
-  class GoodToggleToolButton < Gtk::ToggleToolButton
-    def good_signal_clicked
+  # RU: ToggleToolButton с безопасным переключением "active"
+  class SafeToggleToolButton < Gtk::ToggleToolButton
+
+    # Remember signal handler
+    # RU: Запомнить обработчик сигнала
+    def safe_signal_clicked
       @clicked_signal = self.signal_connect('clicked') do |*args|
         yield(*args) if block_given?
       end
     end
-    def good_set_active(an_active)
+
+    # Set "active" property safety
+    # RU: Безопасно установить свойство "active"
+    def safe_set_active(an_active)
       if @clicked_signal
         self.signal_handler_block(@clicked_signal) do
           self.active = an_active
@@ -6953,17 +7018,24 @@ module PandoraGtk
         self.active = an_active
       end
     end
+
   end
 
   # CheckButton with safety "active" switching
-  # CheckButton с безопасным переключением "active"
-  class GoodCheckButton < Gtk::CheckButton
-    def good_signal_clicked
+  # RU: CheckButton с безопасным переключением "active"
+  class SafeCheckButton < Gtk::CheckButton
+
+    # Remember signal handler
+    # RU: Запомнить обработчик сигнала
+    def safe_signal_clicked
       @clicked_signal = self.signal_connect('clicked') do |*args|
         yield(*args) if block_given?
       end
     end
-    def good_set_active(an_active)
+
+    # Set "active" property safety
+    # RU: Безопасно установить свойство "active"
+    def safe_set_active(an_active)
       if @clicked_signal
         self.signal_handler_block(@clicked_signal) do
           self.active = an_active
@@ -6977,8 +7049,8 @@ module PandoraGtk
   def self.add_tool_btn(toolbar, stock, title, toggle=nil)
     btn = nil
     if toggle != nil
-      btn = GoodToggleToolButton.new(stock)
-      btn.good_signal_clicked do |*args|
+      btn = SafeToggleToolButton.new(stock)
+      btn.safe_signal_clicked do |*args|
         yield(*args) if block_given?
       end
       btn.active = toggle if toggle
@@ -7003,6 +7075,7 @@ module PandoraGtk
   # RU: Поле ввода с допустимыми символами в маске
   class MaskEntry < Gtk::Entry
     attr_accessor :mask
+
     def initialize
       super
       signal_connect('key-press-event') do |widget, event|
@@ -7026,14 +7099,18 @@ module PandoraGtk
         self.tooltip_text = prefix+'['+mask+']'
       end
     end
+
     def init_mask
       #will reinit in child
     end
+
     def key_event(widget, event)
       false
     end
   end
 
+  # Entry for integer
+  # RU: Поле ввода целых чисел
   class IntegerEntry < MaskEntry
     def init_mask
       super
@@ -7042,6 +7119,8 @@ module PandoraGtk
     end
   end
 
+  # Entry for float
+  # RU: Поле ввода дробных чисел
   class FloatEntry < IntegerEntry
     def init_mask
       super
@@ -7050,6 +7129,8 @@ module PandoraGtk
     end
   end
 
+  # Entry for HEX
+  # RU: Поле ввода шестнадцатеричных чисел
   class HexEntry < MaskEntry
     def init_mask
       super
@@ -7059,6 +7140,8 @@ module PandoraGtk
 
   Base64chars = [*('0'..'9'), *('a'..'z'), *('A'..'Z'), '+/=-_*[]'].join
 
+  # Entry for Base64
+  # RU: Поле ввода Base64
   class Base64Entry < MaskEntry
     def init_mask
       super
@@ -7066,6 +7149,8 @@ module PandoraGtk
     end
   end
 
+  # Simple entry for date
+  # RU: Простое поле ввода даты
   class DateEntrySimple < MaskEntry
     def init_mask
       super
@@ -7075,6 +7160,8 @@ module PandoraGtk
     end
   end
 
+  # Entry for date and time
+  # RU: Поле ввода даты и времени
   class TimeEntry < DateEntrySimple
     def init_mask
       super
@@ -7084,8 +7171,11 @@ module PandoraGtk
     end
   end
 
+  # Entry for date
+  # RU: Поле ввода даты
   class DateEntry < Gtk::HBox
     attr_accessor :entry, :button
+
     def initialize(*args)
       super(*args)
       @entry = MaskEntry.new
@@ -7229,18 +7319,23 @@ module PandoraGtk
     def max_length=(maxlen)
       entry.max_length = maxlen
     end
+
     def text=(text)
       entry.text = text
     end
+
     def text
       entry.text
     end
+
     def width_request=(wr)
       entry.set_width_request(wr)
     end
+
     def modify_text(*args)
       entry.modify_text(*args)
     end
+
     def size_request
       esize = entry.size_request
       res = button.size_request
@@ -7251,8 +7346,11 @@ module PandoraGtk
 
   MaxPanhashTabs = 5
 
+  # Entry for panhash
+  # RU: Поле ввода панхэша
   class PanhashBox < Gtk::HBox
     attr_accessor :types, :panclasses, :entry, :button
+
     def initialize(panhash_type, *args)
       super(*args)
       @types = panhash_type
@@ -7322,6 +7420,9 @@ module PandoraGtk
         #yield if block_given?
       end
     end
+
+    # Define allowed pandora object classes
+    # RU: Определить допустимые классы Пандоры
     def set_classes
       if not panclasses
         #p '=== types='+types.inspect
@@ -7341,21 +7442,27 @@ module PandoraGtk
         #p 'panclasses='+panclasses.inspect
       end
     end
+
     def max_length=(maxlen)
       entry.max_length = maxlen
     end
+
     def text=(text)
       entry.text = text
     end
+
     def text
       entry.text
     end
+
     def width_request=(wr)
       entry.set_width_request(wr)
     end
+
     def modify_text(*args)
       entry.modify_text(*args)
     end
+
     def size_request
       esize = entry.size_request
       res = button.size_request
@@ -7364,6 +7471,8 @@ module PandoraGtk
     end
   end
 
+  # Entry for coordinate
+  # RU: Поле ввода координаты
   class CoordEntry < FloatEntry
     def init_mask
       super
@@ -7372,9 +7481,12 @@ module PandoraGtk
     end
   end
 
+  # Entry for coordinates
+  # RU: Поле ввода координат
   class CoordBox < Gtk::HBox
     attr_accessor :latitude, :longitude
     CoordWidth = 120
+
     def initialize
       super
       @latitude   = CoordEntry.new
@@ -7386,11 +7498,13 @@ module PandoraGtk
       self.pack_start(latitude, false, false, 0)
       self.pack_start(longitude, false, false, 1)
     end
+
     def max_length=(maxlen)
       ml = maxlen / 2
       latitude.max_length = ml
       longitude.max_length = ml
     end
+
     def text=(text)
       i = nil
       begin
@@ -7406,18 +7520,22 @@ module PandoraGtk
       latitude.text = coord[0].to_s
       longitude.text = coord[1].to_s
     end
+
     def text
       res = PandoraUtils.coord_to_int(latitude.text, longitude.text).to_s
     end
+
     def width_request=(wr)
       w = (wr+10) / 2
       latitude.set_width_request(w)
       longitude.set_width_request(w)
     end
+
     def modify_text(*args)
       latitude.modify_text(*args)
       longitude.modify_text(*args)
     end
+
     def size_request
       size1 = latitude.size_request
       res = longitude.size_request
@@ -7428,6 +7546,8 @@ module PandoraGtk
 
   MaxOnePlaceViewSec = 60
 
+  # Set readonly mode to widget
+  # RU: Установить виджету режим только для чтения
   def self.set_readonly(widget, value=true, sensitive=true)
     value = (not value)
     widget.editable = value if widget.class.method_defined? 'editable?'
@@ -7436,6 +7556,8 @@ module PandoraGtk
     widget.has_focus = value if widget.class.method_defined? 'has_focus?'
   end
 
+  # Extended TextView
+  # RU: Расширенный TextView
   class ExtTextView < Gtk::TextView
     attr_accessor :need_to_end, :middle_time, :middle_value
 
@@ -7456,6 +7578,8 @@ module PandoraGtk
       PandoraGtk.set_readonly(self, value, false)
     end
 
+    # Do before addition
+    # RU: Выполнить перед добавлением
     def before_addition(cur_time=nil, vadj_value=nil)
       cur_time ||= Time.now
       vadj_value ||= self.parent.vadjustment.value
@@ -7474,6 +7598,8 @@ module PandoraGtk
       @need_to_end
     end
 
+    # Do after addition
+    # RU: Выполнить после добавления
     def after_addition(go_to_end=nil)
       go_to_end ||= @need_to_end
       if go_to_end
@@ -7486,14 +7612,21 @@ module PandoraGtk
     end
   end
 
-  # Tree of panobjects
-  # RU: Дерево субъектов
+  # Grid for panobjects
+  # RU: Таблица для объектов Пандоры
   class SubjTreeView < Gtk::TreeView
     attr_accessor :panobject, :sel, :notebook, :auto_create
   end
 
+  # Column for SubjTreeView
+  # RU: Колонка для SubjTreeView
   class SubjTreeViewColumn < Gtk::TreeViewColumn
     attr_accessor :tab_ind
+  end
+
+  # ScrolledWindow for panobjects
+  # RU: ScrolledWindow для объектов Пандоры
+  class PanobjScrollWin < Gtk::ScrolledWindow
   end
 
   # Creating menu item from its description
@@ -7526,11 +7659,8 @@ module PandoraGtk
     menuitem
   end
 
-  class PanobjScrollWin < Gtk::ScrolledWindow
-  end
-
   # Showing panobject list
-  # RU: Показ списка субъектов
+  # RU: Показ списка панобъектов
   def self.show_panobject_list(panobject_class, widget=nil, sw=nil, auto_create=false)
     notebook = $window.notebook
     single = (sw == nil)
@@ -7739,24 +7869,32 @@ module PandoraGtk
       :support_btn, :rate_label, :vouch_btn, :trust_scale, :trust0, :public_btn, \
       :lang_entry, :format, :view_buffer
 
+    # Add menu item
+    # RU: Добавляет пункт меню
     def add_menu_item(label, menu, text)
       mi = Gtk::MenuItem.new(text)
       menu.append(mi)
-      mi.signal_connect('activate') { |mi|
+      mi.signal_connect('activate') do |mi|
         label.label = mi.label
         @format = mi.label.to_s
         p 'format changed to: '+format.to_s
-      }
+      end
     end
 
+    # Set view text buffer
+    # RU: Задает тестовый буфер для просмотра
     def set_view_buffer(format, view_buffer, raw_buffer)
       view_buffer.text = raw_buffer.text
     end
 
+    # Set raw text buffer
+    # RU: Задает сырой тестовый буфер
     def set_raw_buffer(format, raw_buffer, view_buffer)
       raw_buffer.text = view_buffer.text
     end
 
+    # Set buffers
+    # RU: Задать буферы
     def set_buffers(init=false)
       child = notebook.get_nth_page(notebook.page)
       if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::TextView)
@@ -7778,6 +7916,8 @@ module PandoraGtk
       end
     end
 
+    # Set tag for selection
+    # RU: Задать тэг для выделенного
     def set_tag(tag)
       if tag
         child = notebook.get_nth_page(notebook.page)
@@ -7821,6 +7961,8 @@ module PandoraGtk
       end
     end
 
+    # Create fields dialog
+    # RU: Создать форму с полями
     def initialize(apanobject, afields=[], *args)
       super(*args)
       @panobject = apanobject
@@ -8293,6 +8435,8 @@ module PandoraGtk
       @old_field_matrix = []
     end
 
+    # Calculate field size
+    # RU: Вычислить размер поля
     def calc_field_size(field)
       lw = field[FI_LabW]
       lh = field[FI_LabH]
@@ -8305,6 +8449,8 @@ module PandoraGtk
       end
     end
 
+    # Calculate row size
+    # RU: Вычислить размер ряда
     def calc_row_size(row)
       rw, rh = [0, 0]
       row.each do |fld|
@@ -8314,6 +8460,8 @@ module PandoraGtk
       [rw, rh]
     end
 
+    # Event on resize window
+    # RU: Событие при изменении размеров окна
     def on_resize_window(window, event)
       if (@window_width == event.width) and (@window_height == event.height)
         return
@@ -8509,6 +8657,44 @@ module PandoraGtk
     end
   end
 
+  # Tab box for notebook with image and close button
+  # RU: Бокс закладки для блокнота с картинкой и кнопкой
+  class TabLabelBox < Gtk::HBox
+    attr_accessor :label
+    def initialize(image, title, child=nil, *args)
+      super(*args)
+      label_box = self
+      label_box.pack_start(image, false, false, 0) if image
+      @label = Gtk::Label.new(title)
+      label_box.pack_start(label, false, false, 0)
+      if child
+        btn = Gtk::Button.new
+        btn.relief = Gtk::RELIEF_NONE
+        btn.focus_on_click = false
+        style = btn.modifier_style
+        style.xthickness = 0
+        style.ythickness = 0
+        btn.modify_style(style)
+        wim,him = Gtk::IconSize.lookup(Gtk::IconSize::MENU)
+        btn.set_size_request(wim+2,him+2)
+        btn.signal_connect('clicked') do |*args|
+          yield if block_given?
+          ind = $window.notebook.children.index(child)
+          $window.notebook.remove_page(ind) if ind
+          label_box.destroy if not label_box.destroyed?
+          child.destroy if not child.destroyed?
+        end
+        close_image = Gtk::Image.new(Gtk::Stock::CLOSE, Gtk::IconSize::MENU)
+        btn.add(close_image)
+        align = Gtk::Alignment.new(1.0, 0.5, 0.0, 0.0)
+        align.add(btn)
+        label_box.pack_start(align, false, false, 0)
+      end
+      label_box.spacing = 3
+      label_box.show_all
+    end
+  end
+
 
   $update_interval = 30
   $download_thread = nil
@@ -8520,13 +8706,14 @@ module PandoraGtk
   # RU: Проверить обновления и скачать их
   def self.start_updating(all_step=true)
 
+    # Update file
+    # RU: Обновить файл
     def self.update_file(http, tail, pfn)
       res = false
       dir = File.dirname(pfn)
       FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
       if Dir.exists?(dir)
         begin
-          #p [http, tail, pfn]
           response = http.request_get(tail)
           File.open(pfn, 'wb+') do |file|
             file.write(response.body)
@@ -8638,10 +8825,12 @@ module PandoraGtk
     end
   end
 
-  # View and edit record dialog
-  # RU: Окно просмотра и правки записи
+  # Do action with selected record
+  # RU: Выполнить действие над выделенной записью
   def self.act_panobject(tree_view, action)
 
+    # Get icon associated with panobject
+    # RU: Взять иконку ассоциированную с панобъектом
     def self.get_panobject_icon(panobj)
       panobj_icon = nil
       ind = nil
@@ -8940,57 +9129,12 @@ module PandoraGtk
     end
   end
 
-  # Tab box for notebook with image and close button
-  # RU: Бокс закладки для блокнота с картинкой и кнопкой
-  class TabLabelBox < Gtk::HBox
-    attr_accessor :label
-
-    def initialize(image, title, child=nil, *args)
-      super(*args)
-      label_box = self
-
-      label_box.pack_start(image, false, false, 0) if image
-
-      @label = Gtk::Label.new(title)
-
-      label_box.pack_start(label, false, false, 0)
-
-      if child
-        btn = Gtk::Button.new
-        btn.relief = Gtk::RELIEF_NONE
-        btn.focus_on_click = false
-        style = btn.modifier_style
-        style.xthickness = 0
-        style.ythickness = 0
-        btn.modify_style(style)
-        wim,him = Gtk::IconSize.lookup(Gtk::IconSize::MENU)
-        btn.set_size_request(wim+2,him+2)
-        btn.signal_connect('clicked') do |*args|
-          yield if block_given?
-          ind = $window.notebook.children.index(child)
-          $window.notebook.remove_page(ind) if ind
-          label_box.destroy if not label_box.destroyed?
-          child.destroy if not child.destroyed?
-        end
-        close_image = Gtk::Image.new(Gtk::Stock::CLOSE, Gtk::IconSize::MENU)
-        btn.add(close_image)
-
-        align = Gtk::Alignment.new(1.0, 0.5, 0.0, 0.0)
-        align.add(btn)
-        label_box.pack_start(align, false, false, 0)
-      end
-
-      label_box.spacing = 3
-      label_box.show_all
-    end
-
-  end
-
-
   $media_buf_size = 50
   $send_media_queues = []
   $send_media_rooms = {}
 
+  # Take pointer index for sending by room
+  # RU: Взять индекс указателя для отправки по id комнаты
   def self.set_send_ptrind_by_room(room_id)
     ptr = nil
     if room_id
@@ -9006,6 +9150,8 @@ module PandoraGtk
     ptr
   end
 
+  # Check pointer index for sending by room
+  # RU: Проверить индекс указателя для отправки по id комнаты
   def self.get_send_ptrind_by_room(room_id)
     ptr = nil
     if room_id
@@ -9017,6 +9163,8 @@ module PandoraGtk
     ptr
   end
 
+  # Clear pointer index for sending for room
+  # RU: Сбросить индекс указателя для отправки для комнаты
   def self.nil_send_ptrind_by_room(room_id)
     if room_id
       ptr = $send_media_rooms[room_id]
@@ -9028,11 +9176,15 @@ module PandoraGtk
     res.size
   end
 
+  # Get view parameters
+  # RU: Взять параметры вида
   def self.get_view_params
     $load_history_count = PandoraUtils.get_param('load_history_count')
     $sort_history_mode = PandoraUtils.get_param('sort_history_mode')
   end
 
+  # Get main parameters
+  # RU: Взять основные параметры
   def self.get_main_params
     get_view_params
   end
@@ -9292,10 +9444,10 @@ module PandoraGtk
       bbox.border_width = 5
       bbox.spacing = 5
 
-      @online_button = GoodCheckButton.new(_('Online'), true)
-      online_button.good_signal_clicked do |widget|
+      @online_button = SafeCheckButton.new(_('Online'), true)
+      online_button.safe_signal_clicked do |widget|
         if widget.active?
-          widget.good_set_active(false)
+          widget.safe_set_active(false)
           targets[CSI_Nodes].each do |keybase|
             $window.pool.init_session(nil, keybase, 0, self)
           end
@@ -9305,12 +9457,12 @@ module PandoraGtk
           end
         end
       end
-      online_button.good_set_active(known_node != nil)
+      online_button.safe_set_active(known_node != nil)
 
       bbox.pack_start(online_button, false, false, 0)
 
-      @snd_button = GoodCheckButton.new(_('Sound'), true)
-      snd_button.good_signal_clicked do |widget|
+      @snd_button = SafeCheckButton.new(_('Sound'), true)
+      snd_button.safe_signal_clicked do |widget|
         if widget.active?
           if init_audio_sender(true)
             online_button.active = true
@@ -9322,8 +9474,8 @@ module PandoraGtk
       end
       bbox.pack_start(snd_button, false, false, 0)
 
-      @vid_button = GoodCheckButton.new(_('Video'), true)
-      vid_button.good_signal_clicked do |widget|
+      @vid_button = SafeCheckButton.new(_('Video'), true)
+      vid_button.safe_signal_clicked do |widget|
         if widget.active?
           if init_video_sender(true)
             online_button.active = true
@@ -9398,8 +9550,8 @@ module PandoraGtk
       sender_box.pack_start(option_box, false, true, 0)
       sender_box.pack_start(editbox, true, true, 0)
 
-      vouch_btn = GoodCheckButton.new(_('vouch'), true)
-      vouch_btn.good_signal_clicked do |widget|
+      vouch_btn = SafeCheckButton.new(_('vouch'), true)
+      vouch_btn.safe_signal_clicked do |widget|
         #update_btn.clicked
       end
       option_box.pack_start(vouch_btn, false, false, 0)
@@ -9419,8 +9571,8 @@ module PandoraGtk
       game_btn = Gtk::Button.new(_('game'))
       option_box.pack_start(game_btn, false, false, 4)
 
-      require_sign_btn = GoodCheckButton.new(_('require sign'), true)
-      require_sign_btn.good_signal_clicked do |widget|
+      require_sign_btn = SafeCheckButton.new(_('require sign'), true)
+      require_sign_btn.safe_signal_clicked do |widget|
         #update_btn.clicked
       end
       option_box.pack_start(require_sign_btn, false, false, 0)
@@ -9774,12 +9926,12 @@ module PandoraGtk
         session.dialog = nil
       end
       active = (@sessions.size>0)
-      online_button.good_set_active(active) if (not online_button.destroyed?)
+      online_button.safe_set_active(active) if (not online_button.destroyed?)
       if not active
         snd_button.active = false if (not snd_button.destroyed?) and snd_button.active?
         vid_button.active = false if (not vid_button.destroyed?) and vid_button.active?
-        #snd_button.good_set_active(false) if (not snd_button.destroyed?)
-        #vid_button.good_set_active(false) if (not vid_button.destroyed?)
+        #snd_button.safe_set_active(false) if (not snd_button.destroyed?)
+        #vid_button.safe_set_active(false) if (not vid_button.destroyed?)
       end
     end
 
@@ -10689,7 +10841,7 @@ module PandoraGtk
       $window.notebook.children.each do |child|
         if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
           child.targets = targets
-          child.online_button.good_set_active(known_node != nil)
+          child.online_button.safe_set_active(known_node != nil)
           $window.notebook.page = $window.notebook.children.index(child) if (not known_node)
           sw = child
           break
@@ -10814,9 +10966,9 @@ module PandoraGtk
       vbox.pack_start(hbox, false, true, 0)
       vbox.pack_start(option_box, false, true, 0)
 
-      #kind_btn = PandoraGtk::GoodToggleToolButton.new(Gtk::Stock::PROPERTIES)
+      #kind_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::PROPERTIES)
       #kind_btn.tooltip_text = _('Change password')
-      #kind_btn.good_signal_clicked do |*args|
+      #kind_btn.safe_signal_clicked do |*args|
       #  #kind_btn.active?
       #end
 
@@ -10840,22 +10992,22 @@ module PandoraGtk
       #Загрузки — Ctrl + J, Ctrl + Y
       #Закладки — Ctrl + B, Ctrl + I
 
-      local_btn = GoodCheckButton.new(_('locally'), true)
-      local_btn.good_signal_clicked do |widget|
+      local_btn = SafeCheckButton.new(_('locally'), true)
+      local_btn.safe_signal_clicked do |widget|
         #update_btn.clicked
       end
 
-      active_btn = GoodCheckButton.new(_('active only'), true)
-      active_btn.good_signal_clicked do |widget|
+      active_btn = SafeCheckButton.new(_('active only'), true)
+      active_btn.safe_signal_clicked do |widget|
         #update_btn.clicked
       end
-      active_btn.good_set_active(true)
+      active_btn.safe_set_active(true)
 
-      hunt_btn = GoodCheckButton.new(_('hunt!'), true)
-      hunt_btn.good_signal_clicked do |widget|
+      hunt_btn = SafeCheckButton.new(_('hunt!'), true)
+      hunt_btn.safe_signal_clicked do |widget|
         #update_btn.clicked
       end
-      hunt_btn.good_set_active(true)
+      hunt_btn.safe_set_active(true)
 
       option_box.pack_start(local_btn, false, true, 1)
       option_box.pack_start(active_btn, false, true, 1)
@@ -11116,23 +11268,23 @@ module PandoraGtk
       update_btn.tooltip_text = title
       update_btn.label = title
 
-      hunted_btn = GoodCheckButton.new(_('hunted'), true)
-      hunted_btn.good_signal_clicked do |widget|
+      hunted_btn = SafeCheckButton.new(_('hunted'), true)
+      hunted_btn.safe_signal_clicked do |widget|
         update_btn.clicked
       end
-      hunted_btn.good_set_active(true)
+      hunted_btn.safe_set_active(true)
 
-      hunters_btn = GoodCheckButton.new(_('hunters'), true)
-      hunters_btn.good_signal_clicked do |widget|
+      hunters_btn = SafeCheckButton.new(_('hunters'), true)
+      hunters_btn.safe_signal_clicked do |widget|
         update_btn.clicked
       end
-      hunters_btn.good_set_active(true)
+      hunters_btn.safe_set_active(true)
 
-      fishers_btn = GoodCheckButton.new(_('fishers'), true)
-      fishers_btn.good_signal_clicked do |widget|
+      fishers_btn = SafeCheckButton.new(_('fishers'), true)
+      fishers_btn.safe_signal_clicked do |widget|
         update_btn.clicked
       end
-      fishers_btn.good_set_active(true)
+      fishers_btn.safe_set_active(true)
 
       hbox.pack_start(hunted_btn, false, true, 0)
       hbox.pack_start(hunters_btn, false, true, 0)
@@ -11588,12 +11740,12 @@ module PandoraGtk
 
     def correct_lis_btn_state
       tool_btn = $toggle_buttons[PandoraGtk::SF_Listen]
-      tool_btn.good_set_active($listen_thread != nil) if tool_btn
+      tool_btn.safe_set_active($listen_thread != nil) if tool_btn
     end
 
     def correct_hunt_btn_state
       tool_btn = $toggle_buttons[SF_Hunt]
-      tool_btn.good_set_active($hunter_thread != nil) if tool_btn
+      tool_btn.safe_set_active($hunter_thread != nil) if tool_btn
     end
 
     $statusbar = nil
@@ -11622,7 +11774,7 @@ module PandoraGtk
           btn.sensitive = enabled
         end
         if (toggle != nil) and $toggle_buttons[index]
-          $toggle_buttons[index].good_set_active(toggle)
+          $toggle_buttons[index].safe_set_active(toggle)
         end
       end
     end
