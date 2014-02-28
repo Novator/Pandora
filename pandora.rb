@@ -220,10 +220,12 @@ module PandoraUtils
   # RU: Сохранить языковые фразы
   def self.save_as_language(lang='ru')
 
+    # RU: Экранирует кавычки слэшем
     def self.slash_quotes(str)
       str.gsub('"', '\"')
     end
 
+    # RU: Есть конечный пробел или табуляция?
     def self.there_are_end_space?(str)
       lastchar = str[str.size-1, 1]
       (lastchar==' ') or (lastchar=="\t")
@@ -2374,7 +2376,7 @@ module PandoraUtils
   end
 
   # Round queue buffer
-  # RU: Циклические буфер
+  # RU: Циклический буфер
   class RoundQueue < Mutex
     # Init empty queue. Poly read is possible
     # RU: Создание пустой очереди. Возможно множественное чтение
@@ -6844,59 +6846,6 @@ module PandoraGtk
   SF_Hunt   = 3
   SF_Conn   = 4
 
-  # About dialog hooks
-  # RU: Обработчики диалога "О программе"
-  Gtk::AboutDialog.set_url_hook do |about, link|
-    if PandoraUtils.os_family=='windows' then a1='start'; a2='' else a1='xdg-open'; a2=' &' end;
-    system(a1+' '+link+a2)
-  end
-  Gtk::AboutDialog.set_email_hook do |about, link|
-    if PandoraUtils.os_family=='windows' then a1='start'; a2='' else a1='xdg-email'; a2=' &' end;
-    system(a1+' '+link+a2)
-  end
-
-  # Show About dialog
-  # RU: Показ окна "О программе"
-  def self.show_about
-    dlg = Gtk::AboutDialog.new
-    dlg.transient_for = $window
-    dlg.icon = $window.icon
-    dlg.name = $window.title
-    dlg.version = '0.2'
-    dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
-    dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
-    dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
-    dlg.comments = _('National network')
-    dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
-    begin
-      file = File.open(File.join($pandora_root_dir, 'LICENSE.TXT'), 'r')
-      gpl_text = '================='+_('Full text')+" LICENSE.TXT==================\n"+file.read
-      file.close
-    rescue
-      gpl_text = _('Full text is in the file')+' LICENSE.TXT.'
-    end
-    dlg.license = _("Pandora is licensed under GNU GPLv2.\n"+
-      "\nFundamentals:\n"+
-      "- program code is open, distributed free and without warranty;\n"+
-      "- author does not require you money, but demands respect authorship;\n"+
-      "- you can change the code, sent to the authors for inclusion in the next release;\n"+
-      "- your own release you must distribute with another name and only licensed under GPL;\n"+
-      "- if you do not understand the GPL or disagree with it, you have to uninstall the program.\n\n")+gpl_text
-    dlg.website = 'https://github.com/Novator/Pandora'
-    dlg.program_name = dlg.name
-    dlg.skip_taskbar_hint = true
-    dlg.run
-    dlg.destroy
-    $window.present
-  end
-
-  # Set statusbat text
-  # RU: Задает текст статусной строки
-  def self.set_statusbar_text(statusbar, text)
-    statusbar.pop(0)
-    statusbar.push(0, text)
-  end
-
   # Advanced dialog window
   # RU: Продвинутое окно диалога
   class AdvancedDialog < Gtk::Window #Gtk::Dialog
@@ -7105,33 +7054,6 @@ module PandoraGtk
         end
       end
     end
-  end
-
-  # Add button to toolbar
-  # RU: Добавить кнопку на панель инструментов
-  def self.add_tool_btn(toolbar, stock, title, toggle=nil)
-    btn = nil
-    if toggle != nil
-      btn = SafeToggleToolButton.new(stock)
-      btn.safe_signal_clicked do |*args|
-        yield(*args) if block_given?
-      end
-      btn.active = toggle if toggle
-    else
-      image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
-      btn = Gtk::ToolButton.new(image, _(title))
-      #btn = Gtk::ToolButton.new(stock)
-      btn.signal_connect('clicked') do |*args|
-        yield(*args) if block_given?
-      end
-      btn.label = title
-    end
-    toolbar.add(btn)
-    title = _(title)
-    title.gsub!('_', '')
-    btn.tooltip_text = title
-    btn.label = title
-    btn
   end
 
   # Entry with allowed symbols of mask
@@ -7609,16 +7531,6 @@ module PandoraGtk
 
   MaxOnePlaceViewSec = 60
 
-  # Set readonly mode to widget
-  # RU: Установить виджету режим только для чтения
-  def self.set_readonly(widget, value=true, sensitive=true)
-    value = (not value)
-    widget.editable = value if widget.class.method_defined? 'editable?'
-    widget.sensitive = value if sensitive and (widget.class.method_defined? 'sensitive?')
-    #widget.can_focus = value
-    widget.has_focus = value if widget.class.method_defined? 'has_focus?'
-  end
-
   # Extended TextView
   # RU: Расширенный TextView
   class ExtTextView < Gtk::TextView
@@ -7690,237 +7602,6 @@ module PandoraGtk
   # ScrolledWindow for panobjects
   # RU: ScrolledWindow для объектов Пандоры
   class PanobjScrollWin < Gtk::ScrolledWindow
-  end
-
-  # Creating menu item from its description
-  # RU: Создание пункта меню по его описанию
-  def self.create_menu_item(mi, treeview=nil)
-    menuitem = nil
-    if mi[0] == '-'
-      menuitem = Gtk::SeparatorMenuItem.new
-    else
-      text = _(mi[2])
-      #if (mi[4] == :check)
-      #  menuitem = Gtk::CheckMenuItem.new(mi[2])
-      #  label = menuitem.children[0]
-      #  #label.set_text(mi[2], true)
-      if mi[1]
-        menuitem = Gtk::ImageMenuItem.new(mi[1])
-        label = menuitem.children[0]
-        label.set_text(text, true)
-      else
-        menuitem = Gtk::MenuItem.new(text)
-      end
-      #if mi[3]
-      if (not treeview) and mi[3]
-        key, mod = Gtk::Accelerator.parse(mi[3])
-        menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE) if key
-      end
-      menuitem.name = mi[0]
-      menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget, treeview) }
-    end
-    menuitem
-  end
-
-  # Showing panobject list
-  # RU: Показ списка панобъектов
-  def self.show_panobject_list(panobject_class, widget=nil, sw=nil, auto_create=false)
-    notebook = $window.notebook
-    single = (sw == nil)
-    if single
-      notebook.children.each do |child|
-        if (child.is_a? PanobjScrollWin) and (child.name==panobject_class.ider)
-          notebook.page = notebook.children.index(child)
-          return nil
-        end
-      end
-    end
-    panobject = panobject_class.new
-    sel = panobject.select(nil, false, nil, panobject.sort)
-    store = Gtk::ListStore.new(Integer)
-    param_view_col = nil
-    param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
-    sel.each do |row|
-      iter = store.append
-      id = row[0].to_i
-      iter[0] = id
-      if param_view_col
-        type = panobject.field_val('type', row)
-        setting = panobject.field_val('setting', row)
-        ps = PandoraUtils.decode_param_setting(setting)
-        view = ps['view']
-        view ||= PandoraUtils.pantype_to_view(type)
-        row[param_view_col] = view
-      end
-    end
-    treeview = SubjTreeView.new(store)
-    treeview.name = panobject.ider
-    treeview.panobject = panobject
-    treeview.sel = sel
-
-    tab_flds = panobject.tab_fields
-    def_flds = panobject.def_fields
-    def_flds.each do |df|
-      id = df[FI_Id]
-      tab_ind = tab_flds.index{ |tf| tf[0] == id }
-      if tab_ind
-        renderer = Gtk::CellRendererText.new
-        #renderer.background = 'red'
-        #renderer.editable = true
-        #renderer.text = 'aaa'
-
-        title = df[FI_VFName]
-        title ||= v
-        column = SubjTreeViewColumn.new(title, renderer )  #, {:text => i}
-
-        #p v
-        #p ind = panobject.def_fields.index_of {|f| f[0]==v }
-        #p fld = panobject.def_fields[ind]
-
-        column.tab_ind = tab_ind
-        #column.sort_column_id = ind
-        #p column.ind = i
-        #p column.fld = fld
-        #panhash_col = i if (v=='panhash')
-        column.resizable = true
-        column.reorderable = true
-        column.clickable = true
-        treeview.append_column(column)
-        column.signal_connect('clicked') do |col|
-          p 'sort clicked'
-        end
-        column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
-          color = 'black'
-          col = tvc.tab_ind
-          panobject = tvc.tree_view.panobject
-          row = tvc.tree_view.sel[iter.path.indices[0]]
-          val = row[col] if row
-          if val
-            fdesc = panobject.tab_fields[col][TI_Desc]
-            if fdesc.is_a? Array
-              view = nil
-              if param_view_col and (fdesc[FI_Id]=='value')
-                view = row[param_view_col] if row
-              else
-                view = fdesc[FI_View]
-              end
-              val, color = PandoraUtils.val_to_view(val, nil, view, false)
-            else
-              val = val.to_s
-            end
-            val = val[0,45]
-          else
-            val = ''
-          end
-          renderer.foreground = color
-          renderer.text = val
-        end
-      end
-    end
-    treeview.signal_connect('row_activated') do |tree_view, path, column|
-      if single
-        act_panobject(tree_view, 'Edit')
-      else
-        dialog = sw.parent.parent.parent
-        dialog.okbutton.activate
-      end
-    end
-
-    sw ||= PanobjScrollWin.new(nil, nil)
-    sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-    sw.name = panobject.ider
-    sw.add(treeview)
-    sw.border_width = 0
-
-    if auto_create and sel and (sel.size==0)
-      treeview.auto_create = true
-      treeview.signal_connect('map') do |widget, event|
-        if treeview.auto_create
-          act_panobject(treeview, 'Create')
-          treeview.auto_create = false
-        end
-      end
-      auto_create = false
-    end
-
-    if single
-      p 'single: widget='+widget.inspect
-      if widget.is_a? Gtk::ImageMenuItem
-        animage = widget.image
-      elsif widget.is_a? Gtk::ToolButton
-        animage = widget.icon_widget
-      else
-        animage = nil
-      end
-      image = nil
-      if animage
-        image = Gtk::Image.new(animage.stock, Gtk::IconSize::MENU)
-        image.set_padding(2, 0)
-      end
-
-      label_box = TabLabelBox.new(image, panobject.pname, sw, false, 0) do
-        store.clear
-        treeview.destroy
-      end
-
-      page = notebook.append_page(sw, label_box)
-      sw.show_all
-      notebook.page = notebook.n_pages-1
-
-      if treeview.sel.size>0
-        treeview.set_cursor(Gtk::TreePath.new(treeview.sel.size-1), nil, false)
-      end
-      treeview.grab_focus
-    end
-
-    menu = Gtk::Menu.new
-    menu.append(create_menu_item(['Create', Gtk::Stock::NEW, _('Create'), 'Insert'], treeview))
-    menu.append(create_menu_item(['Edit', Gtk::Stock::EDIT, _('Edit'), 'Return'], treeview))
-    menu.append(create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], treeview))
-    menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], treeview))
-    menu.append(create_menu_item(['-', nil, nil], treeview))
-    menu.append(create_menu_item(['Dialog', Gtk::Stock::MEDIA_PLAY, _('Dialog'), '<control>D'], treeview))
-    menu.append(create_menu_item(['Opinion', Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace'], treeview))
-    menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], treeview))
-    menu.append(create_menu_item(['Relate', Gtk::Stock::INDEX, _('Relate'), '<control>R'], treeview))
-    menu.append(create_menu_item(['-', nil, nil], treeview))
-    menu.append(create_menu_item(['Convert', Gtk::Stock::CONVERT, _('Convert')], treeview))
-    menu.append(create_menu_item(['Import', Gtk::Stock::OPEN, _('Import')], treeview))
-    menu.append(create_menu_item(['Export', Gtk::Stock::SAVE, _('Export')], treeview))
-    menu.show_all
-
-    treeview.add_events(Gdk::Event::BUTTON_PRESS_MASK)
-    treeview.signal_connect('button_press_event') do |widget, event|
-      if (event.button == 3)
-        menu.popup(nil, nil, event.button, event.time)
-      end
-    end
-
-    treeview.signal_connect('key-press-event') do |widget, event|
-      res = true
-      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-        act_panobject(treeview, 'Edit')
-      elsif (event.keyval==Gdk::Keyval::GDK_Insert)
-        if event.state.control_mask?
-          act_panobject(treeview, 'Copy')
-        else
-          act_panobject(treeview, 'Create')
-        end
-      elsif (event.keyval==Gdk::Keyval::GDK_Delete)
-        act_panobject(treeview, 'Delete')
-      elsif event.state.control_mask?
-        if [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
-          act_panobject(treeview, 'Dialog')
-        else
-          res = false
-        end
-      else
-        res = false
-      end
-      res
-    end
-
-    auto_create
   end
 
   # Dialog with enter fields
@@ -8755,682 +8436,6 @@ module PandoraGtk
       end
       label_box.spacing = 3
       label_box.show_all
-    end
-  end
-
-
-  $update_interval = 30
-  $download_thread = nil
-
-  UPD_FileList = ['model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'pandora.bat']
-  UPD_FileList.concat(['model/03-language-'+$lang+'.xml', 'lang/'+$lang+'.txt']) if ($lang and ($lang != 'en'))
-
-  # Check updated files and download them
-  # RU: Проверить обновления и скачать их
-  def self.start_updating(all_step=true)
-
-    # Update file
-    # RU: Обновить файл
-    def self.update_file(http, tail, pfn)
-      res = false
-      dir = File.dirname(pfn)
-      FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
-      if Dir.exists?(dir)
-        begin
-          response = http.request_get(tail)
-          File.open(pfn, 'wb+') do |file|
-            file.write(response.body)
-            res = true
-            PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
-          end
-        rescue => err
-          puts 'Update error: '+err.message
-        end
-      else
-        puts 'Cannot create directory: '+dir
-      end
-      res
-    end
-
-    if $download_thread and $download_thread.alive?
-      $download_thread[:all_step] = all_step
-      $download_thread.run if $download_thread.stop?
-    else
-      $download_thread = Thread.new do
-        Thread.current[:all_step] = all_step
-        downloaded = false
-
-        $window.set_status_field(SF_Update, 'Need check')
-        sleep($update_interval) if not Thread.current[:all_step]
-
-        $window.set_status_field(SF_Update, 'Checking')
-        main_script = File.join($pandora_root_dir, 'pandora.rb')
-        curr_size = File.size?(main_script)
-        if curr_size
-          arch_name = File.join($pandora_root_dir, 'master.zip')
-          main_uri = URI('https://raw.github.com/Novator/Pandora/master/pandora.rb')
-          #arch_uri = URI('https://codeload.github.com/Novator/Pandora/zip/master')
-
-          time = 0
-          http = nil
-          if File.stat(main_script).writable?
-            begin
-              #p '-----------'
-              #p [main_uri.host, main_uri.port, main_uri.path]
-              http = Net::HTTP.new(main_uri.host, main_uri.port)
-              http.use_ssl = true
-              http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-              http.open_timeout = 60*5
-              response = http.request_head(main_uri.path)
-              PandoraUtils.set_param('last_check', Time.now)
-              if (response.content_length == curr_size)
-                http = nil
-                $window.set_status_field(SF_Update, 'Ok', true)
-                PandoraUtils.set_param('last_update', Time.now)
-              else
-                time = Time.now.to_i
-              end
-            rescue => err
-              http = nil
-              $window.set_status_field(SF_Update, 'Connection error')
-              PandoraUtils.log_message(LM_Warning, _('Cannot connect to GitHub to check update'))
-              puts err.message
-            end
-          else
-            $window.set_status_field(SF_Update, 'Read only')
-          end
-          if http
-            $window.set_status_field(SF_Update, 'Need update')
-            Thread.stop
-
-            if Time.now.to_i >= time + 60*5
-              begin
-                http = Net::HTTP.new(main_uri.host, main_uri.port)
-                http.use_ssl = true
-                http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-                http.open_timeout = 60*5
-              rescue => err
-                http = nil
-                $window.set_status_field(SF_Update, 'Connection error')
-                PandoraUtils.log_message(LM_Warning, _('Cannot connect to GitHub to update'))
-                puts err.message
-              end
-            end
-
-            if http
-              $window.set_status_field(SF_Update, 'Doing')
-              PandoraUtils.log_message(LM_Info, _('Updating Pandora from')+': '+main_uri.host+'..')
-              # updating pandora.rb
-              downloaded = update_file(http, main_uri.path, main_script)
-              # updating other files
-              UPD_FileList.each do |fn|
-                pfn = File.join($pandora_root_dir, fn)
-                if File.exist?(pfn) and (not File.stat(pfn).writable?)
-                  downloaded = false
-                  PandoraUtils.log_message(LM_Warning, _('Not exist or read only')+': '+pfn)
-                else
-                  downloaded = downloaded and update_file(http, '/Novator/Pandora/master/'+fn, pfn)
-                end
-              end
-              if downloaded
-                PandoraUtils.set_param('last_update', Time.now)
-                $window.set_status_field(SF_Update, 'Need restart')
-                Thread.stop
-                Kernel.abort('Pandora is updated. Run it again')
-              else
-                $window.set_status_field(SF_Update, 'Load error')
-              end
-            end
-          end
-        end
-        $download_thread = nil
-      end
-    end
-  end
-
-  # Do action with selected record
-  # RU: Выполнить действие над выделенной записью
-  def self.act_panobject(tree_view, action)
-
-    # Get icon associated with panobject
-    # RU: Взять иконку ассоциированную с панобъектом
-    def self.get_panobject_icon(panobj)
-      panobj_icon = nil
-      ind = nil
-      $window.notebook.children.each do |child|
-        if child.name==panobj.ider
-          ind = $window.notebook.children.index(child)
-          break
-        end
-      end
-      if ind
-        first_lab_widget = $window.notebook.get_tab_label($window.notebook.children[ind]).children[0]
-        if first_lab_widget.is_a? Gtk::Image
-          image = first_lab_widget
-          panobj_icon = $window.render_icon(image.stock, Gtk::IconSize::MENU).dup
-        end
-      end
-      panobj_icon
-    end
-
-    path = nil
-    if tree_view.destroyed?
-      new_act = false
-    else
-      path, column = tree_view.cursor
-      new_act = action == 'Create'
-    end
-    if path or new_act
-      panobject = tree_view.panobject
-      store = tree_view.model
-      iter = nil
-      sel = nil
-      id = nil
-      panhash0 = nil
-      lang = 5
-      panstate = 0
-      created0 = nil
-      creator0 = nil
-      if path and (not new_act)
-        iter = store.get_iter(path)
-        id = iter[0]
-        sel = panobject.select('id='+id.to_s, true)
-        #p 'panobject.namesvalues='+panobject.namesvalues.inspect
-        #p 'panobject.matter_fields='+panobject.matter_fields.inspect
-        panhash0 = panobject.namesvalues['panhash']
-        lang = panhash0[1].ord if panhash0 and panhash0.size>1
-        lang ||= 0
-        #panhash0 = panobject.panhash(sel[0], lang)
-        panstate = panobject.namesvalues['panstate']
-        panstate ||= 0
-        if (panobject.is_a? PandoraModel::Created)
-          created0 = panobject.namesvalues['created']
-          creator0 = panobject.namesvalues['creator']
-          #p 'created0, creator0='+[created0, creator0].inspect
-        end
-      end
-      #p sel
-
-      panobjecticon = get_panobject_icon(panobject)
-
-      if action=='Delete'
-        if id and sel[0]
-          info = panobject.show_panhash(panhash0) #.force_encoding('ASCII-8BIT') ASCII-8BIT
-          dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
-            Gtk::MessageDialog::QUESTION,
-            Gtk::MessageDialog::BUTTONS_OK_CANCEL,
-            _('Record will be deleted. Sure?')+"\n["+info+']')
-          dialog.title = _('Deletion')+': '+panobject.sname
-          dialog.default_response = Gtk::Dialog::RESPONSE_OK
-          dialog.icon = panobjecticon if panobjecticon
-          if dialog.run == Gtk::Dialog::RESPONSE_OK
-            res = panobject.update(nil, nil, 'id='+id.to_s)
-            tree_view.sel.delete_if {|row| row[0]==id }
-            store.remove(iter)
-            #iter.next!
-            pt = path.indices[0]
-            pt = tree_view.sel.size-1 if (pt > tree_view.sel.size-1)
-            tree_view.set_cursor(Gtk::TreePath.new(pt), column, false) if (pt >= 0)
-          end
-          dialog.destroy
-        end
-      elsif action=='Dialog'
-        show_talk_dialog(panhash0) if panhash0
-      else  # Edit or Insert
-
-        edit = ((not new_act) and (action != 'Copy'))
-
-        i = 0
-        formfields = panobject.def_fields.clone
-        tab_flds = panobject.tab_fields
-        formfields.each do |field|
-          val = nil
-          fid = field[FI_Id]
-          type = field[FI_Type]
-          view = field[FI_View]
-          col = tab_flds.index{ |tf| tf[0] == fid }
-          if col and sel and (sel[0].is_a? Array)
-            val = sel[0][col]
-            if (panobject.ider=='Parameter') and (fid=='value')
-              type = panobject.field_val('type', sel[0])
-              setting = panobject.field_val('setting', sel[0])
-              ps = PandoraUtils.decode_param_setting(setting)
-              view = ps['view']
-              view ||= PandoraUtils.pantype_to_view(type)
-              field[FI_View] = view
-            end
-          end
-
-          val, color = PandoraUtils.val_to_view(val, type, view, true)
-          field[FI_Value] = val
-          field[FI_Color] = color
-        end
-
-        dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
-        dialog.icon = panobjecticon if panobjecticon
-
-        if edit
-          pub_exist = PandoraModel.act_relation(nil, panhash0, RK_MaxPublic, :check)
-
-          count, rate, querist_rate = PandoraCrypto.rate_of_panobj(panhash0)
-          trust = nil
-          res = PandoraCrypto.trust_of_panobject(panhash0)
-          trust = res if res.is_a? Float
-          dialog.vouch_btn.active = (res != nil)
-          dialog.vouch_btn.inconsistent = (res.is_a? Integer)
-          dialog.trust_scale.sensitive = (trust != nil)
-          #dialog.trust_scale.signal_emit('value-changed')
-          trust ||= 0.0
-          dialog.trust_scale.value = trust
-          dialog.rate_label.text = rate.to_s
-
-          dialog.support_btn.active = (PandoraModel::PSF_Support & panstate)>0
-          dialog.public_btn.active = pub_exist
-          dialog.public_btn.inconsistent = (pub_exist==nil)
-
-          dialog.lang_entry.entry.text = lang.to_s if lang
-
-          #dialog.lang_entry.active_text = lang.to_s
-          #trust_lab = dialog.trust_btn.children[0]
-          #trust_lab.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
-        else
-          key = PandoraCrypto.current_key(false, false)
-          not_key_inited = (not (key and key[PandoraCrypto::KV_Obj]))
-          dialog.support_btn.active = true
-          dialog.vouch_btn.active = true
-          if not_key_inited
-            dialog.vouch_btn.inconsistent = true
-            dialog.trust_scale.sensitive = false
-          end
-          dialog.public_btn.inconsistent = not_key_inited
-        end
-
-        st_text = panobject.panhash_formula
-        st_text = st_text + ' [#'+panobject.panhash(sel[0], lang, true, true)+']' if sel and sel.size>0
-        PandoraGtk.set_statusbar_text(dialog.statusbar, st_text)
-
-        if panobject.class==PandoraModel::Key
-          mi = Gtk::MenuItem.new("Действия")
-          menu = Gtk::MenuBar.new
-          menu.append(mi)
-
-          menu2 = Gtk::Menu.new
-          menuitem = Gtk::MenuItem.new("Генерировать")
-          menu2.append(menuitem)
-          mi.submenu = menu2
-          #p dialog.action_area
-          dialog.hbox.pack_end(menu, false, false)
-          #dialog.action_area.add(menu)
-        end
-
-        titadd = nil
-        if not edit
-        #  titadd = _('edit')
-        #else
-          titadd = _('new')
-        end
-        dialog.title += ' ('+titadd+')' if titadd and (titadd != '')
-
-        dialog.run2 do
-          # take value from form
-          dialog.fields.each do |field|
-            entry = field[FI_Widget]
-            field[FI_Value] = entry.text
-          end
-          dialog.text_fields.each do |field|
-            textview = field[FI_Widget]
-            field[FI_Value] = textview.buffer.text
-          end
-
-          # fill hash of values
-          flds_hash = {}
-          dialog.fields.each do |field|
-            type = field[FI_Type]
-            view = field[FI_View]
-            val = field[FI_Value]
-
-            if (panobject.ider=='Parameter') and (field[FI_Id]=='value')
-              type = panobject.field_val('type', sel[0])
-              setting = panobject.field_val('setting', sel[0])
-              ps = PandoraUtils.decode_param_setting(setting)
-              view = ps['view']
-              view ||= PandoraUtils.pantype_to_view(type)
-            end
-
-            val = PandoraUtils.view_to_val(val, type, view)
-            flds_hash[field[FI_Id]] = val
-          end
-          dialog.text_fields.each do |field|
-            flds_hash[field[FI_Id]] = field[FI_Value]
-          end
-          lg = nil
-          begin
-            lg = dialog.lang_entry.entry.text
-            lg = lg.to_i if (lg != '')
-          rescue
-          end
-          lang = lg if lg
-          lang = 5 if (not lang.is_a? Integer) or (lang<0) or (lang>255)
-
-          time_now = Time.now.to_i
-          if (panobject.is_a? PandoraModel::Created)
-            flds_hash['created'] = created0 if created0
-            if not edit
-              flds_hash['created'] = time_now
-              creator = PandoraCrypto.current_user_or_key(true)
-              flds_hash['creator'] = creator
-            end
-          end
-          flds_hash['modified'] = time_now
-          panstate = 0
-          panstate = panstate | PandoraModel::PSF_Support if dialog.support_btn.active?
-          flds_hash['panstate'] = panstate
-          if (panobject.is_a? PandoraModel::Key)
-            lang = flds_hash['rights'].to_i
-          end
-
-          panhash = panobject.panhash(flds_hash, lang)
-          flds_hash['panhash'] = panhash
-
-          if (panobject.is_a? PandoraModel::Key) and (flds_hash['kind'].to_i == PandoraCrypto::KT_Priv) and edit
-            flds_hash['panhash'] = panhash0
-          end
-
-          filter = nil
-          filter = 'id='+id.to_s if edit
-          res = panobject.update(flds_hash, nil, filter, true)
-          if res
-            filter ||= { :panhash => panhash, :modified => time_now }
-            sel = panobject.select(filter, true)
-            if sel[0]
-              #p 'panobject.namesvalues='+panobject.namesvalues.inspect
-              #p 'panobject.matter_fields='+panobject.matter_fields.inspect
-
-              id = panobject.field_val('id', sel[0])  #panobject.namesvalues['id']
-              id = id.to_i
-              #p 'id='+id.inspect
-
-              #p 'id='+id.inspect
-              ind = tree_view.sel.index { |row| row[0]==id }
-              #p 'ind='+ind.inspect
-              if ind
-                #p '---------CHANGE'
-                tree_view.sel[ind] = sel[0]
-                iter[0] = id
-                store.row_changed(path, iter)
-              else
-                #p '---------INSERT'
-                tree_view.sel << sel[0]
-                iter = store.append
-                iter[0] = id
-                tree_view.set_cursor(Gtk::TreePath.new(tree_view.sel.size-1), nil, false)
-              end
-
-              if not dialog.vouch_btn.inconsistent?
-                PandoraCrypto.unsign_panobject(panhash0, true)
-                if dialog.vouch_btn.active?
-                  trust = (dialog.trust_scale.value*127).round
-                  PandoraCrypto.sign_panobject(panobject, trust)
-                end
-              end
-
-              if not dialog.public_btn.inconsistent?
-                #p 'panhash,panhash0='+[panhash, panhash0].inspect
-                PandoraModel.act_relation(nil, panhash0, RK_MaxPublic, :delete, true, true) if panhash != panhash0
-                if dialog.public_btn.active?
-                  PandoraModel.act_relation(nil, panhash, RK_MaxPublic, :create, true, true)
-                else
-                  PandoraModel.act_relation(nil, panhash, RK_MaxPublic, :delete, true, true)
-                end
-              end
-            end
-          end
-        end
-      end
-    elsif action=='Dialog'
-      PandoraGtk.show_panobject_list(PandoraModel::Person)
-    end
-  end
-
-  $media_buf_size = 50
-  $send_media_queues = []
-  $send_media_rooms = {}
-
-  # Take pointer index for sending by room
-  # RU: Взять индекс указателя для отправки по id комнаты
-  def self.set_send_ptrind_by_room(room_id)
-    ptr = nil
-    if room_id
-      ptr = $send_media_rooms[room_id]
-      if ptr
-        ptr[0] = true
-        ptr = ptr[1]
-      else
-        ptr = $send_media_rooms.size
-        $send_media_rooms[room_id] = [true, ptr]
-      end
-    end
-    ptr
-  end
-
-  # Check pointer index for sending by room
-  # RU: Проверить индекс указателя для отправки по id комнаты
-  def self.get_send_ptrind_by_room(room_id)
-    ptr = nil
-    if room_id
-      set_ptr = $send_media_rooms[room_id]
-      if set_ptr and set_ptr[0]
-        ptr = set_ptr[1]
-      end
-    end
-    ptr
-  end
-
-  # Clear pointer index for sending for room
-  # RU: Сбросить индекс указателя для отправки для комнаты
-  def self.nil_send_ptrind_by_room(room_id)
-    if room_id
-      ptr = $send_media_rooms[room_id]
-      if ptr
-        ptr[0] = false
-      end
-    end
-    res = $send_media_rooms.select{|room,ptr| ptr[0] }
-    res.size
-  end
-
-  # Get view parameters
-  # RU: Взять параметры вида
-  def self.get_view_params
-    $load_history_count = PandoraUtils.get_param('load_history_count')
-    $sort_history_mode = PandoraUtils.get_param('sort_history_mode')
-  end
-
-  # Get main parameters
-  # RU: Взять основные параметры
-  def self.get_main_params
-    get_view_params
-  end
-
-  CSI_Persons = 0
-  CSI_Keys    = 1
-  CSI_Nodes   = 2
-  CSI_PersonRecs = 3
-
-  $key_watch_lim   = 5
-  $sign_watch_lim  = 5
-
-  # Get person panhash by any panhash
-  # RU: Получить панхэш персоны по произвольному панхэшу
-  def self.extract_targets_from_panhash(targets, panhashes)
-    persons, keys, nodes = targets
-    panhashes = [panhashes] if not panhashes.is_a? Array
-    #p '--extract_targets_from_panhash  targets='+targets.inspect
-    panhashes.each do |panhash|
-      if (panhash.is_a? String) and (panhash.bytesize>0)
-        kind = PandoraUtils.kind_from_panhash(panhash)
-        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-        if panobjectclass
-          if panobjectclass <= PandoraModel::Person
-            persons << panhash
-          elsif panobjectclass <= PandoraModel::Node
-            nodes << panhash
-          else
-            if panobjectclass <= PandoraModel::Created
-              model = PandoraUtils.get_model(panobjectclass.ider)
-              filter = {:panhash=>panhash}
-              sel = model.select(filter, false, 'creator')
-              if sel and sel.size>0
-                sel.each do |row|
-                  persons << row[0]
-                end
-              end
-            end
-          end
-        end
-      end
-    end
-    persons.uniq!
-    persons.compact!
-    if (keys.size == 0) and (nodes.size > 0)
-      nodes.uniq!
-      nodes.compact!
-      model = PandoraUtils.get_model('Node')
-      nodes.each do |node|
-        sel = model.select({:panhash=>node}, false, 'key_hash')
-        if sel and (sel.size>0)
-          sel.each do |row|
-            keys << row[0]
-          end
-        end
-      end
-    end
-    keys.uniq!
-    keys.compact!
-    if (persons.size == 0) and (keys.size > 0)
-      kmodel = PandoraUtils.get_model('Key')
-      smodel = PandoraUtils.get_model('Sign')
-      keys.each do |key|
-        sel = kmodel.select({:panhash=>key}, false, 'creator', 'modified DESC', $key_watch_lim)
-        if sel and (sel.size>0)
-          sel.each do |row|
-            persons << row[0]
-          end
-        end
-        sel = smodel.select({:key_hash=>key}, false, 'creator', 'modified DESC', $sign_watch_lim)
-        if sel and (sel.size>0)
-          sel.each do |row|
-            persons << row[0]
-          end
-        end
-      end
-      persons.uniq!
-      persons.compact!
-    end
-    if nodes.size == 0
-      model = PandoraUtils.get_model('Key')
-      persons.each do |person|
-        sel = model.select({:creator=>person}, false, 'panhash', 'modified DESC', $key_watch_lim)
-        if sel and (sel.size>0)
-          sel.each do |row|
-            keys << row[0]
-          end
-        end
-      end
-      if keys.size == 0
-        model = PandoraUtils.get_model('Sign')
-        persons.each do |person|
-          sel = model.select({:creator=>person}, false, 'key_hash', 'modified DESC', $sign_watch_lim)
-          if sel and (sel.size>0)
-            sel.each do |row|
-              keys << row[0]
-            end
-          end
-        end
-      end
-      keys.uniq!
-      keys.compact!
-      model = PandoraUtils.get_model('Node')
-      keys.each do |key|
-        sel = model.select({:key_hash=>key}, false, 'panhash')
-        if sel and (sel.size>0)
-          sel.each do |row|
-            nodes << row[0]
-          end
-        end
-      end
-      #p '[keys, nodes]='+[keys, nodes].inspect
-      #p 'targets3='+targets.inspect
-    end
-    nodes.uniq!
-    nodes.compact!
-    nodes.size
-  end
-
-  # Extend lists of persons, nodes and keys by relations
-  # RU: Расширить списки персон, узлов и ключей пройдясь по связям
-  def self.extend_targets_by_relations(targets)
-    added = 0
-    # need to copmose by relations
-    added
-  end
-
-  # Start a thread which is searching additional nodes and keys
-  # RU: Запуск потока, которые ищет дополнительные узлы и ключи
-  def self.start_extending_targets_by_hunt(targets)
-    started = true
-    # heen hunt with poll of nodes
-    started
-  end
-
-  # Construct room id
-  # RU: Создать идентификатор комнаты
-  def self.construct_room_id(persons)
-    res = nil
-    if (persons.is_a? Array) and (persons.size>0)
-      sha1 = Digest::SHA1.new
-      persons.each do |panhash|
-        sha1.update(panhash)
-      end
-      res = sha1.digest
-    end
-    res
-  end
-
-  # Find active sender
-  # RU: Найти активного отправителя
-  def self.find_active_sender(not_this=nil)
-    res = nil
-    $window.notebook.children.each do |child|
-      if (child != not_this) and (child.is_a? DialogScrollWin) and child.vid_button.active?
-        return child
-      end
-    end
-    res
-  end
-
-  # Correct bug with dissapear Enter press event
-  # RU: Исправляет баг с исчезновением нажатия Enter
-  def self.hack_enter_bug(enterbox)
-    # because of bug - doesnt work Enter at 'key-press-event'
-    enterbox.signal_connect('key-release-event') do |widget, event|
-      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
-      and (not event.state.control_mask?) and (not event.state.shift_mask?) and (not event.state.mod1_mask?)
-        widget.signal_emit('key-press-event', event)
-        false
-      end
-    end
-  end
-
-  # Correct bug with non working focus set
-  # RU: Исправляет баг с неработающей постановкой фокуса
-  def self.hack_grab_focus(widget_to_focus)
-    widget_to_focus.grab_focus
-    Thread.new do
-      sleep(0.2)
-      if (not widget_to_focus.destroyed?)
-        widget_to_focus.grab_focus
-      end
     end
   end
 
@@ -10402,7 +9407,7 @@ module PandoraGtk
         end
         if just_upd_area
           area_send.set_expose_event(nil)
-          tsw = PandoraGtk.find_active_sender(self)
+          tsw = PandoraGtk.find_another_active_sender(self)
           if $webcam_xvimagesink and (not $webcam_xvimagesink.destroyed?) and tsw \
           and tsw.area_send and tsw.area_send.window
             link_sink_to_area($webcam_xvimagesink, tsw.area_send)
@@ -11250,6 +10255,1001 @@ module PandoraGtk
 
       list_tree.grab_focus
     end
+  end
+
+  # Set readonly mode to widget
+  # RU: Установить виджету режим только для чтения
+  def self.set_readonly(widget, value=true, sensitive=true)
+    value = (not value)
+    widget.editable = value if widget.class.method_defined? 'editable?'
+    widget.sensitive = value if sensitive and (widget.class.method_defined? 'sensitive?')
+    #widget.can_focus = value
+    widget.has_focus = value if widget.class.method_defined? 'has_focus?'
+  end
+
+  # Correct bug with dissapear Enter press event
+  # RU: Исправляет баг с исчезновением нажатия Enter
+  def self.hack_enter_bug(enterbox)
+    # because of bug - doesnt work Enter at 'key-press-event'
+    enterbox.signal_connect('key-release-event') do |widget, event|
+      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
+      and (not event.state.control_mask?) and (not event.state.shift_mask?) and (not event.state.mod1_mask?)
+        widget.signal_emit('key-press-event', event)
+        false
+      end
+    end
+  end
+
+  # Correct bug with non working focus set
+  # RU: Исправляет баг с неработающей постановкой фокуса
+  def self.hack_grab_focus(widget_to_focus)
+    widget_to_focus.grab_focus
+    Thread.new do
+      sleep(0.2)
+      if (not widget_to_focus.destroyed?)
+        widget_to_focus.grab_focus
+      end
+    end
+  end
+
+  # Creating menu item from its description
+  # RU: Создание пункта меню по его описанию
+  def self.create_menu_item(mi, treeview=nil)
+    menuitem = nil
+    if mi[0] == '-'
+      menuitem = Gtk::SeparatorMenuItem.new
+    else
+      text = _(mi[2])
+      #if (mi[4] == :check)
+      #  menuitem = Gtk::CheckMenuItem.new(mi[2])
+      #  label = menuitem.children[0]
+      #  #label.set_text(mi[2], true)
+      if mi[1]
+        menuitem = Gtk::ImageMenuItem.new(mi[1])
+        label = menuitem.children[0]
+        label.set_text(text, true)
+      else
+        menuitem = Gtk::MenuItem.new(text)
+      end
+      #if mi[3]
+      if (not treeview) and mi[3]
+        key, mod = Gtk::Accelerator.parse(mi[3])
+        menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE) if key
+      end
+      menuitem.name = mi[0]
+      menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget, treeview) }
+    end
+    menuitem
+  end
+
+  # Set statusbat text
+  # RU: Задает текст статусной строки
+  def self.set_statusbar_text(statusbar, text)
+    statusbar.pop(0)
+    statusbar.push(0, text)
+  end
+
+  # Add button to toolbar
+  # RU: Добавить кнопку на панель инструментов
+  def self.add_tool_btn(toolbar, stock, title, toggle=nil)
+    btn = nil
+    if toggle != nil
+      btn = SafeToggleToolButton.new(stock)
+      btn.safe_signal_clicked do |*args|
+        yield(*args) if block_given?
+      end
+      btn.active = toggle if toggle
+    else
+      image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
+      btn = Gtk::ToolButton.new(image, _(title))
+      #btn = Gtk::ToolButton.new(stock)
+      btn.signal_connect('clicked') do |*args|
+        yield(*args) if block_given?
+      end
+      btn.label = title
+    end
+    toolbar.add(btn)
+    title = _(title)
+    title.gsub!('_', '')
+    btn.tooltip_text = title
+    btn.label = title
+    btn
+  end
+
+  $update_interval = 30
+  $download_thread = nil
+
+  UPD_FileList = ['model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'pandora.bat']
+  UPD_FileList.concat(['model/03-language-'+$lang+'.xml', 'lang/'+$lang+'.txt']) if ($lang and ($lang != 'en'))
+
+  # Check updated files and download them
+  # RU: Проверить обновления и скачать их
+  def self.start_updating(all_step=true)
+
+    # Update file
+    # RU: Обновить файл
+    def self.update_file(http, tail, pfn)
+      res = false
+      dir = File.dirname(pfn)
+      FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
+      if Dir.exists?(dir)
+        begin
+          response = http.request_get(tail)
+          File.open(pfn, 'wb+') do |file|
+            file.write(response.body)
+            res = true
+            PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
+          end
+        rescue => err
+          puts 'Update error: '+err.message
+        end
+      else
+        puts 'Cannot create directory: '+dir
+      end
+      res
+    end
+
+    if $download_thread and $download_thread.alive?
+      $download_thread[:all_step] = all_step
+      $download_thread.run if $download_thread.stop?
+    else
+      $download_thread = Thread.new do
+        Thread.current[:all_step] = all_step
+        downloaded = false
+
+        $window.set_status_field(SF_Update, 'Need check')
+        sleep($update_interval) if not Thread.current[:all_step]
+
+        $window.set_status_field(SF_Update, 'Checking')
+        main_script = File.join($pandora_root_dir, 'pandora.rb')
+        curr_size = File.size?(main_script)
+        if curr_size
+          arch_name = File.join($pandora_root_dir, 'master.zip')
+          main_uri = URI('https://raw.github.com/Novator/Pandora/master/pandora.rb')
+          #arch_uri = URI('https://codeload.github.com/Novator/Pandora/zip/master')
+
+          time = 0
+          http = nil
+          if File.stat(main_script).writable?
+            begin
+              #p '-----------'
+              #p [main_uri.host, main_uri.port, main_uri.path]
+              http = Net::HTTP.new(main_uri.host, main_uri.port)
+              http.use_ssl = true
+              http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+              http.open_timeout = 60*5
+              response = http.request_head(main_uri.path)
+              PandoraUtils.set_param('last_check', Time.now)
+              if (response.content_length == curr_size)
+                http = nil
+                $window.set_status_field(SF_Update, 'Ok', true)
+                PandoraUtils.set_param('last_update', Time.now)
+              else
+                time = Time.now.to_i
+              end
+            rescue => err
+              http = nil
+              $window.set_status_field(SF_Update, 'Connection error')
+              PandoraUtils.log_message(LM_Warning, _('Cannot connect to GitHub to check update'))
+              puts err.message
+            end
+          else
+            $window.set_status_field(SF_Update, 'Read only')
+          end
+          if http
+            $window.set_status_field(SF_Update, 'Need update')
+            Thread.stop
+
+            if Time.now.to_i >= time + 60*5
+              begin
+                http = Net::HTTP.new(main_uri.host, main_uri.port)
+                http.use_ssl = true
+                http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+                http.open_timeout = 60*5
+              rescue => err
+                http = nil
+                $window.set_status_field(SF_Update, 'Connection error')
+                PandoraUtils.log_message(LM_Warning, _('Cannot connect to GitHub to update'))
+                puts err.message
+              end
+            end
+
+            if http
+              $window.set_status_field(SF_Update, 'Doing')
+              PandoraUtils.log_message(LM_Info, _('Updating Pandora from')+': '+main_uri.host+'..')
+              # updating pandora.rb
+              downloaded = update_file(http, main_uri.path, main_script)
+              # updating other files
+              UPD_FileList.each do |fn|
+                pfn = File.join($pandora_root_dir, fn)
+                if File.exist?(pfn) and (not File.stat(pfn).writable?)
+                  downloaded = false
+                  PandoraUtils.log_message(LM_Warning, _('Not exist or read only')+': '+pfn)
+                else
+                  downloaded = downloaded and update_file(http, '/Novator/Pandora/master/'+fn, pfn)
+                end
+              end
+              if downloaded
+                PandoraUtils.set_param('last_update', Time.now)
+                $window.set_status_field(SF_Update, 'Need restart')
+                Thread.stop
+                Kernel.abort('Pandora is updated. Run it again')
+              else
+                $window.set_status_field(SF_Update, 'Load error')
+              end
+            end
+          end
+        end
+        $download_thread = nil
+      end
+    end
+  end
+
+  # Do action with selected record
+  # RU: Выполнить действие над выделенной записью
+  def self.act_panobject(tree_view, action)
+
+    # Get icon associated with panobject
+    # RU: Взять иконку ассоциированную с панобъектом
+    def self.get_panobject_icon(panobj)
+      panobj_icon = nil
+      ind = nil
+      $window.notebook.children.each do |child|
+        if child.name==panobj.ider
+          ind = $window.notebook.children.index(child)
+          break
+        end
+      end
+      if ind
+        first_lab_widget = $window.notebook.get_tab_label($window.notebook.children[ind]).children[0]
+        if first_lab_widget.is_a? Gtk::Image
+          image = first_lab_widget
+          panobj_icon = $window.render_icon(image.stock, Gtk::IconSize::MENU).dup
+        end
+      end
+      panobj_icon
+    end
+
+    path = nil
+    if tree_view.destroyed?
+      new_act = false
+    else
+      path, column = tree_view.cursor
+      new_act = action == 'Create'
+    end
+    if path or new_act
+      panobject = tree_view.panobject
+      store = tree_view.model
+      iter = nil
+      sel = nil
+      id = nil
+      panhash0 = nil
+      lang = 5
+      panstate = 0
+      created0 = nil
+      creator0 = nil
+      if path and (not new_act)
+        iter = store.get_iter(path)
+        id = iter[0]
+        sel = panobject.select('id='+id.to_s, true)
+        #p 'panobject.namesvalues='+panobject.namesvalues.inspect
+        #p 'panobject.matter_fields='+panobject.matter_fields.inspect
+        panhash0 = panobject.namesvalues['panhash']
+        lang = panhash0[1].ord if panhash0 and panhash0.size>1
+        lang ||= 0
+        #panhash0 = panobject.panhash(sel[0], lang)
+        panstate = panobject.namesvalues['panstate']
+        panstate ||= 0
+        if (panobject.is_a? PandoraModel::Created)
+          created0 = panobject.namesvalues['created']
+          creator0 = panobject.namesvalues['creator']
+          #p 'created0, creator0='+[created0, creator0].inspect
+        end
+      end
+      #p sel
+
+      panobjecticon = get_panobject_icon(panobject)
+
+      if action=='Delete'
+        if id and sel[0]
+          info = panobject.show_panhash(panhash0) #.force_encoding('ASCII-8BIT') ASCII-8BIT
+          dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
+            Gtk::MessageDialog::QUESTION,
+            Gtk::MessageDialog::BUTTONS_OK_CANCEL,
+            _('Record will be deleted. Sure?')+"\n["+info+']')
+          dialog.title = _('Deletion')+': '+panobject.sname
+          dialog.default_response = Gtk::Dialog::RESPONSE_OK
+          dialog.icon = panobjecticon if panobjecticon
+          if dialog.run == Gtk::Dialog::RESPONSE_OK
+            res = panobject.update(nil, nil, 'id='+id.to_s)
+            tree_view.sel.delete_if {|row| row[0]==id }
+            store.remove(iter)
+            #iter.next!
+            pt = path.indices[0]
+            pt = tree_view.sel.size-1 if (pt > tree_view.sel.size-1)
+            tree_view.set_cursor(Gtk::TreePath.new(pt), column, false) if (pt >= 0)
+          end
+          dialog.destroy
+        end
+      elsif action=='Dialog'
+        show_talk_dialog(panhash0) if panhash0
+      else  # Edit or Insert
+
+        edit = ((not new_act) and (action != 'Copy'))
+
+        i = 0
+        formfields = panobject.def_fields.clone
+        tab_flds = panobject.tab_fields
+        formfields.each do |field|
+          val = nil
+          fid = field[FI_Id]
+          type = field[FI_Type]
+          view = field[FI_View]
+          col = tab_flds.index{ |tf| tf[0] == fid }
+          if col and sel and (sel[0].is_a? Array)
+            val = sel[0][col]
+            if (panobject.ider=='Parameter') and (fid=='value')
+              type = panobject.field_val('type', sel[0])
+              setting = panobject.field_val('setting', sel[0])
+              ps = PandoraUtils.decode_param_setting(setting)
+              view = ps['view']
+              view ||= PandoraUtils.pantype_to_view(type)
+              field[FI_View] = view
+            end
+          end
+
+          val, color = PandoraUtils.val_to_view(val, type, view, true)
+          field[FI_Value] = val
+          field[FI_Color] = color
+        end
+
+        dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
+        dialog.icon = panobjecticon if panobjecticon
+
+        if edit
+          pub_exist = PandoraModel.act_relation(nil, panhash0, RK_MaxPublic, :check)
+
+          count, rate, querist_rate = PandoraCrypto.rate_of_panobj(panhash0)
+          trust = nil
+          res = PandoraCrypto.trust_of_panobject(panhash0)
+          trust = res if res.is_a? Float
+          dialog.vouch_btn.active = (res != nil)
+          dialog.vouch_btn.inconsistent = (res.is_a? Integer)
+          dialog.trust_scale.sensitive = (trust != nil)
+          #dialog.trust_scale.signal_emit('value-changed')
+          trust ||= 0.0
+          dialog.trust_scale.value = trust
+          dialog.rate_label.text = rate.to_s
+
+          dialog.support_btn.active = (PandoraModel::PSF_Support & panstate)>0
+          dialog.public_btn.active = pub_exist
+          dialog.public_btn.inconsistent = (pub_exist==nil)
+
+          dialog.lang_entry.entry.text = lang.to_s if lang
+
+          #dialog.lang_entry.active_text = lang.to_s
+          #trust_lab = dialog.trust_btn.children[0]
+          #trust_lab.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
+        else
+          key = PandoraCrypto.current_key(false, false)
+          not_key_inited = (not (key and key[PandoraCrypto::KV_Obj]))
+          dialog.support_btn.active = true
+          dialog.vouch_btn.active = true
+          if not_key_inited
+            dialog.vouch_btn.inconsistent = true
+            dialog.trust_scale.sensitive = false
+          end
+          dialog.public_btn.inconsistent = not_key_inited
+        end
+
+        st_text = panobject.panhash_formula
+        st_text = st_text + ' [#'+panobject.panhash(sel[0], lang, true, true)+']' if sel and sel.size>0
+        PandoraGtk.set_statusbar_text(dialog.statusbar, st_text)
+
+        if panobject.class==PandoraModel::Key
+          mi = Gtk::MenuItem.new("Действия")
+          menu = Gtk::MenuBar.new
+          menu.append(mi)
+
+          menu2 = Gtk::Menu.new
+          menuitem = Gtk::MenuItem.new("Генерировать")
+          menu2.append(menuitem)
+          mi.submenu = menu2
+          #p dialog.action_area
+          dialog.hbox.pack_end(menu, false, false)
+          #dialog.action_area.add(menu)
+        end
+
+        titadd = nil
+        if not edit
+        #  titadd = _('edit')
+        #else
+          titadd = _('new')
+        end
+        dialog.title += ' ('+titadd+')' if titadd and (titadd != '')
+
+        dialog.run2 do
+          # take value from form
+          dialog.fields.each do |field|
+            entry = field[FI_Widget]
+            field[FI_Value] = entry.text
+          end
+          dialog.text_fields.each do |field|
+            textview = field[FI_Widget]
+            field[FI_Value] = textview.buffer.text
+          end
+
+          # fill hash of values
+          flds_hash = {}
+          dialog.fields.each do |field|
+            type = field[FI_Type]
+            view = field[FI_View]
+            val = field[FI_Value]
+
+            if (panobject.ider=='Parameter') and (field[FI_Id]=='value')
+              type = panobject.field_val('type', sel[0])
+              setting = panobject.field_val('setting', sel[0])
+              ps = PandoraUtils.decode_param_setting(setting)
+              view = ps['view']
+              view ||= PandoraUtils.pantype_to_view(type)
+            end
+
+            val = PandoraUtils.view_to_val(val, type, view)
+            flds_hash[field[FI_Id]] = val
+          end
+          dialog.text_fields.each do |field|
+            flds_hash[field[FI_Id]] = field[FI_Value]
+          end
+          lg = nil
+          begin
+            lg = dialog.lang_entry.entry.text
+            lg = lg.to_i if (lg != '')
+          rescue
+          end
+          lang = lg if lg
+          lang = 5 if (not lang.is_a? Integer) or (lang<0) or (lang>255)
+
+          time_now = Time.now.to_i
+          if (panobject.is_a? PandoraModel::Created)
+            flds_hash['created'] = created0 if created0
+            if not edit
+              flds_hash['created'] = time_now
+              creator = PandoraCrypto.current_user_or_key(true)
+              flds_hash['creator'] = creator
+            end
+          end
+          flds_hash['modified'] = time_now
+          panstate = 0
+          panstate = panstate | PandoraModel::PSF_Support if dialog.support_btn.active?
+          flds_hash['panstate'] = panstate
+          if (panobject.is_a? PandoraModel::Key)
+            lang = flds_hash['rights'].to_i
+          end
+
+          panhash = panobject.panhash(flds_hash, lang)
+          flds_hash['panhash'] = panhash
+
+          if (panobject.is_a? PandoraModel::Key) and (flds_hash['kind'].to_i == PandoraCrypto::KT_Priv) and edit
+            flds_hash['panhash'] = panhash0
+          end
+
+          filter = nil
+          filter = 'id='+id.to_s if edit
+          res = panobject.update(flds_hash, nil, filter, true)
+          if res
+            filter ||= { :panhash => panhash, :modified => time_now }
+            sel = panobject.select(filter, true)
+            if sel[0]
+              #p 'panobject.namesvalues='+panobject.namesvalues.inspect
+              #p 'panobject.matter_fields='+panobject.matter_fields.inspect
+
+              id = panobject.field_val('id', sel[0])  #panobject.namesvalues['id']
+              id = id.to_i
+              #p 'id='+id.inspect
+
+              #p 'id='+id.inspect
+              ind = tree_view.sel.index { |row| row[0]==id }
+              #p 'ind='+ind.inspect
+              if ind
+                #p '---------CHANGE'
+                tree_view.sel[ind] = sel[0]
+                iter[0] = id
+                store.row_changed(path, iter)
+              else
+                #p '---------INSERT'
+                tree_view.sel << sel[0]
+                iter = store.append
+                iter[0] = id
+                tree_view.set_cursor(Gtk::TreePath.new(tree_view.sel.size-1), nil, false)
+              end
+
+              if not dialog.vouch_btn.inconsistent?
+                PandoraCrypto.unsign_panobject(panhash0, true)
+                if dialog.vouch_btn.active?
+                  trust = (dialog.trust_scale.value*127).round
+                  PandoraCrypto.sign_panobject(panobject, trust)
+                end
+              end
+
+              if not dialog.public_btn.inconsistent?
+                #p 'panhash,panhash0='+[panhash, panhash0].inspect
+                PandoraModel.act_relation(nil, panhash0, RK_MaxPublic, :delete, true, true) if panhash != panhash0
+                if dialog.public_btn.active?
+                  PandoraModel.act_relation(nil, panhash, RK_MaxPublic, :create, true, true)
+                else
+                  PandoraModel.act_relation(nil, panhash, RK_MaxPublic, :delete, true, true)
+                end
+              end
+            end
+          end
+        end
+      end
+    elsif action=='Dialog'
+      PandoraGtk.show_panobject_list(PandoraModel::Person)
+    end
+  end
+
+  # Showing panobject list
+  # RU: Показ списка панобъектов
+  def self.show_panobject_list(panobject_class, widget=nil, sw=nil, auto_create=false)
+    notebook = $window.notebook
+    single = (sw == nil)
+    if single
+      notebook.children.each do |child|
+        if (child.is_a? PanobjScrollWin) and (child.name==panobject_class.ider)
+          notebook.page = notebook.children.index(child)
+          return nil
+        end
+      end
+    end
+    panobject = panobject_class.new
+    sel = panobject.select(nil, false, nil, panobject.sort)
+    store = Gtk::ListStore.new(Integer)
+    param_view_col = nil
+    param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
+    sel.each do |row|
+      iter = store.append
+      id = row[0].to_i
+      iter[0] = id
+      if param_view_col
+        type = panobject.field_val('type', row)
+        setting = panobject.field_val('setting', row)
+        ps = PandoraUtils.decode_param_setting(setting)
+        view = ps['view']
+        view ||= PandoraUtils.pantype_to_view(type)
+        row[param_view_col] = view
+      end
+    end
+    treeview = SubjTreeView.new(store)
+    treeview.name = panobject.ider
+    treeview.panobject = panobject
+    treeview.sel = sel
+
+    tab_flds = panobject.tab_fields
+    def_flds = panobject.def_fields
+    def_flds.each do |df|
+      id = df[FI_Id]
+      tab_ind = tab_flds.index{ |tf| tf[0] == id }
+      if tab_ind
+        renderer = Gtk::CellRendererText.new
+        #renderer.background = 'red'
+        #renderer.editable = true
+        #renderer.text = 'aaa'
+
+        title = df[FI_VFName]
+        title ||= v
+        column = SubjTreeViewColumn.new(title, renderer )  #, {:text => i}
+
+        #p v
+        #p ind = panobject.def_fields.index_of {|f| f[0]==v }
+        #p fld = panobject.def_fields[ind]
+
+        column.tab_ind = tab_ind
+        #column.sort_column_id = ind
+        #p column.ind = i
+        #p column.fld = fld
+        #panhash_col = i if (v=='panhash')
+        column.resizable = true
+        column.reorderable = true
+        column.clickable = true
+        treeview.append_column(column)
+        column.signal_connect('clicked') do |col|
+          p 'sort clicked'
+        end
+        column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
+          color = 'black'
+          col = tvc.tab_ind
+          panobject = tvc.tree_view.panobject
+          row = tvc.tree_view.sel[iter.path.indices[0]]
+          val = row[col] if row
+          if val
+            fdesc = panobject.tab_fields[col][TI_Desc]
+            if fdesc.is_a? Array
+              view = nil
+              if param_view_col and (fdesc[FI_Id]=='value')
+                view = row[param_view_col] if row
+              else
+                view = fdesc[FI_View]
+              end
+              val, color = PandoraUtils.val_to_view(val, nil, view, false)
+            else
+              val = val.to_s
+            end
+            val = val[0,45]
+          else
+            val = ''
+          end
+          renderer.foreground = color
+          renderer.text = val
+        end
+      end
+    end
+    treeview.signal_connect('row_activated') do |tree_view, path, column|
+      if single
+        act_panobject(tree_view, 'Edit')
+      else
+        dialog = sw.parent.parent.parent
+        dialog.okbutton.activate
+      end
+    end
+
+    sw ||= PanobjScrollWin.new(nil, nil)
+    sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+    sw.name = panobject.ider
+    sw.add(treeview)
+    sw.border_width = 0
+
+    if auto_create and sel and (sel.size==0)
+      treeview.auto_create = true
+      treeview.signal_connect('map') do |widget, event|
+        if treeview.auto_create
+          act_panobject(treeview, 'Create')
+          treeview.auto_create = false
+        end
+      end
+      auto_create = false
+    end
+
+    if single
+      p 'single: widget='+widget.inspect
+      if widget.is_a? Gtk::ImageMenuItem
+        animage = widget.image
+      elsif widget.is_a? Gtk::ToolButton
+        animage = widget.icon_widget
+      else
+        animage = nil
+      end
+      image = nil
+      if animage
+        image = Gtk::Image.new(animage.stock, Gtk::IconSize::MENU)
+        image.set_padding(2, 0)
+      end
+
+      label_box = TabLabelBox.new(image, panobject.pname, sw, false, 0) do
+        store.clear
+        treeview.destroy
+      end
+
+      page = notebook.append_page(sw, label_box)
+      sw.show_all
+      notebook.page = notebook.n_pages-1
+
+      if treeview.sel.size>0
+        treeview.set_cursor(Gtk::TreePath.new(treeview.sel.size-1), nil, false)
+      end
+      treeview.grab_focus
+    end
+
+    menu = Gtk::Menu.new
+    menu.append(create_menu_item(['Create', Gtk::Stock::NEW, _('Create'), 'Insert'], treeview))
+    menu.append(create_menu_item(['Edit', Gtk::Stock::EDIT, _('Edit'), 'Return'], treeview))
+    menu.append(create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], treeview))
+    menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], treeview))
+    menu.append(create_menu_item(['-', nil, nil], treeview))
+    menu.append(create_menu_item(['Dialog', Gtk::Stock::MEDIA_PLAY, _('Dialog'), '<control>D'], treeview))
+    menu.append(create_menu_item(['Opinion', Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace'], treeview))
+    menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], treeview))
+    menu.append(create_menu_item(['Relate', Gtk::Stock::INDEX, _('Relate'), '<control>R'], treeview))
+    menu.append(create_menu_item(['-', nil, nil], treeview))
+    menu.append(create_menu_item(['Convert', Gtk::Stock::CONVERT, _('Convert')], treeview))
+    menu.append(create_menu_item(['Import', Gtk::Stock::OPEN, _('Import')], treeview))
+    menu.append(create_menu_item(['Export', Gtk::Stock::SAVE, _('Export')], treeview))
+    menu.show_all
+
+    treeview.add_events(Gdk::Event::BUTTON_PRESS_MASK)
+    treeview.signal_connect('button_press_event') do |widget, event|
+      if (event.button == 3)
+        menu.popup(nil, nil, event.button, event.time)
+      end
+    end
+
+    treeview.signal_connect('key-press-event') do |widget, event|
+      res = true
+      if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+        act_panobject(treeview, 'Edit')
+      elsif (event.keyval==Gdk::Keyval::GDK_Insert)
+        if event.state.control_mask?
+          act_panobject(treeview, 'Copy')
+        else
+          act_panobject(treeview, 'Create')
+        end
+      elsif (event.keyval==Gdk::Keyval::GDK_Delete)
+        act_panobject(treeview, 'Delete')
+      elsif event.state.control_mask?
+        if [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
+          act_panobject(treeview, 'Dialog')
+        else
+          res = false
+        end
+      else
+        res = false
+      end
+      res
+    end
+    auto_create
+  end
+
+  $media_buf_size = 50
+  $send_media_queues = []
+  $send_media_rooms = {}
+
+  # Take pointer index for sending by room
+  # RU: Взять индекс указателя для отправки по id комнаты
+  def self.set_send_ptrind_by_room(room_id)
+    ptr = nil
+    if room_id
+      ptr = $send_media_rooms[room_id]
+      if ptr
+        ptr[0] = true
+        ptr = ptr[1]
+      else
+        ptr = $send_media_rooms.size
+        $send_media_rooms[room_id] = [true, ptr]
+      end
+    end
+    ptr
+  end
+
+  # Check pointer index for sending by room
+  # RU: Проверить индекс указателя для отправки по id комнаты
+  def self.get_send_ptrind_by_room(room_id)
+    ptr = nil
+    if room_id
+      set_ptr = $send_media_rooms[room_id]
+      if set_ptr and set_ptr[0]
+        ptr = set_ptr[1]
+      end
+    end
+    ptr
+  end
+
+  # Clear pointer index for sending for room
+  # RU: Сбросить индекс указателя для отправки для комнаты
+  def self.nil_send_ptrind_by_room(room_id)
+    if room_id
+      ptr = $send_media_rooms[room_id]
+      if ptr
+        ptr[0] = false
+      end
+    end
+    res = $send_media_rooms.select{|room,ptr| ptr[0] }
+    res.size
+  end
+
+  CSI_Persons = 0
+  CSI_Keys    = 1
+  CSI_Nodes   = 2
+  CSI_PersonRecs = 3
+
+  $key_watch_lim   = 5
+  $sign_watch_lim  = 5
+
+  # Get person panhash by any panhash
+  # RU: Получить панхэш персоны по произвольному панхэшу
+  def self.extract_targets_from_panhash(targets, panhashes)
+    persons, keys, nodes = targets
+    panhashes = [panhashes] if not panhashes.is_a? Array
+    #p '--extract_targets_from_panhash  targets='+targets.inspect
+    panhashes.each do |panhash|
+      if (panhash.is_a? String) and (panhash.bytesize>0)
+        kind = PandoraUtils.kind_from_panhash(panhash)
+        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+        if panobjectclass
+          if panobjectclass <= PandoraModel::Person
+            persons << panhash
+          elsif panobjectclass <= PandoraModel::Node
+            nodes << panhash
+          else
+            if panobjectclass <= PandoraModel::Created
+              model = PandoraUtils.get_model(panobjectclass.ider)
+              filter = {:panhash=>panhash}
+              sel = model.select(filter, false, 'creator')
+              if sel and sel.size>0
+                sel.each do |row|
+                  persons << row[0]
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    persons.uniq!
+    persons.compact!
+    if (keys.size == 0) and (nodes.size > 0)
+      nodes.uniq!
+      nodes.compact!
+      model = PandoraUtils.get_model('Node')
+      nodes.each do |node|
+        sel = model.select({:panhash=>node}, false, 'key_hash')
+        if sel and (sel.size>0)
+          sel.each do |row|
+            keys << row[0]
+          end
+        end
+      end
+    end
+    keys.uniq!
+    keys.compact!
+    if (persons.size == 0) and (keys.size > 0)
+      kmodel = PandoraUtils.get_model('Key')
+      smodel = PandoraUtils.get_model('Sign')
+      keys.each do |key|
+        sel = kmodel.select({:panhash=>key}, false, 'creator', 'modified DESC', $key_watch_lim)
+        if sel and (sel.size>0)
+          sel.each do |row|
+            persons << row[0]
+          end
+        end
+        sel = smodel.select({:key_hash=>key}, false, 'creator', 'modified DESC', $sign_watch_lim)
+        if sel and (sel.size>0)
+          sel.each do |row|
+            persons << row[0]
+          end
+        end
+      end
+      persons.uniq!
+      persons.compact!
+    end
+    if nodes.size == 0
+      model = PandoraUtils.get_model('Key')
+      persons.each do |person|
+        sel = model.select({:creator=>person}, false, 'panhash', 'modified DESC', $key_watch_lim)
+        if sel and (sel.size>0)
+          sel.each do |row|
+            keys << row[0]
+          end
+        end
+      end
+      if keys.size == 0
+        model = PandoraUtils.get_model('Sign')
+        persons.each do |person|
+          sel = model.select({:creator=>person}, false, 'key_hash', 'modified DESC', $sign_watch_lim)
+          if sel and (sel.size>0)
+            sel.each do |row|
+              keys << row[0]
+            end
+          end
+        end
+      end
+      keys.uniq!
+      keys.compact!
+      model = PandoraUtils.get_model('Node')
+      keys.each do |key|
+        sel = model.select({:key_hash=>key}, false, 'panhash')
+        if sel and (sel.size>0)
+          sel.each do |row|
+            nodes << row[0]
+          end
+        end
+      end
+      #p '[keys, nodes]='+[keys, nodes].inspect
+      #p 'targets3='+targets.inspect
+    end
+    nodes.uniq!
+    nodes.compact!
+    nodes.size
+  end
+
+  # Extend lists of persons, nodes and keys by relations
+  # RU: Расширить списки персон, узлов и ключей пройдясь по связям
+  def self.extend_targets_by_relations(targets)
+    added = 0
+    # need to copmose by relations
+    added
+  end
+
+  # Start a thread which is searching additional nodes and keys
+  # RU: Запуск потока, которые ищет дополнительные узлы и ключи
+  def self.start_extending_targets_by_hunt(targets)
+    started = true
+    # heen hunt with poll of nodes
+    started
+  end
+
+  # Construct room id
+  # RU: Создать идентификатор комнаты
+  def self.construct_room_id(persons)
+    res = nil
+    if (persons.is_a? Array) and (persons.size>0)
+      sha1 = Digest::SHA1.new
+      persons.each do |panhash|
+        sha1.update(panhash)
+      end
+      res = sha1.digest
+    end
+    res
+  end
+
+  # Find active sender
+  # RU: Найти активного отправителя
+  def self.find_another_active_sender(not_this=nil)
+    res = nil
+    $window.notebook.children.each do |child|
+      if (child != not_this) and (child.is_a? DialogScrollWin) and child.vid_button.active?
+        return child
+      end
+    end
+    res
+  end
+
+  # Get view parameters
+  # RU: Взять параметры вида
+  def self.get_view_params
+    $load_history_count = PandoraUtils.get_param('load_history_count')
+    $sort_history_mode = PandoraUtils.get_param('sort_history_mode')
+  end
+
+  # Get main parameters
+  # RU: Взять основные параметры
+  def self.get_main_params
+    get_view_params
+  end
+
+  # About dialog hooks
+  # RU: Обработчики диалога "О программе"
+  Gtk::AboutDialog.set_url_hook do |about, link|
+    if PandoraUtils.os_family=='windows' then a1='start'; a2='' else a1='xdg-open'; a2=' &' end;
+    system(a1+' '+link+a2)
+  end
+  Gtk::AboutDialog.set_email_hook do |about, link|
+    if PandoraUtils.os_family=='windows' then a1='start'; a2='' else a1='xdg-email'; a2=' &' end;
+    system(a1+' '+link+a2)
+  end
+
+  # Show About dialog
+  # RU: Показ окна "О программе"
+  def self.show_about
+    dlg = Gtk::AboutDialog.new
+    dlg.transient_for = $window
+    dlg.icon = $window.icon
+    dlg.name = $window.title
+    dlg.version = '0.2'
+    dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
+    dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
+    dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
+    dlg.comments = _('National network')
+    dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
+    begin
+      file = File.open(File.join($pandora_root_dir, 'LICENSE.TXT'), 'r')
+      gpl_text = '================='+_('Full text')+" LICENSE.TXT==================\n"+file.read
+      file.close
+    rescue
+      gpl_text = _('Full text is in the file')+' LICENSE.TXT.'
+    end
+    dlg.license = _("Pandora is licensed under GNU GPLv2.\n"+
+      "\nFundamentals:\n"+
+      "- program code is open, distributed free and without warranty;\n"+
+      "- author does not require you money, but demands respect authorship;\n"+
+      "- you can change the code, sent to the authors for inclusion in the next release;\n"+
+      "- your own release you must distribute with another name and only licensed under GPL;\n"+
+      "- if you do not understand the GPL or disagree with it, you have to uninstall the program.\n\n")+gpl_text
+    dlg.website = 'https://github.com/Novator/Pandora'
+    dlg.program_name = dlg.name
+    dlg.skip_taskbar_hint = true
+    dlg.run
+    dlg.destroy
+    $window.present
   end
 
   # Show conversation dialog
