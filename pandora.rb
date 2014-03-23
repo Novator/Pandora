@@ -624,9 +624,7 @@ module PandoraUtils
           end
           color = 'brown'
         when 'hex', 'panhash', 'phash'
-          #p 'type='+type.inspect
           if (['Bigint', 'Panhash', 'String', 'Blob', 'Text'].include? type) or (type[0,7]=='Panhash')
-            #val = AsciiString.new(PandoraUtils.bigint_to_bytes(val))
             val = PandoraUtils.hex_to_bytes(val)
           else
             val = val.to_i(16)
@@ -714,7 +712,6 @@ module PandoraUtils
               s = 0
             end
           end
-          #p '[d, m, s]='+[d, m, s].inspect
           res = d + m.fdiv(60) + s.fdiv(3600)
         else
           begin
@@ -909,7 +906,6 @@ module PandoraUtils
       type = data[0].ord
       len = 1
       basetype, vlen, neg = decode_pson_type(type)
-      #p 'basetype, vlen='+[basetype, vlen].inspect
       vlen += 1
       if data.bytesize >= len+vlen
         int = PandoraUtils.bytes_to_int(data[len, vlen])
@@ -948,7 +944,6 @@ module PandoraUtils
             val = Hash[*val] if basetype == PT_Hash
         end
         len += vlen
-        #p '[val,len]='+[val,len].inspect
       else
         len = data.bytesize
       end
@@ -979,7 +974,6 @@ module PandoraUtils
         nsize = 255 if nsize>255
         bytes << [nsize].pack('C') + nam[0, nsize]
         pson_elem = rubyobj_to_pson_elem(val)
-        #pson_elem.force_encoding('ASCII-8BIT')
         bytes << pson_elem
       end
     }
@@ -993,7 +987,6 @@ module PandoraUtils
     while pson and (pson.bytesize>1)
       flen = pson[0].ord
       fname = pson[1, flen]
-      #p '[flen, fname]='+[flen, fname].inspect
       if (flen>0) and fname and (fname.bytesize>0)
         val = nil
         if pson.bytesize-flen>1
@@ -1110,7 +1103,6 @@ module PandoraUtils
     arch_fields=nil, new_fields=nil)
       connect
       tfd = db.table_info(table_name)
-      #p tfd
       tfd.collect! { |x| x['name'] }
       if (not tfd) or (tfd == [])
         @exist[table_name] = FALSE
@@ -1118,7 +1110,6 @@ module PandoraUtils
         @exist[table_name] = TRUE
       end
       tab_def = panobj_fld_to_sqlite_tab(def_flds[table_name])
-      #p tab_def
       if (! exist[table_name] or recreate) and tab_def
         if exist[table_name] and recreate
           res = db.execute('DROP TABLE '+table_name)
@@ -2229,6 +2220,8 @@ module PandoraUtils
     res
   end
 
+  # Recognize attributes of the parameter
+  # RU: Распознаёт атрибуты параметра
   def self.decode_param_setting(setting)
     res = {}
     if setting.is_a? String
@@ -2249,6 +2242,8 @@ module PandoraUtils
     res
   end
 
+  # Normalize parameter value
+  # RU: Нормализует значение параметра
   def self.normalize_param_value(val, type)
     type = string_to_pantype(type) if type.is_a? String
     case type
@@ -2282,7 +2277,9 @@ module PandoraUtils
     val
   end
 
-  def self.create_default_param(type, setting)
+  # Calculate default value of parameter
+  # RU: Вычисляет значение по умолчанию параметра
+  def self.calc_default_param_val(type, setting)
     value = nil
     if setting
       ps = decode_param_setting(setting)
@@ -2300,6 +2297,8 @@ module PandoraUtils
 
   $main_model_list = {}
 
+  # Get instance of model
+  # RU: Возвращает экземпляр модели
   def self.get_model(ider, models=nil)
     if models
       res = models[ider]
@@ -2326,6 +2325,8 @@ module PandoraUtils
   PF_Section = 3
   PF_Setting = 4
 
+  # Get parameter value
+  # RU: Возвращает значение параметра
   def self.get_param(name, get_id=false)
     value = nil
     id = nil
@@ -2343,7 +2344,7 @@ module PandoraUtils
         section = PandoraUtils.get_param('section_'+section) if section.is_a? String
         section ||= row[PF_Section].to_i
         values = { :name=>name, :desc=>row[PF_Desc],
-          :value=>create_default_param(type, row[PF_Setting]), :type=>type,
+          :value=>calc_default_param_val(type, row[PF_Setting]), :type=>type,
           :section=>section, :setting=>row[PF_Setting], :modified=>Time.now.to_i }
         panhash = param_model.panhash(values)
         values['panhash'] = panhash
@@ -2364,6 +2365,8 @@ module PandoraUtils
     value
   end
 
+  # Set parameter value
+  # RU: Задаёт значение параметра
   def self.set_param(name, value, definition=nil)
     res = false
     old_value, id = PandoraUtils.get_param(name, true)
@@ -4942,13 +4945,7 @@ module PandoraNet
     def set_query(list, time, send_now=false)
       ascmd = EC_Query
       ascode = 0
-      asbuf = nil
-      if panhashes.is_a? Array
-        asbuf = PandoraUtils.rubyobj_to_pson_elem(panhashes)
-      else
-        ascode = PandoraUtils.kind_from_panhash(panhashes)
-        asbuf = panhashes[1..-1]
-      end
+      asbuf = list
       if send_now
         if not add_send_segment(ascmd, true, asbuf, ascode)
           PandoraUtils.log_message(LM_Error, _('Cannot add query'))
@@ -6435,7 +6432,9 @@ module PandoraNet
                     end
                     inquirer_step += 1
                   when IS_NewsQuery
-                    #set_query(@query_kind_list, @last_time, true)
+                    query_kind_list = 0.chr
+                    last_time = Time.now - 5*24*3600
+                    set_query(query_kind_list, last_time, true)
                     inquirer_step += 1
                   else
                     inquirer_step = IS_Finished
@@ -10034,6 +10033,7 @@ module PandoraGtk
       local_btn.safe_signal_clicked do |widget|
         #update_btn.clicked
       end
+      local_btn.safe_set_active(true)
 
       active_btn = SafeCheckButton.new(_('active only'), true)
       active_btn.safe_signal_clicked do |widget|
@@ -12676,7 +12676,7 @@ while (ARGV.length>0) or next_arg
       puts 'Оriginal Pandora params for examples:'
       puts runit+'-h localhost    - set listen address'
       puts runit+'-p 5577         - set listen port'
-      puts runit+'-b file.sqlite  - set filename of database'
+      puts runit+'-b base/pandora2.sqlite  - set filename of database'
       Kernel.exit!
   end
   val = nil
