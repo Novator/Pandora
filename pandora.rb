@@ -550,7 +550,7 @@ module PandoraUtils
         end
       elsif view=='base64'
         val = val.to_s
-        if (not type) or (type=='text')
+        if (not type) #or (type=='Text') or (type=='Blob')
           val = Base64.encode64(val)
         else
           val = Base64.strict_encode64(val)
@@ -618,7 +618,7 @@ module PandoraUtils
             val = 0
           end
         when 'base64'
-          if (not type) or (type=='Text')
+          if (not type) #or (type=='Text') or (type=='Blob')
             val = Base64.decode64(val)
           else
             val = Base64.strict_decode64(val)
@@ -1521,10 +1521,10 @@ module PandoraUtils
               #    view = 'hex'
               #  end
               view = 'blob'
-              len = 80
+              #len = 80
             when 'Text'
               view = 'text'
-              len = 80
+              #len = 80
             when 'Filename'
               view = 'filename'
               len = 80
@@ -2060,11 +2060,8 @@ module PandoraUtils
           else
             res = Time.parse(fval)
           end
-          p '----fval=res='+fval.inspect+'='+res.inspect
           res = res.to_i / (24*60*60)   #obtain days, drop hours and seconds
-          p 'drop='+res.inspect
           res += (1970-1900)*365   #mesure data from 1900
-          p 'minus='+res.inspect
         else
           if fval.is_a? Integer
             fval = PandoraUtils.bigint_to_bytes(fval)
@@ -2111,9 +2108,7 @@ module PandoraUtils
           end
         end
         if res.is_a? Integer
-          p '*** to_byte res='+res.inspect
           res = AsciiString.new(PandoraUtils.bigint_to_bytes(res))
-          p '*** res='+res.inspect
           res = PandoraUtils.fill_zeros_from_left(res, hlen)
         elsif not fval.is_a? String
           res = AsciiString.new(res.to_s)
@@ -3383,49 +3378,53 @@ module PandoraCrypto
           if p0
             pass = 0
             #p 'n='+n.inspect+'  p='+p0.inspect+'  e='+e.inspect
-            if keypriv
-              q = (n / p0)[0]
-              p0,q = q,p0 if p0 < q
-              d = e.mod_inverse((p0-1)*(q-1))
-              dmp1 = d % (p0-1)
-              dmq1 = d % (q-1)
-              iqmp = q.mod_inverse(p0)
+            begin
+              if keypriv
+                q = (n / p0)[0]
+                p0,q = q,p0 if p0 < q
+                d = e.mod_inverse((p0-1)*(q-1))
+                dmp1 = d % (p0-1)
+                dmq1 = d % (q-1)
+                iqmp = q.mod_inverse(p0)
 
-              #p '[n,d,dmp1,dmq1,iqmp]='+[n,d,dmp1,dmq1,iqmp].inspect
+                #p '[n,d,dmp1,dmq1,iqmp]='+[n,d,dmp1,dmq1,iqmp].inspect
 
-              seq = OpenSSL::ASN1::Sequence([
-                OpenSSL::ASN1::Integer(pass),
-                OpenSSL::ASN1::Integer(n),
-                OpenSSL::ASN1::Integer(e),
-                OpenSSL::ASN1::Integer(d),
-                OpenSSL::ASN1::Integer(p0),
-                OpenSSL::ASN1::Integer(q),
-                OpenSSL::ASN1::Integer(dmp1),
-                OpenSSL::ASN1::Integer(dmq1),
-                OpenSSL::ASN1::Integer(iqmp)
-              ])
-            else
-              seq = OpenSSL::ASN1::Sequence([
-                OpenSSL::ASN1::Integer(n),
-                OpenSSL::ASN1::Integer(e),
-              ])
+                seq = OpenSSL::ASN1::Sequence([
+                  OpenSSL::ASN1::Integer(pass),
+                  OpenSSL::ASN1::Integer(n),
+                  OpenSSL::ASN1::Integer(e),
+                  OpenSSL::ASN1::Integer(d),
+                  OpenSSL::ASN1::Integer(p0),
+                  OpenSSL::ASN1::Integer(q),
+                  OpenSSL::ASN1::Integer(dmp1),
+                  OpenSSL::ASN1::Integer(dmq1),
+                  OpenSSL::ASN1::Integer(iqmp)
+                ])
+              else
+                seq = OpenSSL::ASN1::Sequence([
+                  OpenSSL::ASN1::Integer(n),
+                  OpenSSL::ASN1::Integer(e),
+                ])
+              end
+
+              #p asn_seq = OpenSSL::ASN1.decode(key)
+              # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
+              #seq1 = asn_seq.value[1]
+              #str_val = PandoraUtils.bigint_to_bytes(seq1.value)
+              #p 'str_val.size='+str_val.size.to_s
+              #p Base64.encode64(str_val)
+              #key2 = key.public_key
+              #p key2.to_der.size
+              # Seq: Int:n, Int:e
+              #p 'pub_seq='+asn_seq2 = OpenSSL::ASN1.decode(key.public_key.to_der).inspect
+              #p key2.to_s
+
+              # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
+              key = OpenSSL::PKey::RSA.new(seq.to_der)
+              #p key.params
+            rescue
+              key = nil
             end
-
-            #p asn_seq = OpenSSL::ASN1.decode(key)
-            # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
-            #seq1 = asn_seq.value[1]
-            #str_val = PandoraUtils.bigint_to_bytes(seq1.value)
-            #p 'str_val.size='+str_val.size.to_s
-            #p Base64.encode64(str_val)
-            #key2 = key.public_key
-            #p key2.to_der.size
-            # Seq: Int:n, Int:e
-            #p 'pub_seq='+asn_seq2 = OpenSSL::ASN1.decode(key.public_key.to_der).inspect
-            #p key2.to_s
-
-            # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
-            key = OpenSSL::PKey::RSA.new(seq.to_der)
-            #p key.params
           end
         when KT_Dsa
           seq = OpenSSL::ASN1::Sequence([
@@ -6987,10 +6986,6 @@ module PandoraGtk
         @def_widget.grab_focus
       end
 
-      p '111--'
-
-      #p res = self.run
-
       while (not destroyed?) and (@response == 0) do
         #unless alien_thread
           Gtk.main_iteration
@@ -7006,8 +7001,6 @@ module PandoraGtk
         end
         self.destroy
       end
-
-      p '222=='
 
       res
     end
@@ -8320,7 +8313,7 @@ module PandoraGtk
               def_size = 10
             when 'String'
               def_size = 32
-            when 'Filename', 'Blob', 'Text'
+            when 'Filename' , 'Blob', 'Text'
               def_size = 256
           end
           #p '---'
@@ -10818,21 +10811,16 @@ module PandoraGtk
         iter = store.get_iter(path)
         id = iter[0]
         sel = panobject.select('id='+id.to_s, true)
-        #p 'panobject.namesvalues='+panobject.namesvalues.inspect
-        #p 'panobject.matter_fields='+panobject.matter_fields.inspect
         panhash0 = panobject.namesvalues['panhash']
         lang = panhash0[1].ord if panhash0 and panhash0.size>1
         lang ||= 0
-        #panhash0 = panobject.panhash(sel[0], lang)
         panstate = panobject.namesvalues['panstate']
         panstate ||= 0
         if (panobject.is_a? PandoraModel::Created)
           created0 = panobject.namesvalues['created']
           creator0 = panobject.namesvalues['creator']
-          #p 'created0, creator0='+[created0, creator0].inspect
         end
       end
-      #p sel
 
       panobjecticon = get_panobject_icon(panobject)
 
@@ -10984,7 +10972,7 @@ module PandoraGtk
             flds_hash[field[FI_Id]] = val
           end
           dialog.text_fields.each do |field|
-            flds_hash[field[FI_Id]] = field[FI_Value]
+            #flds_hash[field[FI_Id]] = field[FI_Value]
           end
           lg = nil
           begin
