@@ -18,12 +18,16 @@
       <origin_place pos="|+1" fsize="34" />
     </Community>
 
-    <Article>
+    <Blob>
       <name pos="|" />
+      <blob pos="|" />
       <type pos="|" />
-      <body view="text" />
       <hash view="hex" />
-    </Article>
+    </Blob>
+
+    <Country>
+      <alfa2 pos="|" />
+    </Country>
 
     <Relation>
       <first view="panhash" />

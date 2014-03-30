@@ -30,7 +30,7 @@
 
     <Community parent="Created" name="Community|Communities" table="communities" kind="11">
       <name name="Name" type="String" size="128" hash="1:hash(4)" />
-      <origin_place name="Origin place" type="Panhash(City)" hash="2:panhash(4)" />
+      <origin_place name="Origin place" type="Panhash(City)" hash="4:coord(4)" />
       <creator hash="3:panhash(4)" />
       <created hash="4:integer(4)" />
       <RELATIONS name="Состав" kind="Person" default="3" />
@@ -50,7 +50,7 @@
 
     <Country name="Country|Countries" kind="3">
       <name name="Name" type="String" size="128" />
-      <alfa2 name="Alfa-2" type="String" size="2" />
+      <alfa2 name="Alfa-2" type="String" size="2" hash="1:raw(2)" />
       <alfa3 name="Alfa-3" type="String" size="3" />
     </Country>
 
@@ -86,17 +86,12 @@
       <description name="Description" type="Text" />
     </Word>
 
-    <Article name="Article" parent="Created" kind="12">
+    <Blob name="Blob" parent="Created" kind="12">
       <name name="Name" type="String" size="512" hash="1:hash(8)" />
+      <blob name="Blob" type="Blob" />
       <type name="Type" type="Word" hash="2:word(2)" />
-      <body name="Text" type="Text" hash="2:hash(10)" />
-      <hash name="Hash" type="String" size="65" />
+      <hash name="Hash" type="String" size="65" hash="2:raw(10)" />
       <size name="Size" type="Integer" />
-    </Article>
-
-    <Blob name="File" parent="Article" kind="13">
-      <path name="Path" type="String" size="1024" />
-      <body name="Blob" />
     </Blob>
 
     <Relation name="Relation" lang="no" kind="14">
@@ -116,12 +111,6 @@
   </World>
   <Business name="Business">
 
-    <Partner parent="Person" table="persons">
-    </Partner>
-
-    <Company parent="Community"  table="communities">
-    </Company>
-
     <Storage parent="Address" kind="75">
     </Storage>
 
@@ -138,10 +127,10 @@
       <issuer name="Issuer" />
     </Currency>
 
-    <Contract parent="Article" kind="87">
+    <Contract parent="Blob" kind="87">
     </Contract>
 
-    <Advertisement parent="Article" kind="80">
+    <Advertisement parent="Blob" kind="80">
       <body name="Goods" type="Text" />
     </Advertisement>
 
@@ -153,8 +142,8 @@
     </Order>
 
     <Deal parent="Created" kind="82">
-      <creator name="Originator" type="Panhash(Partner, Company)" />
-      <recipient name="Recipient" type="Panhash(Partner, Company)" />
+      <creator name="Originator" type="Panhash(Person, Community)" />
+      <recipient name="Recipient" type="Panhash(Person, Community)" />
       <contract name="Contract" type="Panhash(Contract)" />
       <body name="Body" type="Text" />
       <currency name="Currency" type="Panhash(Currency)" />
@@ -175,7 +164,7 @@
     </Transfer>
 
     <Deposit parent="Created" kind="86">
-      <creator name="Mortgagor" type="Panhash(Partner, Company)" />
+      <creator name="Mortgagor" type="Panhash(Person, Community)" />
       <condition name="Condition" type="Panhash(Contract)" />
       <content name="Content" type="Text" />
       <currency name="Currency" type="Panhash(Currency)" />
@@ -184,13 +173,13 @@
 
     <Guarantee parent="Created" kind="86">
       <creator name="Guardian" />
-      <obligor name="Obligator" type="Panhash(Partner, Company)" />
+      <obligor name="Obligator" type="Panhash(Person, Community)" />
       <condition name="Condition" type="Panhash(Contract)" />
       <currency name="Currency" type="Panhash(Currency)" />
       <sum name="Sum" type="Real" />
     </Guarantee>
 
-    <Insurer parent="Company" kind="86">
+    <Insurer parent="Community" kind="86">
       <creator name="Founder" />
       <condition name="Condition" type="Panhash(Contract)" />
     </Insurer>
@@ -202,27 +191,21 @@
       <sum name="Sum" type="Real" />
     </Waybill>
 
-    <Report parent="Article" kind="89">
+    <Report parent="Blob" kind="89">
     </Report>
 
   </Business>
   <Region name="Region">
 
-    <Citizen parent="Partner" table="persons">
-    </Citizen>
-
-    <Union parent="Company" table="communities">
-    </Union>
-
-    <Project parent="Article" kind="150">
+    <Project parent="Blob" kind="150">
       <number name="Number" />
     </Project>
 
-    <Resolution name="Low|Lows" parent="Article" kind="151">
+    <Resolution name="Low|Lows" parent="Blob" kind="151">
       <number name="Number" />
     </Resolution>
 
-    <Law name="Low|Lows" parent="Article" kind="154">
+    <Law name="Low|Lows" parent="Blob" kind="154">
       <number name="Number" />
     </Law>
 
@@ -247,7 +230,7 @@
     </Delegation>
 
     <Registry name="Registry" parent="Created" kind="160">
-      <creator name="Issuer" type="Panhash(Citizen, Union)" />
+      <creator name="Issuer" type="Panhash(Person, Community)" />
       <recipient name="Recipient" type="Panhash(Person, Community)" hash="1:phash(9)" />
       <resolution name="Resolution" type="Panhash(Resolution)" />
       <number name="Number" type="String" size="40" hash="2:hash(9)" />

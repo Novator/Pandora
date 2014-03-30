@@ -76,6 +76,7 @@ module PandoraUtils
   $pandora_lang_dir = File.join($pandora_root_dir, 'lang')            # Languages directory
   $pandora_util_dir = File.join($pandora_root_dir, 'util')            # Utilites directory
   $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Default database file
+  $pandora_files_dir = File.join($pandora_root_dir, 'files')          # Files directory
   $lang = 'ru'
 
 
@@ -431,7 +432,7 @@ module PandoraUtils
     case type
       when 'Integer', 'Word', 'Byte', 'Coord'
         res = PT_Int
-      when 'String', 'Text', 'Blob'
+      when 'String', 'Text', 'Blob', 'Filename'
         res = PT_Str
       when 'Boolean'
         res = PT_Bool
@@ -624,7 +625,8 @@ module PandoraUtils
           end
           color = 'brown'
         when 'hex', 'panhash', 'phash'
-          if (['Bigint', 'Panhash', 'String', 'Blob', 'Text'].include? type) or (type[0,7]=='Panhash')
+          if (['Bigint', 'Panhash', 'String', 'Blob', 'Text', 'Filename'].include? type) \
+          or (type[0,7]=='Panhash')
             val = PandoraUtils.hex_to_bytes(val)
           else
             val = val.to_i(16)
@@ -1043,7 +1045,7 @@ module PandoraUtils
           'INTEGER'
         when 'Float'
           'REAL'
-        when 'Number', 'Panhash'
+        when 'Number', 'Panhash', 'Filename'
           'NUMBER'
         when 'Date', 'Time'
           'DATE'
@@ -1512,16 +1514,20 @@ module PandoraUtils
             when 'Coord'
               view = 'coord'
               len = 24
-            when 'Blog'
-              if not fd[FI_Size] or fd[FI_Size].to_i>25
-                view = 'base64'
-              else
-                view = 'hex'
-              end
-              #len = 24
+            when 'Blob'
+              #  if not fd[FI_Size] or fd[FI_Size].to_i>25
+              #    view = 'base64'
+              #  else
+              #    view = 'hex'
+              #  end
+              view = 'blob'
+              len = 80
             when 'Text'
               view = 'text'
-              #len = 32
+              len = 80
+            when 'Filename'
+              view = 'filename'
+              len = 80
             when 'Panhash'
               view = 'panhash'
               len = 44
@@ -4330,7 +4336,7 @@ module PandoraNet
         if session.dialog and (not session.dialog.destroyed?) and session.dialog.online_button \
         and ((session.socket and (not session.socket.closed?)) or session.donor)
           session.dialog.online_button.safe_set_active(true)
-          session.conn_mode = (session.conn_mode | PandoraNet::CM_Dialog)
+          session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
         end
         res = true
       elsif (node or keybase)
@@ -4383,7 +4389,7 @@ module PandoraNet
           if disconnect
             session.conn_state = CS_StopRead
           else
-            session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Dialog))
+            session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
           end
 
           #while wait_disconnect and session and (session.conn_state != CS_Disconnected)
@@ -4528,7 +4534,8 @@ module PandoraNet
   # Connection mode
   # RU: Режим соединения
   CM_Hunter       = 1
-  CM_Dialog       = 2
+  CM_KeepHere     = 2
+  CM_KeepThere    = 4
 
   # Connection state
   # RU: Состояние соединения
@@ -4944,7 +4951,7 @@ module PandoraNet
     # RU: Компонует команду запроса сорта/сортов
     def set_query(list, time, send_now=false)
       ascmd = EC_Query
-      ascode = 0
+      ascode = ECC_Query0_Kinds
       asbuf = list
       if send_now
         if not add_send_segment(ascmd, true, asbuf, ascode)
@@ -5222,7 +5229,7 @@ module PandoraNet
       # RU: Обработать медиа сегмент
       def process_media_segment(cannel, mediabuf)
         if not dialog
-          @conn_mode = (@conn_mode | PandoraNet::CM_Dialog)
+          @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
           #node = PandoraNet.encode_node(host_ip, port, proto)
           panhash = @skey[PandoraCrypto::KV_Creator]
           @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
@@ -5595,7 +5602,7 @@ module PandoraNet
                   @scmd = EC_Init
                   @scode = ECC_Init_Answer
                   @sbuf = answer
-                  @conn_mode = (@conn_mode | PandoraNet::CM_Dialog)
+                  @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
                 else
                   err_scmd('Node password is not setted')
                 end
@@ -5825,7 +5832,7 @@ module PandoraNet
             case rcmd
               when EC_Message, EC_Channel
                 if (not dialog) or dialog.destroyed?
-                  @conn_mode = (@conn_mode | PandoraNet::CM_Dialog)
+                  @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
                   panhash = @skey[PandoraCrypto::KV_Creator]
                   @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
                   Thread.pass
@@ -6624,7 +6631,7 @@ module PandoraNet
             end
           end
 
-          need_connect = ((@conn_mode & CM_Dialog) != 0) and (not (@socket.is_a? FalseClass))
+          need_connect = ((@conn_mode & CM_KeepHere) != 0) and (not (@socket.is_a? FalseClass))
           p 'NEED??? [need_connect, @conn_mode, @socket]='+[need_connect, @conn_mode, @socket].inspect
 
           if need_connect and (not @socket) and work_time and ((Time.now.to_i - work_time.to_i)<15)
@@ -7455,6 +7462,132 @@ module PandoraGtk
     end
   end
 
+  # Entry for filename
+  # RU: Поле выбора имени файла
+  class FilenameBox < Gtk::HBox
+    attr_accessor :entry, :button, :window
+
+    def initialize(parent, *args)
+      super(*args)
+      @entry = Gtk::Entry.new
+      @button = Gtk::Button.new('...')
+      @button.can_focus = false
+      @entry.instance_variable_set('@button', @button)
+      def @entry.key_event(widget, event)
+        res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
+          and (event.keyval==65364)))
+        @button.activate if res
+        false
+      end
+      @window = parent
+      self.pack_start(entry, true, true, 0)
+      align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+      align.add(@button)
+      self.pack_start(align, false, false, 1)
+      esize = entry.size_request
+      h = esize[1]-2
+      @button.set_size_request(h, h)
+
+      button.signal_connect('clicked') do |*args|
+        @entry.grab_focus
+        dialog =  Gtk::FileChooserDialog.new(_('Choose a file'), @window,
+          Gtk::FileChooser::ACTION_OPEN, 'gnome-vfs',
+          [Gtk::Stock::OPEN, Gtk::Dialog::RESPONSE_ACCEPT],
+          [Gtk::Stock::CANCEL, Gtk::Dialog::RESPONSE_CANCEL])
+
+        filter = Gtk::FileFilter.new
+        filter.name = _('All files')+' (*.*)'
+        filter.add_pattern('*.*')
+        dialog.add_filter(filter)
+
+        filter = Gtk::FileFilter.new
+        filter.name = _('Pictures')+' (png,jpg,gif)'
+        filter.add_pattern('*.png')
+        filter.add_pattern('*.jpg')
+        filter.add_pattern('*.jpeg')
+        filter.add_pattern('*.gif')
+        dialog.add_filter(filter)
+
+        filter = Gtk::FileFilter.new
+        filter.name = _('Sounds')+' (mp3,wav)'
+        filter.add_pattern('*.mp3')
+        filter.add_pattern('*.wav')
+        dialog.add_filter(filter)
+
+        dialog.add_shortcut_folder($pandora_files_dir)
+        fn = @entry.text
+        if fn.nil? or (fn=='')
+          dialog.current_folder = $pandora_files_dir
+        else
+          dialog.filename = fn
+        end
+
+        scr = Gdk::Screen.default
+        if (scr.height > 700)
+          frame = Gtk::Frame.new
+          frame.shadow_type = Gtk::SHADOW_IN
+          align = Gtk::Alignment.new(0.5, 0.5, 0, 0)
+          align.add(frame)
+          image = Gtk::Image.new
+          frame.add(image)
+          align.show_all
+
+          dialog.preview_widget = align
+          dialog.use_preview_label = false
+          dialog.signal_connect('update-preview') do
+            filename = dialog.preview_filename
+            ext = nil
+            ext = File.extname(filename) if filename
+            if ext and (['.jpg','.gif','.png'].include? ext.downcase)
+              begin
+                pixbuf = Gdk::Pixbuf.new(filename, 128, 128)
+                image.pixbuf = pixbuf
+                dialog.preview_widget_active = true
+              rescue
+                dialog.preview_widget_active = false
+              end
+            else
+              dialog.preview_widget_active = false
+            end
+          end
+        end
+
+        if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
+          @entry.text = dialog.filename
+        end
+        dialog.destroy
+      end
+    end
+
+    def max_length=(maxlen)
+      maxlen = 512 if maxlen<512
+      entry.max_length = maxlen
+    end
+
+    def text=(text)
+      entry.text = text
+    end
+
+    def text
+      entry.text
+    end
+
+    def width_request=(wr)
+      entry.set_width_request(wr)
+    end
+
+    def modify_text(*args)
+      entry.modify_text(*args)
+    end
+
+    def size_request
+      esize = entry.size_request
+      res = button.size_request
+      res[0] = esize[0]+1+res[0]
+      res
+    end
+  end
+
   # Entry for coordinate
   # RU: Поле ввода координаты
   class CoordEntry < FloatEntry
@@ -7610,7 +7743,7 @@ module PandoraGtk
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
       :support_btn, :rate_label, :vouch_btn, :trust_scale, :trust0, :public_btn, \
-      :lang_entry, :format, :view_buffer
+      :lang_entry, :format, :view_buffer, :last_sw
 
     # Add menu item
     # RU: Добавляет пункт меню
@@ -7702,6 +7835,47 @@ module PandoraGtk
           end
         end
       end
+    end
+
+    class BodyScrolledWindow < Gtk::ScrolledWindow
+      attr_accessor :field
+    end
+
+    # Start loading image from file
+    # RU: Запускает загрузку картинки в файл
+    def start_image_loading(filename)
+      begin
+        image_stream = File.open(filename, 'rb')
+        image = Gtk::Image.new
+        widget = image
+        Thread.new do
+          pixbuf_loader = Gdk::PixbufLoader.new
+          pixbuf_loader.signal_connect('area_prepared') do |loader|
+            pixbuf = loader.pixbuf
+            pixbuf.fill!(0xaaaaaaff)
+            image.pixbuf = pixbuf
+          end
+          pixbuf_loader.signal_connect('area_updated') do
+            image.queue_draw
+          end
+          while image_stream
+            buf = image_stream.read(1024*1024)
+            pixbuf_loader.write(buf)
+            if image_stream.eof?
+              image_stream.close
+              image_stream = nil
+              pixbuf_loader.close
+              pixbuf_loader = nil
+            end
+            sleep(0.005)
+          end
+        end
+      rescue => err
+        err_text = _('Image loading error')+":\n"+err.message
+        label = Gtk::Label.new(err_text)
+        widget = label
+      end
+      widget
     end
 
     # Create fields dialog
@@ -7803,22 +7977,80 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
 
+      @last_sw = nil
       notebook.signal_connect('switch-page') do |widget, page, page_num|
+        if (page_num != 1) and @last_sw
+          @last_sw.children.each do |child|
+            child.destroy if (not child.destroyed?) \
+              and child.class.method_defined? 'destroy'
+          end
+          @last_sw = nil
+        end
+
         if page_num==0
           toolbar.hide
           toolbar2.hide
           hbox.show
         else
           child = notebook.get_nth_page(page_num)
-          if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::TextView)
+          if (child.is_a? BodyScrolledWindow)
             toolbar2.hide
             hbox.hide
-            toolbar.show
-            set_buffers(true)
+            textsw = child
+            field = textsw.field
+            if field
+              toolbar.show
+              @last_sw = child
+
+              link_name = field[FI_Widget].text
+              link_name.chomp! if link_name
+
+              bodywid = nil
+              if link_name and (link_name != '')
+                if File.exist?(link_name)
+                  ext = File.extname(link_name)
+                  if ext and (['.jpg','.gif','.png'].include? ext.downcase)
+                    image = start_image_loading(link_name)
+                    bodywid = image
+                  else
+                    link_name = nil
+                  end
+                else
+                  err_text = _('File does not exist')+":\n"+link_name
+                  label = Gtk::Label.new(err_text)
+                  bodywid = label
+                end
+              else
+                link_name = nil
+              end
+
+              if not link_name
+                textview = Gtk::TextView.new
+                #textview = child.children[0]
+                textview.wrap_mode = Gtk::TextTag::WRAP_WORD
+                textview.signal_connect('key-press-event') do |widget, event|
+                  if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
+                    and event.state.control_mask?
+                  then
+                    true
+                  end
+                end
+                #textview.buffer.text = field[FI_Value].to_s
+                bodywid = textview
+              end
+
+              if bodywid.is_a? Gtk::TextView
+                textsw.add(bodywid)
+                set_buffers(true)
+              elsif bodywid
+                textsw.add_with_viewport(bodywid)
+              end
+              textsw.show_all
+            end
           else
             toolbar.hide
             hbox.hide
-           toolbar2.show
+            toolbar2.show
           end
         end
       end
@@ -7961,6 +8193,7 @@ module PandoraGtk
       @btn_panel_height = bh
 
       # devide text fields in separate list
+
       @text_fields = Array.new
       i = @fields.size
       while i>0 do
@@ -7968,36 +8201,22 @@ module PandoraGtk
         field = @fields[i]
         atext = field[FI_VFName]
         atype = field[FI_Type]
-        if atype=='Text'
+        if (atype=='Blob') or (atype=='Text')
+          textsw = BodyScrolledWindow.new(nil, nil)
+          textsw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+
           image = Gtk::Image.new(Gtk::Stock::DND, Gtk::IconSize::MENU)
           image.set_padding(2, 0)
-          textview = Gtk::TextView.new
-          textview.wrap_mode = Gtk::TextTag::WRAP_WORD
-
-          textview.signal_connect('key-press-event') do |widget, event|
-            if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
-              and event.state.control_mask?
-            then
-              true
-            end
-          end
-
-          textsw = Gtk::ScrolledWindow.new(nil, nil)
-          textsw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-          textsw.add(textview)
-
           label_box = TabLabelBox.new(image, atext, nil, false, 0)
           page = notebook.append_page(textsw, label_box)
 
-          textview.buffer.text = field[FI_Value].to_s
-          field[FI_Widget] = textview
+          #field[FI_Widget] = textview
 
-          txt_fld = field
-          txt_fld << page
-          @text_fields << txt_fld  #15??
-          #@enter_like_ok = false
+          field << page
+          @text_fields << field
+          textsw.field = field
 
-          @fields.delete_at(i)
+          @fields.delete_at(i) if (atype=='Text')
         end
       end
 
@@ -8060,7 +8279,7 @@ module PandoraGtk
       max_entry_height = 0
       @def_widget = nil
       @fields.each do |field|
-        #p 'field='+field.inspect
+        p 'field='+field.inspect
         max_size = 0
         fld_size = 0
         aview = field[FI_View]
@@ -8079,6 +8298,8 @@ module PandoraGtk
             entry = DateEntry.new
           when 'coord'
             entry = CoordBox.new
+          when 'filename', 'blob'
+            entry = FilenameBox.new(window)
           when 'base64'
             entry = Base64Entry.new
           when 'phash', 'panhash'
@@ -8099,8 +8320,8 @@ module PandoraGtk
               def_size = 10
             when 'String'
               def_size = 32
-            when 'Blob'
-              def_size = 128
+            when 'Filename', 'Blob', 'Text'
+              def_size = 256
           end
           #p '---'
           #p 'name='+field[FI_Name]
@@ -8170,7 +8391,7 @@ module PandoraGtk
       mw, mh = [mw, rw].max, mh+rh
 
       if (mw<=form_width) and (mh<=form_height) then
-        window_width, window_height = mw+36, mh+@btn_panel_height+115
+        window_width, window_height = mw+36, mh+@btn_panel_height+125
       end
       window.set_default_size(window_width, window_height)
 
@@ -8999,7 +9220,7 @@ module PandoraGtk
         @sessions << session if (not @sessions.include?(session))
       else
         @sessions.delete(session)
-        session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Dialog))
+        session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
         session.dialog = nil
       end
       active = (@sessions.size>0)
@@ -9034,7 +9255,7 @@ module PandoraGtk
         end
         dlg_sessions = $window.pool.sessions_on_dialog(self)
         dlg_sessions.each do |session|
-          session.conn_mode = (session.conn_mode | PandoraNet::CM_Dialog)
+          session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
           session.send_state = (session.send_state | PandoraNet::CSF_Message)
         end
       end
@@ -10172,7 +10393,7 @@ module PandoraGtk
   # List of session
   # RU: Список сеансов
   class SessionScrollWin < Gtk::ScrolledWindow
-    attr_accessor :session
+    attr_accessor :update_btn
 
     include PandoraGtk
 
@@ -10181,8 +10402,6 @@ module PandoraGtk
     def initialize(session=nil)
       super(nil, nil)
 
-      @session = nil
-
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       border_width = 0
 
@@ -10190,10 +10409,7 @@ module PandoraGtk
       hbox = Gtk::HBox.new
 
       title = _('Update')
-      update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
-      update_btn.signal_connect('clicked') do |*args|
-        p 'need update'
-      end
+      @update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
       update_btn.tooltip_text = title
       update_btn.label = title
 
@@ -10215,16 +10431,50 @@ module PandoraGtk
       end
       fishers_btn.safe_set_active(true)
 
+      title = _('Delete')
+      delete_btn = Gtk::ToolButton.new(Gtk::Stock::DELETE, title)
+      delete_btn.tooltip_text = title
+      delete_btn.label = title
+
       hbox.pack_start(hunted_btn, false, true, 0)
       hbox.pack_start(hunters_btn, false, true, 0)
       hbox.pack_start(fishers_btn, false, true, 0)
       hbox.pack_start(update_btn, false, true, 0)
+      hbox.pack_start(delete_btn, false, true, 0)
 
       list_sw = Gtk::ScrolledWindow.new(nil, nil)
       list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
       list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
 
-      list_store = Gtk::ListStore.new(Integer, String)
+      list_store = Gtk::ListStore.new(String, String, String, String, Integer, Integer, \
+        Integer, Integer, Integer)
+      update_btn.signal_connect('clicked') do |*args|
+        list_store.clear
+        $window.pool.sessions.each do |session|
+          hunter = ((session.conn_mode & PandoraNet::CM_Hunter)>0)
+          if ((hunted_btn.active? and (not hunter)) \
+          or (hunters_btn.active? and hunter) \
+          or (fishers_btn.active? and session.donor))
+            sess_iter = list_store.append
+            sess_iter[0] = $window.pool.sessions.index(session).to_s
+            sess_iter[1] = session.host_ip.to_s
+            sess_iter[2] = session.port.to_s
+            sess_iter[3] = PandoraUtils.bytes_to_hex(session.node_panhash)
+            sess_iter[4] = session.conn_mode
+            sess_iter[5] = session.conn_state
+            sess_iter[6] = session.stage
+            sess_iter[7] = session.read_state
+            sess_iter[8] = session.send_state
+          end
+
+          #:host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state,
+          #:stage, :dialog, :send_thread, :read_thread, :socket, :read_state, :send_state,
+          #:donor, :fisher_lure, :fish_lure, :send_models, :recv_models, :sindex,
+          #:read_queue, :send_queue, :confirm_queue, :params, :rcmd, :rcode, :rdata,
+          #:scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, :media_send,
+          #:node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes, :fishers
+        end
+      end
 
       # create tree view
       list_tree = Gtk::TreeView.new(list_store)
@@ -10237,8 +10487,43 @@ module PandoraGtk
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
+      column = Gtk::TreeViewColumn.new(_('Ip'), renderer, 'text' => 1)
       column.set_sort_column_id(1)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Port'), renderer, 'text' => 2)
+      column.set_sort_column_id(2)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Node'), renderer, 'text' => 3)
+      column.set_sort_column_id(3)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('conn_mode'), renderer, 'text' => 4)
+      column.set_sort_column_id(4)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('conn_state'), renderer, 'text' => 5)
+      column.set_sort_column_id(5)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('stage'), renderer, 'text' => 6)
+      column.set_sort_column_id(6)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('read_state'), renderer, 'text' => 7)
+      column.set_sort_column_id(7)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('send_state'), renderer, 'text' => 8)
+      column.set_sort_column_id(8)
       list_tree.append_column(column)
 
       list_tree.signal_connect('row_activated') do |tree_view, path, column|
@@ -10252,6 +10537,7 @@ module PandoraGtk
       list_sw.show_all
 
       self.add_with_viewport(vbox)
+      update_btn.clicked
 
       list_tree.grab_focus
     end
@@ -10676,7 +10962,7 @@ module PandoraGtk
           end
           dialog.text_fields.each do |field|
             textview = field[FI_Widget]
-            field[FI_Value] = textview.buffer.text
+            field[FI_Value] = textview.buffer.text if textview.is_a? Gtk::TextView
           end
 
           # fill hash of values
@@ -11436,19 +11722,17 @@ module PandoraGtk
     $window.notebook.children.each do |child|
       if (child.is_a? SessionScrollWin)
         $window.notebook.page = $window.notebook.children.index(child)
+        child.update_btn.clicked
         return
       end
     end
-
     sw = SessionScrollWin.new(session)
 
     image = Gtk::Image.new(Gtk::Stock::JUSTIFY_FILL, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
-
     label_box = TabLabelBox.new(image, _('Sessions'), sw, false, 0) do
       #sw.destroy
     end
-
     page = $window.notebook.append_page(sw, label_box)
     sw.show_all
     $window.notebook.page = $window.notebook.n_pages-1
@@ -12140,8 +12424,6 @@ module PandoraGtk
       [[nil, nil, '_World'],
       ['Person', Gtk::Stock::ORIENTATION_PORTRAIT, 'People', '<control>E'],
       ['Community', nil, 'Communities'],
-      ['-', nil, '-'],
-      ['Article', Gtk::Stock::DND, 'Articles'],
       ['Blob', Gtk::Stock::HARDDISK, 'Files', '<control>J'], #Gtk::Stock::FILE
       ['-', nil, '-'],
       ['Country', nil, 'States'],
@@ -12153,14 +12435,11 @@ module PandoraGtk
       ['Language', nil, 'Languages'],
       ['Address', nil, 'Addresses'],
       ['Contact', nil, 'Contacts'],
+      ['Task', nil, 'Tasks'],
       ['-', nil, '-'],
       ['Relation', nil, 'Relations'],
       ['Opinion', nil, 'Opinions'],
-      ['Task', nil, 'Tasks'],
       [nil, nil, '_Bussiness'],
-      ['Partner', nil, 'Partners'],
-      ['Company', nil, 'Companies'],
-      ['-', nil, '-'],
       ['Advertisement', nil, 'Advertisements'],
       ['Order', nil, 'Orders'],
       ['Deal', nil, 'Deals'],
@@ -12180,9 +12459,6 @@ module PandoraGtk
       ['Contract', nil, 'Contracts'],
       ['Report', nil, 'Reports'],
       [nil, nil, '_Region'],
-      ['Citizen', nil, 'Citizens'],
-      ['Union', nil, 'Unions'],
-      ['-', nil, '-'],
       ['Project', nil, 'Projects'],
       ['Resolution', nil, 'Resolutions'],
       ['Law', nil, 'Laws'],

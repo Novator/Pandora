@@ -81,17 +81,12 @@
       <description name.ru="Описание" />
     </Word>
 
-    <Article name.ru="Статья|Статьи">
-      <name name.ru="Название" />
-      <body name.ru="Текст" />
-      <type name.ru="Тип" />
-    </Article>
-
     <Blob name.ru="Файл|Файлы">
-      <type name.ru="Тип" />
       <name name.ru="Название" />
+      <type name.ru="Тип" />
       <hash name.ru="Хэш" />
       <size name.ru="Размер" />
+      <blob name.ru="Тело" />
     </Blob>
 
     <Relation name.ru="Связь|Связи">
@@ -110,12 +105,6 @@
 
   </World>
   <Business name.ru="Дело">
-
-    <Partner name.ru="Партнёр">
-    </Partner>
-
-    <Company name.ru="Компания">
-    </Company>
 
     <Storage name.ru="Склад">
     </Storage>
@@ -202,12 +191,6 @@
 
   </Business>
   <Region name.ru="Регион">
-
-    <Citizen name.ru="Гражданин|Граждане">
-    </Citizen>
-
-    <Union name.ru="Объединение|Объединения">
-    </Union>
 
     <Law name.ru="Закон|Законы">
       <number name.ru="Номер" />
