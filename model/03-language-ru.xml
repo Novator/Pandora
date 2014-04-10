@@ -98,7 +98,6 @@
     <Opinion name.ru="Мнение|Мнения">
       <object name.ru="Объект" />
       <creator name.ru="Создатель" />
-      <date name.ru="Дата создания" />
       <score name.ru="Оценка" />
       <comment name.ru="Комментарий" />
     </Opinion>

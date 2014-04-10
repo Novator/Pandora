@@ -100,12 +100,12 @@
       <kind name="Kind" type="Byte" hash="2:byte(1)" />
     </Relation>
 
-    <Opinion name="Opinion" kind="15">
-      <object name="Object" />
-      <creator name="Creator" />
-      <date name="Date" type="Date" />
+    <Opinion name="Opinion" parent="Created" kind="15">
+      <object name="Object" type="Panhash" hash="1:panhash(8)" />
+      <creator />
+      <created hash="2:integer(4)" />
       <score name="Score" type="Integer" />
-      <comment name="Comment" />
+      <comment name="Comment" type="Text" hash="4:hash(8)" />
     </Opinion>
 
   </World>

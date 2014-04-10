@@ -309,3 +309,4 @@ Sounds=>Звуки
 All files=>Все файлы
 Image loading error=>Сбой загрузки картинки
 File does not exist=>Файл не существует
+Cannot create sign=>Не могу создать подпись

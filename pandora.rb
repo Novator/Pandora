@@ -3078,6 +3078,8 @@ require 'openssl'
 
 module PandoraCrypto
 
+  include PandoraUtils
+
   KH_None   = 0
   KH_Md5    = 0x1
   KH_Sha1   = 0x2
@@ -3208,10 +3210,11 @@ module PandoraCrypto
 
   # Convert Pandora type of hash to OpenSSL string
   # RU: Преобразует тип хэша Пандоры в строку OpenSSL
-  def self.pankt_len_to_full_openssl(type, len)
+  def self.pankt_len_to_full_openssl(type, len, mode=nil)
     res = pankt_to_openssl(type)
     res += '-'+len.to_s if len
-    res += '-CBC'
+    mode ||= 'CFB'  #'CBC - cicle block, OFB - cicle pseudo, CFB - block+pseudo
+    res += '-'+mode
   end
 
   RSA_exponent = 65537
@@ -3449,7 +3452,11 @@ module PandoraCrypto
   # RU: Создает подпись
   def self.make_sign(key, data, hash_len=KH_Sha2 | KL_bit256)
     sign = nil
-    sign = key[KV_Obj].sign(pan_kh_to_openssl_hash(hash_len), data) if key[KV_Obj]
+    begin
+      sign = key[KV_Obj].sign(pan_kh_to_openssl_hash(hash_len), data) if key[KV_Obj]
+    rescue
+      sign = nil
+    end
     sign
   end
 
@@ -3785,7 +3792,7 @@ module PandoraCrypto
           align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
           align.add(pass_entry)
           vbox.pack_start(align, false, false, 2)
-          vbox.pack_start(pass_entry, false, false, 2)
+          #vbox.pack_start(pass_entry, false, false, 2)
 
           dialog.def_widget = user_entry.entry
 
@@ -3924,22 +3931,26 @@ module PandoraCrypto
       if not PandoraUtils.panhash_nil?(obj_hash)
         #p 'sign: matter_fields='+matter_fields.inspect
         sign = make_sign(key, PandoraUtils.namehash_to_pson(matter_fields))
+        if sign
+          time_now = Time.now.to_i
+          key_hash = key[KV_Panhash]
+          creator = key[KV_Creator]
+          trust = PandoraModel.normalize_trust(trust, true)
 
-        time_now = Time.now.to_i
-        key_hash = key[KV_Panhash]
-        creator = key[KV_Creator]
+          values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, \
+            :pack=>PT_Pson1, :trust=>trust, :creator=>creator, :created=>time_now, \
+            :sign=>sign}
 
-        trust = PandoraModel.normalize_trust(trust, true)
+          sign_model = PandoraUtils.get_model('Sign', models)
+          panhash = sign_model.panhash(values)
+          #p '!!!!!!panhash='+PandoraUtils.bytes_to_hex(panhash).inspect
 
-        values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, :pack=>PT_Pson1, \
-          :trust=>trust, :creator=>creator, :created=>time_now, :sign=>sign}
-
-        sign_model = PandoraUtils.get_model('Sign', models)
-        panhash = sign_model.panhash(values)
-        #p '!!!!!!panhash='+PandoraUtils.bytes_to_hex(panhash).inspect
-
-        values['panhash'] = panhash
-        res = sign_model.update(values, nil, nil)
+          values['panhash'] = panhash
+          res = sign_model.update(values, nil, nil)
+        else
+          PandoraUtils.log_message(LM_Warning, _('Cannot create sign')+' ['+\
+            panobject.show_panhash(obj_hash)+']')
+        end
       end
     end
     res
@@ -5504,14 +5515,18 @@ module PandoraNet
                     #p log_mes+'SIGN'
                     rphrase = OpenSSL::Digest::SHA384.digest(rphrase)
                     sign = PandoraCrypto.make_sign(@rkey, rphrase)
-                    len = $base_id.bytesize
-                    len = 255 if len>255
-                    @sbuf = [len].pack('C')+$base_id[0,len]+sign
-                    @scode = ECC_Init_Sign
-                    if @stage == ES_Greeting
-                      @stage = ES_Exchange
-                      set_max_pack_size(ES_Exchange)
-                      PandoraUtils.play_mp3('online')
+                    if sign
+                      len = $base_id.bytesize
+                      len = 255 if len>255
+                      @sbuf = [len].pack('C')+$base_id[0,len]+sign
+                      @scode = ECC_Init_Sign
+                      if @stage == ES_Greeting
+                        @stage = ES_Exchange
+                        set_max_pack_size(ES_Exchange)
+                        PandoraUtils.play_mp3('online')
+                      end
+                    else
+                      err_scmd('Cannot create sign')
                     end
                   end
                   @scmd = EC_Init
@@ -7566,6 +7581,10 @@ module PandoraGtk
     end
 
     def width_request=(wr)
+      s = button.size_request
+      h = s[0]+1
+      wr -= h
+      wr = 24 if wr<24
       entry.set_width_request(wr)
     end
 
@@ -7991,7 +8010,7 @@ module PandoraGtk
             hbox.hide
             textsw = child
             field = textsw.field
-            if field
+            if field and field[FI_Widget]
               toolbar.show
               @last_sw = child
 
@@ -8209,7 +8228,7 @@ module PandoraGtk
           @text_fields << field
           textsw.field = field
 
-          @fields.delete_at(i) if (atype=='Text')
+          #@fields.delete_at(i) if (atype=='Text')
         end
       end
 
@@ -10170,7 +10189,7 @@ module PandoraGtk
       PandoraGtk.set_readonly(next_btn, true)
 
       search_entry = Gtk::Entry.new
-      PandoraGtk.hack_enter_bug(search_entry)
+      #PandoraGtk.hack_enter_bug(search_entry)
       search_entry.signal_connect('key-press-event') do |widget, event|
         res = false
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
