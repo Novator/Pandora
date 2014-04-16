@@ -891,7 +891,8 @@ module PandoraUtils
     res << [type].pack('C')
     data = AsciiString.new(data) if data.is_a? String
     if elem_size
-      res << PandoraUtils.fill_zeros_from_left(PandoraUtils.bigint_to_bytes(elem_size), count+1) + data
+      res << PandoraUtils.fill_zeros_from_left(PandoraUtils.bigint_to_bytes(elem_size), \
+        count+1) + data
     else
       res << PandoraUtils.fill_zeros_from_left(data, count+1)
     end
@@ -956,9 +957,9 @@ module PandoraUtils
   # Value is empty?
   # RU: Значение пустое?
   def self.value_is_empty?(val)
-    res = (val==nil) or (val.is_a? String and (val=='')) or (val.is_a? Integer and (val==0)) \
-      or (val.is_a? Array and (val==[])) or (val.is_a? Hash and (val=={})) \
-      or (val.is_a? Time and (val.to_i==0))
+    res = (val==nil) or (val.is_a? String and (val=='')) \
+      or (val.is_a? Integer and (val==0)) or (val.is_a? Time and (val.to_i==0)) \
+      or (val.is_a? Array and (val==[])) or (val.is_a? Hash and (val=={}))
     res
   end
 
@@ -3085,6 +3086,7 @@ module PandoraCrypto
   KH_Sha1   = 0x2
   KH_Sha2   = 0x3
   KH_Sha3   = 0x4
+  KH_Rmd    = 0x5
 
   KT_None = 0
   KT_Rsa  = 0x1
@@ -3159,6 +3161,8 @@ module PandoraCrypto
         res = OpenSSL::Digest::MD5.new
       when KH_Sha1
         res = OpenSSL::Digest::SHA1.new
+      when KH_Rmd
+        res = OpenSSL::Digest::RIPEMD160.new
       when KH_Sha2
         case klen
           when KL_bit256
@@ -12308,6 +12312,35 @@ module PandoraGtk
       res
     end
 
+    # Export table to file
+    # RU: Выгрузить таблицу в файл
+    def export_table(panobject)
+
+      ider = panobject.ider
+      filename = File.join($pandora_files_dir, ider+'.csv')
+      separ = '|'
+
+      File.open(filename, 'w') do |file|
+        sel = panobject.select(nil, false, nil, panobject.sort)
+        sel.each do |row|
+          line = ''
+          row.each_with_index do |cell,i|
+            line += separ if i>0
+            if cell
+              begin
+                #line += '"' + cell.to_s + '"' if cell
+                line += cell.to_s
+              rescue
+              end
+            end
+          end
+          file.puts(line)
+        end
+      end
+
+      PandoraUtils.log_message(LM_Info, _('Table exported')+': '+filename)
+    end
+
     # Menu event handler
     # RU: Обработчик события меню
     def do_menu_act(command, treeview=nil)
@@ -12348,7 +12381,7 @@ module PandoraGtk
             elsif command=='Import'
               p 'import'
             elsif command=='Export'
-              p 'export'
+              export_table(treeview.panobject)
             else
               PandoraGtk.act_panobject(treeview, command)
             end
@@ -12364,6 +12397,8 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
+          p res44 = OpenSSL::Digest::RIPEMD160.new
+
           a = rand
           if a<0.33
             PandoraUtils.play_mp3('online')
@@ -12433,36 +12468,36 @@ module PandoraGtk
       ['Community', nil, 'Communities'],
       ['Blob', Gtk::Stock::HARDDISK, 'Files', '<control>J'], #Gtk::Stock::FILE
       ['-', nil, '-'],
-      ['Country', nil, 'States'],
       ['City', nil, 'Towns'],
       ['Street', nil, 'Streets'],
-      ['Thing', nil, 'Things'],
-      ['Activity', nil, 'Activities'],
-      ['Word', Gtk::Stock::SPELL_CHECK, 'Words'],
-      ['Language', nil, 'Languages'],
       ['Address', nil, 'Addresses'],
       ['Contact', nil, 'Contacts'],
-      ['Task', nil, 'Tasks'],
-      ['-', nil, '-'],
+      ['Country', nil, 'States'],
+      ['Language', nil, 'Languages'],
+      ['Word', Gtk::Stock::SPELL_CHECK, 'Words'],
       ['Relation', nil, 'Relations'],
+      ['-', nil, '-'],
       ['Opinion', nil, 'Opinions'],
+      ['Message', nil, 'Messages'],
+      ['Task', nil, 'Tasks'],
       [nil, nil, '_Bussiness'],
       ['Advertisement', nil, 'Advertisements'],
+      ['Transfer', nil, 'Transfers'],
+      ['-', nil, '-'],
       ['Order', nil, 'Orders'],
       ['Deal', nil, 'Deals'],
       ['Waybill', nil, 'Waybills'],
-      ['Debenture', nil, 'Debentures'],
-      ['Transfer', nil, 'Transfers'],
       ['-', nil, '-'],
+      ['Debenture', nil, 'Debentures'],
       ['Deposit', nil, 'Deposits'],
       ['Guarantee', nil, 'Guarantees'],
       ['Insurer', nil, 'Insurers'],
       ['-', nil, '-'],
-      ['Storage', nil, 'Storages'],
       ['Product', nil, 'Products'],
       ['Service', nil, 'Services'],
-      ['Estimate', nil, 'Estimates'],
       ['Currency', nil, 'Currency'],
+      ['Storage', nil, 'Storages'],
+      ['Estimate', nil, 'Estimates'],
       ['Contract', nil, 'Contracts'],
       ['Report', nil, 'Reports'],
       [nil, nil, '_Region'],
@@ -12479,14 +12514,12 @@ module PandoraGtk
       ['Resource', nil, 'Resources'],
       ['Delegation', nil, 'Delegations'],
       ['Registry', nil, 'Registry'],
-      [nil, nil, '_Pandora'],
+      [nil, nil, '_Node'],
       ['Parameter', Gtk::Stock::PROPERTIES, 'Parameters'],
       ['-', nil, '-'],
       ['Key', Gtk::Stock::DIALOG_AUTHENTICATION, 'Keys'],
       ['Sign', nil, 'Signs'],
       ['Node', Gtk::Stock::NETWORK, 'Nodes'],
-      ['Message', nil, 'Messages'],
-      ['Patch', nil, 'Patches'],
       ['Event', nil, 'Events'],
       ['Fishhook', nil, 'Fishhooks'],
       ['Session', Gtk::Stock::JUSTIFY_FILL, 'Sessions', '<control>S'],

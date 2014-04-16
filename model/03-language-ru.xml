@@ -66,16 +66,6 @@
       <value name.ru="Значение" />
     </Contact>
 
-    <Activity name.ru="Деятельность|Увлечения">
-      <name name.ru="Название" />
-      <description name.ru="Описание" />
-    </Activity>
-
-    <Thing name.ru="Вещь|Вещи">
-      <name name.ru="Название" />
-      <desc name.ru="Описание" />
-    </Thing>
-
     <Word name.ru="Слово|Слова">
       <name name.ru="Написание" />
       <description name.ru="Описание" />
@@ -117,15 +107,13 @@
     <Currency name.ru="Валюта|Валюты">
       <name name.ru="Название" />
       <code name.ru="Код" />
-      <country name.ru="Страна" />
-      <issuer name.ru="Эммитент" />
     </Currency>
 
     <Contract name.ru="Договор|Договоры">
     </Contract>
 
     <Advertisement name.ru="Объявление">
-      <body name.ru="Суть" />
+      <blob name.ru="Тело" />
     </Advertisement>
 
     <Order name.ru="Заказ|Заказы">
@@ -149,7 +137,7 @@
       <created name.ru="Выпустил" />
     </Debenture>
 
-    <Transfer name.ru="Передача">
+    <Transfer name.ru="Перевод">
       <creator name.ru="Плательщик" />
       <debenture name.ru="Расписка" />
       <deal name.ru="Сделка" />
@@ -264,23 +252,9 @@
       <try_natpmp_time name.ru="Время попытки NAT-PMP" />
     </Node>
 
-    <Patch name.ru="Изменение|Изменения">
-      <kind name.ru="Тип" />
-      <origin name.ru="Источник" />
-      <creator name.ru="Создатель" />
-      <oldsha1 name.ru="Старый хэш" />
-      <sha1 name.ru="Новый хэш" />
-      <date name.ru="Дата" />
-      <delta name.ru="Разница" />
-    </Patch>
-
     <Event name.ru="Событие|События">
-      <time name.ru="Время" />
+      <initiator name.ru="Инициатор" />
       <kind name.ru="Тип" />
-      <origin name.ru="Источник" />
-      <sha2 name.ru="Хэш" />
-      <creator name.ru="Создатель" />
-      <message name.ru="Пояснение" />
     </Event>
 
     <Repository name.ru="Хранилище|Хранилища">

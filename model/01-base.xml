@@ -55,31 +55,21 @@
     </Country>
 
     <Street name="Street|Streets" kind="5">
-      <name name="Name" type="String" size="128" />
-      <city name="City" type="Panhash(City)" />
+      <city name="City" type="Panhash(City)" hash="1:coord(4)" />
+      <name name="Name" type="String" size="128" hash="1:phash(16)" />
     </Street>
 
     <Address name="Address|Addresses" kind="6">
-      <street name="Street" type="Panhash(Street)" />
-      <building name="Building"  type="String" size="16" />
-      <appartment name="Appartment"  type="String" size="16" />
+      <street name="Street" type="Panhash(Street)" hash="1:phash(12)" />
+      <building name="Building"  type="String" size="16" hash="2:crc32" />
+      <appartment name="Appartment"  type="String" size="16" hash="3:crc32" />
     </Address>
 
     <Contact name="Contact|Contacts" parent="Created" kind="7">
-      <creator name="Owner" />
+      <creator name="Owner" type="Panhash(Person, Community)" />
       <type name="Type" type="String" size="16" />
       <value name="Value" type="String" size="96" />
     </Contact>
-
-    <Activity name="Activity" kind="8">
-      <name name="Name" type="String" size="96" />
-      <description name="Description" type="Text" />
-    </Activity>
-
-    <Thing name="Thing|Things" kind="9">
-      <name name="Name" type="String" size="96" />
-      <desc name="Description" type="Text" />
-    </Thing>
 
     <Word name="Word|Words" kind="10">
       <name name="Name" type="String" size="64" />
@@ -87,10 +77,10 @@
     </Word>
 
     <Blob name="Blob" parent="Created" kind="12">
-      <name name="Name" type="String" size="512" hash="1:hash(8)" />
+      <name name="Name" type="String" size="512" hash="1:hash(6)" />
       <blob name="Blob" type="Blob" />
-      <type name="Type" type="Word" hash="2:word(2)" />
-      <hash name="Hash" type="String" size="65" hash="2:raw(10)" />
+      <type name="Type" type="String" size="32" />
+      <hash name="Hash" type="String" size="65" hash="2:raw(14)" />
       <size name="Size" type="Integer" />
     </Blob>
 
@@ -114,24 +104,22 @@
     <Storage parent="Address" kind="75">
     </Storage>
 
-    <Product parent="Thing" kind="76">
+    <Product parent="Word" kind="76">
     </Product>
 
-    <Service parent="Activity" kind="77">
+    <Service parent="Word" kind="77">
     </Service>
 
     <Currency name="Currency|Currency" kind="88">
-      <name name="Name" />
-      <code name="Code" />
-      <country name="Country" />
-      <issuer name="Issuer" />
+      <name name="Name" size="128" />
+      <code name="Code" size="3" />
     </Currency>
 
     <Contract parent="Blob" kind="87">
     </Contract>
 
     <Advertisement parent="Blob" kind="80">
-      <body name="Goods" type="Text" />
+      <blob name="Body" />
     </Advertisement>
 
     <Order parent="Created" kind="81">
@@ -299,23 +287,10 @@
       <last_trust_time name="Last received trust" type="Time" /-->
     </Node>
 
-    <Patch name="Patch" kind="224">
+    <Event name="Event" parent="Created" kind="225" >
+      <initiator name="Initiator" type="Panhash" />
+      <object name="Object" type="Panhash" />
       <kind name="Kind" type="Integer" />
-      <origin name="Origin" type="String" size="32" />
-      <creator name="Creator" type="String" size="64" />
-      <oldsha1 name="Old hash" type="Blob" size="32" />
-      <sha1 name="New hash" type="Blob" size="32" />
-      <date name="Date" />
-      <delta name="Delta" type="Blob" />
-    </Patch>
-
-    <Event name="Event" kind="225">
-      <time name="Time" type="Date" />
-      <kind name="Kind" type="Integer" />
-      <origin name="Origin" type="String" size="32" />
-      <sha2 name="Hash" type="Blob" size="32" />
-      <creator name="Creator" type="String" size="128" />
-      <message name="Message" type="String" />
     </Event>
 
     <Repository name="Repository" kind="226">
@@ -386,6 +361,12 @@
     <trust_for_captchaed desc="Trust for captchaed" type="Boolean" section="net" setting="true" />
     <trust_for_listener desc="Trust for listener" type="Boolean" section="net" setting="true" />
     <low_conn_trust desc="Low allowed trust to connection for key" type="Real" section="net" setting="0.0" />
+    <ask_kinds_m10 desc="Ask kinds from -1.0" type="String" section="net" setting="" />
+    <ask_kinds_p01 desc="Ask kinds from +0.1" type="String" section="net" setting="2" />
+    <ask_kinds_p10 desc="Ask kinds from +1.0" type="String" section="net" setting="1,2" />
+    <give_kinds_m10 desc="Ask kinds from -1.0" type="String" section="net" setting="" />
+    <give_kinds_p01 desc="Give kinds from +0.1" type="String" section="net" setting="2" />
+    <give_kinds_p10 desc="Give kinds from +1.0" type="String" section="net" setting="1,2" />
 
     <last_auth_key desc="Last auth key" type="Bigint" section="crypto" setting=",hex" />
 
