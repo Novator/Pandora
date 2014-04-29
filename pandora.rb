@@ -1373,6 +1373,7 @@ module PandoraUtils
   FI_WidW    = 19
   FI_WidH    = 20
   FI_Color   = 21
+  FI_Widget2 = 22
 
   $max_hash_len = 20
 
@@ -7853,7 +7854,7 @@ module PandoraGtk
     end
 
     class BodyScrolledWindow < Gtk::ScrolledWindow
-      attr_accessor :field
+      attr_accessor :field, :link_name, :text_view
     end
 
     # Start loading image from file
@@ -7995,10 +7996,10 @@ module PandoraGtk
       @last_sw = nil
       notebook.signal_connect('switch-page') do |widget, page, page_num|
         if (page_num != 1) and @last_sw
-          @last_sw.children.each do |child|
-            child.destroy if (not child.destroyed?) \
-              and child.class.method_defined? 'destroy'
-          end
+          #@last_sw.children.each do |child|
+          #  child.destroy if (not child.destroyed?) \
+          #    and child.class.method_defined? 'destroy'
+          #end
           @last_sw = nil
         end
 
@@ -8013,54 +8014,57 @@ module PandoraGtk
             hbox.hide
             textsw = child
             field = textsw.field
-            if field and field[FI_Widget]
-              toolbar.show
-              @last_sw = child
-
+            if field
+              link_name = nil
               link_name = field[FI_Widget].text
               link_name.chomp! if link_name
-
-              bodywid = nil
-              if link_name and (link_name != '')
-                if File.exist?(link_name)
-                  ext = File.extname(link_name)
-                  if ext and (['.jpg','.gif','.png'].include? ext.downcase)
-                    image = start_image_loading(link_name)
-                    bodywid = image
+              if (not field[FI_Widget2]) or (link_name != textsw.link_name)
+                toolbar.show
+                @last_sw = child
+                bodywid = nil
+                if link_name and (link_name != '')
+                  if File.exist?(link_name)
+                    ext = File.extname(link_name)
+                    if ext and (['.jpg','.gif','.png'].include? ext.downcase)
+                      image = start_image_loading(link_name)
+                      bodywid = image
+                      link_name = link_name
+                    else
+                      link_name = nil
+                    end
                   else
-                    link_name = nil
+                    err_text = _('File does not exist')+":\n"+link_name
+                    label = Gtk::Label.new(err_text)
+                    bodywid = label
                   end
                 else
-                  err_text = _('File does not exist')+":\n"+link_name
-                  label = Gtk::Label.new(err_text)
-                  bodywid = label
+                  link_name = nil
                 end
-              else
-                link_name = nil
-              end
 
-              if not link_name
-                textview = Gtk::TextView.new
-                #textview = child.children[0]
-                textview.wrap_mode = Gtk::TextTag::WRAP_WORD
-                textview.signal_connect('key-press-event') do |widget, event|
-                  if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
-                    and event.state.control_mask?
-                  then
-                    true
+                if not link_name
+                  textview = Gtk::TextView.new
+                  #textview = child.children[0]
+                  textview.wrap_mode = Gtk::TextTag::WRAP_WORD
+                  textview.signal_connect('key-press-event') do |widget, event|
+                    if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
+                      and event.state.control_mask?
+                    then
+                      true
+                    end
                   end
+                  textview.buffer.text = field[FI_Value].to_s
+                  bodywid = textview
                 end
-                #textview.buffer.text = field[FI_Value].to_s
-                bodywid = textview
-              end
 
-              if bodywid.is_a? Gtk::TextView
-                textsw.add(bodywid)
-                set_buffers(true)
-              elsif bodywid
-                textsw.add_with_viewport(bodywid)
+                field[FI_Widget2] = bodywid
+                if bodywid.is_a? Gtk::TextView
+                  textsw.add(bodywid)
+                  set_buffers(true)
+                elsif bodywid
+                  textsw.add_with_viewport(bodywid)
+                end
+                textsw.show_all
               end
-              textsw.show_all
             end
           else
             toolbar.hide
@@ -8376,7 +8380,12 @@ module PandoraGtk
         field[FI_WidH] = eh
         entries_width += ew
         max_entry_height = eh if max_entry_height < eh
-        entry.text = field[FI_Value].to_s
+        text = field[FI_Value].to_s
+        if (atype=='Blob') or (atype=='Text')
+          entry.text = text[1..-1] if text and (text.size<1024) and (text[0]=='@')
+        else
+          entry.text = text
+        end
       end
 
       field_matrix = Array.new
@@ -10970,10 +10979,6 @@ module PandoraGtk
             entry = field[FI_Widget]
             field[FI_Value] = entry.text
           end
-          dialog.text_fields.each do |field|
-            textview = field[FI_Widget]
-            field[FI_Value] = textview.buffer.text if textview.is_a? Gtk::TextView
-          end
 
           # fill hash of values
           flds_hash = {}
@@ -10991,10 +10996,18 @@ module PandoraGtk
             end
 
             val = PandoraUtils.view_to_val(val, type, view)
+            val = '@'+val if val and (val != '') and ((type=='Blob') or (type=='Text'))
             flds_hash[field[FI_Id]] = val
           end
           dialog.text_fields.each do |field|
-            #flds_hash[field[FI_Id]] = field[FI_Value]
+            textview = field[FI_Widget2]
+            if textview.is_a? Gtk::TextView
+              text = textview.buffer.text
+              if text and (text.size>0)
+                field[FI_Value] = text
+                flds_hash[field[FI_Id]] = field[FI_Value]
+              end
+            end
           end
           lg = nil
           begin
