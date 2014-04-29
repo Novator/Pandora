@@ -102,9 +102,9 @@ Full update, including documentation and language files, can require manual down
 
   https://github.com/
 
-For example, your login is "yournick".
+For example, your login is "YourNick".
 
-7.3. Push "Fork" button on left and top at Pandora github page:
+7.3. Push "Fork" button on top of Pandora github page:
 
   https://github.com/Novator/Pandora/fork
 
@@ -118,9 +118,9 @@ in Windows install last "Git-N.N.N-previewYYYYMMDD.exe" from:
 
 7.5. Download Pandora to your hard disk via git command:
 
-  git clone --depth=1 https://github.com/yournick/Pandora.git
+  git clone --depth=1 https://github.com/YourNick/Pandora.git
 
-Warning: change "yournick" to your nick!
+Warning: change "YourNick" to your login!
 
 7.6. Correct a code with any text editor, for example Geany:
 
@@ -134,7 +134,7 @@ Warning: change "yournick" to your nick!
 
 7.8. Push "Pull Request" at your Pandora github page:
 
-  https://github.com/yournick/Pandora/pull/new/master
+  https://github.com/YourNick/Pandora/pull/new/master
 
 If your contribution will be rated as useful it will be added to next release.
 When you show yourself like active developer you will be added as collaborator.

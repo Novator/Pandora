@@ -2,8 +2,8 @@
 # encoding: UTF-8
 # coding: UTF-8
 
-# National network Pandora
-# RU: Народная сеть Пандора
+# P2P national network Pandora
+# RU: P2P народная сеть Пандора
 #
 # This program is distributed under the GNU GPLv2
 # RU: Эта программа распространяется под GNU GPLv2
@@ -65,6 +65,7 @@ module PandoraUtils
   $base_index = 0
   $poly_launch = true
   $pandora_parameters = []
+  $lang = 'ru'
 
   # Paths and files  ('join' gets '/' for Linux and '\' for Windows)
   # RU: Пути и файлы ('join' дает '/' для Линукса и '\' для Винды)
@@ -77,8 +78,6 @@ module PandoraUtils
   $pandora_util_dir = File.join($pandora_root_dir, 'util')            # Utilites directory
   $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Default database file
   $pandora_files_dir = File.join($pandora_root_dir, 'files')          # Files directory
-  $lang = 'ru'
-
 
   LM_Error    = 0
   LM_Warning  = 1
@@ -6727,7 +6726,7 @@ module PandoraNet
             host = $host
             if not host
               host = ''
-            elsif host=='any'  #alse can be "", "0.0.0.0", "0", "0::0", "::"
+            elsif host=='any'  #else can be "", "0.0.0.0", "0", "0::0", "::"
               host = Socket::INADDR_ANY
             end
             server = TCPServer.open(host, $port)
@@ -11525,7 +11524,7 @@ module PandoraGtk
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
-    dlg.comments = _('National network')
+    dlg.comments = _('P2P national network')
     dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
     begin
       file = File.open(File.join($pandora_root_dir, 'LICENSE.TXT'), 'r')
