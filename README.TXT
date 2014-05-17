@@ -24,8 +24,11 @@ uses a cryptography and a web of trust.
 Pandora is not yet another "geek thing". It is designed for ordinary people,
 has a graphical user interface (GUI) and works "out of the box".
 
-See user manual with pictures in wiki to quick start:
+See the user manual with pictures in wiki to quick start:
 https://github.com/Novator/Pandora/wiki/Install-and-first-run
+
+See the article in SysMagazine to explore the concept of Pandora:
+http://sysmagazine.com/posts/164149/
 
 
 2. SYSTEM REQUIREMENTS

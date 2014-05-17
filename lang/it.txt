@@ -78,5 +78,5 @@ Laws=>Leggi
 _Region=>_Regione
 Documents=>Documenti
 Orders=>Ordini
-_Bussiness=>_Affare
+_Business=>_Affare
 _World=>_Mondo

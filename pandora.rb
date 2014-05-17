@@ -63,7 +63,7 @@ module PandoraUtils
   $host = '127.0.0.1'
   $port = 5577
   $base_index = 0
-  $poly_launch = true
+  $poly_launch = false
   $pandora_parameters = []
   $lang = 'ru'
 
@@ -617,15 +617,16 @@ module PandoraUtils
             val = 0
           end
         when 'base64'
-          if (not type) #or (type=='Text') or (type=='Blob')
+          if (not type) or (type=='Text') or (type=='Blob')
             val = Base64.decode64(val)
           else
             val = Base64.strict_decode64(val)
           end
           color = 'brown'
         when 'hex', 'panhash', 'phash'
-          if (['Bigint', 'Panhash', 'String', 'Blob', 'Text', 'Filename'].include? type) \
-          or (type[0,7]=='Panhash')
+          if (type.is_a? String) and \
+          ((['Bigint', 'Panhash', 'String', 'Blob', 'Text', 'Filename'].include? type) \
+          or (type[0,7]=='Panhash'))
             val = PandoraUtils.hex_to_bytes(val)
           else
             val = val.to_i(16)
@@ -1516,12 +1517,12 @@ module PandoraUtils
               view = 'coord'
               len = 24
             when 'Blob'
-              #  if not fd[FI_Size] or fd[FI_Size].to_i>25
-              #    view = 'base64'
-              #  else
-              #    view = 'hex'
-              #  end
-              view = 'blob'
+              if (not fd[FI_Size]) or (fd[FI_Size].to_i>25)
+                view = 'base64'
+              else
+                view = 'hex'
+              end
+              #view = 'blob'
               #len = 80
             when 'Text'
               view = 'text'
@@ -2983,6 +2984,44 @@ module PandoraModel
     res
   end
 
+  # Get panhash list by kind list
+  # RU: Возвращает список панхэшей по списку сортов
+  def self.get_panhashes_by_kinds(kinds, trust=nil, from_time=nil, models=nil)
+    res = nil
+    kinds.each do |kind|
+      panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+      if panobjectclass
+        model = PandoraUtils.get_model(panobjectclass.ider, models)
+        if model
+          filter = {'panhash'=>panhash}
+          if kind==PK_Key
+            filter['kind'] = 0x81
+          end
+          pson = (pson_with_kind != nil)
+          sel = model.select(filter, pson, getfields, nil, 1)
+          if sel and (sel.size>0)
+            if pson
+              #namesvalues = panobject.namesvalues
+              #fields = model.matter_fields
+              fields = model.clear_excess_fields(sel[0])
+              p 'get_rec: matter_fields='+fields.inspect
+              # need get all fields (except: id, panhash, modified) + kind
+              lang = PandoraUtils.lang_from_panhash(panhash)
+              res = AsciiString.new
+              res << [kind].pack('C') if pson_with_kind
+              res << [lang].pack('C')
+              p 'get_record_by_panhash|||  fields='+fields.inspect
+              res << PandoraUtils.namehash_to_pson(fields)
+            else
+              res = sel
+            end
+          end
+        end
+      end
+    end
+    res
+  end
+
   # Realtion kinds
   # RU: Виды связей
   RK_Unknown  = 0
@@ -3130,6 +3169,7 @@ module PandoraCrypto
   # Divide type and code of length
   # RU: Разделить тип и код длины
   def self.divide_type_and_klen(tnl)
+    tnl = 0 if not tnl.is_a? Integer
     type = tnl & 0x0F
     klen  = tnl & 0xF0
     [type, klen]
@@ -3364,8 +3404,11 @@ module PandoraCrypto
       cipher_hash = key_vec[KV_Cipher]
       pass = key_vec[KV_Pass]
       type, klen = divide_type_and_klen(type_klen)
+      #p [type, klen]
       bitlen = klen_to_bitlen(klen)
       case type
+        when KT_None
+          key = nil
         when KT_Rsa
           #p '------'
           #p key.params
@@ -3978,15 +4021,15 @@ module PandoraCrypto
 
   # Get trust to panobject by its panhash
   # RU: Возвращает доверие к панобъекту по его панхэшу
-  def self.trust_of_panobject(panhash, models=nil)
+  def self.trust_in_panobj(panhash, models=nil)
     res = nil
     if panhash and (panhash != '')
       key_hash = current_user_or_key(false, false)
       sign_model = PandoraUtils.get_model('Sign', models)
       filter = {:obj_hash => panhash}
       filter[:key_hash] = key_hash if key_hash
-      sel = sign_model.select(filter, false, 'created, trust')
-      if sel and (sel.size>0)
+      sel = sign_model.select(filter, false, 'created, trust', 'created DESC', 1)
+      if (sel.is_a? Array) and (sel.size>0)
         if key_hash
           last_date = 0
           sel.each_with_index do |row, i|
@@ -4073,7 +4116,7 @@ module PandoraCrypto
       key_vec = $open_keys[panhash]
       #p 'openkey key='+key_vec.inspect+' $open_keys.size='+$open_keys.size.inspect
       if key_vec
-        cur_trust = trust_of_panobject(panhash)
+        cur_trust = trust_in_panobj(panhash)
         key_vec[KV_Trust] = cur_trust if cur_trust
       elsif ($open_keys.size<$max_opened_keys)
         model = PandoraUtils.get_model('Key', models)
@@ -4095,7 +4138,7 @@ module PandoraCrypto
               #key_vec[KV_Pass] = passwd
               key_vec[KV_Panhash] = panhash
               key_vec[KV_Creator] = creator
-              key_vec[KV_Trust] = trust_of_panobject(panhash)
+              key_vec[KV_Trust] = trust_in_panobj(panhash)
 
               $open_keys[panhash] = key_vec
               break
@@ -5931,7 +5974,7 @@ module PandoraNet
                     pkinds="3,7,11"
                     @scode=ECC_News0_Kinds
                     @sbuf=pkinds
-                  else #(1..255) - запрос сорта/всех сортов, если 255
+                  else #запрос сорта (1-254) или всех сортов (255)
                     afrom_data=rdata
                     akind=rcode
                     if akind==ECC_Query255_AllChanges
@@ -8219,8 +8262,10 @@ module PandoraGtk
         i -= 1
         field = @fields[i]
         atext = field[FI_VFName]
-        atype = field[FI_Type]
-        if (atype=='Blob') or (atype=='Text')
+        #atype = field[FI_Type]
+        #if (atype=='Blob') or (atype=='Text')
+        aview = field[FI_View]
+        if (aview=='blob') or (aview=='text')
           textsw = BodyScrolledWindow.new(nil, nil)
           textsw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
 
@@ -8381,7 +8426,8 @@ module PandoraGtk
         entries_width += ew
         max_entry_height = eh if max_entry_height < eh
         text = field[FI_Value].to_s
-        if (atype=='Blob') or (atype=='Text')
+        #if (atype=='Blob') or (atype=='Text')
+        if (aview=='blob') or (aview=='text')
           entry.text = text[1..-1] if text and (text.size<1024) and (text[0]=='@')
         else
           entry.text = text
@@ -10888,7 +10934,6 @@ module PandoraGtk
         formfields.each do |field|
           val = nil
           fid = field[FI_Id]
-          type = field[FI_Type]
           view = field[FI_View]
           col = tab_flds.index{ |tf| tf[0] == fid }
           if col and sel and (sel[0].is_a? Array)
@@ -10916,7 +10961,7 @@ module PandoraGtk
 
           count, rate, querist_rate = PandoraCrypto.rate_of_panobj(panhash0)
           trust = nil
-          res = PandoraCrypto.trust_of_panobject(panhash0)
+          res = PandoraCrypto.trust_in_panobj(panhash0)
           trust = res if res.is_a? Float
           dialog.vouch_btn.active = (res != nil)
           dialog.vouch_btn.inconsistent = (res.is_a? Integer)
@@ -10988,15 +11033,16 @@ module PandoraGtk
             val = field[FI_Value]
 
             if (panobject.ider=='Parameter') and (field[FI_Id]=='value')
-              type = panobject.field_val('type', sel[0])
+              par_type = panobject.field_val('type', sel[0])
               setting = panobject.field_val('setting', sel[0])
               ps = PandoraUtils.decode_param_setting(setting)
               view = ps['view']
-              view ||= PandoraUtils.pantype_to_view(type)
+              view ||= PandoraUtils.pantype_to_view(par_type)
             end
 
+            p 'val, type, view='+[val, type, view].inspect
             val = PandoraUtils.view_to_val(val, type, view)
-            val = '@'+val if val and (val != '') and ((type=='Blob') or (type=='Text'))
+            val = '@'+val if val and (val != '') and ((view=='blob') or (view=='text'))
             flds_hash[field[FI_Id]] = val
           end
           dialog.text_fields.each do |field|
@@ -11061,7 +11107,9 @@ module PandoraGtk
               #p 'ind='+ind.inspect
               if ind
                 #p '---------CHANGE'
-                tree_view.sel[ind] = sel[0]
+                sel[0].each_with_index do |c,i|
+                  tree_view.sel[ind][i] = c
+                end
                 iter[0] = id
                 store.row_changed(path, iter)
               else
@@ -12490,9 +12538,9 @@ module PandoraGtk
       ['Relation', nil, 'Relations'],
       ['-', nil, '-'],
       ['Opinion', nil, 'Opinions'],
-      ['Message', nil, 'Messages'],
       ['Task', nil, 'Tasks'],
-      [nil, nil, '_Bussiness'],
+      ['Message', nil, 'Messages'],
+      [nil, nil, '_Business'],
       ['Advertisement', nil, 'Advertisements'],
       ['Transfer', nil, 'Transfers'],
       ['-', nil, '-'],

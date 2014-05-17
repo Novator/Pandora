@@ -37,7 +37,7 @@
 
   </World>
 
-  <Bussiness>
+  <Business>
 
     <Deposit>
       <creator pos="1" />
@@ -62,7 +62,7 @@
       <condition pos="2" />
     </Insurer>
 
-  </Bussiness>
+  </Business>
 
   <Region>
 
@@ -95,8 +95,8 @@
       <type pos="+1" />
       <section pos="+1" />
       <desc pos="|+1" fsize="64" />
-      <value pos="|+1" fsize="64" />
-      <setting pos="|+1" fsize="64" />
+      <value pos="|+1" fsize="64" view="string" />
+      <setting pos="|+1" fsize="64" view="string" />
     </Parameter>
 
     <Key>

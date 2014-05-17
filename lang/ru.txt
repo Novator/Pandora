@@ -2,7 +2,7 @@
 Full text=>Полный текст
 _Close=>_Закрыть
 Resources=>Ресурсы
-_Bussiness=>_Дело
+_Business=>_Дело
 Error=>Ошибка
 Punishments=>Наказания
 Relations=>Связи
