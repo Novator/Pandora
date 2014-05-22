@@ -1178,6 +1178,16 @@ module PandoraUtils
             end
           end
           filter = sql2
+        elsif filter.is_a? Array
+          sql2 = ''
+          filter.each do |n,v|
+            if n
+              sql2 = sql2 + ' AND ' if sql2 != ''
+              sql2 = sql2 + n.to_s + '?'
+              sql_values << v
+            end
+          end
+          filter = sql2
         end
         if like_filter.is_a? Hash
           sql2 = ''
@@ -2922,14 +2932,17 @@ module PandoraModel
 
   # Read record by panhash
   # RU: Читает запись по панхэшу
-  def self.get_record_by_panhash(kind, panhash, pson_with_kind=nil, models=nil, getfields=nil)
+  def self.get_record_by_panhash(kind, panhash, pson_with_kind=nil, models=nil, \
+  getfields=nil)
+    # pson_with_kind: nil - raw data, false - short panhash+pson, true - panhash+pson
     res = nil
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
     if panobjectclass
       model = PandoraUtils.get_model(panobjectclass.ider, models)
       if model
         filter = {'panhash'=>panhash}
-        if kind==PK_Key
+        if (kind==PK_Key)
+          # Select only open keys!
           filter['kind'] = 0x81
         end
         pson = (pson_with_kind != nil)
@@ -2986,34 +2999,20 @@ module PandoraModel
 
   # Get panhash list by kind list
   # RU: Возвращает список панхэшей по списку сортов
-  def self.get_panhashes_by_kinds(kinds, trust=nil, from_time=nil, models=nil)
+  def self.get_panhashes_by_kinds(kinds=nil, trust=nil, from_time=nil, models=nil)
     res = nil
+    kinds ||= (1..254)
     kinds.each do |kind|
       panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
       if panobjectclass
         model = PandoraUtils.get_model(panobjectclass.ider, models)
         if model
-          filter = {'panhash'=>panhash}
-          if kind==PK_Key
-            filter['kind'] = 0x81
-          end
-          pson = (pson_with_kind != nil)
-          sel = model.select(filter, pson, getfields, nil, 1)
+          filter = [['modified >= ', from_time]]
+          p sel = model.select(filter, false, 'panhash', 'id ASC')
           if sel and (sel.size>0)
-            if pson
-              #namesvalues = panobject.namesvalues
-              #fields = model.matter_fields
-              fields = model.clear_excess_fields(sel[0])
-              p 'get_rec: matter_fields='+fields.inspect
-              # need get all fields (except: id, panhash, modified) + kind
-              lang = PandoraUtils.lang_from_panhash(panhash)
-              res = AsciiString.new
-              res << [kind].pack('C') if pson_with_kind
-              res << [lang].pack('C')
-              p 'get_record_by_panhash|||  fields='+fields.inspect
-              res << PandoraUtils.namehash_to_pson(fields)
-            else
-              res = sel
+            res ||= []
+            sel.each do |row|
+              res << row[0]
             end
           end
         end
@@ -12457,6 +12456,22 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
+          from_time = Time.now.to_i - 3*24*3600
+          trust = 0.5
+          list = PandoraModel.get_panhashes_by_kinds([1,11], trust, from_time)
+          p 'list='+list.inspect
+
+          list.each do |panhash|
+            p '----------------'
+            p kind = PandoraUtils.kind_from_panhash(panhash)
+            p res = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil)
+            p [panhash, res].inspect
+          end
+
+
+          return
+
+
           p res44 = OpenSSL::Digest::RIPEMD160.new
 
           a = rand
@@ -12468,6 +12483,8 @@ module PandoraGtk
             PandoraUtils.play_mp3('message')
           end
           return
+
+
           #p OpenSSL::Cipher::ciphers
 
           #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
