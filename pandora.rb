@@ -391,6 +391,17 @@ module PandoraUtils
     res
   end
 
+  def self.str_to_bytes(str)
+    if str.is_a? String
+      res = []
+      str.each_byte do |b|
+        res << b
+      end
+      str = res
+    end
+    str
+  end
+
   # Fill string by zeros from left to defined size
   # RU: Заполнить строку нулями слева до нужного размера
   def self.fill_zeros_from_left(data, size)
@@ -2216,7 +2227,7 @@ module PandoraUtils
       res = {}
       if namesvalues.is_a? Hash
         namesvalues.each do |k, v|
-          if not (['id', 'panhash', 'modified'].include? k)
+          if not (['id', 'panhash', 'modified', 'panstate'].include? k)
             res[k] = v
           end
         end
@@ -3002,12 +3013,13 @@ module PandoraModel
   def self.get_panhashes_by_kinds(kinds=nil, trust=nil, from_time=nil, models=nil)
     res = nil
     kinds ||= (1..254)
+    kinds = PandoraUtils.str_to_bytes(kinds)
     kinds.each do |kind|
       panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
       if panobjectclass
         model = PandoraUtils.get_model(panobjectclass.ider, models)
         if model
-          filter = [['modified >= ', from_time]]
+          filter = [['modified >= ', from_time.to_i]]
           p sel = model.select(filter, false, 'panhash', 'id ASC')
           if sel and (sel.size>0)
             res ||= []
@@ -4546,10 +4558,10 @@ module PandoraNet
   ECC_Init_Simple      = 5
   ECC_Init_Answer      = 6
 
-  ECC_Query0_Kinds      = 0
-  ECC_Query255_AllChanges =255
+  ECC_Query_Panhash    = 0
+  ECC_Query_Record     = 1
 
-  ECC_News0_Kinds       = 0
+  ECC_News_Panhash      = 0
 
   ECC_Channel0_Open     = 0
   ECC_Channel1_Opened   = 1
@@ -5007,8 +5019,8 @@ module PandoraNet
     # RU: Компонует команду запроса сорта/сортов
     def set_query(list, time, send_now=false)
       ascmd = EC_Query
-      ascode = ECC_Query0_Kinds
-      asbuf = list
+      ascode = ECC_Query_Panhash
+      asbuf = [time].pack('N') + list
       if send_now
         if not add_send_segment(ascmd, true, asbuf, ascode)
           PandoraUtils.log_message(LM_Error, _('Cannot add query'))
@@ -5822,7 +5834,6 @@ module PandoraNet
                 if not PandoraModel.save_record(kind, lang, values, @recv_models)
                   PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 2')
                 end
-                p 'fields='+fields.inspect
               end
             else
               err_scmd('Records came on wrong stage')
@@ -5967,16 +5978,42 @@ module PandoraNet
                 process_media_segment(rcode, rdata)
               when EC_Query
                 case rcode
-                  when ECC_Query0_Kinds
-                    afrom_data=rdata
-                    @scmd=EC_News
-                    pkinds="3,7,11"
-                    @scode=ECC_News0_Kinds
-                    @sbuf=pkinds
+                  when ECC_Query_Panhash
+                    p from_time = rdata[0, 4].unpack('N')[0]
+                    p kind_list = rdata[4..-1]
+                    trust = 0.5
+                    panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, \
+                      trust, from_time)
+                    p log_mes+'--ECC_Query_Panhash  panhash_list='+panhash_list.inspect
+                    if panhash_list.size>0
+                      panhash_list = PandoraUtils.rubyobj_to_pson_elem(panhash_list) if panhash_list.is_a? Array
+                      @scmd = EC_News
+                      @scode = ECC_News_Panhash
+                      @sbuf = panhash_list
+                    end
+                  when ECC_Query_Record
+                    panhash_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    p log_mes+[panhash_list, len].inspect
+
+                    pson_records = []
+                    panhash_list.each do |panhash|
+                      p log_mes+'ECC_Query_Record -------------'
+                      kind = PandoraUtils.kind_from_panhash(panhash)
+                      p log_mes+[panhash, kind].inspect
+                      p res = PandoraModel.get_record_by_panhash(kind, panhash, true, \
+                        @send_models)
+                      pson_records << res if res
+                    end
+                    p log_mes+'pson_records='+pson_records.inspect
+                    if pson_records.size>0
+                      @scmd = EC_Record
+                      @scode = 0
+                      @sbuf = PandoraUtils.rubyobj_to_pson_elem(pson_records)
+                    end
                   else #запрос сорта (1-254) или всех сортов (255)
-                    afrom_data=rdata
-                    akind=rcode
-                    if akind==ECC_Query255_AllChanges
+                    afrom_data = rdata
+                    akind = rcode
+                    if (akind == ECC_Query255_AllChanges)
                       pkind=3 #отправка первого кайнда из серии
                     else
                       pkind=akind  #отправка только запрашиваемого
@@ -5987,21 +6024,37 @@ module PandoraNet
                     @sbuf=[pnoticecount].pack('N')
                 end
               when EC_News
-                p "news!!!!"
-                if rcode==ECC_News0_Kinds
-                  pcount = rcode
-                  pkinds = rdata
-                  @scmd = EC_Query
-                  @scode = ECC_Query255_AllChanges
-                  fromdate = "01.01.2012"
-                  @sbuf = fromdate
-                else
-                  p "news more!!!!"
-                  pkind = rcode
-                  pnoticecount = rdata.unpack('N')
-                  @scmd = EC_Sync
-                  @scode = 0
-                  @sbuf = ''
+                p log_mes+"news!!!!"
+                case rcode
+                  when ECC_News_Panhash
+                    panhash_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    p log_mes+[panhash_list, len].inspect
+
+                    need_panhash_list = []
+                    panhash_list.each do |panhash|
+                      p log_mes+'ECC_News_Panhash -------------'
+                      kind = PandoraUtils.kind_from_panhash(panhash)
+                      p log_mes+[panhash, kind].inspect
+                      p res = PandoraModel.get_record_by_panhash(kind, panhash, nil, \
+                        @send_models, 'id')
+                      need_panhash_list << panhash if (not res)
+                    end
+
+                    p log_mes+'+++ need_panhash_list='+ need_panhash_list.inspect
+                    if need_panhash_list.size>0
+                      need_panhash_list = PandoraUtils.rubyobj_to_pson_elem(\
+                        need_panhash_list) if need_panhash_list.is_a? Array
+                      @scmd = EC_Query
+                      @scode = ECC_Query_Record
+                      @sbuf = need_panhash_list
+                    end
+                  else
+                    p "news more!!!!"
+                    pkind = rcode
+                    pnoticecount = rdata.unpack('N')
+                    @scmd = EC_Sync
+                    @scode = 0
+                    @sbuf = ''
                 end
               else
                 err_scmd('Unknown command is recieved', ECC_Bye_Unknown)
@@ -6499,8 +6552,8 @@ module PandoraNet
                     end
                     inquirer_step += 1
                   when IS_NewsQuery
-                    query_kind_list = 0.chr
-                    last_time = Time.now - 5*24*3600
+                    query_kind_list = 1.chr + 11.chr
+                    last_time = Time.now.to_i - 5*24*3600
                     set_query(query_kind_list, last_time, true)
                     inquirer_step += 1
                   else
@@ -12456,16 +12509,16 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
-          from_time = Time.now.to_i - 3*24*3600
+          from_time = Time.now.to_i - 5*24*3600
           trust = 0.5
           list = PandoraModel.get_panhashes_by_kinds([1,11], trust, from_time)
           p 'list='+list.inspect
 
           list.each do |panhash|
             p '----------------'
-            p kind = PandoraUtils.kind_from_panhash(panhash)
-            p res = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil)
-            p [panhash, res].inspect
+            kind = PandoraUtils.kind_from_panhash(panhash)
+            p [panhash, kind].inspect
+            p res = PandoraModel.get_record_by_panhash(kind, panhash, true)
           end
 
 
