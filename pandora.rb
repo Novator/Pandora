@@ -1176,7 +1176,8 @@ module PandoraUtils
       res = nil
       connect
       tfd = fields_table(table_name)
-      #p '[tfd, table_name, filter, fields, sort, limit, like_filter]='+[tfd, table_name, filter, fields, sort, limit, like_filter].inspect
+      #p '[tfd, table_name, filter, fields, sort, limit, like_filter]='+[tfd, \
+      #  table_name, filter, fields, sort, limit, like_filter].inspect
       if tfd and (tfd != [])
         sql_values = Array.new
         if filter.is_a? Hash
