@@ -8,13 +8,14 @@
 
 ## Init git on your computer
 ## (Change name and email!)
-#git config --global user.name "Michael Galyuk"
-#git config --global user.email ironsoft@mail.ru
-#git config --global color.ui true
-#git config --global core.autocrlf false
-#git config --global core.safecrlf true
-#git config --global credential.helper cache
-#git config credential.helper 'cache --timeout=3600'
+git config --global user.name "Michael Galyuk"
+git config --global user.email ironsoft@mail.ru
+git config --global color.ui true
+git config --global core.safecrlf true
+git config --global core.autocrlf false
+git config --global core.eol native
+git config --global credential.helper cache
+git config credential.helper 'cache --timeout=3600'
 
 ## Start new repository
 #git init
@@ -34,6 +35,9 @@
 #git add --all
 git commit -a -m "version 0.2 alfa"
 git push -u origin master
+
+##Cancel last commit without cancel code
+#git reset --soft HEAD^
 
 ##Modify last commit
 #git commit --amend
@@ -79,4 +83,8 @@ git push -u origin master
 #git branch --merged
 #git branch --no-merged
 #git branch -d testing
+
+##Backup to previous commit
+#git reset --hard HEAD^
+#git push -f origin master
 
