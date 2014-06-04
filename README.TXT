@@ -115,13 +115,13 @@ For example, your login is "YourNick".
 
   sudo apt-get -y install git
 
-in Windows install last "Git-N.N.N-previewYYYYMMDD.exe" from:
+in Windows download and install:
 
-  http://code.google.com/p/msysgit/downloads/list
+  http://msysgit.github.io/
 
 7.5. Download Pandora to your hard disk via git command:
 
-  git clone --depth=1 https://github.com/YourNick/Pandora.git
+  git clone --depth=3 https://github.com/YourNick/Pandora.git
 
 Warning: change "YourNick" to your login!
 
