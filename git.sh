@@ -8,14 +8,14 @@
 
 ## Init git on your computer
 ## (Change name and email!)
-git config --global user.name "Michael Galyuk"
-git config --global user.email ironsoft@mail.ru
-git config --global color.ui true
-git config --global core.safecrlf true
-git config --global core.autocrlf false
-git config --global core.eol native
-git config --global credential.helper cache
-git config credential.helper 'cache --timeout=3600'
+#git config --global user.name "Michael Galyuk"
+#git config --global user.email ironsoft@mail.ru
+#git config --global color.ui true
+#git config --global core.safecrlf true
+#git config --global core.autocrlf false
+#git config --global core.eol native
+#git config --global credential.helper cache
+#git config credential.helper 'cache --timeout=3600'
 
 ## Start new repository
 #git init
