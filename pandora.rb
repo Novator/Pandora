@@ -3011,7 +3011,7 @@ module PandoraModel
 
   # Get panhash list by kind list
   # RU: Возвращает список панхэшей по списку сортов
-  def self.get_panhashes_by_kinds(kinds=nil, trust=nil, from_time=nil, models=nil)
+  def self.get_panhashes_by_kinds(kinds=nil, from_time=nil, models=nil)
     res = nil
     kinds ||= (1..254)
     kinds = PandoraUtils.str_to_bytes(kinds)
@@ -4172,6 +4172,21 @@ module PandoraCrypto
     key_vec
   end
 
+  # Current kind permission for different trust levels
+  # RU: Текущие разрешения сортов для разных уровней доверия
+  # (-1.0, -0.9, ... 0.0, 0.1, ... 1.0)
+  Allowed_Kinds = [
+    [], [], [], [], [], [], [], [], [], [],
+    [], [], [], [], [], [], [], [], [], [], [],
+  ]
+
+  # Allowed kinds for trust level
+  # RU: Допустимые сорта для уровня доверия
+  def self.allowed_kinds(trust, kind_list=nil)
+    res = []
+    res
+  end
+
   # Get first name and last name of person
   # RU: Возвращает имя и фамилию человека
   def self.name_and_family_of_person(key, person=nil)
@@ -5016,9 +5031,9 @@ module PandoraNet
       end
     end
 
-    # Compose command of query of kind/kinds
-    # RU: Компонует команду запроса сорта/сортов
-    def set_query(list, time, send_now=false)
+    # Send command of query of panhashes
+    # RU: Шлёт команду запроса панхэшей
+    def set_panhash_query(list, time, send_now=false)
       ascmd = EC_Query
       ascode = ECC_Query_Panhash
       asbuf = [time].pack('N') + list
@@ -5982,9 +5997,10 @@ module PandoraNet
                   when ECC_Query_Panhash
                     p from_time = rdata[0, 4].unpack('N')[0]
                     p kind_list = rdata[4..-1]
-                    trust = 0.5
-                    panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, \
-                      trust, from_time)
+                    trust = @skey[PandoraCrypto::KV_Trust]
+                    trust = -1.0 if not (trust.is_a? Float)
+                    kind_list = allowed_kinds(trust, kind_list)
+                    panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
                     p log_mes+'--ECC_Query_Panhash  panhash_list='+panhash_list.inspect
                     if panhash_list.size>0
                       panhash_list = PandoraUtils.rubyobj_to_pson_elem(panhash_list) if panhash_list.is_a? Array
@@ -6555,7 +6571,7 @@ module PandoraNet
                   when IS_NewsQuery
                     query_kind_list = 1.chr + 11.chr
                     last_time = Time.now.to_i - 5*24*3600
-                    set_query(query_kind_list, last_time, true)
+                    set_panhash_query(query_kind_list, last_time, true)
                     inquirer_step += 1
                   else
                     inquirer_step = IS_Finished
@@ -12512,7 +12528,7 @@ module PandoraGtk
         when 'Wizard'
           from_time = Time.now.to_i - 5*24*3600
           trust = 0.5
-          list = PandoraModel.get_panhashes_by_kinds([1,11], trust, from_time)
+          list = PandoraModel.get_panhashes_by_kinds([1,11], from_time)
           p 'list='+list.inspect
 
           list.each do |panhash|

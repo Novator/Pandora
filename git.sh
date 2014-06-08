@@ -37,7 +37,7 @@ git commit -a -m "version 0.2 alfa"
 git push -u origin master
 
 ##Cancel last commit without cancel code
-#git reset --soft HEAD^
+#git reset --soft HEAD
 
 ##Modify last commit
 #git commit --amend
@@ -85,6 +85,6 @@ git push -u origin master
 #git branch -d testing
 
 ##Backup to previous commit
-#git reset --hard HEAD^
+#git reset --hard HEAD
 #git push -f origin master
 
