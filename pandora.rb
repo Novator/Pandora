@@ -60,12 +60,11 @@ module PandoraUtils
 
   # Default values of variables
   # RU: Значения переменных по умолчанию
-  $host = '127.0.0.1'
-  $port = 5577
-  $base_index = 0
   $poly_launch = false
-  $pandora_parameters = []
+  $host = nil
+  $port = nil
   $lang = 'ru'
+  $pandora_parameters = []
 
   # Paths and files  ('join' gets '/' for Linux and '\' for Windows)
   # RU: Пути и файлы ('join' дает '/' для Линукса и '\' для Винды)
@@ -98,28 +97,32 @@ module PandoraUtils
 
   MaxLogViewLineCount = 500
 
+  $show_log_level = LM_Trace
+
   # Log message
   # RU: Добавить сообщение в лог
   def self.log_message(level, mes)
-    time = Time.now
-    lev = level_to_str(level)
-    lev = ' ['+lev+']' if (lev.is_a? String) and (lev.size>0)
-    lev ||= ''
-    mes = time.strftime('%H:%M:%S') + lev + ': '+mes
-    log_view = $window.log_view
-    if log_view
-      value = log_view.parent.vadjustment.value
-      log_view.before_addition(time, value)
-      log_view.buffer.insert(log_view.buffer.end_iter, mes+"\n")
-      aline_count = log_view.buffer.line_count
-      if aline_count>MaxLogViewLineCount
-        first = log_view.buffer.start_iter
-        last = log_view.buffer.get_iter_at_line_offset(aline_count-MaxLogViewLineCount-1, 0)
-        log_view.buffer.delete(first, last)
+    if (level <= $show_log_level)
+      time = Time.now
+      lev = level_to_str(level)
+      lev = ' ['+lev+']' if (lev.is_a? String) and (lev.size>0)
+      lev ||= ''
+      mes = time.strftime('%H:%M:%S') + lev + ': '+mes
+      log_view = $window.log_view
+      if log_view
+        value = log_view.parent.vadjustment.value
+        log_view.before_addition(time, value)
+        log_view.buffer.insert(log_view.buffer.end_iter, mes+"\n")
+        aline_count = log_view.buffer.line_count
+        if aline_count>MaxLogViewLineCount
+          first = log_view.buffer.start_iter
+          last = log_view.buffer.get_iter_at_line_offset(aline_count-MaxLogViewLineCount-1, 0)
+          log_view.buffer.delete(first, last)
+        end
+        log_view.after_addition
+      else
+        puts mes
       end
-      log_view.after_addition
-    else
-      puts mes
     end
   end
 
@@ -599,14 +602,15 @@ module PandoraUtils
             val = 'false'
           end
         end
-      elsif not can_edit and (view=='text')
+      elsif (not can_edit) and (val.is_a? String) # and (view=='text')
+        val = Utf8String.new(val)
         val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
         val = val.rstrip
         color = '#226633'
       end
     end
     val ||= ''
-    val = val.to_s
+    val = Utf8String.new(val.to_s)
     [val, color]
   end
 
@@ -2204,14 +2208,16 @@ module PandoraUtils
 
     # Matter fields (including to panhash)
     # RU: Сущностные поля (входящие в панхэш)
-    def matter_fields
+    def matter_fields(pack_empty=true)
       res = {}
       if namesvalues.is_a? Hash
         panhash_pattern.each do |pat|
           fname = pat[0]
           if fname
             fval = namesvalues[fname]
-            res[fname] = fval
+            if (pack_empty or (not PandoraUtils.value_is_empty?(fval)))
+              res[fname] = fval
+            end
           end
         end
       end
@@ -2987,7 +2993,9 @@ module PandoraModel
     res = false
     p '=======save_record  [kind, lang, values]='+[kind, lang, values].inspect
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-    model = PandoraUtils.get_model(panobjectclass.ider, models)
+    ider = panobjectclass.ider
+    model = PandoraUtils.get_model(ider, models)
+    values['modified'] = Time.now.to_i
     panhash = model.panhash(values, lang)
     p 'panhash='+panhash.inspect
     if (not require_panhash) or (panhash==require_panhash)
@@ -3000,10 +3008,36 @@ module PandoraModel
         res = true
       else
         values['panhash'] = panhash
-        values['modified'] = Time.now.to_i
         res = model.update(values, nil, nil)
+        model.namesvalues = values
+        mfields = model.matter_fields(false)
+        str = ''
+        mfields.each do |n,v|
+          fd = model.field_des(n)
+          val, color = PandoraUtils.val_to_view(v, fd[FI_Type], fd[FI_View], false)
+          if val
+            str << '|' if (str.size>0)
+            if val.size>14
+              val = val[0,14]
+            end
+            str << val.to_s
+            if str.size >= 80
+              str = str[0,80]
+              break
+            end
+          end
+        end
+        str = '[' + model.sname + ': ' + Utf8String.new(str) + ']'
+        if res
+          PandoraUtils.log_message(LM_Info, _('Recorded')+' '+str)
+        else
+          PandoraUtils.log_message(LM_Warning, _('Cannot record')+' '+str)
+        end
       end
     else
+      PandoraUtils.log_message(LM_Warning, _('Non-equal panhashes ')+' '+ \
+        PandoraUtils.bytes_to_hex(panhash) + '<>' + \
+        PandoraUtils.bytes_to_hex(require_panhash))
       res = nil
     end
     res
@@ -3032,6 +3066,25 @@ module PandoraModel
       end
     end
     res
+  end
+
+  Languages = {0=>'all', 1=>'en', 2=>'zh', 3=>'es', 4=>'hi', 5=>'ru', 6=>'ar', \
+    7=>'fr', 8=>'pt', 9=>'ja', 10=>'de', 11=>'ko', 12=>'it', 13=>'be', 14=>'id'}
+
+  def self.lang_list
+    res = Languages.values
+  end
+
+  def self.lang_to_text(lang)
+    res = Languages[lang]
+    res ||= ''
+  end
+
+  def self.text_to_lang(text)
+    text.downcase! if text.is_a? String
+    res = Languages.detect{ |n,v| v==text }
+    res = res[0] if res
+    res ||= ''
   end
 
   # Realtion kinds
@@ -3090,14 +3143,14 @@ module PandoraModel
               exist = (sel and (sel.size>0))
             end
             res = exist
-            if not exist and (act == :create)
+            if (not exist) and (act == :create)
               #p 'UPD!!!'
               if filter2 and (panhash1>panhash2) #when symmetric relation less panhash must be at left
                 filter = filter2
               end
+              filter['modified'] = Time.now.to_i
               panhash = relation_model.panhash(filter, 0)
               filter['panhash'] = panhash
-              filter['modified'] = Time.now.to_i
               res = relation_model.update(filter, nil, nil)
             end
           else #delete
@@ -4183,7 +4236,8 @@ module PandoraCrypto
   # Allowed kinds for trust level
   # RU: Допустимые сорта для уровня доверия
   def self.allowed_kinds(trust, kind_list=nil)
-    res = []
+    #res = []
+    res = kind_list
     res
   end
 
@@ -5999,10 +6053,10 @@ module PandoraNet
                     p kind_list = rdata[4..-1]
                     trust = @skey[PandoraCrypto::KV_Trust]
                     trust = -1.0 if not (trust.is_a? Float)
-                    kind_list = allowed_kinds(trust, kind_list)
+                    kind_list = PandoraCrypto.allowed_kinds(trust, kind_list)
                     panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
                     p log_mes+'--ECC_Query_Panhash  panhash_list='+panhash_list.inspect
-                    if panhash_list.size>0
+                    if panhash_list and (panhash_list.size>0)
                       panhash_list = PandoraUtils.rubyobj_to_pson_elem(panhash_list) if panhash_list.is_a? Array
                       @scmd = EC_News
                       @scode = ECC_News_Panhash
@@ -6011,21 +6065,22 @@ module PandoraNet
                   when ECC_Query_Record
                     panhash_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
                     p log_mes+[panhash_list, len].inspect
-
-                    pson_records = []
-                    panhash_list.each do |panhash|
-                      p log_mes+'ECC_Query_Record -------------'
-                      kind = PandoraUtils.kind_from_panhash(panhash)
-                      p log_mes+[panhash, kind].inspect
-                      p res = PandoraModel.get_record_by_panhash(kind, panhash, true, \
-                        @send_models)
-                      pson_records << res if res
-                    end
-                    p log_mes+'pson_records='+pson_records.inspect
-                    if pson_records.size>0
-                      @scmd = EC_Record
-                      @scode = 0
-                      @sbuf = PandoraUtils.rubyobj_to_pson_elem(pson_records)
+                    if (panhash_list.is_a? Array) and (panhash_list.size>0)
+                      pson_records = []
+                      panhash_list.each do |panhash|
+                        p log_mes+'ECC_Query_Record -------------'
+                        kind = PandoraUtils.kind_from_panhash(panhash)
+                        p log_mes+[panhash, kind].inspect
+                        p res = PandoraModel.get_record_by_panhash(kind, panhash, true, \
+                          @send_models)
+                        pson_records << res if res
+                      end
+                      p log_mes+'pson_records='+pson_records.inspect
+                      if (pson_records.size>0)
+                        @scmd = EC_Record
+                        @scode = 0
+                        @sbuf = PandoraUtils.rubyobj_to_pson_elem(pson_records)
+                      end
                     end
                   else #запрос сорта (1-254) или всех сортов (255)
                     afrom_data = rdata
@@ -6832,8 +6887,10 @@ module PandoraNet
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
-        $port = PandoraUtils.get_param('tcp_port')
-        $host = PandoraUtils.get_param('listen_host')
+        $host ||= PandoraUtils.get_param('listen_host')
+        $port ||= PandoraUtils.get_param('tcp_port')
+        $host ||= '127.0.0.1'
+        $port ||= 5577
         $listen_thread = Thread.new do
           begin
             host = $host
@@ -7253,7 +7310,7 @@ module PandoraGtk
     end
   end
 
-  Base64chars = [*('0'..'9'), *('a'..'z'), *('A'..'Z'), '+/=-_*[]'].join
+  Base64chars = [('0'..'9').to_a, ('a'..'z').to_a, ('A'..'Z').to_a, '+/=-_*[]'].join
 
   # Entry for Base64
   # RU: Поле ввода Base64
@@ -7871,7 +7928,7 @@ module PandoraGtk
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
       :support_btn, :rate_label, :vouch_btn, :trust_scale, :trust0, :public_btn, \
-      :lang_entry, :format, :view_buffer, :last_sw
+      :public_scale, :lang_entry, :format, :view_buffer, :last_sw
 
     # Add menu item
     # RU: Добавляет пункт меню
@@ -8206,10 +8263,17 @@ module PandoraGtk
       #  p "support"
       #end
       #rbvbox.pack_start(support_btn, false, false, 0)
-      @rate_label = Gtk::Label.new('-')
+      #@rate_label = Gtk::Label.new('-')
       support_box = Gtk::VBox.new
       support_box.pack_start(support_btn, false, false, 0)
-      support_box.pack_start(rate_label, false, false, 0)
+
+      @lang_entry = Gtk::Combo.new
+      lang_entry.set_popdown_strings(PandoraModel.lang_list)
+      lang_entry.entry.text = ''
+      lang_entry.entry.select_region(0, -1)
+      lang_entry.set_size_request(50, -1)
+      support_box.pack_start(lang_entry, true, true, 5)
+
       hbox.pack_start(support_box, false, false, 0)
 
       trust_box = Gtk::VBox.new
@@ -8284,11 +8348,9 @@ module PandoraGtk
       #  true
       #end
       trust_box.pack_start(trust_scale, false, false, 0)
-
       hbox.pack_start(trust_box, false, false, 0)
 
       public_box = Gtk::VBox.new
-
       @public_btn = Gtk::CheckButton.new(_('public'), true)
       public_btn.signal_connect('clicked') do |widget|
         if not widget.destroyed?
@@ -8308,16 +8370,47 @@ module PandoraGtk
       #lang_entry.append_text('1')
       #lang_entry.append_text('5')
 
-      @lang_entry = Gtk::Combo.new
-      @lang_entry.set_popdown_strings(['0','1','5'])
-      @lang_entry.entry.text = ''
-      @lang_entry.entry.select_region(0, -1)
-      @lang_entry.set_size_request(50, -1)
-      public_box.pack_start(lang_entry, true, true, 5)
+      #@lang_entry = Gtk::Combo.new
+      #@lang_entry.set_popdown_strings(['0','1','5'])
+      #@lang_entry.entry.text = ''
+      #@lang_entry.entry.select_region(0, -1)
+      #@lang_entry.set_size_request(50, -1)
+      #public_box.pack_start(lang_entry, true, true, 5)
+
+      adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
+      @public_scale = Gtk::HScale.new(adjustment)
+      public_scale.set_size_request(140, -1)
+      public_scale.update_policy = Gtk::UPDATE_DELAYED
+      public_scale.digits = 1
+      public_scale.draw_value = true
+      step = 19.fdiv(tips.size-1)
+      public_scale.signal_connect('value-changed') do |widget|
+        val = widget.value
+        trust = (val*10).round
+        r = 0
+        g = 0
+        b = 0
+        if trust==0
+          b = 40000
+        else
+          mul = ((trust.fdiv(10))*45000).round
+          if trust>0
+            g = mul+20000
+          else
+            r = -mul+20000
+          end
+        end
+        tip = val.to_s
+        color = Gdk::Color.new(r, g, b)
+        widget.modify_fg(Gtk::STATE_NORMAL, color)
+        @vouch_btn.modify_bg(Gtk::STATE_ACTIVE, color)
+        i = ((trust+127)/step).round
+        tip = tips[i]
+        widget.tooltip_text = tip
+      end
+      public_box.pack_start(public_scale, false, false, 0)
 
       hbox.pack_start(public_box, false, false, 0)
-
-      #hbox.pack_start(rbvbox, false, false, 1.0)
       hbox.show_all
 
       bw,bh = hbox.size_request
@@ -10796,14 +10889,20 @@ module PandoraGtk
     def self.update_file(http, tail, pfn)
       res = false
       dir = File.dirname(pfn)
+      PandoraUtils.log_message(LM_Trace, _('Download [')+[http, tail, pfn].inspect+']..')
       FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
       if Dir.exists?(dir)
         begin
           response = http.request_get(tail)
           File.open(pfn, 'wb+') do |file|
-            file.write(response.body)
-            res = true
-            PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
+            filebody = response.body
+            if filebody and (filebody.size>0)
+              file.write(body)
+              res = true
+              PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
+            else
+              puts 'Empty downloaded body'
+            end
           end
         rescue => err
           puts 'Update error: '+err.message
@@ -11038,13 +11137,13 @@ module PandoraGtk
           #dialog.trust_scale.signal_emit('value-changed')
           trust ||= 0.0
           dialog.trust_scale.value = trust
-          dialog.rate_label.text = rate.to_s
+          #dialog.rate_label.text = rate.to_s
 
           dialog.support_btn.active = (PandoraModel::PSF_Support & panstate)>0
           dialog.public_btn.active = pub_exist
           dialog.public_btn.inconsistent = (pub_exist==nil)
 
-          dialog.lang_entry.entry.text = lang.to_s if lang
+          dialog.lang_entry.entry.text = PandoraModel.lang_to_text(lang) if lang
 
           #dialog.lang_entry.active_text = lang.to_s
           #trust_lab = dialog.trust_btn.children[0]
@@ -11126,8 +11225,7 @@ module PandoraGtk
           end
           lg = nil
           begin
-            lg = dialog.lang_entry.entry.text
-            lg = lg.to_i if (lg != '')
+            lg = PandoraModel.text_to_lang(dialog.lang_entry.entry.text)
           rescue
           end
           lang = lg if lg
@@ -11198,12 +11296,15 @@ module PandoraGtk
               end
 
               if not dialog.public_btn.inconsistent?
-                #p 'panhash,panhash0='+[panhash, panhash0].inspect
-                PandoraModel.act_relation(nil, panhash0, RK_MaxPublic, :delete, true, true) if panhash != panhash0
+                PandoraModel.act_relation(nil, panhash0, RK_MinPublic, :delete,
+                  true, true)
+                if panhash != panhash0
+                  PandoraModel.act_relation(nil, panhash, RK_MinPublic, :delete,
+                    true, true)
+                end
                 if dialog.public_btn.active?
+                  pub_level = 10
                   PandoraModel.act_relation(nil, panhash, RK_MaxPublic, :create, true, true)
-                else
-                  PandoraModel.act_relation(nil, panhash, RK_MaxPublic, :delete, true, true)
                 end
               end
             end
@@ -11301,7 +11402,7 @@ module PandoraGtk
             else
               val = val.to_s
             end
-            val = val[0,45]
+            val = val[0,46]
           else
             val = ''
           end
@@ -13231,7 +13332,7 @@ end
 # Check Ruby version and init ASCII string class
 # RU: Проверить версию Ruby и объявить класс ASCII-строки
 if RUBY_VERSION<'1.9'
-  puts 'The Pandora needs Ruby 1.9 or higher (current '+RUBY_VERSION+')'
+  puts 'Pandora requires Ruby1.9 or higher - current '+RUBY_VERSION
   exit(10)
 else
   class AsciiString < String
@@ -13257,7 +13358,6 @@ else
   Encoding.default_external = 'UTF-8'
   Encoding.default_internal = 'UTF-8' #BINARY ASCII-8BIT UTF-8
 end
-
 
 # Redirect console output to file, because of rubyw.exe crush
 # RU: Перенаправить консольный вывод в файл из-за краша rubyw.exe
