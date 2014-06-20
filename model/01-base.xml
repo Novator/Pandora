@@ -334,7 +334,7 @@
     <base_id desc="Base ID" type="String" section="common" setting="[create_base_id],hex" />
 
     <do_on_show desc="Do on show main window" type="Integer" section="view" setting="2" />
-    <hide_on_minimize desc="Hide on minimize" type="Boolean" section="view" setting="true" />
+    <hide_on_minimize desc="Hide on minimize" type="Boolean" section="view" setting="false" />
     <status_update_win_icon desc="Update window icon on message" type="Boolean" section="view" setting="false" />
     <status_flash_on_new desc="Flash on new" type="Boolean" section="view" setting="true" />
     <status_flash_interval desc="Interval of status icon flash (sec)" type="Real" section="view" setting="0.8" />

@@ -20,7 +20,7 @@
 
     <Blob>
       <name pos="|" />
-      <blob pos="|" />
+      <blob pos="|" view="blob" />
       <type pos="|" />
       <hash view="hex" />
     </Blob>

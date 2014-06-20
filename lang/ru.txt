@@ -312,3 +312,5 @@ File does not exist=>Файл не существует
 Cannot create sign=>Не могу создать подпись
 Table exported=>Таблица выгружена
 Key is under consideration=>Ключ на подтверждении
+Recorded=>Записано
+Cannot record=>Не записано
