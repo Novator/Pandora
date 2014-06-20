@@ -4183,7 +4183,8 @@ module PandoraCrypto
   # Allowed kinds for trust level
   # RU: Допустимые сорта для уровня доверия
   def self.allowed_kinds(trust, kind_list=nil)
-    res = []
+    #res = []
+    res = kind_list
     res
   end
 
@@ -5999,7 +6000,7 @@ module PandoraNet
                     p kind_list = rdata[4..-1]
                     trust = @skey[PandoraCrypto::KV_Trust]
                     trust = -1.0 if not (trust.is_a? Float)
-                    kind_list = allowed_kinds(trust, kind_list)
+                    kind_list = PandoraCrypto.allowed_kinds(trust, kind_list)
                     panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
                     p log_mes+'--ECC_Query_Panhash  panhash_list='+panhash_list.inspect
                     if panhash_list.size>0

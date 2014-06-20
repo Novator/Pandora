@@ -34,7 +34,7 @@
 ## Push files from local to repository
 #git add --all
 git commit -a -m "version 0.2 alfa"
-git push -u origin master
+#git push -u origin master
 
 ##Cancel last commit without cancel code
 #git reset --soft HEAD
