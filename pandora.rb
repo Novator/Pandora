@@ -1037,7 +1037,7 @@ module PandoraUtils
     end
     def create_table(table_name)
     end
-    def select_table(table_name, afilter=nil, fields=nil, sort=nil, limit=nil, like_filter=nil)
+    def select_table(table_name, afilter=nil, fields=nil, sort=nil, limit=nil)
     end
   end
 
@@ -1151,7 +1151,7 @@ module PandoraUtils
     end
 
     # RU: Экранирует спецсимволы маски для LIKE символом $
-    def escape_like_mask(mask)
+    def escape_like_mask(val)
       #SELECT * FROM mytable WHERE myblob LIKE X'0025';
       #SELECT * FROM mytable WHERE quote(myblob) LIKE 'X''00%';     end
       #Is it possible to pre-process your 10 bytes and insert e.g. symbol '\'
@@ -1159,10 +1159,10 @@ module PandoraUtils
       #SELECT * FROM mytable WHERE myblob LIKE ? ESCAPE '\'
       #SELECT * FROM mytable WHERE substr(myblob, 1, 1) = X'00';
       #SELECT * FROM mytable WHERE substr(myblob, 1, 10) = ?;
-      if mask.is_a? String
-        mask.gsub!('$', '$$')
-        mask.gsub!('_', '$_')
-        mask.gsub!('%', '$%')
+      if val.is_a? String
+        val.gsub!('$', '$$')
+        val.gsub!('_', '$_')
+        val.gsub!('%', '$%')
         #query = AsciiString.new(query)
         #i = query.size
         #while i>0
@@ -1172,11 +1172,59 @@ module PandoraUtils
         #  i -= 1
         #end
       end
-      mask
+      val
+    end
+
+    def correct_aster_and_quest!(val)
+      if val.is_a? String
+        val.gsub!('*', '%')
+        val.gsub!('?', '_')
+      end
+      val
+    end
+
+    def recognize_filter(filter, sql_values)
+      esc = false
+      if filter.is_a? Hash
+        #Example: {name => 'Michael', value => 0}
+        seq = ''
+        filter.each do |n,v|
+          if n
+            seq = seq + ' AND ' if seq != ''
+            seq = seq + n.to_s + '=?'  #only equal!
+            sql_values << v
+          end
+        end
+        filter = seq
+      elsif filter.is_a? Array
+        #Example: [['name LIKE', 'Tom'], ['value >', 3.0]]
+        seq = ''
+        filter.each do |n,v|
+          if n
+            seq = seq + ' AND ' if seq != ''
+            nn = n.to_s
+            if nn.index('LIKE') and (v.is_a? String)
+              v = escape_like_mask(v)
+              correct_aster_and_quest!(v)
+              esc = true
+            end
+            seq = seq + nn + '?' #operation comes with name!
+            sql_values << v
+          end
+        end
+        filter = seq
+      end
+      filter = nil if (filter and (filter == ''))
+      sql = ''
+      if filter
+        sql = ' WHERE ' + filter
+        sql = sql + " ESCAPE '$'" if esc
+      end
+      [filter, sql]
     end
 
     # RU: Делает выборку из таблицы
-    def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil, like_filter=nil)
+    def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil)
       res = nil
       connect
       tfd = fields_table(table_name)
@@ -1184,50 +1232,11 @@ module PandoraUtils
       #  table_name, filter, fields, sort, limit, like_filter].inspect
       if tfd and (tfd != [])
         sql_values = Array.new
-        if filter.is_a? Hash
-          sql2 = ''
-          filter.each do |n,v|
-            if n
-              sql2 = sql2 + ' AND ' if sql2 != ''
-              sql2 = sql2 + n.to_s + '=?'
-              sql_values << v
-            end
-          end
-          filter = sql2
-        elsif filter.is_a? Array
-          sql2 = ''
-          filter.each do |n,v|
-            if n
-              sql2 = sql2 + ' AND ' if sql2 != ''
-              sql2 = sql2 + n.to_s + '?'
-              sql_values << v
-            end
-          end
-          filter = sql2
-        end
-        if like_filter.is_a? Hash
-          sql2 = ''
-          like_filter.each do |n,v|
-            if n
-              sql2 = sql2 + ' AND ' if sql2 != ''
-              sql2 = sql2 + n.to_s + ' LIKE ?'
-              sql_values << v
-            end
-          end
-          like_filter = sql2
-        end
+        filter, filter_sql = recognize_filter(filter, sql_values)
+
         fields ||= '*'
-        sql = 'SELECT '+fields+' FROM '+table_name
-        filter = nil if (filter and (filter == ''))
-        like_filter = nil if (like_filter and (like_filter == ''))
-        if filter or like_filter
-          sql = sql + ' WHERE'
-          sql = sql + ' ' + filter if filter
-          if like_filter
-            sql = sql + ' AND' if filter
-            sql = sql + ' ' + like_filter
-          end
-        end
+        sql = 'SELECT ' + fields + ' FROM ' + table_name + filter_sql
+
         if sort and (sort > '')
           sql = sql + ' ORDER BY '+sort
         end
@@ -1248,28 +1257,16 @@ module PandoraUtils
       sql = ''
       sql_values = Array.new
       sql_values2 = Array.new
-
-      if filter.is_a? Hash
-        sql2 = ''
-        filter.each do |n,v|
-          if n
-            sql2 = sql2 + ' AND ' if sql2 != ''
-            sql2 = sql2 + n.to_s + '=?'
-            #v.force_encoding('ASCII-8BIT')  and v.is_a? String
-            #v = AsciiString.new(v) if v.is_a? String
-            sql_values2 << v
-          end
-        end
-        filter = sql2
-      end
+      filter, filter_sql = recognize_filter(filter, sql_values2)
 
       if (not values) and (not names) and filter
-        sql = 'DELETE FROM ' + table_name + ' where '+filter
+        sql = 'DELETE FROM ' + table_name + filter_sql
       elsif values.is_a? Array and names.is_a? Array
         tfd = db.table_info(table_name)
         tfd_name = tfd.collect { |x| x['name'] }
         tfd_type = tfd.collect { |x| x['type'] }
-        if filter
+
+        if filter  #update
           values.each_with_index do |v,i|
             fname = names[i]
             if fname
@@ -1283,31 +1280,28 @@ module PandoraUtils
             end
           end
 
-          sql = 'UPDATE ' + table_name + ' SET ' + sql
-          if filter and filter != ''
-            sql = sql + ' where '+filter
-          end
-        else
-          sql2 = ''
+          sql = 'UPDATE ' + table_name + ' SET ' + sql + filter_sql
+        else  #insert
+          seq = ''
           values.each_with_index do |v,i|
             fname = names[i]
             if fname
               sql = sql + ',' if sql != ''
-              sql2 = sql2 + ',' if sql2 != ''
+              seq = seq + ',' if seq != ''
               sql = sql + fname.to_s
-              sql2 = sql2 + '?'
+              seq = seq + '?'
               #v.force_encoding('ASCII-8BIT')  and v.is_a? String
               #v = AsciiString.new(v) if v.is_a? String
               v = ruby_val_to_sqlite_val(v)
               sql_values << v
             end
           end
-          sql = 'INSERT INTO ' + table_name + '(' + sql + ') VALUES(' + sql2 + ')'
+          sql = 'INSERT INTO ' + table_name + '(' + sql + ') VALUES(' + seq + ')'
         end
       end
       tfd = fields_table(table_name)
       if tfd and (tfd != [])
-        sql_values = sql_values+sql_values2
+        sql_values = sql_values + sql_values2
         p '1upd_tab: sql='+sql.inspect
         p '2upd_tab: sql_values='+sql_values.inspect
         res = db.execute(sql, sql_values)
@@ -1346,10 +1340,9 @@ module PandoraUtils
     end
 
     # RU: Сделать выборку из таблицы
-    def get_tab_select(panobj, table_ptr, filter=nil, fields=nil, sort=nil, \
-    limit=nil, like_filter=nil)
+    def get_tab_select(panobj, table_ptr, filter=nil, fields=nil, sort=nil, limit=nil)
       adap = get_adapter(panobj, table_ptr)
-      adap.select_table(table_ptr[1], filter, fields, sort, limit, like_filter)
+      adap.select_table(table_ptr[1], filter, fields, sort, limit)
     end
 
     # RU: Записать данные в таблицу
@@ -1934,10 +1927,9 @@ module PandoraUtils
     end
 
     # RU: Делает выборку из таблицы
-    def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil, \
-    limit=nil, like_filter=nil)
+    def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil, limit=nil)
       res = self.class.repositories.get_tab_select(self, self.class.tables[0], \
-        afilter, fields, sort, limit, like_filter)
+        afilter, fields, sort, limit)
       if set_namesvalues and res[0].is_a? Array
         @namesvalues = {}
         tab_fields.each_with_index do |td, i|
@@ -2995,7 +2987,6 @@ module PandoraModel
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
     ider = panobjectclass.ider
     model = PandoraUtils.get_model(ider, models)
-    values['modified'] = Time.now.to_i
     panhash = model.panhash(values, lang)
     p 'panhash='+panhash.inspect
     if (not require_panhash) or (panhash==require_panhash)
@@ -3008,6 +2999,7 @@ module PandoraModel
         res = true
       else
         values['panhash'] = panhash
+        values['modified'] = Time.now.to_i
         res = model.update(values, nil, nil)
         model.namesvalues = values
         mfields = model.matter_fields(false)
@@ -3109,8 +3101,8 @@ module PandoraModel
 
   # Check, create or delete relation between two panobjects
   # RU: Проверяет, создаёт или удаляет связь между двумя объектами
-  def self.act_relation(panhash1, panhash2, rel_kind=RK_Unknown, act=:check, creator=true, \
-  init=false, models=nil)
+  def self.act_relation(panhash1, panhash2, rel_kind=RK_Unknown, act=:check, \
+  creator=true, init=false, models=nil)
     res = nil
     if panhash1 or panhash2
       if not (panhash1 and panhash2)
@@ -3127,18 +3119,26 @@ module PandoraModel
         #p 'relat [p1,p2,t]='+[PandoraUtils.bytes_to_hex(panhash1), PandoraUtils.bytes_to_hex(panhash2), rel_kind.inspect
         relation_model = PandoraUtils.get_model('Relation', models)
         if relation_model
-          filter = {:first => panhash1, :second => panhash2, :kind => rel_kind}
+          kind_op = '='
+          kind_op = '>=' if (rel_kind >= RK_MinPublic) and (act != :create)
+          kind_op = 'kind' + kind_op
+          filter = [['first=', panhash1], ['second=', panhash2], [kind_op, rel_kind]]
           filter2 = nil
           if relation_is_symmetric?(rel_kind) and (panhash1 != panhash2)
-            filter2 = {:first => panhash2, :second => panhash1, :kind => rel_kind}
+            filter = [['first=', panhash2], ['second=', panhash1], [kind_op, rel_kind]]
           end
           #p 'relat2 [p1,p2,t]='+[PandoraUtils.bytes_to_hex(panhash1), PandoraUtils.bytes_to_hex(panhash2), rel_kind].inspect
           #p 'act='+act.inspect
-          if (act != :delete)  #check or create
-            #p 'check or create'
+          if (act == :delete)
+            res = relation_model.update(nil, nil, filter)
+            if filter2
+              res2 = relation_model.update(nil, nil, filter2)
+              res = res or res2
+            end
+          else #check or create
             sel = relation_model.select(filter, false, 'id')
             exist = (sel and (sel.size>0))
-            if not exist and filter2
+            if (not exist) and filter2
               sel = relation_model.select(filter2, false, 'id')
               exist = (sel and (sel.size>0))
             end
@@ -3148,17 +3148,14 @@ module PandoraModel
               if filter2 and (panhash1>panhash2) #when symmetric relation less panhash must be at left
                 filter = filter2
               end
-              filter['modified'] = Time.now.to_i
-              panhash = relation_model.panhash(filter, 0)
-              filter['panhash'] = panhash
-              res = relation_model.update(filter, nil, nil)
-            end
-          else #delete
-            #p 'delete'
-            res = relation_model.update(nil, nil, filter)
-            if filter2
-              res2 = relation_model.update(nil, nil, filter2)
-              res = res or res2
+              values = {}
+              values['first'] = filter[0][1]
+              values['second'] = filter[1][1]
+              values['kind'] = filter[2][1]
+              panhash = relation_model.panhash(values, 0)
+              values['panhash'] = panhash
+              values['modified'] = Time.now.to_i
+              res = relation_model.update(values, nil, nil)
             end
           end
         end
@@ -10372,8 +10369,8 @@ module PandoraGtk
         fields = nil
         sort = nil
         limit = nil
-        like_filter = {'first_name'=>text}
-        res = model.select(nil, false, fields, sort, limit, like_filter)
+        filter = [['first_name LIKE', text]]
+        res = model.select(filter, false, fields, sort, limit)
         res ||= []
       end
       res
@@ -11296,15 +11293,17 @@ module PandoraGtk
               end
 
               if not dialog.public_btn.inconsistent?
-                PandoraModel.act_relation(nil, panhash0, RK_MinPublic, :delete,
+                public_level = RK_MinPublic + (dialog.public_scale.value*10).round+10
+                p 'public_level='+public_level.inspect
+                PandoraModel.act_relation(nil, panhash0, RK_MinPublic, :delete, \
                   true, true)
-                if panhash != panhash0
-                  PandoraModel.act_relation(nil, panhash, RK_MinPublic, :delete,
+                if (panhash != panhash0)
+                  PandoraModel.act_relation(nil, panhash, RK_MinPublic, :delete, \
                     true, true)
                 end
                 if dialog.public_btn.active?
-                  pub_level = 10
-                  PandoraModel.act_relation(nil, panhash, RK_MaxPublic, :create, true, true)
+                  PandoraModel.act_relation(nil, panhash, public_level, :create, \
+                    true, true)
                 end
               end
             end
