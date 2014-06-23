@@ -3120,7 +3120,11 @@ module PandoraModel
         relation_model = PandoraUtils.get_model('Relation', models)
         if relation_model
           kind_op = '='
-          kind_op = '>=' if (rel_kind >= RK_MinPublic) and (act != :create)
+          pub_kind = (rel_kind >= RK_MinPublic)
+          if pub_kind
+            rel_kind = RK_MinPublic if (act == :check)
+            kind_op = '>=' if (act != :create)
+          end
           kind_op = 'kind' + kind_op
           filter = [['first=', panhash1], ['second=', panhash2], [kind_op, rel_kind]]
           filter2 = nil
@@ -3136,13 +3140,16 @@ module PandoraModel
               res = res or res2
             end
           else #check or create
-            sel = relation_model.select(filter, false, 'id')
+            flds = 'id'
+            flds << ',kind' if pub_kind
+            sel = relation_model.select(filter, false, flds, 'modified DESC', 1)
             exist = (sel and (sel.size>0))
             if (not exist) and filter2
-              sel = relation_model.select(filter2, false, 'id')
+              sel = relation_model.select(filter2, false, flds, 'modified DESC', 1)
               exist = (sel and (sel.size>0))
             end
             res = exist
+            res = sel[0][1] if pub_kind and exist
             if (not exist) and (act == :create)
               #p 'UPD!!!'
               if filter2 and (panhash1>panhash2) #when symmetric relation less panhash must be at left
@@ -11122,8 +11129,6 @@ module PandoraGtk
         dialog.icon = panobjecticon if panobjecticon
 
         if edit
-          pub_exist = PandoraModel.act_relation(nil, panhash0, RK_MaxPublic, :check)
-
           count, rate, querist_rate = PandoraCrypto.rate_of_panobj(panhash0)
           trust = nil
           res = PandoraCrypto.trust_in_panobj(panhash0)
@@ -11137,15 +11142,18 @@ module PandoraGtk
           #dialog.rate_label.text = rate.to_s
 
           dialog.support_btn.active = (PandoraModel::PSF_Support & panstate)>0
-          dialog.public_btn.active = pub_exist
-          dialog.public_btn.inconsistent = (pub_exist==nil)
+
+          pub_level = PandoraModel.act_relation(nil, panhash0, RK_MinPublic, :check)
+          dialog.public_btn.active = pub_level
+          dialog.public_btn.inconsistent = (pub_level == nil)
+          dialog.public_scale.value = (pub_level-RK_MinPublic-10)/10.0 if pub_level
 
           dialog.lang_entry.entry.text = PandoraModel.lang_to_text(lang) if lang
 
           #dialog.lang_entry.active_text = lang.to_s
           #trust_lab = dialog.trust_btn.children[0]
           #trust_lab.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
-        else
+        else  #new or copy
           key = PandoraCrypto.current_key(false, false)
           not_key_inited = (not (key and key[PandoraCrypto::KV_Obj]))
           dialog.support_btn.active = true
@@ -11153,6 +11161,9 @@ module PandoraGtk
           if not_key_inited
             dialog.vouch_btn.inconsistent = true
             dialog.trust_scale.sensitive = false
+
+            dialog.public_btn.inconsistent = true
+            dialog.public_scale.sensitive = false
           end
           dialog.public_btn.inconsistent = not_key_inited
         end
