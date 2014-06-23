@@ -8291,13 +8291,14 @@ module PandoraGtk
             if PandoraCrypto.current_user_or_key(false)
               widget.inconsistent = false
               widget.active = true
-              trust0 = 0.1
+              trust0 ||= 0.1
             end
           end
           trust_scale.sensitive = widget.active?
           if widget.active?
             trust0 ||= 0.1
             trust_scale.value = trust0
+            @support_btn.active = true
           else
             trust0 = trust_scale.value
           end
@@ -8354,6 +8355,7 @@ module PandoraGtk
       trust_box.pack_start(trust_scale, false, false, 0)
       hbox.pack_start(trust_box, false, false, 0)
 
+      pub_lev0 = nil
       public_box = Gtk::VBox.new
       @public_btn = Gtk::CheckButton.new(_('public'), true)
       public_btn.signal_connect('clicked') do |widget|
@@ -8362,7 +8364,17 @@ module PandoraGtk
             if PandoraCrypto.current_user_or_key(false)
               widget.inconsistent = false
               widget.active = true
+              pub_lev0 ||= 0.0
             end
+          end
+          public_scale.sensitive = widget.active?
+          if widget.active?
+            pub_lev0 ||= 0.0
+            public_scale.value = pub_lev0
+            @support_btn.active = true
+            @vouch_btn.active = true
+          else
+            pub_lev0 = public_scale.value
           end
         end
       end
