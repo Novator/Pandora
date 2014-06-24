@@ -23,7 +23,6 @@ begin
 rescue Exception
 end
 
-
 # Array of localization phrases
 # RU: Вектор переведеных фраз
 $lang_trans = {}
@@ -286,6 +285,86 @@ module PandoraUtils
     end
     res
   end
+
+
+  $rubyzip = nil
+
+  def self.unzip_file1(arch, path, overwrite=true)
+    res = nil
+    if not $rubyzip
+      begin
+        require 'rubygems'
+        require 'zip/zip'
+        $rubyzip = true
+      rescue Exception
+      end
+    end
+    unix = (PandoraUtils.os_family != 'windows')
+    perms = nil
+    if $rubyzip
+      Zip::ZipFile.open(arch) do |za|
+        za.each do |zf|
+          if unix
+            perms = zf.unix_perms
+            if (perms == 0755) or (perms == 0775) or (perms == 0777)
+              perms = 0777
+            else
+              perms = 0666
+            end
+          end
+          fullname = File.join(path, zf.name)
+          dir = File.dirname(fullname)
+          if not Dir.exists?(dir)
+            FileUtils.mkdir_p(dir)
+            File.chmod(0777, dir) if unix
+          end
+          if (not zf.directory?) and (overwrite or (not File.exist?(fullname)))
+            File.open(fullname, 'wb') do |f|
+              f << zf.get_input_stream.read
+              f.chmod(perms) if perms
+            end
+          end
+        end
+        res = true
+      end
+    end
+    res
+  end
+
+  $unziper = nil
+
+  def self.unzip_file2(arch, path, overwrite=true)
+    res = nil
+    if File.exist?(arch) and Dir.exists?(path)
+      if not $unziper
+        if PandoraUtils.os_family=='windows'
+          unzip = File.join($pandora_util_dir, 'unzip.exe')
+          if File.exist?(unzip)
+            $unziper = '"'+unzip+'"'
+          end
+        else
+          unzip = `which unzip`
+          if (unzip.is_a? String) and (unzip.size>2)
+            $unziper = '"'+unzip.chomp+'"'
+          end
+        end
+      end
+      if $unziper
+        mode = 'o'
+        mode = 'n' unless overwrite
+        cmd = $unziper+' -'+mode+' "'+arch+'" -d "'+path+'"'
+        if PandoraUtils.os_family=='windows'
+          res = win_exec(cmd)
+        else
+          res = system(cmd)
+        end
+      end
+    end
+    res
+  end
+
+  #p unzip_file2('./Pandora-master.zip', './base')
+
 
   # Panhash is nil?
   # RU: Панхэш не нулевой?
@@ -2637,6 +2716,7 @@ module PandoraUtils
   # Execute in Windows
   # RU: Запустить в Винде
   def self.win_exec(cmd)
+    res = nil
     if init_win32api
       if not $create_process_class
         $create_process_class = Win32API.new('kernel32', 'CreateProcess', \
@@ -2649,6 +2729,7 @@ module PandoraUtils
           0, nil, si, pi)
       end
     end
+    res
   end
 
   $poly_play   = false
@@ -10905,26 +10986,26 @@ module PandoraGtk
     def self.update_file(http, tail, pfn)
       res = false
       dir = File.dirname(pfn)
-      PandoraUtils.log_message(LM_Trace, _('Download [')+[http, tail, pfn].inspect+']..')
+      #PandoraUtils.log_message(LM_Trace, _('Download [')+[http, tail, pfn].inspect+']..')
       FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
       if Dir.exists?(dir)
         begin
           response = http.request_get(tail)
-          File.open(pfn, 'wb+') do |file|
-            filebody = response.body
-            if filebody and (filebody.size>0)
-              file.write(body)
+          filebody = response.body
+          if filebody and (filebody.size>0)
+            File.open(pfn, 'wb+') do |file|
+              file.write(filebody)
               res = true
               PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
-            else
-              puts 'Empty downloaded body'
             end
+          else
+            PandoraUtils.log_message(LM_Warning, _('Empty downloaded body'))
           end
         rescue => err
-          puts 'Update error: '+err.message
+          PandoraUtils.log_message(LM_Warning, _('Update error')+': '+err.message)
         end
       else
-        puts 'Cannot create directory: '+dir
+        PandoraUtils.log_message(LM_Warning, _('Cannot create directory')+': '+dir)
       end
       res
     end
@@ -10945,8 +11026,7 @@ module PandoraGtk
         curr_size = File.size?(main_script)
         if curr_size
           arch_name = File.join($pandora_root_dir, 'master.zip')
-          main_uri = URI('https://raw.github.com/Novator/Pandora/master/pandora.rb')
-          #arch_uri = URI('https://codeload.github.com/Novator/Pandora/zip/master')
+          main_uri = URI('https://raw.githubusercontent.com/Novator/Pandora/master/pandora.rb')
 
           time = 0
           http = nil
