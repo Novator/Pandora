@@ -314,3 +314,8 @@ Table exported=>Таблица выгружена
 Key is under consideration=>Ключ на подтверждении
 Recorded=>Записано
 Cannot record=>Не записано
+Connect to=>Подключение к
+Download from=>Загрузка из
+Arch is unzipped=>Архив распакован
+Files are updated=>Файлы обновлены
+

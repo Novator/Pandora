@@ -355,16 +355,15 @@ module PandoraUtils
         cmd = $unziper+' -'+mode+' "'+arch+'" -d "'+path+'"'
         if PandoraUtils.os_family=='windows'
           res = win_exec(cmd)
+          p 'unzip: win_exec res='+res.inspect
         else
           res = system(cmd)
+          p 'unzip: system res='+res.inspect
         end
       end
     end
     res
   end
-
-  #p unzip_file2('./Pandora-master.zip', './base')
-
 
   # Panhash is nil?
   # RU: Панхэш не нулевой?
@@ -10983,14 +10982,15 @@ module PandoraGtk
 
     # Update file
     # RU: Обновить файл
-    def self.update_file(http, tail, pfn)
+    def self.update_file(http, path, pfn, host='')
       res = false
       dir = File.dirname(pfn)
-      #PandoraUtils.log_message(LM_Trace, _('Download [')+[http, tail, pfn].inspect+']..')
       FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
       if Dir.exists?(dir)
         begin
-          response = http.request_get(tail)
+          PandoraUtils.log_message(LM_Info, _('Download from') + ': ' + \
+            host + path + '..')
+          response = http.request_get(path)
           filebody = response.body
           if filebody and (filebody.size>0)
             File.open(pfn, 'wb+') do |file|
@@ -11010,6 +11010,55 @@ module PandoraGtk
       res
     end
 
+    def self.connect_http(main_uri, curr_size, step)
+      http = nil
+      time = 0
+      PandoraUtils.log_message(LM_Info, _('Connect to') + ': ' + \
+        main_uri.host + main_uri.path + ':' + main_uri.port.to_s + '..')
+      begin
+        http = Net::HTTP.new(main_uri.host, main_uri.port)
+        http.use_ssl = true
+        http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+        http.open_timeout = 60*5
+        response = http.request_head(main_uri.path)
+        act_size = response.content_length
+        PandoraUtils.set_param('last_check', Time.now)
+        p 'Size diff: '+[act_size, curr_size].inspect
+        if (act_size == curr_size)
+          http = nil
+          step = 254
+          $window.set_status_field(SF_Update, 'Ok', false)
+          PandoraUtils.set_param('last_update', Time.now)
+        else
+          time = Time.now.to_i
+        end
+      rescue => err
+        http = nil
+        $window.set_status_field(SF_Update, 'Connection error')
+        PandoraUtils.log_message(LM_Warning, _('Cannot connect to GitHub to check update')+\
+          [main_uri.host, main_uri.port].inspect)
+        puts err.message
+      end
+      [http, time, step]
+    end
+
+    def self.reconnect_if_need(http, time, main_uri)
+      if (not http.active?) or (Time.now.to_i >= (time + 60*5))
+        begin
+          http = Net::HTTP.new(main_uri.host, main_uri.port)
+          http.use_ssl = true
+          http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+          http.open_timeout = 60*5
+        rescue => err
+          http = nil
+          $window.set_status_field(SF_Update, 'Connection error')
+          PandoraUtils.log_message(LM_Warning, _('Cannot reconnect to GitHub to update'))
+          puts err.message
+        end
+      end
+      http
+    end
+
     if $download_thread and $download_thread.alive?
       $download_thread[:all_step] = all_step
       $download_thread.run if $download_thread.stop?
@@ -11017,88 +11066,138 @@ module PandoraGtk
       $download_thread = Thread.new do
         Thread.current[:all_step] = all_step
         downloaded = false
-
         $window.set_status_field(SF_Update, 'Need check')
         sleep($update_interval) if not Thread.current[:all_step]
-
         $window.set_status_field(SF_Update, 'Checking')
+
         main_script = File.join($pandora_root_dir, 'pandora.rb')
         curr_size = File.size?(main_script)
         if curr_size
-          arch_name = File.join($pandora_root_dir, 'master.zip')
-          main_uri = URI('https://raw.githubusercontent.com/Novator/Pandora/master/pandora.rb')
-
-          time = 0
-          http = nil
           if File.stat(main_script).writable?
-            begin
-              #p '-----------'
-              #p [main_uri.host, main_uri.port, main_uri.path]
-              http = Net::HTTP.new(main_uri.host, main_uri.port)
-              http.use_ssl = true
-              http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-              http.open_timeout = 60*5
-              response = http.request_head(main_uri.path)
-              PandoraUtils.set_param('last_check', Time.now)
-              if (response.content_length == curr_size)
-                http = nil
-                $window.set_status_field(SF_Update, 'Ok', true)
-                PandoraUtils.set_param('last_update', Time.now)
-              else
-                time = Time.now.to_i
+            update_zip = PandoraUtils.get_param('update_zip_first')
+            update_zip = true if update_zip.nil?
+            step = 0
+            while (step<2) do
+              step += 1
+              if update_zip
+                zip_local = File.join($pandora_base_dir, 'Pandora-master.zip')
+                zip_exists = File.exist?(zip_local)
+                p [zip_exists, zip_local]
+                if not zip_exists
+                  File.open(zip_local, 'wb+') do |file|
+                    file.write('0')  #empty file
+                  end
+                  zip_exists = File.exist?(zip_local)
+                end
+                if zip_exists
+                  zip_size = File.size?(zip_local)
+                  if zip_size
+                    if File.stat(zip_local).writable?
+                      main_uri = URI('https://codeload.github.com/Novator/Pandora/zip/master')
+                      http, time, step = connect_http(main_uri, zip_size, step)
+                      if http
+                        PandoraUtils.log_message(LM_Info, _('Need update'))
+                        $window.set_status_field(SF_Update, 'Need update')
+                        Thread.stop
+                        http = reconnect_if_need(http, time, main_uri)
+                        if http
+                          $window.set_status_field(SF_Update, 'Doing')
+                          res = update_file(http, main_uri.path, zip_local, main_uri.host)
+                          if res
+                            res = PandoraUtils.unzip_file1(zip_local, $pandora_base_dir)
+                            p 'unzip_file1 res='+res.inspect
+                            if not res
+                              PandoraUtils.log_message(LM_Warning, _('Cannot unzip arch')+'1')
+                              res = PandoraUtils.unzip_file2(zip_local, $pandora_base_dir)
+                              p 'unzip_file2 res='+res.inspect
+                              if not res
+                                PandoraUtils.log_message(LM_Warning, _('Cannot unzip arch')+'2')
+                              end
+                            end
+                            if res
+                              PandoraUtils.log_message(LM_Info, _('Arch is unzipped'))
+                              unzip_path = File.join($pandora_base_dir, 'Pandora-master')
+                              if Dir.exist?(unzip_path)
+                                begin
+                                  FileUtils.copy_entry(unzip_path, $pandora_root_dir, true)
+                                  PandoraUtils.log_message(LM_Info, _('Files are updated'))
+                                rescue
+                                  res = false
+                                end
+                                if res
+                                  FileUtils.remove_dir(unzip_path)
+                                  step = 255
+                                else
+                                  PandoraUtils.log_message(LM_Warning, _('Cannot copy files from zip arch'))
+                                end
+                              else
+                                PandoraUtils.log_message(LM_Warning, _('Unzipped directory does not exist'))
+                              end
+                            else
+                              PandoraUtils.log_message(LM_Warning, _('Arch was not unzipped'))
+                            end
+                          else
+                            PandoraUtils.log_message(LM_Warning, _('Cannot download arch'))
+                          end
+                        end
+                      end
+                    else
+                      $window.set_status_field(SF_Update, 'Read only')
+                      PandoraUtils.log_message(LM_Warning, _('Zip is unrewritable'))
+                    end
+                  else
+                    $window.set_status_field(SF_Update, 'Size error')
+                    PandoraUtils.log_message(LM_Warning, _('Zip size error'))
+                  end
+                end
+                update_zip = false
+              else   # update with https from sources
+                main_uri = URI('https://raw.githubusercontent.com/Novator/Pandora/master/pandora.rb')
+                http, time, step = connect_http(main_uri, curr_size, step)
+                if http
+                  PandoraUtils.log_message(LM_Info, _('Need update'))
+                  $window.set_status_field(SF_Update, 'Need update')
+                  Thread.stop
+                  http = reconnect_if_need(http, time, main_uri)
+                  if http
+                    $window.set_status_field(SF_Update, 'Doing')
+                    # updating pandora.rb
+                    downloaded = update_file(http, main_uri.path, main_script, main_uri.host)
+                    # updating other files
+                    UPD_FileList.each do |fn|
+                      pfn = File.join($pandora_root_dir, fn)
+                      if File.exist?(pfn) and (not File.stat(pfn).writable?)
+                        downloaded = false
+                        PandoraUtils.log_message(LM_Warning, \
+                          _('Not exist or read only')+': '+pfn)
+                      else
+                        downloaded = downloaded and \
+                          update_file(http, '/Novator/Pandora/master/'+fn, pfn)
+                      end
+                    end
+                    if downloaded
+                      step = 255
+                    else
+                      PandoraUtils.log_message(LM_Warning, _('Direct download error'))
+                    end
+                  end
+                end
+                update_zip = true
               end
-            rescue => err
-              http = nil
-              $window.set_status_field(SF_Update, 'Connection error')
-              PandoraUtils.log_message(LM_Warning, _('Cannot connect to GitHub to check update'))
-              puts err.message
+            end
+            if step == 255
+              PandoraUtils.set_param('last_update', Time.now)
+              $window.set_status_field(SF_Update, 'Need restart')
+              Thread.stop
+              Kernel.abort('Pandora is updated. Run it again')
+            elsif step<250
+              $window.set_status_field(SF_Update, 'Load error')
             end
           else
             $window.set_status_field(SF_Update, 'Read only')
           end
-          if http
-            $window.set_status_field(SF_Update, 'Need update')
-            Thread.stop
-
-            if Time.now.to_i >= time + 60*5
-              begin
-                http = Net::HTTP.new(main_uri.host, main_uri.port)
-                http.use_ssl = true
-                http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-                http.open_timeout = 60*5
-              rescue => err
-                http = nil
-                $window.set_status_field(SF_Update, 'Connection error')
-                PandoraUtils.log_message(LM_Warning, _('Cannot connect to GitHub to update'))
-                puts err.message
-              end
-            end
-
-            if http
-              $window.set_status_field(SF_Update, 'Doing')
-              PandoraUtils.log_message(LM_Info, _('Updating Pandora from')+': '+main_uri.host+'..')
-              # updating pandora.rb
-              downloaded = update_file(http, main_uri.path, main_script)
-              # updating other files
-              UPD_FileList.each do |fn|
-                pfn = File.join($pandora_root_dir, fn)
-                if File.exist?(pfn) and (not File.stat(pfn).writable?)
-                  downloaded = false
-                  PandoraUtils.log_message(LM_Warning, _('Not exist or read only')+': '+pfn)
-                else
-                  downloaded = downloaded and update_file(http, '/Novator/Pandora/master/'+fn, pfn)
-                end
-              end
-              if downloaded
-                PandoraUtils.set_param('last_update', Time.now)
-                $window.set_status_field(SF_Update, 'Need restart')
-                Thread.stop
-                Kernel.abort('Pandora is updated. Run it again')
-              else
-                $window.set_status_field(SF_Update, 'Load error')
-              end
-            end
-          end
+        else
+          $window.set_status_field(SF_Update, 'Size error')
         end
         $download_thread = nil
       end
@@ -13246,21 +13345,23 @@ module PandoraGtk
             $window.do_menu_act('Activate')
           end
           $window.focus_timer = GLib::Timeout.add(500) do
-            #p 'read timer!!!' + $window.has_toplevel_focus?.inspect
-            toplevel = ($window.has_toplevel_focus? or (PandoraUtils.os_family=='windows'))
-            if toplevel and $window.visible?
-              $window.notebook.children.each do |child|
-                if (child.is_a? DialogScrollWin) and (child.has_unread)
-                  $window.notebook.page = $window.notebook.children.index(child)
-                  break
+            if (not $window.nil?) and (not $window.destroyed?)
+              #p 'read timer!!!' + $window.has_toplevel_focus?.inspect
+              toplevel = ($window.has_toplevel_focus? or (PandoraUtils.os_family=='windows'))
+              if toplevel and $window.visible?
+                $window.notebook.children.each do |child|
+                  if (child.is_a? DialogScrollWin) and (child.has_unread)
+                    $window.notebook.page = $window.notebook.children.index(child)
+                    break
+                  end
+                end
+                curpage = $window.notebook.get_nth_page($window.notebook.page)
+                if (curpage.is_a? PandoraGtk::DialogScrollWin) and toplevel
+                  curpage.update_state(false, curpage)
                 end
               end
-              curpage = $window.notebook.get_nth_page($window.notebook.page)
-              if (curpage.is_a? PandoraGtk::DialogScrollWin) and toplevel
-                curpage.update_state(false, curpage)
-              end
+              $window.focus_timer = nil
             end
-            $window.focus_timer = nil
             false
           end
         end

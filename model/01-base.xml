@@ -349,6 +349,7 @@
     <update_period desc="Update interval (days)" type="Integer" section="update" setting="7" />
     <last_check desc="Last check time" type="Time" section="update" setting="01.01.2012" />
     <last_update desc="Last update time" type="Time" section="update" setting="01.01.2012" />
+    <update_zip_first desc="Update from zip first" type="Boolean" section="update" setting="true" />
 
     <tcp_port desc="TCP port" type="Integer" section="net" setting="5577" />
     <udp_port desc="UDP port" type="Integer" section="net" setting="5577" />
