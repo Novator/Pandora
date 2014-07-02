@@ -4608,10 +4608,9 @@ module PandoraNet
         session ||= session2
         if session and (session.conn_state != CS_Disconnected)
           #p 'stop_session3 session='+session.inspect
+          session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
           if disconnect
             session.conn_state = CS_StopRead
-          else
-            session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
           end
 
           #while wait_disconnect and session and (session.conn_state != CS_Disconnected)

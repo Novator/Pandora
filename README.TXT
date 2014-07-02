@@ -87,12 +87,7 @@ Download a package and install it with root:
   cp ./view/pandora.desktop /usr/share/applications/
   nano /usr/share/applications/pandora.desktop
 
-Pandora updates itself automatically, but partly (only main working files).
-Full update, including documentation and language files, can require manual downloads.
-
-6.5. Also you can run shell for semi-automatic update:
-
-  ./pandora.sh --full-init
+Pandora can update itself by user click from within.
 
 
 7. JOIN AS DEVELOPER
