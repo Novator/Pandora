@@ -252,12 +252,13 @@ module PandoraUtils
 
   # Plural or single name
   # RU: Имя во множественном или единственном числе
-  def self.get_name_or_names(mes, plural=false)
+  def self.get_name_or_names(mes, plural=false, lang=nil)
     sname, pname = mes.split('|')
     if plural==false
       res = sname
     elsif ((not pname) or (pname=='')) and sname
-      case $lang
+      lang ||= $lang
+      case lang
         when 'ru'
           res = sname
           if ['ка', 'га', 'ча'].include? res[-2,2]
@@ -1201,9 +1202,9 @@ module PandoraUtils
       tfd = db.table_info(table_name)
       tfd.collect! { |x| x['name'] }
       if (not tfd) or (tfd == [])
-        @exist[table_name] = FALSE
+        @exist[table_name] = false
       else
-        @exist[table_name] = TRUE
+        @exist[table_name] = true
       end
       tab_def = panobj_fld_to_sqlite_tab(def_flds[table_name])
       if (! exist[table_name] or recreate) and tab_def
@@ -2874,7 +2875,7 @@ module PandoraModel
               panobject_class.kind = kind
               #panobject_class.lang = 5
               panobj_tabl = panobj_id
-              panobj_tabl = PandoraUtils::get_name_or_names(panobj_tabl, true)
+              panobj_tabl = PandoraUtils::get_name_or_names(panobj_tabl, true, 'en')
               panobj_tabl.downcase!
               panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]]
             end
@@ -8010,7 +8011,7 @@ module PandoraGtk
     include PandoraUtils
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
-      :support_btn, :rate_label, :vouch_btn, :trust_scale, :trust0, :public_btn, \
+      :keep_btn, :rate_label, :vouch_btn, :trust_scale, :trust0, :public_btn, \
       :public_scale, :lang_entry, :format, :view_buffer, :last_sw
 
     # Add menu item
@@ -8341,23 +8342,23 @@ module PandoraGtk
 
       #rbvbox = Gtk::VBox.new
 
-      @support_btn = Gtk::CheckButton.new(_('support'), true)
-      #support_btn.signal_connect('toggled') do |widget|
-      #  p "support"
+      @keep_btn = Gtk::CheckButton.new(_('keep'), true)
+      #keep_btn.signal_connect('toggled') do |widget|
+      #  p "keep"
       #end
-      #rbvbox.pack_start(support_btn, false, false, 0)
+      #rbvbox.pack_start(keep_btn, false, false, 0)
       #@rate_label = Gtk::Label.new('-')
-      support_box = Gtk::VBox.new
-      support_box.pack_start(support_btn, false, false, 0)
+      keep_box = Gtk::VBox.new
+      keep_box.pack_start(keep_btn, false, false, 0)
 
       @lang_entry = Gtk::Combo.new
       lang_entry.set_popdown_strings(PandoraModel.lang_list)
       lang_entry.entry.text = ''
       lang_entry.entry.select_region(0, -1)
       lang_entry.set_size_request(50, -1)
-      support_box.pack_start(lang_entry, true, true, 5)
+      keep_box.pack_start(lang_entry, true, true, 5)
 
-      hbox.pack_start(support_box, false, false, 0)
+      hbox.pack_start(keep_box, false, false, 0)
 
       trust_box = Gtk::VBox.new
 
@@ -8377,7 +8378,7 @@ module PandoraGtk
           if widget.active?
             trust0 ||= 0.1
             trust_scale.value = trust0
-            @support_btn.active = true
+            @keep_btn.active = true
           else
             trust0 = trust_scale.value
           end
@@ -8450,7 +8451,7 @@ module PandoraGtk
           if widget.active?
             pub_lev0 ||= 0.0
             public_scale.value = pub_lev0
-            @support_btn.active = true
+            @keep_btn.active = true
             @vouch_btn.active = true
           else
             pub_lev0 = public_scale.value
@@ -11242,7 +11243,7 @@ module PandoraGtk
       sel = nil
       id = nil
       panhash0 = nil
-      lang = 5
+      lang = PandoraModel.text_to_lang($lang)
       panstate = 0
       created0 = nil
       creator0 = nil
@@ -11251,7 +11252,7 @@ module PandoraGtk
         id = iter[0]
         sel = panobject.select('id='+id.to_s, true)
         panhash0 = panobject.namesvalues['panhash']
-        lang = panhash0[1].ord if panhash0 and panhash0.size>1
+        lang = panhash0[1].ord if panhash0 and (panhash0.size>1)
         lang ||= 0
         panstate = panobject.namesvalues['panstate']
         panstate ||= 0
@@ -11318,9 +11319,12 @@ module PandoraGtk
         dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
         dialog.icon = panobjecticon if panobjecticon
 
+        dialog.lang_entry.entry.text = PandoraModel.lang_to_text(lang) if lang
+
         if edit
           count, rate, querist_rate = PandoraCrypto.rate_of_panobj(panhash0)
           trust = nil
+          p PandoraUtils.bytes_to_hex(panhash0)
           res = PandoraCrypto.trust_in_panobj(panhash0)
           trust = res if res.is_a? Float
           dialog.vouch_btn.active = (res != nil)
@@ -11331,31 +11335,29 @@ module PandoraGtk
           dialog.trust_scale.value = trust
           #dialog.rate_label.text = rate.to_s
 
-          dialog.support_btn.active = (PandoraModel::PSF_Support & panstate)>0
+          dialog.keep_btn.active = (PandoraModel::PSF_Support & panstate)>0
 
           pub_level = PandoraModel.act_relation(nil, panhash0, RK_MinPublic, :check)
+          p pub_level
           dialog.public_btn.active = pub_level
           dialog.public_btn.inconsistent = (pub_level == nil)
           dialog.public_scale.value = (pub_level-RK_MinPublic-10)/10.0 if pub_level
-
-          dialog.lang_entry.entry.text = PandoraModel.lang_to_text(lang) if lang
+          dialog.public_scale.sensitive = pub_level
 
           #dialog.lang_entry.active_text = lang.to_s
           #trust_lab = dialog.trust_btn.children[0]
           #trust_lab.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
         else  #new or copy
           key = PandoraCrypto.current_key(false, false)
-          not_key_inited = (not (key and key[PandoraCrypto::KV_Obj]))
-          dialog.support_btn.active = true
-          dialog.vouch_btn.active = true
-          if not_key_inited
+          key_inited = (key and key[PandoraCrypto::KV_Obj])
+          dialog.keep_btn.active = true
+          dialog.vouch_btn.active = key_inited
+          dialog.trust_scale.sensitive = key_inited
+          if not key_inited
             dialog.vouch_btn.inconsistent = true
-            dialog.trust_scale.sensitive = false
-
             dialog.public_btn.inconsistent = true
-            dialog.public_scale.sensitive = false
           end
-          dialog.public_btn.inconsistent = not_key_inited
+          dialog.public_scale.sensitive = false
         end
 
         st_text = panobject.panhash_formula
@@ -11440,7 +11442,7 @@ module PandoraGtk
           end
           flds_hash['modified'] = time_now
           panstate = 0
-          panstate = panstate | PandoraModel::PSF_Support if dialog.support_btn.active?
+          panstate = panstate | PandoraModel::PSF_Support if dialog.keep_btn.active?
           flds_hash['panstate'] = panstate
           if (panobject.is_a? PandoraModel::Key)
             lang = flds_hash['rights'].to_i

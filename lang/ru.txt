@@ -103,7 +103,7 @@ Nodes=>Узлы
 Fishhooks=>Рыбалки
 _Region=>_Регион
 Keys=>Ключи
-support=>храню
+keep=>храню
 Storages=>Склады
 Streets=>Улицы
 Menu handler is not defined yet=>Обработчик меню ещё не определён
@@ -318,4 +318,3 @@ Connect to=>Подключение к
 Download from=>Загрузка из
 Arch is unzipped=>Архив распакован
 Files are updated=>Файлы обновлены
-
