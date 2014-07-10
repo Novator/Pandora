@@ -9062,17 +9062,21 @@ module PandoraGtk
       area_recv.set_size_request(320, 240)
       area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
           res = area_recv.signal_connect('expose-event') do |*args|
-			p 'area_recv '+area_recv.window.xid.inspect
-			false
+      p 'area_recv '+area_recv.window.xid.inspect
+      false
           end
 
 #avconv -f video4linux2 -i /dev/video0 -vcodec mpeg2video -r 25 -pix_fmt yuv420p -me_method epzs -b 2600k -bt 256k -f rtp rtp://192.168.44.150:5004
-          
+
 #ffmpeg -f dshow  -framerate 20 -i video=screen-capture-recorder -vf scale=1280:720 -vcodec libx264 -pix_fmt yuv420p -tune zerolatency -preset ultrafast -f mpegts udp://236.0.0.1:2000
 #mplayer -demuxer +mpegts -framedrop -benchmark ffmpeg://udp://236.0.0.1:2000?fifo_size=100000&buffer_size=10000000
 
 #avconv -f video4linux2 -i /dev/video1 -vcodec mpeg2video -pix_fmt yuv420p -me_method epzs -b 2600k -bt 256k -f mpegts udp://127.0.0.1:5004?listen
 #mplayer -wid 39846401 -demuxer +mpegts -framedrop -benchmark ffmpeg://udp://127.0.0.1:5004
+
+#http://stackoverflow.com/questions/24411982/find-better-vp8-parameters-for-robustness-in-udp-streaming-with-libav-ffmpeg
+#avconv -f video4linux2 -i /dev/video0 -s qvga -f webm -s 320x240 -vcodec libvpx -vb 128k tcp://127.0.0.1:5000?listen
+#avplay tcp://127.0.0.1:5000
 
 
       hbox = Gtk::HBox.new
