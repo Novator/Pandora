@@ -65,23 +65,26 @@ module PandoraUtils
   $lang = 'ru'
   $pandora_parameters = []
 
-  # Paths and files  ('join' gets '/' for Linux and '\' for Windows)
-  # RU: Пути и файлы ('join' дает '/' для Линукса и '\' для Винды)
-  $pandora_root_dir = Dir.pwd                                       # Current Pandora directory
-  #$pandora_root_dir = File.expand_path('..',  __FILE__)
-  $pandora_base_dir = File.join($pandora_root_dir, 'base')            # Default database directory
-  $pandora_view_dir = File.join($pandora_root_dir, 'view')            # Media files directory
-  $pandora_model_dir = File.join($pandora_root_dir, 'model')          # Model description directory
-  $pandora_lang_dir = File.join($pandora_root_dir, 'lang')            # Languages directory
-  $pandora_util_dir = File.join($pandora_root_dir, 'util')            # Utilites directory
-  $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Default database file
-  $pandora_files_dir = File.join($pandora_root_dir, 'files')          # Files directory
+  # Paths and files
+  # RU: Пути и файлы
+  $pandora_root_dir = Dir.pwd                                     # Current directory
+  $pandora_base_dir = File.join($pandora_root_dir, 'base')        # Database directory
+  $pandora_view_dir = File.join($pandora_root_dir, 'view')        # Media files directory
+  $pandora_model_dir = File.join($pandora_root_dir, 'model')      # Model directory
+  $pandora_lang_dir = File.join($pandora_root_dir, 'lang')        # Languages directory
+  $pandora_util_dir = File.join($pandora_root_dir, 'util')        # Utilites directory
+  $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
+  $pandora_files_dir = File.join($pandora_root_dir, 'files')      # Files directory
 
+  # Log level constants
+  # RU: Константы уровня логирования
   LM_Error    = 0
   LM_Warning  = 1
   LM_Info     = 2
   LM_Trace    = 3
 
+  # Log level on human view
+  # RU: Уровень логирования по-человечьи
   def self.level_to_str(level)
     mes = ''
     case level
@@ -96,9 +99,11 @@ module PandoraUtils
 
   MaxLogViewLineCount = 500
 
+  # Default log level
+  # RU: Уровень логирования по умолчанию
   $show_log_level = LM_Trace
 
-  # Log message
+  # Add the message to log
   # RU: Добавить сообщение в лог
   def self.log_message(level, mes)
     if (level <= $show_log_level)
@@ -124,7 +129,6 @@ module PandoraUtils
       end
     end
   end
-
 
   # Load translated phrases
   # RU: Загрузить переводы фраз
@@ -9078,6 +9082,9 @@ module PandoraGtk
 #avconv -f video4linux2 -i /dev/video0 -s qvga -f webm -s 320x240 -vcodec libvpx -vb 128k tcp://127.0.0.1:5000?listen
 #avplay tcp://127.0.0.1:5000
 
+#avconv -s qvga -f video4linux2 -i /dev/video0 -r 2 -copyts -b 128k -bt 32k -bufsize 10 -f webm tcp://127.0.0.1:5000?listen
+#avplay -bufsize 10 tcp://127.0.0.1:5000
+
 
       hbox = Gtk::HBox.new
 
@@ -13229,16 +13236,12 @@ module PandoraGtk
 
       $window.add(vbox)
 
-      $window.signal_connect('delete-event') do |*args|
-        $window.do_menu_act('Hide')
-        true
-      end
-
       update_win_icon = PandoraUtils.get_param('status_update_win_icon')
       flash_on_new = PandoraUtils.get_param('status_flash_on_new')
       flash_interval = PandoraUtils.get_param('status_flash_interval')
       play_sounds = PandoraUtils.get_param('play_sounds')
       hide_on_minimize = PandoraUtils.get_param('hide_on_minimize')
+      hide_on_close = PandoraUtils.get_param('hide_on_close')
       mplayer = nil
       if PandoraUtils.os_family=='windows'
         mplayer = PandoraUtils.get_param('win_mp3_player')
@@ -13253,6 +13256,15 @@ module PandoraGtk
       @chech_tasks = false
       @gabage_clear = false
       init_scheduler(1000) if (@chech_tasks or @gabage_clear)
+
+      $window.signal_connect('delete-event') do |*args|
+        if hide_on_close
+          $window.do_menu_act('Hide')
+        else
+          $window.do_menu_act('Quit')
+        end
+        true
+      end
 
       $window.signal_connect('destroy') do |window|
         while (not $window.notebook.destroyed?) and ($window.notebook.children.count>0)

@@ -9,7 +9,7 @@ cd /d %curpath%
 rem === Set constants
 set RUBY=.\ruby193\bin\rubyw.exe
 set PANDORA_DIR=%curpath%
-set SETUP_URL=http://github.com/Novator/PandoraSetup/blob/master/pandora_setup.exe
+set SETUP_URL=http://cznic.dl.sourceforge.net/project/pandora-net/pandora_setup.exe
 set SETUP_FILE=.\pandora_setup.exe
 
 rem === Check ruby interpreter, if exists run Pandora
@@ -70,7 +70,7 @@ Sub HTTPDownload( myURL, myPath )  '--VBS
 End Sub  '--VBS
 
 
-=== Run Pandora with Ruby
+rem === Run Pandora with Ruby
 :RUN_PANDORA
 "%RUBY%" .\pandora.rb
 

@@ -87,7 +87,7 @@ Download a package and install it with root:
   cp ./view/pandora.desktop /usr/share/applications/
   nano /usr/share/applications/pandora.desktop
 
-Pandora can update itself by user click from within.
+Pandora can update itself by user click to button on status bar.
 
 
 7. JOIN AS DEVELOPER
