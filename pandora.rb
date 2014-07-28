@@ -291,10 +291,11 @@ module PandoraUtils
     res
   end
 
+  $rubyzip = nil  # Flag of using Zip library
 
-  $rubyzip = nil
-
-  def self.unzip_file1(arch, path, overwrite=true)
+  # Unzip archive via Zip library
+  # RU: Распаковывает архив с помощью библиотеки Zip
+  def self.unzip_via_lib(arch, path, overwrite=true)
     res = nil
     if not $rubyzip
       begin
@@ -336,9 +337,11 @@ module PandoraUtils
     res
   end
 
-  $unziper = nil
+  $unziper = nil  # Zip utility
 
-  def self.unzip_file2(arch, path, overwrite=true)
+  # Unzip archive via Zip utility
+  # RU: Распаковывает архив с помощью Zip утилиты
+  def self.unzip_via_util(arch, path, overwrite=true)
     res = nil
     if File.exist?(arch) and Dir.exists?(path)
       if not $unziper
@@ -11128,11 +11131,11 @@ module PandoraGtk
                           $window.set_status_field(SF_Update, 'Doing')
                           res = update_file(http, main_uri.path, zip_local, main_uri.host)
                           if res
-                            res = PandoraUtils.unzip_file1(zip_local, $pandora_base_dir)
+                            res = PandoraUtils.unzip_via_lib(zip_local, $pandora_base_dir)
                             p 'unzip_file1 res='+res.inspect
                             if not res
                               PandoraUtils.log_message(LM_Trace, _('Cannot unzip arch')+'1')
-                              res = PandoraUtils.unzip_file2(zip_local, $pandora_base_dir)
+                              res = PandoraUtils.unzip_via_util(zip_local, $pandora_base_dir)
                               p 'unzip_file2 res='+res.inspect
                               if not res
                                 PandoraUtils.log_message(LM_Warning, _('Cannot unzip arch')+'2')
