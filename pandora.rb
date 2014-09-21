@@ -3148,6 +3148,40 @@ module PandoraModel
     res
   end
 
+  # Get panhash list by whyer
+  # RU: Возвращает список панхэшей для почемучки
+  def self.get_panhashes_by_whyer(whyer=nil, trust=nil, from_time=nil, models=nil)
+    res = nil
+    if whyer
+      relation_model = PandoraUtils.get_model('Relation', models)
+      if relation_model
+        kind_op = '='
+        pub_kind = (rel_kind >= RK_MinPublic)
+        if pub_kind
+          rel_kind = RK_MinPublic if (act == :check)
+          kind_op = '>=' if (act != :create)
+        end
+        kind_op = 'kind' + kind_op
+        filter = [['first=', panhash1], ['second=', panhash2], [kind_op, rel_kind]]
+        filter2 = nil
+
+
+        model = PandoraUtils.get_model(panobjectclass.ider, models)
+        if model
+          filter = [['modified >= ', from_time.to_i]]
+          p sel = model.select(filter, false, 'panhash', 'id ASC')
+          if sel and (sel.size>0)
+            res ||= []
+            sel.each do |row|
+              res << row[0]
+            end
+          end
+        end
+      end
+    end
+    res
+  end
+
   Languages = {0=>'all', 1=>'en', 2=>'zh', 3=>'es', 4=>'hi', 5=>'ru', 6=>'ar', \
     7=>'fr', 8=>'pt', 9=>'ja', 10=>'de', 11=>'ko', 12=>'it', 13=>'be', 14=>'id'}
 
@@ -6145,7 +6179,11 @@ module PandoraNet
                     trust = @skey[PandoraCrypto::KV_Trust]
                     trust = -1.0 if not (trust.is_a? Float)
                     kind_list = PandoraCrypto.allowed_kinds(trust, kind_list)
+
                     panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
+
+                    #panhash_list = PandoraModel.get_panhashes_by_whyer(whyer, trust, from_time)
+
                     p log_mes+'--ECC_Query_Panhash  panhash_list='+panhash_list.inspect
                     if panhash_list and (panhash_list.size>0)
                       panhash_list = PandoraUtils.rubyobj_to_pson_elem(panhash_list) if panhash_list.is_a? Array
@@ -6715,6 +6753,7 @@ module PandoraNet
                     end
                     inquirer_step += 1
                   when IS_NewsQuery
+                    # запросить список новых панхэшей
                     query_kind_list = 1.chr + 11.chr
                     last_time = Time.now.to_i - 5*24*3600
                     set_panhash_query(query_kind_list, last_time, true)
