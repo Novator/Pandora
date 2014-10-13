@@ -2583,7 +2583,7 @@ module PandoraUtils
   CapSymbols = '123456789qertyupasdfghkzxvbnmQRTYUPADFGHJKLBNM'
   CapFonts = ['Sans', 'Arial', 'Times', 'Verdana', 'Tahoma']
 
-  $poor_cairo_context = false
+  $poor_cairo_context = true
 
   # Generate captcha
   # RU: Сгенерировать капчу
@@ -2620,17 +2620,16 @@ module PandoraUtils
     width = height*2
     cr = nil
     if not drawing
-      if (not $poor_cairo_context)
-        begin
-          drawing = Gdk::Pixmap.new(nil, width, height, 24)
-          cr = drawing.create_cairo_context
-        rescue Exception
-          $poor_cairo_context = true
-        end
-      end
       if $poor_cairo_context
         drawing = Cairo::ImageSurface.new(width, height)
         cr = Cairo::Context.new(drawing)
+        rescue Exception
+          $poor_cairo_context = false
+        end
+      end
+      if (not $poor_cairo_context)
+        drawing = Gdk::Pixmap.new(nil, width, height, 24)
+        cr = drawing.create_cairo_context
       end
     end
 
@@ -7026,7 +7025,7 @@ module PandoraNet
             host = $host
             if not host
               host = ''
-            elsif host=='any'  #else can be "", "0.0.0.0", "0", "0::0", "::"
+            elsif (host=='any') or (host=='all')  #else can be "", "0.0.0.0", "0", "0::0", "::"
               host = Socket::INADDR_ANY
             end
             server = TCPServer.open(host, $port)
