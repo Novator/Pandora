@@ -2621,8 +2621,9 @@ module PandoraUtils
     cr = nil
     if not drawing
       if $poor_cairo_context
-        drawing = Cairo::ImageSurface.new(width, height)
-        cr = Cairo::Context.new(drawing)
+        begin
+          drawing = Cairo::ImageSurface.new(width, height)
+          cr = Cairo::Context.new(drawing)
         rescue Exception
           $poor_cairo_context = false
         end
