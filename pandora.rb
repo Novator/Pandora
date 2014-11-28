@@ -6752,12 +6752,12 @@ module PandoraNet
                       set_request(creator, true)
                     end
                     inquirer_step += 1
-                  when IS_NewsQuery
-                    # запросить список новых панхэшей
-                    query_kind_list = 1.chr + 11.chr
-                    last_time = Time.now.to_i - 5*24*3600
-                    set_panhash_query(query_kind_list, last_time, true)
-                    inquirer_step += 1
+                  #when IS_NewsQuery
+                  #  # запросить список новых панхэшей
+                  #  query_kind_list = 1.chr + 11.chr
+                  #  last_time = Time.now.to_i - 5*24*3600
+                  #  set_panhash_query(query_kind_list, last_time, true)
+                  #  inquirer_step += 1
                   else
                     inquirer_step = IS_Finished
                 end
