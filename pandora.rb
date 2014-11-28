@@ -9107,10 +9107,11 @@ module PandoraGtk
       @area_recv = ViewDrawingArea.new
       area_recv.set_size_request(320, 240)
       area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
-          res = area_recv.signal_connect('expose-event') do |*args|
-      p 'area_recv '+area_recv.window.xid.inspect
-      false
-          end
+      
+      res = area_recv.signal_connect('expose-event') do |*args|
+        #p 'area_recv '+area_recv.window.xid.inspect
+        false
+      end
 
 #avconv -f video4linux2 -i /dev/video0 -vcodec mpeg2video -r 25 -pix_fmt yuv420p -me_method epzs -b 2600k -bt 256k -f rtp rtp://192.168.44.150:5004
 
