@@ -7019,7 +7019,7 @@ module PandoraNet
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
         $host ||= PandoraUtils.get_param('listen_host')
         $port ||= PandoraUtils.get_param('tcp_port')
-        $host ||= '127.0.0.1'
+        $host ||= 'any'
         $port ||= 5577
         $listen_thread = Thread.new do
           begin
@@ -9107,7 +9107,7 @@ module PandoraGtk
       @area_recv = ViewDrawingArea.new
       area_recv.set_size_request(320, 240)
       area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
-      
+
       res = area_recv.signal_connect('expose-event') do |*args|
         #p 'area_recv '+area_recv.window.xid.inspect
         false
