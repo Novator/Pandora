@@ -7017,20 +7017,26 @@ module PandoraNet
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
-        $host ||= PandoraUtils.get_param('listen_host')
-        $port ||= PandoraUtils.get_param('tcp_port')
+        $host = PandoraUtils.get_param('listen_host')
+        $port = PandoraUtils.get_param('tcp_port')
         $host ||= 'any'
         $port ||= 5577
         $listen_thread = Thread.new do
+          p Socket.ip_address_list
           begin
             host = $host
-            if not host
+            if (not host)
               host = ''
-            elsif (host=='any') or (host=='all')  #else can be "", "0.0.0.0", "0", "0::0", "::"
+            elsif ((host=='any') or (host=='all'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
               host = Socket::INADDR_ANY
+              p "ipv4 all"
+            elsif ((host=='any6') or (host=='all6'))
+              host = '::'
+              p "ipv6 all"
             end
             server = TCPServer.open(host, $port)
-            addr_str = server.addr[3].to_s+(':')+server.addr[1].to_s
+            #addr_str = server.addr.to_s
+            addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
             PandoraUtils.log_message(LM_Info, _('Listening address')+': '+addr_str)
           rescue
             server = nil
