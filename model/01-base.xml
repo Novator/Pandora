@@ -258,7 +258,7 @@
     </Sign>
 
     <Node name="Node" parent="Created" kind="223">
-      <addr name="Address" type="String" size="40" />
+      <addr name="Address" type="String" size="42" />
       <tport name="TCP port" type="Word" />
       <uport name="UDP port" type="Word" />
       <domain name="Domain" type="String" size="255" />
