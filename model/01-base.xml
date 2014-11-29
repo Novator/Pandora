@@ -346,8 +346,8 @@
     <sort_history_mode desc="Sort history mode (0-receive, 1-create)" type="Integer" section="view" setting="0" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
-    <check_interval desc="Сheck interval (days)" type="Integer" section="update" setting="2" />
-    <update_period desc="Update interval (days)" type="Integer" section="update" setting="7" />
+    <check_interval desc="Сheck interval (days)" type="Integer" section="update" setting="0" />
+    <update_period desc="Update interval (days)" type="Integer" section="update" setting="1" />
     <last_check desc="Last check time" type="Time" section="update" setting="01.01.2012" />
     <last_update desc="Last update time" type="Time" section="update" setting="01.01.2012" />
     <update_zip_first desc="Update from zip first" type="Boolean" section="update" setting="true" />

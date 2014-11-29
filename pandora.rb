@@ -13445,18 +13445,21 @@ module PandoraGtk
       check_update = PandoraUtils.get_param('check_update')
       if (check_update==1) or (check_update==true)
         last_check = PandoraUtils.get_param('last_check')
+        last_check ||= 0
         last_update = PandoraUtils.get_param('last_update')
+        last_update ||= 0
         check_interval = PandoraUtils.get_param('check_interval')
-        if not check_interval or (check_interval <= 0)
-          check_interval = 2
+        if not check_interval or (check_interval < 0)
+          check_interval = 1
         end
         update_period = PandoraUtils.get_param('update_period')
-        if not update_period or (update_period <= 0)
-          update_period = 7
+        if not update_period or (update_period < 0)
+          update_period = 1
         end
         time_now = Time.now.to_i
         need_check = ((time_now - last_check.to_i) >= check_interval*24*3600)
-        if (time_now - last_update.to_i) < update_period*24*3600
+        ok_version = (time_now - last_update.to_i) < update_period*24*3600
+        if ok_version
           set_status_field(SF_Update, 'Ok', need_check)
         elsif need_check
           PandoraGtk.start_updating(false)
