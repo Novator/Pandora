@@ -11488,7 +11488,7 @@ module PandoraGtk
           end
           dialog.text_fields.each do |field|
             textview = field[FI_Widget2]
-            if textview.is_a? Gtk::TextView
+            if (not textview.destroyed?) and (textview.is_a? Gtk::TextView)
               text = textview.buffer.text
               if text and (text.size>0)
                 field[FI_Value] = text
