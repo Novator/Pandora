@@ -462,6 +462,19 @@ module PandoraUtils
     res
   end
 
+  # Convert string to bytes
+  # RU: Преобрзует строку в строку байт
+  def self.str_to_bytes(str)
+    if str.is_a? String
+      res = []
+      str.each_byte do |b|
+        res << b
+      end
+      str = res
+    end
+    str
+  end
+
   # Convert ruby date to string
   # RU: Преобрзует ruby-дату в строку
   def self.date_to_str(date)
@@ -478,17 +491,6 @@ module PandoraUtils
       res = nil
     end
     res
-  end
-
-  def self.str_to_bytes(str)
-    if str.is_a? String
-      res = []
-      str.each_byte do |b|
-        res << b
-      end
-      str = res
-    end
-    str
   end
 
   # Fill string by zeros from left to defined size
@@ -513,6 +515,8 @@ module PandoraUtils
     end
   end
 
+  # Codes of data types in PSON
+  # RU: Коды типов данных в PSON
   PT_Int   = 0
   PT_Str   = 1
   PT_Bool  = 2
@@ -521,11 +525,12 @@ module PandoraUtils
   PT_Hash  = 5
   PT_Sym   = 6
   PT_Real  = 7
+  # 8..14 - reserved for other types
   PT_Unknown = 15
   PT_Negative = 16
 
-  # Convert type to code
-  # RU: Преобразует тип в код
+  # Convert string notation type to code of type
+  # RU: Преобразует строковое представление типа в код типа
   def self.string_to_pantype(type)
     res = PT_Unknown
     case type
@@ -549,8 +554,8 @@ module PandoraUtils
     res
   end
 
-  # Code of type to view method
-  # RU: Код типа в метод отображение
+  # Get view method by code of type
+  # RU: Возвращает метод отображения по коду типа
   def self.pantype_to_view(type)
     res = nil
     case type
@@ -569,7 +574,7 @@ module PandoraUtils
   # Any value to boolean
   # RU: Любое значение в логическое
   def self.any_value_to_boolean(val)
-    val = (((val.is_a? String) and (val.downcase != 'false') and (val != '0')) \
+    val = (((val.is_a? String) and (val.downcase != 'false') and (val.downcase != 'no') and (val != '0')) \
       or ((val.is_a? Numeric) and (val != 0)))
     val
   end
