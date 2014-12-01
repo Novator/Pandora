@@ -7022,20 +7022,26 @@ module PandoraNet
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
-        $host ||= PandoraUtils.get_param('listen_host')
-        $port ||= PandoraUtils.get_param('tcp_port')
-        $host ||= '127.0.0.1'
+        $host = PandoraUtils.get_param('listen_host')
+        $port = PandoraUtils.get_param('tcp_port')
+        $host ||= 'any'
         $port ||= 5577
         $listen_thread = Thread.new do
+          p Socket.ip_address_list
           begin
             host = $host
-            if not host
+            if (not host)
               host = ''
-            elsif (host=='any') or (host=='all')  #else can be "", "0.0.0.0", "0", "0::0", "::"
+            elsif ((host=='any') or (host=='all'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
               host = Socket::INADDR_ANY
+              p "ipv4 all"
+            elsif ((host=='any6') or (host=='all6'))
+              host = '::'
+              p "ipv6 all"
             end
             server = TCPServer.open(host, $port)
-            addr_str = server.addr[3].to_s+(':')+server.addr[1].to_s
+            #addr_str = server.addr.to_s
+            addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
             PandoraUtils.log_message(LM_Info, _('Listening address')+': '+addr_str)
           rescue
             server = nil
@@ -9112,7 +9118,7 @@ module PandoraGtk
       @area_recv = ViewDrawingArea.new
       area_recv.set_size_request(320, 240)
       area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
-      
+
       res = area_recv.signal_connect('expose-event') do |*args|
         #p 'area_recv '+area_recv.window.xid.inspect
         false
@@ -11487,7 +11493,7 @@ module PandoraGtk
           end
           dialog.text_fields.each do |field|
             textview = field[FI_Widget2]
-            if textview.is_a? Gtk::TextView
+            if (not textview.destroyed?) and (textview.is_a? Gtk::TextView)
               text = textview.buffer.text
               if text and (text.size>0)
                 field[FI_Value] = text
@@ -13450,18 +13456,21 @@ module PandoraGtk
       check_update = PandoraUtils.get_param('check_update')
       if (check_update==1) or (check_update==true)
         last_check = PandoraUtils.get_param('last_check')
+        last_check ||= 0
         last_update = PandoraUtils.get_param('last_update')
+        last_update ||= 0
         check_interval = PandoraUtils.get_param('check_interval')
-        if not check_interval or (check_interval <= 0)
-          check_interval = 2
+        if not check_interval or (check_interval < 0)
+          check_interval = 1
         end
         update_period = PandoraUtils.get_param('update_period')
-        if not update_period or (update_period <= 0)
-          update_period = 7
+        if not update_period or (update_period < 0)
+          update_period = 1
         end
         time_now = Time.now.to_i
         need_check = ((time_now - last_check.to_i) >= check_interval*24*3600)
-        if (time_now - last_update.to_i) < update_period*24*3600
+        ok_version = (time_now - last_update.to_i) < update_period*24*3600
+        if ok_version
           set_status_field(SF_Update, 'Ok', need_check)
         elsif need_check
           PandoraGtk.start_updating(false)
