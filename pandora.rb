@@ -11183,6 +11183,14 @@ module PandoraGtk
                           $window.set_status_field(SF_Update, 'Doing')
                           res = update_file(http, main_uri.path, zip_local, main_uri.host)
                           if res
+                            # Delete old arch paths
+                            unzip_mask = File.join($pandora_base_dir, 'robux-pandora-*')
+                            unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
+                            unzip_paths.each do |pathfilename|
+                              p 'Remove dir: '+pathfilename
+                              FileUtils.remove_dir(pathfilename)
+                            end
+                            # Unzip arch
                             res = PandoraUtils.unzip_via_lib(zip_local, $pandora_base_dir)
                             p 'unzip_file1 res='+res.inspect
                             if not res
@@ -11193,18 +11201,27 @@ module PandoraGtk
                                 PandoraUtils.log_message(LM_Warning, _('Cannot unzip arch')+'2')
                               end
                             end
+                            # Copy files to work dir
                             if res
                               PandoraUtils.log_message(LM_Info, _('Arch is unzipped'))
-                              unzip_path = File.join($pandora_base_dir, 'Pandora-master')
-                              if Dir.exist?(unzip_path)
+                              #unzip_path = File.join($pandora_base_dir, 'Pandora-master')
+                              unzip_path = nil
+                              unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
+                              unzip_path = unzip_paths[0] if (unzip_paths.size>0)
+                              if unzip_path and Dir.exist?(unzip_path)
                                 begin
+                                  p 'Copy '+unzip_path+' to '+$pandora_root_dir
                                   FileUtils.copy_entry(unzip_path, $pandora_root_dir, true)
                                   PandoraUtils.log_message(LM_Info, _('Files are updated'))
                                 rescue
                                   res = false
                                 end
-                                if res
+                                begin
                                   FileUtils.remove_dir(unzip_path)
+                                rescue
+                                  PandoraUtils.log_message(LM_Warning, _('Cannot remove arch dir')+': '+unzip_path)
+                                end
+                                if res
                                   step = 255
                                 else
                                   PandoraUtils.log_message(LM_Warning, _('Cannot copy files from zip arch'))
