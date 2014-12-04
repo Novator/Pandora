@@ -63,8 +63,8 @@ Download an installation and run it with administrator:
 
 Download a package and install it with root:
 
-  http://sourceforge.net/projects/pandora-net/files/pandora-net_0.1-1ubuntu_all.deb/download
-  dpkg -i pandora-net_0.1-1ubuntu_all.deb
+  http://sourceforge.net/projects/pandora-net/files/pandora-net_0.2-1ubuntu_all.deb/download
+  dpkg -i pandora-net_0.2-1ubuntu_all.deb
 
 
 6. MANUAL INSTALLATION OR UPDATE
