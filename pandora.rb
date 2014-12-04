@@ -11100,6 +11100,11 @@ module PandoraGtk
         http.open_timeout = 60*5
         response = http.request_head(main_uri.path)
         act_size = response.content_length
+        if not act_size
+          sleep(0.5)
+          response = http.request_head(main_uri.path)
+          act_size = response.content_length
+        end
         PandoraUtils.set_param('last_check', Time.now)
         p 'Size diff: '+[act_size, curr_size].inspect
         if (act_size == curr_size)
@@ -11216,6 +11221,7 @@ module PandoraGtk
                                 rescue
                                   res = false
                                 end
+                                # Remove used arch dir
                                 begin
                                   FileUtils.remove_dir(unzip_path)
                                 rescue
