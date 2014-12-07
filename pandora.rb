@@ -8068,7 +8068,7 @@ module PandoraGtk
     include PandoraUtils
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
-      :keep_btn, :rate_label, :vouch_btn, :trust_scale, :trust0, :public_btn, \
+      :keep_btn, :rate_label, :vouch_btn, :follow_btn, :trust_scale, :trust0, :public_btn, \
       :public_scale, :lang_entry, :format, :view_buffer, :last_sw
 
     # Add menu item
@@ -8399,14 +8399,21 @@ module PandoraGtk
 
       #rbvbox = Gtk::VBox.new
 
+      keep_box = Gtk::VBox.new
       @keep_btn = Gtk::CheckButton.new(_('keep'), true)
       #keep_btn.signal_connect('toggled') do |widget|
       #  p "keep"
       #end
       #rbvbox.pack_start(keep_btn, false, false, 0)
       #@rate_label = Gtk::Label.new('-')
-      keep_box = Gtk::VBox.new
       keep_box.pack_start(keep_btn, false, false, 0)
+      @follow_btn = Gtk::CheckButton.new(_('follow'), true)
+      follow_btn.signal_connect('clicked') do |widget|
+        if widget.active?
+          @keep_btn.active = true
+        end
+      end
+      keep_box.pack_start(follow_btn, false, false, 0)
 
       @lang_entry = Gtk::Combo.new
       lang_entry.set_popdown_strings(PandoraModel.lang_list)
@@ -8509,6 +8516,7 @@ module PandoraGtk
             pub_lev0 ||= 0.0
             public_scale.value = pub_lev0
             @keep_btn.active = true
+            @follow_btn.active = true
             @vouch_btn.active = true
           else
             pub_lev0 = public_scale.value
@@ -11190,7 +11198,7 @@ module PandoraGtk
                           if res
                             # Delete old arch paths
                             unzip_mask = File.join($pandora_base_dir, 'robux-pandora-*')
-                            unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
+                            p unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
                             unzip_paths.each do |pathfilename|
                               p 'Remove dir: '+pathfilename
                               FileUtils.remove_dir(pathfilename)
@@ -11211,27 +11219,24 @@ module PandoraGtk
                               PandoraUtils.log_message(LM_Info, _('Arch is unzipped'))
                               #unzip_path = File.join($pandora_base_dir, 'Pandora-master')
                               unzip_path = nil
-                              unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
+                              p unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
                               unzip_path = unzip_paths[0] if (unzip_paths.size>0)
                               if unzip_path and Dir.exist?(unzip_path)
                                 begin
                                   p 'Copy '+unzip_path+' to '+$pandora_root_dir
                                   FileUtils.copy_entry(unzip_path, $pandora_root_dir, true)
                                   PandoraUtils.log_message(LM_Info, _('Files are updated'))
-                                rescue
+                                rescue => err
                                   res = false
+                                  PandoraUtils.log_message(LM_Warning, _('Cannot copy files from zip arch')+': '+err.message)
                                 end
                                 # Remove used arch dir
                                 begin
                                   FileUtils.remove_dir(unzip_path)
-                                rescue
-                                  PandoraUtils.log_message(LM_Warning, _('Cannot remove arch dir')+': '+unzip_path)
+                                rescue => err
+                                  PandoraUtils.log_message(LM_Warning, _('Cannot remove arch dir')+' ['+unzip_path+']: '+err.message)
                                 end
-                                if res
-                                  step = 255
-                                else
-                                  PandoraUtils.log_message(LM_Warning, _('Cannot copy files from zip arch'))
-                                end
+                                step = 255 if res
                               else
                                 PandoraUtils.log_message(LM_Warning, _('Unzipped directory does not exist'))
                               end
@@ -11427,10 +11432,11 @@ module PandoraGtk
           count, rate, querist_rate = PandoraCrypto.rate_of_panobj(panhash0)
           trust = nil
           p PandoraUtils.bytes_to_hex(panhash0)
-          res = PandoraCrypto.trust_in_panobj(panhash0)
-          trust = res if res.is_a? Float
-          dialog.vouch_btn.active = (res != nil)
-          dialog.vouch_btn.inconsistent = (res.is_a? Integer)
+          p 'trust or num'
+          trust_or_num = PandoraCrypto.trust_in_panobj(panhash0)
+          trust = trust_or_num if (trust_or_num.is_a? Float)
+          dialog.vouch_btn.active = (trust_or_num != nil)
+          dialog.vouch_btn.inconsistent = (trust_or_num.is_a? Integer)
           dialog.trust_scale.sensitive = (trust != nil)
           #dialog.trust_scale.signal_emit('value-changed')
           trust ||= 0.0
@@ -11440,11 +11446,15 @@ module PandoraGtk
           dialog.keep_btn.active = (PandoraModel::PSF_Support & panstate)>0
 
           pub_level = PandoraModel.act_relation(nil, panhash0, RK_MinPublic, :check)
-          p pub_level
           dialog.public_btn.active = pub_level
           dialog.public_btn.inconsistent = (pub_level == nil)
           dialog.public_scale.value = (pub_level-RK_MinPublic-10)/10.0 if pub_level
           dialog.public_scale.sensitive = pub_level
+
+          p 'follow'
+          p follow = PandoraModel.act_relation(nil, panhash0, RK_Follow, :check)
+          dialog.follow_btn.active = follow
+          dialog.follow_btn.inconsistent = (follow == nil)
 
           #dialog.lang_entry.active_text = lang.to_s
           #trust_lab = dialog.trust_btn.children[0]
@@ -11453,9 +11463,11 @@ module PandoraGtk
           key = PandoraCrypto.current_key(false, false)
           key_inited = (key and key[PandoraCrypto::KV_Obj])
           dialog.keep_btn.active = true
+          dialog.follow_btn.active = key_inited
           dialog.vouch_btn.active = key_inited
           dialog.trust_scale.sensitive = key_inited
           if not key_inited
+            dialog.follow_btn.inconsistent = true
             dialog.vouch_btn.inconsistent = true
             dialog.public_btn.inconsistent = true
           end
@@ -11594,6 +11606,19 @@ module PandoraGtk
                 if dialog.vouch_btn.active?
                   trust = (dialog.trust_scale.value*127).round
                   PandoraCrypto.sign_panobject(panobject, trust)
+                end
+              end
+
+              if not dialog.follow_btn.inconsistent?
+                PandoraModel.act_relation(nil, panhash0, RK_Follow, :delete, \
+                  true, true)
+                if (panhash != panhash0)
+                  PandoraModel.act_relation(nil, panhash, RK_Follow, :delete, \
+                    true, true)
+                end
+                if dialog.follow_btn.active?
+                  PandoraModel.act_relation(nil, panhash, RK_Follow, :create, \
+                    true, true)
                 end
               end
 
