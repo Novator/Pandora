@@ -319,3 +319,4 @@ Connect to=>Подключение к
 Download from=>Загрузка из
 Arch is unzipped=>Архив распакован
 Files are updated=>Файлы обновлены
+Was not unziped with method=>Не было распаковано методом

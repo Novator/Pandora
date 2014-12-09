@@ -362,7 +362,18 @@ module PandoraUtils
         mode = 'n' unless overwrite
         cmd = $unziper+' -'+mode+' "'+arch+'" -d "'+path+'"'
         if PandoraUtils.os_family=='windows'
-          res = win_exec(cmd)
+          #res = false
+          #p 'pid = spawn(cmd)'
+          #p pid = spawn(cmd)
+          #if pid
+          #  pid, status = Process.wait2(pid)
+          #  p 'status='+status.inspect
+          #  p 'status.exitstatus='+status.exitstatus.inspect
+          #  res = (status and (status.exitstatus==0))
+          #end
+          res = win_exec(cmd, 40)
+          #res = exec(cmd)
+          #res = system(cmd)
           p 'unzip: win_exec res='+res.inspect
         else
           res = system(cmd)
@@ -2723,22 +2734,39 @@ module PandoraUtils
     end
   end
 
-  $create_process_class = nil
+  $waCreateProcess = nil
+  $waGetExitCodeProcess = nil
+  $waWaitForSingleObject = nil
 
   # Execute in Windows
   # RU: Запустить в Винде
-  def self.win_exec(cmd)
+  def self.win_exec(cmd, wait_sec=nil)
     res = nil
     if init_win32api
-      if not $create_process_class
-        $create_process_class = Win32API.new('kernel32', 'CreateProcess', \
-          ['P', 'P', 'L', 'L', 'L', 'L', 'L', 'P', 'P', 'P'], 'L')
-      end
-      if $create_process_class
+      $waCreateProcess ||= Win32API.new('kernel32', 'CreateProcess', \
+        ['P', 'P', 'L', 'L', 'L', 'L', 'L', 'P', 'P', 'P'], 'L')
+      if $waCreateProcess
         si = 0.chr*256
         pi = 0.chr*256
-        res = $create_process_class.call(nil, cmd, 0, 0, 0, 8, \
+        res = $waCreateProcess.call(nil, cmd, 0, 0, 0, 8, \
           0, nil, si, pi)
+        res = (res.is_a? Numeric) and (res != 0)
+        if wait_sec and res
+          hProcess = pi.unpack("LLLL")[0]
+          #wait for sec
+          $waWaitForSingleObject ||= Win32API.new('kernel32', \
+            'WaitForSingleObject', ['L','L'],'L')
+          wait_sec = 45 unless (wait_sec.is_a? Numeric)
+          $waWaitForSingleObject.call(hProcess, wait_sec*1000)
+          #get exit code
+          $waGetExitCodeProcess ||= Win32API.new('kernel32', \
+            'GetExitCodeProcess', ['L','P'],'L')
+          exitcode = 0.chr * 32 
+          $waGetExitCodeProcess.call(hProcess, exitcode)
+          exitcode = exitcode.unpack("L")[0]
+          p 'exitcode='+exitcode.inspect
+          res = (exitcode.is_a? Numeric) and (exitcode == 0)
+        end
       end
     end
     res
@@ -2746,7 +2774,7 @@ module PandoraUtils
 
   $poly_play   = false
   $play_thread = nil
-  Default_Mp3 = 'message.mp3'
+  Default_Mp3 = 'message'
 
   # Play mp3
   # RU: Проиграть mp3
@@ -2757,8 +2785,8 @@ module PandoraUtils
       $play_thread = Thread.new do
         begin
           path ||= $pandora_view_dir
-          filename += '.mp3' unless filename.index('.')
           filename ||= Default_Mp3
+          filename += '.mp3' unless filename.index('.')
           filename = File.join(path, filename) unless filename.index('/') or filename.index("\\")
           filename = File.join(path, Default_Mp3) unless File.exist?(filename)
           cmd = $mp3_player+' "'+filename+'"'
@@ -11195,6 +11223,7 @@ module PandoraGtk
                         if http
                           $window.set_status_field(SF_Update, 'Doing')
                           res = update_file(http, main_uri.path, zip_local, main_uri.host)
+                          #res = true
                           if res
                             # Delete old arch paths
                             unzip_mask = File.join($pandora_base_dir, 'robux-pandora-*')
@@ -11206,12 +11235,12 @@ module PandoraGtk
                             # Unzip arch
                             res = PandoraUtils.unzip_via_lib(zip_local, $pandora_base_dir)
                             p 'unzip_file1 res='+res.inspect
-                            if not res
-                              PandoraUtils.log_message(LM_Trace, _('Cannot unzip arch')+'1')
+                            if not res 
+                              PandoraUtils.log_message(LM_Trace, _('Was not unziped with method')+': lib')
                               res = PandoraUtils.unzip_via_util(zip_local, $pandora_base_dir)
                               p 'unzip_file2 res='+res.inspect
                               if not res
-                                PandoraUtils.log_message(LM_Warning, _('Cannot unzip arch')+'2')
+                                PandoraUtils.log_message(LM_Warning, _('Was not unziped with method')+': util')
                               end
                             end
                             # Copy files to work dir
@@ -11219,12 +11248,14 @@ module PandoraGtk
                               PandoraUtils.log_message(LM_Info, _('Arch is unzipped'))
                               #unzip_path = File.join($pandora_base_dir, 'Pandora-master')
                               unzip_path = nil
+                              p 'unzip_mask='+unzip_mask.inspect
                               p unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
                               unzip_path = unzip_paths[0] if (unzip_paths.size>0)
                               if unzip_path and Dir.exist?(unzip_path)
                                 begin
                                   p 'Copy '+unzip_path+' to '+$pandora_root_dir
-                                  FileUtils.copy_entry(unzip_path, $pandora_root_dir, true)
+                                  #FileUtils.copy_entry(unzip_path, $pandora_root_dir, true)
+                                  FileUtils.cp_r(unzip_path+'/.', $pandora_root_dir)
                                   PandoraUtils.log_message(LM_Info, _('Files are updated'))
                                 rescue => err
                                   res = false
