@@ -11154,7 +11154,7 @@ module PandoraGtk
       rescue => err
         http = nil
         $window.set_status_field(SF_Update, 'Connection error')
-        PandoraUtils.log_message(LM_Warning, _('Cannot connect to GitHub to check update')+\
+        PandoraUtils.log_message(LM_Warning, _('Cannot connect to repo to check update')+\
           [main_uri.host, main_uri.port].inspect)
         puts err.message
       end
@@ -11171,7 +11171,7 @@ module PandoraGtk
         rescue => err
           http = nil
           $window.set_status_field(SF_Update, 'Connection error')
-          PandoraUtils.log_message(LM_Warning, _('Cannot reconnect to GitHub to update'))
+          PandoraUtils.log_message(LM_Warning, _('Cannot reconnect to repo to update'))
           puts err.message
         end
       end
@@ -11212,8 +11212,11 @@ module PandoraGtk
                   zip_size = File.size?(zip_local)
                   if zip_size
                     if File.stat(zip_local).writable?
-                      #main_uri = URI('https://codeload.github.com/Novator/Pandora/zip/master')
-                      main_uri = URI('https://bitbucket.org/robux/pandora/get/master.zip')
+                      #zip_on_repo = 'https://codeload.github.com/Novator/Pandora/zip/master'
+                      #dir_in_zip = 'Pandora-maste'
+                      zip_on_repo = 'https://bitbucket.org/robux/pandora/get/master.zip'
+                      dir_in_zip = 'robux-pandora'
+                      main_uri = URI(zip_on_repo)
                       http, time, step = connect_http(main_uri, zip_size, step)
                       if http
                         PandoraUtils.log_message(LM_Info, _('Need update'))
@@ -11226,17 +11229,19 @@ module PandoraGtk
                           #res = true
                           if res
                             # Delete old arch paths
-                            unzip_mask = File.join($pandora_base_dir, 'robux-pandora-*')
+                            unzip_mask = File.join($pandora_base_dir, dir_in_zip+'*')
                             p unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
                             unzip_paths.each do |pathfilename|
                               p 'Remove dir: '+pathfilename
-                              FileUtils.remove_dir(pathfilename)
+                              FileUtils.remove_dir(pathfilename) if File.directory?(pathfilename)
                             end
                             # Unzip arch
+                            unzip_meth = 'lib'
                             res = PandoraUtils.unzip_via_lib(zip_local, $pandora_base_dir)
                             p 'unzip_file1 res='+res.inspect
                             if not res 
                               PandoraUtils.log_message(LM_Trace, _('Was not unziped with method')+': lib')
+                              unzip_meth = 'util'
                               res = PandoraUtils.unzip_via_util(zip_local, $pandora_base_dir)
                               p 'unzip_file2 res='+res.inspect
                               if not res
@@ -11245,12 +11250,17 @@ module PandoraGtk
                             end
                             # Copy files to work dir
                             if res
-                              PandoraUtils.log_message(LM_Info, _('Arch is unzipped'))
+                              PandoraUtils.log_message(LM_Info, _('Arch is unzipped with method')+': '+unzip_meth)
                               #unzip_path = File.join($pandora_base_dir, 'Pandora-master')
                               unzip_path = nil
                               p 'unzip_mask='+unzip_mask.inspect
                               p unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
-                              unzip_path = unzip_paths[0] if (unzip_paths.size>0)
+                              unzip_paths.each do |pathfilename|
+                                if File.directory?(pathfilename)
+                                  unzip_path = pathfilename
+                                  break
+                                end
+                              end
                               if unzip_path and Dir.exist?(unzip_path)
                                 begin
                                   p 'Copy '+unzip_path+' to '+$pandora_root_dir
