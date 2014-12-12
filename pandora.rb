@@ -11124,13 +11124,13 @@ module PandoraGtk
       res
     end
 
-    def self.connect_http(main_uri, curr_size, step)
+    def self.connect_http(main_uri, curr_size, step, p_addr=nil, p_port=nil, p_user=nil, p_pass=nil)
       http = nil
       time = 0
       PandoraUtils.log_message(LM_Info, _('Connect to') + ': ' + \
         main_uri.host + main_uri.path + ':' + main_uri.port.to_s + '..')
       begin
-        http = Net::HTTP.new(main_uri.host, main_uri.port)
+        http = Net::HTTP.new(main_uri.host, main_uri.port, p_addr, p_port, p_user, p_pass)
         http.use_ssl = true
         http.verify_mode = OpenSSL::SSL::VERIFY_NONE
         http.open_timeout = 60*5
@@ -11161,10 +11161,10 @@ module PandoraGtk
       [http, time, step]
     end
 
-    def self.reconnect_if_need(http, time, main_uri)
+    def self.reconnect_if_need(http, time, main_uri, p_addr=nil, p_port=nil, p_user=nil, p_pass=nil)
       if (not http.active?) or (Time.now.to_i >= (time + 60*5))
         begin
-          http = Net::HTTP.new(main_uri.host, main_uri.port)
+          http = Net::HTTP.new(main_uri.host, main_uri.port, p_addr, p_port, p_user, p_pass)
           http.use_ssl = true
           http.verify_mode = OpenSSL::SSL::VERIFY_NONE
           http.open_timeout = 60*5
@@ -11195,6 +11195,18 @@ module PandoraGtk
           if File.stat(main_script).writable?
             update_zip = PandoraUtils.get_param('update_zip_first')
             update_zip = true if update_zip.nil?
+            proxy = PandoraUtils.get_param('proxy_server')
+            if proxy.is_a? String
+              proxy = proxy.split(':')
+              proxy ||= []
+              proxy = [proxy[0..-4].join(':'), *proxy[-3..-1]] if (proxy.size>4)
+              proxy[1] = proxy[1].to_i if (proxy.size>1)
+              proxy[2] = nil if (proxy.size>2) and (proxy[2]=='')
+              proxy[3] = nil if (proxy.size>3) and (proxy[3]=='')
+              PandoraUtils.log_message(LM_Info, _('Proxy is used')+' '+proxy.inspect)
+            else
+              proxy = []
+            end
             step = 0
             while (step<2) do
               step += 1
@@ -11217,12 +11229,12 @@ module PandoraGtk
                       zip_on_repo = 'https://bitbucket.org/robux/pandora/get/master.zip'
                       dir_in_zip = 'robux-pandora'
                       main_uri = URI(zip_on_repo)
-                      http, time, step = connect_http(main_uri, zip_size, step)
+                      http, time, step = connect_http(main_uri, zip_size, step, *proxy)
                       if http
                         PandoraUtils.log_message(LM_Info, _('Need update'))
                         $window.set_status_field(SF_Update, 'Need update')
                         Thread.stop
-                        http = reconnect_if_need(http, time, main_uri)
+                        http = reconnect_if_need(http, time, main_uri, *proxy)
                         if http
                           $window.set_status_field(SF_Update, 'Doing')
                           res = update_file(http, main_uri.path, zip_local, main_uri.host)
@@ -11301,12 +11313,12 @@ module PandoraGtk
                 update_zip = false
               else   # update with https from sources
                 main_uri = URI('https://raw.githubusercontent.com/Novator/Pandora/master/pandora.rb')
-                http, time, step = connect_http(main_uri, curr_size, step)
+                http, time, step = connect_http(main_uri, curr_size, step, *proxy)
                 if http
                   PandoraUtils.log_message(LM_Info, _('Need update'))
                   $window.set_status_field(SF_Update, 'Need update')
                   Thread.stop
-                  http = reconnect_if_need(http, time, main_uri)
+                  http = reconnect_if_need(http, time, main_uri, *proxy)
                   if http
                     $window.set_status_field(SF_Update, 'Doing')
                     # updating pandora.rb

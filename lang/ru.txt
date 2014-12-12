@@ -320,3 +320,4 @@ Download from=>Загрузка из
 Arch is unzipped with method=>Архив распакован методом
 Files are updated=>Файлы обновлены
 Was not unziped with method=>Не было распаковано методом
+Proxy is used=>Прокси используется
