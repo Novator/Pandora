@@ -1139,7 +1139,7 @@ module PandoraUtils
     end
     def create_table(table_name)
     end
-    def select_table(table_name, afilter=nil, fields=nil, sort=nil, limit=nil)
+    def select_table(table_name, afilter=nil, fields=nil, sort=nil, limit=nil, like_ex=nil)
     end
   end
 
@@ -1212,6 +1212,14 @@ module PandoraUtils
     def connect
       if not @connected
         @db = SQLite3::Database.new(conn_param)
+        db.create_function('regexp', 2) do |func, pattern, expression|
+          regexp = Regexp.new(pattern.to_s, Regexp::IGNORECASE)
+          if expression.to_s.match(regexp)
+            func.result = 1
+          else
+            func.result = 0
+          end
+        end
         @connected = true
         @exist = {}
       end
@@ -1285,7 +1293,7 @@ module PandoraUtils
       val
     end
 
-    def recognize_filter(filter, sql_values)
+    def recognize_filter(filter, sql_values, like_ex=nil)
       esc = false
       if filter.is_a? Hash
         #Example: {name => 'Michael', value => 0}
@@ -1299,18 +1307,20 @@ module PandoraUtils
         end
         filter = seq
       elsif filter.is_a? Array
-        #Example: [['name LIKE', 'Tom'], ['value >', 3.0]]
+        #Example: [['name LIKE', 'Tom*'], ['value >', 3.0], ['title REGEXP', '\Wand']]
         seq = ''
         filter.each do |n,v|
           if n
             seq = seq + ' AND ' if seq != ''
-            nn = n.to_s
-            if nn.index('LIKE') and (v.is_a? String)
-              v = escape_like_mask(v)
-              correct_aster_and_quest!(v)
-              esc = true
+            ns = n.to_s
+            if like_ex
+              if ns.index('LIKE') and (v.is_a? String)
+                v = escape_like_mask(v) if (like_ex & 1 > 0)
+                correct_aster_and_quest!(v) if (like_ex>=2)
+                esc = true
+              end
             end
-            seq = seq + nn + '?' #operation comes with name!
+            seq = seq + ns + '?' #operation comes with name!
             sql_values << v
           end
         end
@@ -1326,7 +1336,7 @@ module PandoraUtils
     end
 
     # RU: Делает выборку из таблицы
-    def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil)
+    def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil, like_ex=nil)
       res = nil
       connect
       tfd = fields_table(table_name)
@@ -1334,7 +1344,7 @@ module PandoraUtils
       #  table_name, filter, fields, sort, limit, like_filter].inspect
       if tfd and (tfd != [])
         sql_values = Array.new
-        filter, filter_sql = recognize_filter(filter, sql_values)
+        filter, filter_sql = recognize_filter(filter, sql_values, like_ex)
 
         fields ||= '*'
         sql = 'SELECT ' + fields + ' FROM ' + table_name + filter_sql
@@ -1442,9 +1452,9 @@ module PandoraUtils
     end
 
     # RU: Сделать выборку из таблицы
-    def get_tab_select(panobj, table_ptr, filter=nil, fields=nil, sort=nil, limit=nil)
+    def get_tab_select(panobj, table_ptr, filter=nil, fields=nil, sort=nil, limit=nil, like_ex=nil)
       adap = get_adapter(panobj, table_ptr)
-      adap.select_table(table_ptr[1], filter, fields, sort, limit)
+      adap.select_table(table_ptr[1], filter, fields, sort, limit, like_ex)
     end
 
     # RU: Записать данные в таблицу
@@ -2029,9 +2039,9 @@ module PandoraUtils
     end
 
     # RU: Делает выборку из таблицы
-    def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil, limit=nil)
+    def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil, limit=nil, like_ex=nil)
       res = self.class.repositories.get_tab_select(self, self.class.tables[0], \
-        afilter, fields, sort, limit)
+        afilter, fields, sort, limit, like_ex)
       if set_namesvalues and res[0].is_a? Array
         @namesvalues = {}
         tab_fields.each_with_index do |td, i|
@@ -2761,7 +2771,7 @@ module PandoraUtils
           #get exit code
           $waGetExitCodeProcess ||= Win32API.new('kernel32', \
             'GetExitCodeProcess', ['L','P'],'L')
-          exitcode = 0.chr * 32 
+          exitcode = 0.chr * 32
           $waGetExitCodeProcess.call(hProcess, exitcode)
           exitcode = exitcode.unpack("L")[0]
           p 'exitcode='+exitcode.inspect
@@ -3037,7 +3047,7 @@ module PandoraModel
 
   # Normalize and convert trust
   # RU: Нормализовать и преобразовать доверие
-  def self.normalize_trust(trust, to_int=nil)
+  def self.trust_to_int255(trust, to_int=nil)
     if trust.is_a? Integer
       if trust<(-127)
         trust = -127
@@ -3156,9 +3166,9 @@ module PandoraModel
     res
   end
 
-  # Get panhash list by kind list
-  # RU: Возвращает список панхэшей по списку сортов
-  def self.get_panhashes_by_kinds(kinds=nil, from_time=nil, models=nil)
+  # Get panhash list of modified recs from time for required kinds
+  # RU: Ищет список панхэшей изменённых с заданого времени для заданных сортов
+  def self.modified_records(from_time=nil, kinds=nil, models=nil)
     res = nil
     kinds ||= (1..254)
     kinds = PandoraUtils.str_to_bytes(kinds)
@@ -3181,38 +3191,80 @@ module PandoraModel
     res
   end
 
-  # Get panhash list by whyer
-  # RU: Возвращает список панхэшей для почемучки
-  def self.get_panhashes_by_whyer(whyer=nil, trust=nil, from_time=nil, models=nil)
-    res = nil
-    if whyer
+  # Float trust (-1..+1) to public level 21 (0..20)
+  # RU: Целое доверие в уровень публикации 21
+  def self.trust2_to_pub21(trust)
+    trust ||= -1
+    res = (trust*10).round+10
+  end
+
+  # Float trust (-1..+1) to public relation kind (235..255)
+  # RU: Целое доверие в вид связи "публикую"
+  def self.trust2_to_pub235(trust)
+    res = RK_MinPublic + trust2_to_pub21(trust)
+  end
+
+  # Get panhash list of published recs from time for level and kinds
+  # RU: Ищет список панхэшей опубликованных записей с времени для уровня и сортов
+  def self.public_records(publisher=nil, trust=nil, from_time=nil, pankinds=nil, models=nil)
+    sel = nil
+    publisher ||= PandoraCrypto.current_user_or_key(true)
+    if publisher
       relation_model = PandoraUtils.get_model('Relation', models)
       if relation_model
-        kind_op = '='
-        pub_kind = (rel_kind >= RK_MinPublic)
-        if pub_kind
-          rel_kind = RK_MinPublic if (act == :check)
-          kind_op = '>=' if (act != :create)
+        pub_level = trust2_to_pub235(trust) unless pub_level.is_a? Numeric
+        filter = [['first=', publisher], ['kind >=', pub_level]]
+        filter << ['modified >=', from_time.to_i] if from_time
+        pankinds = PandoraUtils.str_to_bytes(pankinds)
+        if ((pankinds.is_a? Array) and (pankinds.size==1))
+          filter << ['second LIKE', pankinds[0].chr+'%']
+          #filter << ['second REGEXP', '['+pankinds[0].chr+'].*']  #pankinds[0].chr
+          #filter << ['second REGEXP', '['+1.chr+2.chr+'].*']  #pankinds[0].chr
+          pankinds = nil
         end
-        kind_op = 'kind' + kind_op
-        filter = [['first=', panhash1], ['second=', panhash2], [kind_op, rel_kind]]
-        filter2 = nil
-
-
-        model = PandoraUtils.get_model(panobjectclass.ider, models)
-        if model
-          filter = [['modified >= ', from_time.to_i]]
-          p sel = model.select(filter, false, 'panhash', 'id ASC')
-          if sel and (sel.size>0)
-            res ||= []
-            sel.each do |row|
-              res << row[0]
-            end
-          end
+        sel = relation_model.select(filter, false, 'second', 'modified DESC', nil)
+        p 'public_records sel1='+sel.inspect
+        sel.flatten!
+        sel.uniq!
+        sel.compact!
+        sel.sort! {|a,b| a[0]<=>b[0] }
+        p 'public_records sel2='+sel.inspect
+        if pankinds
+          sel.delete_if { |panhash| (not (pankinds.include? panhash[0])) }
         end
       end
     end
-    res
+    sel
+  end
+
+  # Get panhash list of followed recs from time for kinds
+  # RU: Ищет список панхэшей следуемых записей с времени для сортов
+  def self.follow_records(follower=nil, from_time=nil, pankinds=nil, models=nil)
+    sel = nil
+    follower ||= PandoraCrypto.current_user_or_key(true)
+    if follower
+      relation_model = PandoraUtils.get_model('Relation', models)
+      if relation_model
+        filter = [['first=', follower], ['kind=', RK_Follow]]
+        filter << ['modified >=', from_time.to_i] if filter
+        pankinds = PandoraUtils.str_to_bytes(pankinds)
+        #if ((pankinds.is_a? Array) and (pankinds.size==1))
+        #  filter << ['panhash LIKE', pankinds[0]+'%']  REGEXP
+        #  pankinds = nil
+        #end
+        sel = relation_model.select(filter, false, 'second', 'modified DESC', nil, true)
+        p 'follow_records sel1='+sel.inspect
+        sel.flatten!
+        sel.uniq!
+        sel.compact!
+        sel.sort! {|a,b| a[0]<=>b[0] }
+        p 'follow_records sel2='+sel.inspect
+        if pankinds
+          sel.delete_if { |panhash| (not (pankinds.include? panhash[0])) }
+        end
+      end
+    end
+    sel
   end
 
   Languages = {0=>'all', 1=>'en', 2=>'zh', 3=>'es', 4=>'hi', 5=>'ru', 6=>'ar', \
@@ -4206,7 +4258,7 @@ module PandoraCrypto
           time_now = Time.now.to_i
           key_hash = key[KV_Panhash]
           creator = key[KV_Creator]
-          trust = PandoraModel.normalize_trust(trust, true)
+          trust = PandoraModel.trust_to_int255(trust, true)
 
           values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, \
             :pack=>PT_Pson1, :trust=>trust, :creator=>creator, :created=>time_now, \
@@ -4264,7 +4316,7 @@ module PandoraCrypto
             if created>last_date
               #p 'sign2: [creator, created, trust]='+[creator, created, trust].inspect
               last_date = created
-              res = PandoraModel.normalize_trust(trust, false)
+              res = PandoraModel.trust_to_int255(trust, false)
             end
           end
         else
@@ -4315,7 +4367,7 @@ module PandoraCrypto
               if (creator != prev_creator) or (i==last_i)
                 p 'sign3: [creator, created, last_trust]='+[creator, created, last_trust].inspect
                 person_trust = 1.0 #trust_of_person(creator, my_key_hash)
-                rate += PandoraModel.normalize_trust(last_trust, false) * person_trust
+                rate += PandoraModel.trust_to_int255(last_trust, false) * person_trust
                 prev_creator = creator
                 last_date = created
                 last_trust = trust
@@ -6213,6 +6265,7 @@ module PandoraNet
                     trust = -1.0 if not (trust.is_a? Float)
                     kind_list = PandoraCrypto.allowed_kinds(trust, kind_list)
 
+                    #public_records
                     panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
 
                     #panhash_list = PandoraModel.get_panhashes_by_whyer(whyer, trust, from_time)
@@ -10583,7 +10636,7 @@ module PandoraGtk
         sort = nil
         limit = nil
         filter = [['first_name LIKE', text]]
-        res = model.select(filter, false, fields, sort, limit)
+        res = model.select(filter, false, fields, sort, limit, 3)
         res ||= []
       end
       res
@@ -11251,7 +11304,7 @@ module PandoraGtk
                             unzip_meth = 'lib'
                             res = PandoraUtils.unzip_via_lib(zip_local, $pandora_base_dir)
                             p 'unzip_file1 res='+res.inspect
-                            if not res 
+                            if not res
                               PandoraUtils.log_message(LM_Trace, _('Was not unziped with method')+': lib')
                               unzip_meth = 'util'
                               res = PandoraUtils.unzip_via_util(zip_local, $pandora_base_dir)
@@ -13011,14 +13064,18 @@ module PandoraGtk
         when 'Wizard'
           from_time = Time.now.to_i - 5*24*3600
           trust = 0.5
-          list = PandoraModel.get_panhashes_by_kinds([1,11], from_time)
+          list = PandoraModel.public_records(nil, nil, nil, 1.chr)
+          #list = PandoraModel.follow_records
+          #list = PandoraModel.get_panhashes_by_kinds([1,11], from_time)
           p 'list='+list.inspect
 
-          list.each do |panhash|
-            p '----------------'
-            kind = PandoraUtils.kind_from_panhash(panhash)
-            p [panhash, kind].inspect
-            p res = PandoraModel.get_record_by_panhash(kind, panhash, true)
+          if list
+            list.each do |panhash|
+              p '----------------'
+              kind = PandoraUtils.kind_from_panhash(panhash)
+              p [panhash, kind].inspect
+              p res = PandoraModel.get_record_by_panhash(kind, panhash, true)
+            end
           end
 
 
