@@ -3191,6 +3191,37 @@ module PandoraModel
     res
   end
 
+  # Get panhash list of recs created by creator from time for kinds
+  # RU: Ищет список панхэшей записей от создателя от времени для сортов
+  def self.created_records(creator=0, from_time=nil, kinds=nil, models=nil)
+    res = nil
+    creator ||= PandoraCrypto.current_user_or_key(true)
+    if creator
+      # creator=0 - all recs, creator=1 - created recs, creator=String - recs of the creator
+      # RU: Все записи (0), записи Created (1), записи указанного создателя (String)
+      kinds ||= (1..254)
+      kinds = PandoraUtils.str_to_bytes(kinds)
+      kinds.each do |kind|
+        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+        if panobjectclass and ((creator==0) or (panobjectclass <= PandoraModel::Created))
+          model = PandoraUtils.get_model(panobjectclass.ider, models)
+          if model
+            filter = [['modified >= ', from_time.to_i]]
+            filter << ['creator =', creator] if (creator.is_a? String)
+            p sel = model.select(filter, false, 'panhash', 'modified ASC')
+            if sel and (sel.size>0)
+              res ||= []
+              sel.each do |row|
+                res << row[0]
+              end
+            end
+          end
+        end
+      end
+    end
+    res
+  end
+
   # Float trust (-1..+1) to public level 21 (0..20)
   # RU: Целое доверие в уровень публикации 21
   def self.trust2_to_pub21(trust)
@@ -3212,7 +3243,8 @@ module PandoraModel
     if publisher
       relation_model = PandoraUtils.get_model('Relation', models)
       if relation_model
-        pub_level = trust2_to_pub235(trust) unless pub_level.is_a? Numeric
+        pub_level = trust
+        pub_level = trust2_to_pub235(trust) unless trust.is_a? Numeric
         filter = [['first=', publisher], ['kind >=', pub_level]]
         filter << ['modified >=', from_time.to_i] if from_time
         pankinds = PandoraUtils.str_to_bytes(pankinds)
@@ -6103,21 +6135,19 @@ module PandoraNet
             else
               err_scmd('Record ('+kind.to_s+') came on wrong stage')
             end
-          else
-            if (@stage==ES_Exchange)
-              records, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
-              p log_mes+"!record2! recs="+records.inspect
-              records.each do |record|
-                kind = record[0].ord
-                lang = record[1].ord
-                values = PandoraUtils.pson_to_namehash(record[2..-1])
-                if not PandoraModel.save_record(kind, lang, values, @recv_models)
-                  PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 2')
-                end
+          elsif (@stage==ES_Exchange)
+            records, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+            p log_mes+"!record2! recs="+records.inspect
+            records.each do |record|
+              kind = record[0].ord
+              lang = record[1].ord
+              values = PandoraUtils.pson_to_namehash(record[2..-1])
+              if not PandoraModel.save_record(kind, lang, values, @recv_models)
+                PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 2')
               end
-            else
-              err_scmd('Records came on wrong stage')
             end
+          else
+            err_scmd('Records came on wrong stage')
           end
         when EC_Lure
           send_segment_to_fish(rcode, rdata)
