@@ -32,7 +32,7 @@ def _(frase)
 end
 
 
-#=begin
+=begin
 require 'gtksourceview3'
 	
 	w = Gtk::Window.new
@@ -55,7 +55,7 @@ require 'gtksourceview3'
 	w.show_all
 	
 	Gtk.main
-#=end
+=end
 
 # ====================================================================
 require "#{File.dirname(__FILE__)}/p_utils"
