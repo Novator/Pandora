@@ -638,8 +638,8 @@ module PandoraUtils
     time_str = time.strftime(time_fmt)
   end
 
-  # Value to view
-  # RU: Значение для отображения
+  # Raw value to view string
+  # RU: Сырое значение в строку для отображения
   def self.val_to_view(val, type, view, can_edit=true)
     color = nil
     if val and view
@@ -716,8 +716,8 @@ module PandoraUtils
     [val, color]
   end
 
-  # Convert any value to concerted view
-  # RU: Преобразовать значение в согласованный вид
+  # Entered view string to value of required type
+  # RU: Введённая строка в значение требуемого типа
   def self.view_to_val(val, type, view)
     val = nil if val==''
     if val and view
@@ -2093,21 +2093,6 @@ module PandoraUtils
         @panhash_pattern = self.class.panhash_pattern
       end
       @panhash_pattern
-    end
-
-    # Strict language name from its code
-    # RU: Краткое обозначение языка по его коду
-    def lang_to_str(lang)
-      case lang
-        when 0
-          _('any')
-        when 1
-          _('eng')
-        when 5
-          _('rus')
-        else
-          _('lang')
-      end
     end
 
     # Panhash formula for show
@@ -3699,7 +3684,7 @@ module PandoraCrypto
     [key, keypub, keypriv, type_klen, cipher_hash, cipherkey]
   end
 
-  # Init key or key pare
+  # Init key or key pair
   # RU: Инициализирует ключ или ключевую пару
   def self.init_key(key_vec)
     key = key_vec[KV_Obj]
