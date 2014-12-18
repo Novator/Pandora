@@ -94,13 +94,13 @@ module PandoraGtk
       page = notebook.append_page(sw, label_box1)
       vpaned.pack1(notebook, true, true)
 
-      @panelbox = Gtk::VBox.new
-      @hbox = Gtk::HBox.new
-      panelbox.pack_start(hbox, false, false, 0)
+      @panelbox = Gtk::Box.new(:vertical)
+      @hbox = Gtk::Box.new(:horizontal)
+      panelbox.pack_start(hbox, :expand => false, :fill => false, :padding => 0)
 
       vpaned.pack2(panelbox, false, true)
 
-      bbox = Gtk::HBox.new
+      bbox = Gtk::Box.new(:horizontal)
       bbox.border_width = 2
       bbox.spacing = 4
 
@@ -110,7 +110,7 @@ module PandoraGtk
         @response=2
         #finish
       }
-      bbox.pack_start(okbutton, false, false, 0)
+      bbox.pack_start(okbutton, :expand => false, :fill => false, :padding => 0)
 
       @cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
       cancelbutton.width_request = 110
@@ -118,9 +118,9 @@ module PandoraGtk
         @response=1
         #finish
       }
-      bbox.pack_start(cancelbutton, false, false, 0)
+      bbox.pack_start(cancelbutton, :expand => false, :fill => false, :padding => 0)
 
-      hbox.pack_start(bbox, true, false, 1.0)
+      hbox.pack_start(bbox, :expand => true, :fill => false, :padding => 1.0)
 
       #self.signal_connect('response') do |widget, response|
       #  case response
@@ -353,11 +353,12 @@ module PandoraGtk
 
   # Entry for date
   # RU: Поле ввода даты
-  class DateEntry < Gtk::HBox
+  class DateEntry < Gtk::Box
     attr_accessor :entry, :button
 
     def initialize(*args)
-      super(*args)
+#GTK3      super(*args)
+      super(:horizontal)
       @entry = MaskEntry.new
       @entry.mask = '0123456789.'
       @entry.max_length = 10
@@ -373,10 +374,10 @@ module PandoraGtk
         @button.activate if res
         false
       end
-      self.pack_start(entry, true, true, 0)
+      self.pack_start(entry, :expand => true, :fill => true, :padding => 0)
       align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
       align.add(@button)
-      self.pack_start(align, false, false, 1)
+      self.pack_start(align, :expand => false, :fill => false, :padding => 1)
       esize = entry.size_request
       h = esize[1]-2
       @button.set_size_request(h, h)
@@ -528,11 +529,12 @@ module PandoraGtk
 
   # Entry for panhash
   # RU: Поле ввода панхэша
-  class PanhashBox < Gtk::HBox
+  class PanhashBox < Gtk::Box
     attr_accessor :types, :panclasses, :entry, :button
 
     def initialize(panhash_type, *args)
-      super(*args)
+#GTK3      super(*args)
+      super(:horizontal)
       @types = panhash_type
       @entry = HexEntry.new
       @button = Gtk::Button.new('...')
@@ -544,10 +546,10 @@ module PandoraGtk
         @button.activate if res
         false
       end
-      self.pack_start(entry, true, true, 0)
+      self.pack_start(entry, :expand => true, :fill => true, :padding => 0)
       align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
       align.add(@button)
-      self.pack_start(align, false, false, 1)
+      self.pack_start(align, :expand => false, :fill => false, :padding => 1)
       esize = entry.size_request
       h = esize[1]-2
       @button.set_size_request(h, h)
@@ -653,11 +655,12 @@ module PandoraGtk
 
   # Entry for filename
   # RU: Поле выбора имени файла
-  class FilenameBox < Gtk::HBox
+  class FilenameBox < Gtk::Box
     attr_accessor :entry, :button, :window
 
     def initialize(parent, *args)
-      super(*args)
+#GTK3      super(*args)
+      super(:horizontal)
       @entry = Gtk::Entry.new
       @button = Gtk::Button.new('...')
       @button.can_focus = false
@@ -669,10 +672,10 @@ module PandoraGtk
         false
       end
       @window = parent
-      self.pack_start(entry, true, true, 0)
+      self.pack_start(entry, :expand => true, :fill => true, :padding => 0)
       align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
       align.add(@button)
-      self.pack_start(align, false, false, 1)
+      self.pack_start(align, :expand => false, :fill => false, :padding => 1)
       esize = entry.size_request
       h = esize[1]-2
       @button.set_size_request(h, h)
@@ -793,20 +796,20 @@ module PandoraGtk
 
   # Entry for coordinates
   # RU: Поле ввода координат
-  class CoordBox < Gtk::HBox
+  class CoordBox < Gtk::Box
     attr_accessor :latitude, :longitude
     CoordWidth = 120
 
     def initialize
-      super
+      super(:horizontal)
       @latitude   = CoordEntry.new
       latitude.tooltip_text = _('Latitude')+': 60.716, 60 43\', 60.43\'00"N'+"\n["+latitude.mask+']'
       @longitude  = CoordEntry.new
       longitude.tooltip_text = _('Longitude')+': -114.9, W114 54\' 0", 114.9W'+"\n["+longitude.mask+']'
       latitude.width_request = CoordWidth
       longitude.width_request = CoordWidth
-      self.pack_start(latitude, false, false, 0)
-      self.pack_start(longitude, false, false, 1)
+      self.pack_start(latitude, :expand => false, :fill => false, :padding => 0)
+      self.pack_start(longitude, :expand => false, :fill => false, :padding => 1)
     end
 
     def max_length=(maxlen)
@@ -1085,11 +1088,11 @@ module PandoraGtk
 
       @toolbar = Gtk::Toolbar.new
       toolbar.toolbar_style = Gtk::Toolbar::Style::ICONS
-      panelbox.pack_start(toolbar, false, false, 0)
+      panelbox.pack_start(toolbar, :expand => false, :fill => false, :padding => 0)
 
       @toolbar2 = Gtk::Toolbar.new
       toolbar2.toolbar_style = Gtk::Toolbar::Style::ICONS
-      panelbox.pack_start(toolbar2, false, false, 0)
+      panelbox.pack_start(toolbar2, :expand => false, :fill => false, :padding => 0)
 
       @raw_buffer = nil
       @view_mode = true
@@ -1264,47 +1267,47 @@ bodywid = view
         end
       end
 
-      @vbox = Gtk::VBox.new
+      @vbox = Gtk::Box.new(:vertical)
       viewport.add(@vbox)
 
       @statusbar = Gtk::Statusbar.new
       PandoraGtk.set_statusbar_text(statusbar, '')
-      statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
+      statusbar.pack_start(Gtk::SeparatorToolItem.new, :expand => false, :fill => false, :padding => 0)
       panhash_btn = Gtk::Button.new(_('Rate: '))
       panhash_btn.relief = Gtk::RELIEF_NONE
-      statusbar.pack_start(panhash_btn, false, false, 0)
+      statusbar.pack_start(panhash_btn, :expand => false, :fill => false, :padding => 0)
 
-      panelbox.pack_start(statusbar, false, false, 0)
+      panelbox.pack_start(statusbar, :expand => false, :fill => false, :padding => 0)
 
 
-      #rbvbox = Gtk::VBox.new
+      #rbvbox = Gtk::Box.new(:vertical)
 
-      keep_box = Gtk::VBox.new
+      keep_box = Gtk::Box.new(:vertical)
       @keep_btn = Gtk::CheckButton.new(_('keep'), true)
       #keep_btn.signal_connect('toggled') do |widget|
       #  p "keep"
       #end
-      #rbvbox.pack_start(keep_btn, false, false, 0)
+      #rbvbox.pack_start(keep_btn, :expand => false, :fill => false, :padding => 0)
       #@rate_label = Gtk::Label.new('-')
-      keep_box.pack_start(keep_btn, false, false, 0)
+      keep_box.pack_start(keep_btn, :expand => false, :fill => false, :padding => 0)
       @follow_btn = Gtk::CheckButton.new(_('follow'), true)
       follow_btn.signal_connect('clicked') do |widget|
         if widget.active?
           @keep_btn.active = true
         end
       end
-      keep_box.pack_start(follow_btn, false, false, 0)
+      keep_box.pack_start(follow_btn, :expand => false, :fill => false, :padding => 0)
 
       @lang_entry = Gtk::Combo.new
       lang_entry.set_popdown_strings(PandoraModel.lang_list)
       lang_entry.entry.text = ''
       lang_entry.entry.select_region(0, -1)
       lang_entry.set_size_request(50, -1)
-      keep_box.pack_start(lang_entry, true, true, 5)
+      keep_box.pack_start(lang_entry, :expand => true, :fill => true, :padding => 5)
 
-      hbox.pack_start(keep_box, false, false, 0)
+      hbox.pack_start(keep_box, :expand => false, :fill => false, :padding => 0)
 
-      trust_box = Gtk::VBox.new
+      trust_box = Gtk::Box.new(:vertical)
 
       trust0 = nil
       @trust_scale = nil
@@ -1328,7 +1331,7 @@ bodywid = view
           end
         end
       end
-      trust_box.pack_start(vouch_btn, false, false, 0)
+      trust_box.pack_start(vouch_btn, :expand => false, :fill => false, :padding => 0)
 
       #@scale_button = Gtk::ScaleButton.new(Gtk::IconSize::BUTTON)
       #@scale_button.set_icons(['gtk-goto-bottom', 'gtk-goto-top', 'gtk-execute'])
@@ -1376,11 +1379,11 @@ bodywid = view
       #scale.signal_connect('change-value') do |widget|
       #  true
       #end
-      trust_box.pack_start(trust_scale, false, false, 0)
-      hbox.pack_start(trust_box, false, false, 0)
+      trust_box.pack_start(trust_scale, :expand => false, :fill => false, :padding => 0)
+      hbox.pack_start(trust_box, :expand => false, :fill => false, :padding => 0)
 
       pub_lev0 = nil
-      public_box = Gtk::VBox.new
+      public_box = Gtk::Box.new(:vertical)
       @public_btn = Gtk::CheckButton.new(_('public'), true)
       public_btn.signal_connect('clicked') do |widget|
         if not widget.destroyed?
@@ -1403,7 +1406,7 @@ bodywid = view
           end
         end
       end
-      public_box.pack_start(public_btn, false, false, 0)
+      public_box.pack_start(public_btn, :expand => false, :fill => false, :padding => 0)
 
       #@lang_entry = Gtk::ComboBoxEntry.new(true)
       #lang_entry.set_size_request(60, 15)
@@ -1416,7 +1419,7 @@ bodywid = view
       #@lang_entry.entry.text = ''
       #@lang_entry.entry.select_region(0, -1)
       #@lang_entry.set_size_request(50, -1)
-      #public_box.pack_start(lang_entry, true, true, 5)
+      #public_box.pack_start(lang_entry, :expand => true, :fill => true, :padding => 5)
 
       adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
       @public_scale = Gtk::HScale.new(adjustment)
@@ -1449,9 +1452,9 @@ bodywid = view
         tip = tips[i]
         widget.tooltip_text = tip
       end
-      public_box.pack_start(public_scale, false, false, 0)
+      public_box.pack_start(public_scale, :expand => false, :fill => false, :padding => 0)
 
-      hbox.pack_start(public_box, false, false, 0)
+      hbox.pack_start(public_box, :expand => false, :fill => false, :padding => 0)
       hbox.show_all
 
       bw,bh = hbox.size_request
@@ -1859,30 +1862,30 @@ bodywid = view
 
         # show field matrix on form
         field_matrix.each do |row|
-          row_hbox = Gtk::HBox.new
+          row_hbox = Gtk::Box.new(:horizontal)
           row.each_index do |field_index|
             field = row[field_index]
             label = field[FI_Label]
             entry = field[FI_Widget]
             if (field[FI_LabOr]==nil) or (field[FI_LabOr]==:left)
-              row_hbox.pack_start(label, false, false, 2)
-              row_hbox.pack_start(entry, false, false, 2)
+              row_hbox.pack_start(label, :expand => false, :fill => false, :padding => 2)
+              row_hbox.pack_start(entry, :expand => false, :fill => false, :padding => 2)
             elsif (field[FI_LabOr]==:right)
-              row_hbox.pack_start(entry, false, false, 2)
-              row_hbox.pack_start(label, false, false, 2)
+              row_hbox.pack_start(entry, :expand => false, :fill => false, :padding => 2)
+              row_hbox.pack_start(label, :expand => false, :fill => false, :padding => 2)
             else
-              field_vbox = Gtk::VBox.new
+              field_vbox = Gtk::Box.new(:vertical)
               if (field[FI_LabOr]==:down)
-                field_vbox.pack_start(entry, false, false, 2)
-                field_vbox.pack_start(label, false, false, 2)
+                field_vbox.pack_start(entry, :expand => false, :fill => false, :padding => 2)
+                field_vbox.pack_start(label, :expand => false, :fill => false, :padding => 2)
               else
-                field_vbox.pack_start(label, false, false, 2)
-                field_vbox.pack_start(entry, false, false, 2)
+                field_vbox.pack_start(label, :expand => false, :fill => false, :padding => 2)
+                field_vbox.pack_start(entry, :expand => false, :fill => false, :padding => 2)
               end
-              row_hbox.pack_start(field_vbox, false, false, 2)
+              row_hbox.pack_start(field_vbox, :expand => false, :fill => false, :padding => 2)
             end
           end
-          @vbox.pack_start(row_hbox, false, false, 2)
+          @vbox.pack_start(row_hbox, :expand => false, :fill => false, :padding => 2)
         end
         @vbox.child_visible = true
         @vbox.show_all
@@ -1902,9 +1905,9 @@ bodywid = view
 #GTK3      super(*args)
       super(:horizontal)
       label_box = self
-      label_box.pack_start(image, false, false, 0) if image
+      label_box.pack_start(image, :expand => false, :fill => false, :padding => 0) if image
       @label = Gtk::Label.new(title)
-      label_box.pack_start(label, false, false, 0)
+      label_box.pack_start(label, :expand => false, :fill => false, :padding => 0)
       if child
         btn = Gtk::Button.new
         btn.relief = Gtk::RELIEF_NONE
@@ -1926,7 +1929,7 @@ bodywid = view
         btn.add(close_image)
         align = Gtk::Alignment.new(1.0, 0.5, 0.0, 0.0)
         align.add(btn)
-        label_box.pack_start(align, false, false, 0)
+        label_box.pack_start(align, :expand => false, :fill => false, :padding => 0)
       end
       label_box.spacing = 3
       label_box.show_all
@@ -2029,9 +2032,9 @@ bodywid = view
 #avplay -bufsize 10 tcp://127.0.0.1:5000
 
 
-      hbox = Gtk::HBox.new
+      hbox = Gtk::Box.new(:horizontal)
 
-      bbox = Gtk::HBox.new
+      bbox = Gtk::Box.new(:horizontal)
       bbox.border_width = 5
       bbox.spacing = 5
 
@@ -2050,7 +2053,7 @@ bodywid = view
       end
       online_button.safe_set_active(known_node != nil)
 
-      bbox.pack_start(online_button, false, false, 0)
+      bbox.pack_start(online_button, :expand => false, :fill => false, :padding => 0)
 
       @snd_button = SafeCheckButton.new(_('Sound'), true)
       snd_button.safe_signal_clicked do |widget|
@@ -2063,7 +2066,7 @@ bodywid = view
           init_audio_sender(false)
         end
       end
-      bbox.pack_start(snd_button, false, false, 0)
+      bbox.pack_start(snd_button, :expand => false, :fill => false, :padding => 0)
 
       @vid_button = SafeCheckButton.new(_('Video'), true)
       vid_button.safe_signal_clicked do |widget|
@@ -2077,9 +2080,9 @@ bodywid = view
         end
       end
 
-      bbox.pack_start(vid_button, false, false, 0)
+      bbox.pack_start(vid_button, :expand => false, :fill => false, :padding => 0)
 
-      hbox.pack_start(bbox, false, false, 1.0)
+      hbox.pack_start(bbox, :expand => false, :fill => false, :padding => 1.0)
 
       vpaned1.pack1(area_recv, false, true)
       vpaned1.pack2(hbox, false, true)
@@ -2135,17 +2138,17 @@ bodywid = view
       hpaned2.pack1(area_send, false, true)
 
 
-      option_box = Gtk::HBox.new
+      option_box = Gtk::Box.new(:horizontal)
 
-      sender_box = Gtk::VBox.new
-      sender_box.pack_start(option_box, false, true, 0)
-      sender_box.pack_start(editbox, true, true, 0)
+      sender_box = Gtk::Box.new(:vertical)
+      sender_box.pack_start(option_box, :expand => false, :fill => true, :padding => 0)
+      sender_box.pack_start(editbox, :expand => true, :fill => true, :padding => 0)
 
       vouch_btn = SafeCheckButton.new(_('vouch'), true)
       vouch_btn.safe_signal_clicked do |widget|
         #update_btn.clicked
       end
-      option_box.pack_start(vouch_btn, false, false, 0)
+      option_box.pack_start(vouch_btn, :expand => false, :fill => false, :padding => 0)
 
       adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
       trust_scale = Gtk::HScale.new(adjustment)
@@ -2155,18 +2158,18 @@ bodywid = view
       trust_scale.draw_value = true
       trust_scale.value = 1.0
       trust_scale.value_pos = Gtk::POS_RIGHT
-      option_box.pack_start(trust_scale, false, false, 0)
+      option_box.pack_start(trust_scale, :expand => false, :fill => false, :padding => 0)
 
       smile_btn = Gtk::Button.new(_('smile'))
-      option_box.pack_start(smile_btn, false, false, 4)
+      option_box.pack_start(smile_btn, :expand => false, :fill => false, :padding => 4)
       game_btn = Gtk::Button.new(_('game'))
-      option_box.pack_start(game_btn, false, false, 4)
+      option_box.pack_start(game_btn, :expand => false, :fill => false, :padding => 4)
 
       require_sign_btn = SafeCheckButton.new(_('require sign'), true)
       require_sign_btn.safe_signal_clicked do |widget|
         #update_btn.clicked
       end
-      option_box.pack_start(require_sign_btn, false, false, 0)
+      option_box.pack_start(require_sign_btn, :expand => false, :fill => false, :padding => 0)
 
       hpaned2.pack2(sender_box, true, true)
 
@@ -2203,10 +2206,10 @@ bodywid = view
 
       column = Gtk::TreeViewColumn.new('', renderer, 'active' => CL_Online)
 
-      #title_widget = Gtk::HBox.new
-      #title_widget.pack_start(tit_image, false, false, 0)
+      #title_widget = Gtk::Box.new(:horizontal)
+      #title_widget.pack_start(tit_image, :expand => false, :fill => false, :padding => 0)
       #title_label = Gtk::Label.new(_('People'))
-      #title_widget.pack_start(title_label, false, false, 0)
+      #title_widget.pack_start(title_label, :expand => false, :fill => false, :padding => 0)
       column.widget = tit_image
 
 
@@ -3505,19 +3508,19 @@ bodywid = view
 
       kind_entry.set_size_request(100, -1)
 
-      hbox = Gtk::HBox.new
-      hbox.pack_start(kind_entry, false, false, 0)
-      hbox.pack_start(search_btn, false, false, 0)
-      hbox.pack_start(search_entry, true, true, 0)
-      hbox.pack_start(stop_btn, false, false, 0)
-      hbox.pack_start(prev_btn, false, false, 0)
-      hbox.pack_start(next_btn, false, false, 0)
+      hbox = Gtk::Box.new(:horizontal)
+      hbox.pack_start(kind_entry, :expand => false, :fill => false, :padding => 0)
+      hbox.pack_start(search_btn, :expand => false, :fill => false, :padding => 0)
+      hbox.pack_start(search_entry, :expand => true, :fill => true, :padding => 0)
+      hbox.pack_start(stop_btn, :expand => false, :fill => false, :padding => 0)
+      hbox.pack_start(prev_btn, :expand => false, :fill => false, :padding => 0)
+      hbox.pack_start(next_btn, :expand => false, :fill => false, :padding => 0)
 
-      option_box = Gtk::HBox.new
+      option_box = Gtk::Box.new(:horizontal)
 
-      vbox = Gtk::VBox.new
-      vbox.pack_start(hbox, false, true, 0)
-      vbox.pack_start(option_box, false, true, 0)
+      vbox = Gtk::Box.new(:vertical)
+      vbox.pack_start(hbox, :expand => false, :fill => true, :padding => 0)
+      vbox.pack_start(option_box, :expand => false, :fill => true, :padding => 0)
 
       #kind_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::PROPERTIES)
       #kind_btn.tooltip_text = _('Change password')
@@ -3563,9 +3566,9 @@ bodywid = view
       end
       hunt_btn.safe_set_active(true)
 
-      option_box.pack_start(local_btn, false, true, 1)
-      option_box.pack_start(active_btn, false, true, 1)
-      option_box.pack_start(hunt_btn, false, true, 1)
+      option_box.pack_start(local_btn, :expand => false, :fill => true, :padding => 1)
+      option_box.pack_start(active_btn, :expand => false, :fill => true, :padding => 1)
+      option_box.pack_start(hunt_btn, :expand => false, :fill => true, :padding => 1)
 
       list_sw = Gtk::ScrolledWindow.new(nil, nil)
       list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
@@ -3700,8 +3703,8 @@ bodywid = view
       set_policy(:automatic, :automatic)
       border_width = 0
 
-      vbox = Gtk::VBox.new
-      hbox = Gtk::HBox.new
+      vbox = Gtk::Box.new(:vertical)
+      hbox = Gtk::Box.new(:horizontal)
 
       title = _('Update')
       @update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
@@ -3731,11 +3734,11 @@ bodywid = view
       delete_btn.tooltip_text = title
       delete_btn.label = title
 
-      hbox.pack_start(hunted_btn, false, true, 0)
-      hbox.pack_start(hunters_btn, false, true, 0)
-      hbox.pack_start(fishers_btn, false, true, 0)
-      hbox.pack_start(update_btn, false, true, 0)
-      hbox.pack_start(delete_btn, false, true, 0)
+      hbox.pack_start(hunted_btn, :expand => false, :fill => true, :padding => 0)
+      hbox.pack_start(hunters_btn, :expand => false, :fill => true, :padding => 0)
+      hbox.pack_start(fishers_btn, :expand => false, :fill => true, :padding => 0)
+      hbox.pack_start(update_btn, :expand => false, :fill => true, :padding => 0)
+      hbox.pack_start(delete_btn, :expand => false, :fill => true, :padding => 0)
 
       list_sw = Gtk::ScrolledWindow.new(nil, nil)
       list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
@@ -3827,8 +3830,8 @@ bodywid = view
 
       list_sw.add(list_tree)
 
-      vbox.pack_start(hbox, false, true, 0)
-      vbox.pack_start(list_sw, true, true, 0)
+      vbox.pack_start(hbox, :expand => false, :fill => true, :padding => 0)
+      vbox.pack_start(list_sw, :expand => true, :fill => true, :padding => 0)
       list_sw.show_all
 
       self.add_with_viewport(vbox)
@@ -5456,7 +5459,7 @@ bodywid = view
           show_captcha(srckey)
         end
 
-        @vbox = Gtk::VBox.new
+        @vbox = Gtk::Box.new(:vertical)
         vbox = @vbox
 
         csw.set_policy(:automatic, :automatic)
@@ -5466,17 +5469,17 @@ bodywid = view
         pixbuf_loader.last_write(captcha_buf) if captcha_buf
 
         label = Gtk::Label.new(_('Far node'))
-        vbox.pack_start(label, false, false, 2)
+        vbox.pack_start(label, :expand => false, :fill => false, :padding => 2)
         entry = Gtk::Entry.new
         node_text = PandoraUtils.bytes_to_hex(srckey)
         node_text = node if (not node_text) or (node_text=='')
         node_text ||= ''
         entry.text = node_text
         entry.editable = false
-        vbox.pack_start(entry, false, false, 2)
+        vbox.pack_start(entry, :expand => false, :fill => false, :padding => 2)
 
         image = Gtk::Image.new(pixbuf_loader.pixbuf)
-        vbox.pack_start(image, false, false, 2)
+        vbox.pack_start(image, :expand => false, :fill => false, :padding => 2)
 
         clue_text ||= ''
         clue, length, symbols = clue_text.split('|')
@@ -5489,7 +5492,7 @@ bodywid = view
         end
 
         label = Gtk::Label.new(_('Enter text from picture'))
-        vbox.pack_start(label, false, false, 2)
+        vbox.pack_start(label, :expand => false, :fill => false, :padding => 2)
 
         captcha_entry = PandoraGtk::MaskEntry.new
         captcha_entry.max_length = len
@@ -5536,22 +5539,22 @@ bodywid = view
         captcha_entry.width_request = ew
         align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
         align.add(captcha_entry)
-        vbox.pack_start(align, false, false, 2)
+        vbox.pack_start(align, :expand => false, :fill => false, :padding => 2)
         #capdialog.def_widget = entry
 
-        hbox = Gtk::HBox.new
-        hbox.pack_start(okbutton, true, true, 2)
-        hbox.pack_start(cancelbutton, true, true, 2)
+        hbox = Gtk::Box.new(:horizontal)
+        hbox.pack_start(okbutton, :expand => true, :fill => true, :padding => 2)
+        hbox.pack_start(cancelbutton, :expand => true, :fill => true, :padding => 2)
 
-        vbox.pack_start(hbox, false, false, 2)
+        vbox.pack_start(hbox, :expand => false, :fill => false, :padding => 2)
 
         if clue
           label = Gtk::Label.new(_(clue))
-          vbox.pack_start(label, false, false, 2)
+          vbox.pack_start(label, :expand => false, :fill => false, :padding => 2)
         end
         if length
           label = Gtk::Label.new(_('Length')+'='+length.to_s)
-          vbox.pack_start(label, false, false, 2)
+          vbox.pack_start(label, :expand => false, :fill => false, :padding => 2)
         end
         if symbols
           sym_text = _('Symbols')+': '+symbols.to_s
@@ -5561,7 +5564,7 @@ bodywid = view
             i += 31
           end
           label = Gtk::Label.new(sym_text)
-          vbox.pack_start(label, false, false, 2)
+          vbox.pack_start(label, :expand => false, :fill => false, :padding => 2)
         end
 
         csw.border_width = 1;
@@ -6089,24 +6092,24 @@ bodywid = view
                 @scheduler_dialog = PandoraGtk::AdvancedDialog.new(_('Tasks'))
                 dialog = @scheduler_dialog
                 dialog.set_default_size(420, 250)
-                vbox = Gtk::VBox.new
+                vbox = Gtk::Box.new(:vertical)
                 dialog.viewport.add(vbox)
 
                 label = Gtk::Label.new(_('Message'))
-                vbox.pack_start(label, false, false, 2)
+                vbox.pack_start(label, :expand => false, :fill => false, :padding => 2)
                 user_entry = Gtk::Entry.new
                 user_entry.text = message
-                vbox.pack_start(user_entry, false, false, 2)
+                vbox.pack_start(user_entry, :expand => false, :fill => false, :padding => 2)
 
 
                 label = Gtk::Label.new(_('Here'))
-                vbox.pack_start(label, false, false, 2)
+                vbox.pack_start(label, :expand => false, :fill => false, :padding => 2)
                 pass_entry = Gtk::Entry.new
                 pass_entry.width_request = 250
                 align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
                 align.add(pass_entry)
-                vbox.pack_start(align, false, false, 2)
-                vbox.pack_start(pass_entry, false, false, 2)
+                vbox.pack_start(align, :expand => false, :fill => false, :padding => 2)
+                vbox.pack_start(pass_entry, :expand => false, :fill => false, :padding => 2)
 
                 dialog.def_widget = user_entry
 
@@ -6147,7 +6150,8 @@ bodywid = view
       end
       if not main_icon
 #GTK3        main_icon = $window.render_icon_pixbuf(Gtk::Stock::HOME, :large_toolbar)
-        main_icon = $window.render_icon_pixbuf(:home, :large_toolbar)
+        #main_icon = $window.render_icon_pixbuf(:home, :large_toolbar)
+        main_icon = nil
       end
       if main_icon
         $window.icon = main_icon
