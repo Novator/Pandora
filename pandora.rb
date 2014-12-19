@@ -7565,7 +7565,7 @@ module PandoraGtk
       super
       @mask = '0123456789.'
       self.max_length = 10
-      self.tooltip_text = 'MM.DD.YYYY'
+      self.tooltip_text = 'DD.MM.YYYY'
     end
   end
 
@@ -7576,7 +7576,7 @@ module PandoraGtk
       super
       @mask += ' :'
       self.max_length = 19
-      self.tooltip_text = 'MM.DD.YYYY hh:mm:ss'
+      self.tooltip_text = 'DD.MM.YYYY hh:mm:ss'
     end
   end
 
@@ -7590,7 +7590,7 @@ module PandoraGtk
       @entry = MaskEntry.new
       @entry.mask = '0123456789.'
       @entry.max_length = 10
-      @entry.tooltip_text = 'MM.DD.YYYY'
+      @entry.tooltip_text = 'DD.MM.YYYY'
 
       @button = Gtk::Button.new('D')
       @button.can_focus = false
