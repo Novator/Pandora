@@ -3054,6 +3054,7 @@ module PandoraModel
   end
 
   PK_Key     = 221
+  PK_Sign    = 222
   PK_Message = 227
 
   # Read record by panhash
@@ -3176,8 +3177,8 @@ module PandoraModel
     res
   end
 
-  # Get panhash list of recs created by creator from time for kinds
-  # RU: Ищет список панхэшей записей от создателя от времени для сортов
+  # Get panhash list of recs created from time for kinds
+  # RU: Ищет список панхэшей записей созданных с времени для сортов
   def self.created_records(creator=0, from_time=nil, kinds=nil, models=nil)
     res = nil
     creator ||= PandoraCrypto.current_user_or_key(true)
@@ -3205,6 +3206,40 @@ module PandoraModel
       end
     end
     res
+  end
+
+  # Get panhash list of recs created by creator from time for kinds
+  # RU: Ищет список панхэшей записей подписанных с времени для сортов
+  def self.signed_records(signer=nil, from_time=nil, pankinds=nil, trust=nil, key=nil, models=nil)
+    sel = nil
+    signer ||= PandoraCrypto.current_user_or_key(true)
+    if signer
+      sign_model = PandoraUtils.get_model('Sign', models)
+      if sign_model
+        filter = [['creator=', signer]]
+        filter << ['modified >=', from_time.to_i] if from_time
+        filter << ['trust=', trust_to_int255(trust)] if trust
+        filter << ['key=', key] if key
+        pankinds = PandoraUtils.str_to_bytes(pankinds)
+        if ((pankinds.is_a? Array) and (pankinds.size==1))
+          filter << ['obj_hash LIKE', pankinds[0].chr+'%']
+          #filter << ['second REGEXP', '['+pankinds[0].chr+'].*']  #pankinds[0].chr
+          #filter << ['second REGEXP', '['+1.chr+2.chr+'].*']  #pankinds[0].chr
+          pankinds = nil
+        end
+        sel = relation_model.select(filter, false, 'obj_hash', 'modified DESC', nil)
+        p 'signed_records sel1='+sel.inspect
+        sel.flatten!
+        sel.uniq!
+        sel.compact!
+        sel.sort! {|a,b| a[0]<=>b[0] }
+        p 'signed_records sel2='+sel.inspect
+        if pankinds
+          sel.delete_if { |panhash| (not (pankinds.include? panhash[0])) }
+        end
+      end
+    end
+    sel
   end
 
   # Float trust (-1..+1) to public level 21 (0..20)
@@ -4855,8 +4890,8 @@ module PandoraNet
   ECC_Init_Simple      = 5
   ECC_Init_Answer      = 6
 
-  ECC_Query_Panhash    = 0
-  ECC_Query_Record     = 1
+  ECC_Query_Rel        = 0
+  ECC_Query_Record       = 1
 
   ECC_News_Panhash      = 0
 
@@ -5314,9 +5349,9 @@ module PandoraNet
 
     # Send command of query of panhashes
     # RU: Шлёт команду запроса панхэшей
-    def set_panhash_query(list, time, send_now=false)
+    def set_relations_query(list, time, send_now=false)
       ascmd = EC_Query
-      ascode = ECC_Query_Panhash
+      ascode = ECC_Query_Rel
       asbuf = [time].pack('N') + list
       if send_now
         if not add_send_segment(ascmd, true, asbuf, ascode)
@@ -6273,26 +6308,32 @@ module PandoraNet
                 process_media_segment(rcode, rdata)
               when EC_Query
                 case rcode
-                  when ECC_Query_Panhash
+                  when ECC_Query_Rel
                     p from_time = rdata[0, 4].unpack('N')[0]
-                    p kind_list = rdata[4..-1]
+                    p pankinds = rdata[4..-1]
                     trust = @skey[PandoraCrypto::KV_Trust]
                     trust = -1.0 if not (trust.is_a? Float)
-                    kind_list = PandoraCrypto.allowed_kinds(trust, kind_list)
+                    pankinds = PandoraCrypto.allowed_kinds(trust, pankinds)
 
-                    #public_records
-                    panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
+                    whyer = @rkey[PandoraCrypto::KV_Creator]
+                    answerer = @skey[PandoraCrypto::KV_Creator]
+                    key=nil
+                    models=nil
+                    ph_list = []
+                    ph_list << PandoraModel.signed_records(whyer, from_time, pankinds, \
+                      trust, key, models)
+                    ph_list << PandoraModel.public_records(whyer, trust, from_time, \
+                      pankinds, models)
 
+                    #panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
                     #panhash_list = PandoraModel.get_panhashes_by_whyer(whyer, trust, from_time)
 
-                    p log_mes+'--ECC_Query_Panhash  panhash_list='+panhash_list.inspect
-                    if panhash_list and (panhash_list.size>0)
-                      panhash_list = PandoraUtils.rubyobj_to_pson_elem(panhash_list) if panhash_list.is_a? Array
-                      @scmd = EC_News
-                      @scode = ECC_News_Panhash
-                      @sbuf = panhash_list
-                    end
-                  when ECC_Query_Record
+                    p log_mes+'--ECC_Query_PubSig  panhash_list='+ph_list.inspect
+                    ph_list = PandoraUtils.rubyobj_to_pson_elem(ph_list) if ph_list
+                    @scmd = EC_News
+                    @scode = ECC_News_Panhash
+                    @sbuf = ph_list
+                  when ECC_Query_Record  #EC_Request
                     panhash_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
                     p log_mes+[panhash_list, len].inspect
                     if (panhash_list.is_a? Array) and (panhash_list.size>0)
@@ -6326,26 +6367,25 @@ module PandoraNet
                     @sbuf=[pnoticecount].pack('N')
                 end
               when EC_News
-                p log_mes+"news!!!!"
                 case rcode
                   when ECC_News_Panhash
-                    panhash_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
-                    p log_mes+[panhash_list, len].inspect
-
-                    need_panhash_list = []
-                    panhash_list.each do |panhash|
-                      p log_mes+'ECC_News_Panhash -------------'
+                    p log_mes+'ECC_News_Panhash'
+                    ph_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    p log_mes+'ph_list, len='+[ph_list, len].inspect
+                    # Check non-existing records
+                    need_ph_list = []
+                    ph_list.each do |panhash|
                       kind = PandoraUtils.kind_from_panhash(panhash)
                       p log_mes+[panhash, kind].inspect
                       p res = PandoraModel.get_record_by_panhash(kind, panhash, nil, \
                         @send_models, 'id')
-                      need_panhash_list << panhash if (not res)
+                      need_ph_list << panhash if (not res)
                     end
 
-                    p log_mes+'+++ need_panhash_list='+ need_panhash_list.inspect
-                    if need_panhash_list.size>0
-                      need_panhash_list = PandoraUtils.rubyobj_to_pson_elem(\
-                        need_panhash_list) if need_panhash_list.is_a? Array
+                    p log_mes+'+++ need_ph_list='+ need_ph_list.inspect
+                    if need_ph_list.size>0
+                      need_ph_list = PandoraUtils.rubyobj_to_pson_elem(\
+                        need_ph_list) if need_ph_list.is_a? Array
                       @scmd = EC_Query
                       @scode = ECC_Query_Record
                       @sbuf = need_panhash_list
@@ -6853,12 +6893,22 @@ module PandoraNet
                       set_request(creator, true)
                     end
                     inquirer_step += 1
-                  #when IS_NewsQuery
-                  #  # запросить список новых панхэшей
-                  #  query_kind_list = 1.chr + 11.chr
-                  #  last_time = Time.now.to_i - 5*24*3600
-                  #  set_panhash_query(query_kind_list, last_time, true)
-                  #  inquirer_step += 1
+                  when IS_NewsQuery
+                    # запросить список новых панхэшей
+                    pankinds = 1.chr + 11.chr
+                    from_time = Time.now.to_i - 5*24*3600
+                    #whyer = @rkey[PandoraCrypto::KV_Creator]
+                    #answerer = @skey[PandoraCrypto::KV_Creator]
+                    #trust=nil
+                    #key=nil
+                    #models=nil
+                    #ph_list = []
+                    #ph_list << PandoraModel.signed_records(whyer, from_time, pankinds, \
+                    #  trust, key, models)
+                    #ph_list << PandoraModel.public_records(whyer, trust, from_time, \
+                    #  pankinds, models)
+                    set_relations_query(pankinds, from_time, true)
+                    inquirer_step += 1
                   else
                     inquirer_step = IS_Finished
                 end
