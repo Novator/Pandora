@@ -56,15 +56,16 @@ Do commands in terminal:
 
 Download an installation and run it with administrator:
 
-  http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe/download
+  http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe
 
 
 5. INSTALLATION IN DEBIAN
 
 Download a package and install it with root:
 
-  http://sourceforge.net/projects/pandora-net/files/pandora-net_0.2-1ubuntu_all.deb/download
+  http://sourceforge.net/projects/pandora-net/files/pandora-net_0.2-1ubuntu_all.deb
   dpkg -i pandora-net_0.2-1ubuntu_all.deb
+  apt-get -f -y install
 
 
 6. MANUAL INSTALLATION OR UPDATE

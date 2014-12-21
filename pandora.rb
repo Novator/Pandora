@@ -59,7 +59,7 @@ module PandoraUtils
 
   # Default values of variables
   # RU: Значения переменных по умолчанию
-  $poly_launch = false
+  $poly_launch = true
   $host = nil
   $port = nil
   $lang = 'ru'
@@ -3053,6 +3053,7 @@ module PandoraModel
     trust
   end
 
+  PK_Person  = 1
   PK_Key     = 221
   PK_Sign    = 222
   PK_Message = 227
@@ -3152,6 +3153,34 @@ module PandoraModel
     res
   end
 
+  # Save records from PSON array
+  # RU: Сохранить записи из массива PSON
+  def self.save_records(records, models=nil)
+    if records.is_a? Array
+      records.each do |record|
+        kind = record[0].ord
+        lang = record[1].ord
+        values = PandoraUtils.pson_to_namehash(record[2..-1])
+        if not PandoraModel.save_record(kind, lang, values, models)
+          PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 2')
+        end
+      end
+    end
+  end
+
+  # Get panhash list of needed records from offer
+  # RU: Вернуть список панхэшей нужных записей из предлагаемых
+  def self.needed_records(ph_list, models=nil)
+    need_list = []
+    ph_list.each do |panhash|
+      kind = PandoraUtils.kind_from_panhash(panhash)
+      res = PandoraModel.get_record_by_panhash(kind, panhash, nil, models, 'id')
+      need_list << panhash if (not res)  #add if record was not found
+    end
+    p 'needed_records='+need_list.inspect
+    need_list
+  end
+
   # Get panhash list of modified recs from time for required kinds
   # RU: Ищет список панхэшей изменённых с заданого времени для заданных сортов
   def self.modified_records(from_time=nil, kinds=nil, models=nil)
@@ -3192,9 +3221,11 @@ module PandoraModel
         if panobjectclass and ((creator==0) or (panobjectclass <= PandoraModel::Created))
           model = PandoraUtils.get_model(panobjectclass.ider, models)
           if model
-            filter = [['modified >= ', from_time.to_i]]
+            filter = []
+            filter << ['modified >= ', from_time.to_i] if from_time
             filter << ['creator =', creator] if (creator.is_a? String)
-            p sel = model.select(filter, false, 'panhash', 'modified ASC')
+            sel = model.select(filter, false, 'panhash', 'modified ASC')
+            p '--created_records kind='+kind.inspect+' sel='+sel.inspect
             if sel and (sel.size>0)
               res ||= []
               sel.each do |row|
@@ -3233,10 +3264,11 @@ module PandoraModel
         sel.uniq!
         sel.compact!
         sel.sort! {|a,b| a[0]<=>b[0] }
-        p 'signed_records sel2='+sel.inspect
+        p 'pankinds='+pankinds.inspect
         if pankinds
-          sel.delete_if { |panhash| (not (pankinds.include? panhash[0])) }
+          sel.delete_if { |panhash| (not (pankinds.include? panhash[0].ord)) }
         end
+        p 'signed_records sel2='+sel.inspect
       end
     end
     sel
@@ -3280,10 +3312,11 @@ module PandoraModel
         sel.uniq!
         sel.compact!
         sel.sort! {|a,b| a[0]<=>b[0] }
-        p 'public_records sel2='+sel.inspect
+        p 'pankinds='+pankinds.inspect
         if pankinds
-          sel.delete_if { |panhash| (not (pankinds.include? panhash[0])) }
+          sel.delete_if { |panhash| (not (pankinds.include? panhash[0].ord)) }
         end
+        p 'public_records sel2='+sel.inspect
       end
     end
     sel
@@ -3310,10 +3343,11 @@ module PandoraModel
         sel.uniq!
         sel.compact!
         sel.sort! {|a,b| a[0]<=>b[0] }
-        p 'follow_records sel2='+sel.inspect
+        p 'pankinds='+pankinds.inspect
         if pankinds
-          sel.delete_if { |panhash| (not (pankinds.include? panhash[0])) }
+          sel.delete_if { |panhash| (not (pankinds.include? panhash[0].ord)) }
         end
+        p 'follow_records sel2='+sel.inspect
       end
     end
     sel
@@ -4863,7 +4897,7 @@ module PandoraNet
   # Network exchange comands
   # RU: Команды сетевого обмена
   EC_Media     = 0     # Медиа данные
-  EC_Init      = 1     # Инициализация диалога (версия протокола, сжатие, авторизация, шифрование)
+  EC_Auth      = 1     # Инициализация диалога (версия протокола, сжатие, авторизация, шифрование)
   EC_Message   = 2     # Мгновенное текстовое сообщение
   EC_Channel   = 3     # Запрос открытия медиа-канала
   EC_Query     = 4     # Запрос пачки сортов или пачки панхэшей
@@ -4882,18 +4916,19 @@ module PandoraNet
   CommExtSize = 10
   SegNAttrSize = 8
 
-  ECC_Init_Hello       = 0
-  ECC_Init_Puzzle      = 1
-  ECC_Init_Phrase      = 2
-  ECC_Init_Sign        = 3
-  ECC_Init_Captcha     = 4
-  ECC_Init_Simple      = 5
-  ECC_Init_Answer      = 6
+  ECC_Auth_Hello       = 0
+  ECC_Auth_Puzzle      = 1
+  ECC_Auth_Phrase      = 2
+  ECC_Auth_Sign        = 3
+  ECC_Auth_Captcha     = 4
+  ECC_Auth_Simple      = 5
+  ECC_Auth_Answer      = 6
 
   ECC_Query_Rel        = 0
-  ECC_Query_Record       = 1
+  ECC_Query_Record     = 1
 
   ECC_News_Panhash      = 0
+  ECC_News_Record       = 1
 
   ECC_Channel0_Open     = 0
   ECC_Channel1_Opened   = 1
@@ -5276,13 +5311,13 @@ module PandoraNet
       ascode ||= 0
       asbuf = nil
       case ex_comm
-        when EC_Init
+        when EC_Auth
           @rkey = PandoraCrypto.current_key(false, false)
           #p log_mes+'first key='+key.inspect
           if @rkey and @rkey[PandoraCrypto::KV_Obj]
             key_hash = @rkey[PandoraCrypto::KV_Panhash]
-            ascode = EC_Init
-            ascode = ECC_Init_Hello
+            ascode = EC_Auth
+            ascode = ECC_Auth_Hello
             params['mykey'] = key_hash
             params['tokey'] = param
             hparams = {:version=>0, :mode=>0, :mykey=>key_hash, :tokey=>param}
@@ -5375,7 +5410,7 @@ module PandoraNet
         if not hash
           err_scmd('Hello data is wrong')
         end
-        if (rcmd == EC_Init) and (rcode == ECC_Init_Hello)
+        if (rcmd == EC_Auth) and (rcode == ECC_Auth_Hello)
           params['version']  = hash['version']
           params['mode']     = hash['mode']
           params['addr']     = hash['addr']
@@ -5427,8 +5462,8 @@ module PandoraNet
             phrase[-1] = $puzzle_bit_length.chr
             phrase[-2] = $puzzle_sec_delay.chr
             @stage = ES_Puzzle
-            @scode = ECC_Init_Puzzle
-            @scmd  = EC_Init
+            @scode = ECC_Auth_Puzzle
+            @scmd  = EC_Auth
             @sbuf = phrase
             params['puzzle_start'] = Time.now.to_i
             set_max_pack_size(ES_Puzzle)
@@ -5447,8 +5482,8 @@ module PandoraNet
             elsif @skey
               # ok, send a phrase
               @stage = ES_Sign
-              @scode = ECC_Init_Phrase
-              @scmd  = EC_Init
+              @scode = ECC_Auth_Phrase
+              @scmd  = EC_Auth
               set_max_pack_size(ES_Sign)
               phrase, init = get_sphrase(false)
               p log_mes+'send phrase len='+phrase.bytesize.to_s
@@ -5473,8 +5508,8 @@ module PandoraNet
         p log_mes+'send_captcha:  attempts='+attempts.to_s
         if attempts<$captcha_attempts
           @skey[PandoraCrypto::KV_Trust] = attempts+1
-          @scmd = EC_Init
-          @scode = ECC_Init_Captcha
+          @scmd = EC_Auth
+          @scode = ECC_Auth_Captcha
           text, buf = PandoraUtils.generate_captcha(nil, $captcha_length)
           params['captcha'] = text.downcase
           clue_text = 'You may enter small letters|'+$captcha_length.to_s+'|'+PandoraGtk::CapSymbols
@@ -5855,10 +5890,10 @@ module PandoraNet
       end
 
       case rcmd
-        when EC_Init
+        when EC_Auth
           if @stage<=ES_Greeting
-            if rcode<=ECC_Init_Answer
-              if (rcode==ECC_Init_Hello) and ((@stage==ES_Protocol) or (@stage==ES_Sign))
+            if rcode<=ECC_Auth_Answer
+              if (rcode==ECC_Auth_Hello) and ((@stage==ES_Protocol) or (@stage==ES_Sign))
                 recognize_params
                 if scmd != EC_Bye
                   vers = params['version']
@@ -5873,7 +5908,7 @@ module PandoraNet
                     err_scmd('Protocol is not supported ('+vers.to_s+')')
                   end
                 end
-              elsif ((rcode==ECC_Init_Puzzle) or (rcode==ECC_Init_Phrase)) \
+              elsif ((rcode==ECC_Auth_Puzzle) or (rcode==ECC_Auth_Phrase)) \
               and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
                 if rdata and (rdata != '')
                   rphrase = rdata
@@ -5883,7 +5918,7 @@ module PandoraNet
                 end
                 p log_mes+'recived phrase len='+rphrase.bytesize.to_s
                 if rphrase and (rphrase != '')
-                  if rcode==ECC_Init_Puzzle  #phrase for puzzle
+                  if rcode==ECC_Auth_Puzzle  #phrase for puzzle
                     if ((conn_mode & CM_Hunter) == 0)
                       err_scmd('Puzzle to listener is denied')
                     else
@@ -5899,7 +5934,7 @@ module PandoraNet
                         sleep(need_sleep) if need_sleep>0
                       end
                       @sbuf = suffix
-                      @scode = ECC_Init_Answer
+                      @scode = ECC_Auth_Answer
                     end
                   else #phrase for sign
                     #p log_mes+'SIGN'
@@ -5909,7 +5944,7 @@ module PandoraNet
                       len = $base_id.bytesize
                       len = 255 if len>255
                       @sbuf = [len].pack('C')+$base_id[0,len]+sign
-                      @scode = ECC_Init_Sign
+                      @scode = ECC_Auth_Sign
                       if @stage == ES_Greeting
                         @stage = ES_Exchange
                         set_max_pack_size(ES_Exchange)
@@ -5919,12 +5954,12 @@ module PandoraNet
                       err_scmd('Cannot create sign')
                     end
                   end
-                  @scmd = EC_Init
+                  @scmd = EC_Auth
                   #@stage = ES_Check
                 else
                   err_scmd('Empty received phrase')
                 end
-              elsif (rcode==ECC_Init_Answer) and (@stage==ES_Puzzle)
+              elsif (rcode==ECC_Auth_Answer) and (@stage==ES_Puzzle)
                 interval = nil
                 if $puzzle_sec_delay>0
                   start_time = params['puzzle_start']
@@ -5942,7 +5977,7 @@ module PandoraNet
                     err_scmd('Wrong sha1 solution')
                   end
                 end
-              elsif (rcode==ECC_Init_Sign) and (@stage==ES_Sign)
+              elsif (rcode==ECC_Auth_Sign) and (@stage==ES_Sign)
                 len = rdata[0].ord
                 sbase_id = rdata[1, len]
                 rsign = rdata[len+1..-1]
@@ -5973,7 +6008,7 @@ module PandoraNet
                       if trust>=$low_conn_trust
                         if (conn_mode & CM_Hunter) == 0
                           @stage = ES_Greeting
-                          add_send_segment(EC_Init, true, params['srckey'])
+                          add_send_segment(EC_Auth, true, params['srckey'])
                           set_max_pack_size(ES_Sign)
                         else
                           @stage = ES_Exchange
@@ -5995,22 +6030,22 @@ module PandoraNet
                 else
                   err_scmd('Cannot init your key')
                 end
-              elsif (rcode==ECC_Init_Simple) and (@stage==ES_Protocol)
-                p 'ECC_Init_Simple!'
+              elsif (rcode==ECC_Auth_Simple) and (@stage==ES_Protocol)
+                p 'ECC_Auth_Simple!'
                 rphrase = rdata
                 #p 'rphrase='+rphrase.inspect
                 password = get_simple_answer_to_node
                 if (password.is_a? String) and (password.bytesize>0)
                   password_hash = OpenSSL::Digest::SHA256.digest(password)
                   answer = OpenSSL::Digest::SHA256.digest(rphrase+password_hash)
-                  @scmd = EC_Init
-                  @scode = ECC_Init_Answer
+                  @scmd = EC_Auth
+                  @scode = ECC_Auth_Answer
                   @sbuf = answer
                   @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
                 else
                   err_scmd('Node password is not setted')
                 end
-              elsif (rcode==ECC_Init_Captcha) and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
+              elsif (rcode==ECC_Auth_Captcha) and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
                 p log_mes+'CAPTCHA!!!  ' #+params.inspect
                 if ((conn_mode & CM_Hunter) == 0)
                   err_scmd('Captcha for listener is denied')
@@ -6029,8 +6064,8 @@ module PandoraNet
                       Thread.pass
                     end
                     if @entered_captcha
-                      @scmd = EC_Init
-                      @scode = ECC_Init_Answer
+                      @scmd = EC_Auth
+                      @scode = ECC_Auth_Answer
                       @sbuf = entered_captcha
                     else
                       err_scmd('Captcha enter canceled')
@@ -6039,7 +6074,7 @@ module PandoraNet
                     err_scmd('Captcha dock is busy')
                   end
                 end
-              elsif (rcode==ECC_Init_Answer) and (@stage==ES_Captcha)
+              elsif (rcode==ECC_Auth_Answer) and (@stage==ES_Captcha)
                 captcha = rdata
                 p log_mes+'recived captcha='+captcha if captcha
                 if captcha.downcase==params['captcha']
@@ -6053,7 +6088,7 @@ module PandoraNet
                   end
                   p 'Captcha is GONE!'
                   if (conn_mode & CM_Hunter) == 0
-                    add_send_segment(EC_Init, true, params['srckey'])
+                    add_send_segment(EC_Auth, true, params['srckey'])
                   end
                   @scmd = EC_Data
                   @scode = 0
@@ -6158,14 +6193,7 @@ module PandoraNet
           elsif (@stage==ES_Exchange)
             records, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
             p log_mes+"!record2! recs="+records.inspect
-            records.each do |record|
-              kind = record[0].ord
-              lang = record[1].ord
-              values = PandoraUtils.pson_to_namehash(record[2..-1])
-              if not PandoraModel.save_record(kind, lang, values, @recv_models)
-                PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 2')
-              end
-            end
+            PandoraModel.save_records(records, @recv_models)
           else
             err_scmd('Records came on wrong stage')
           end
@@ -6309,37 +6337,59 @@ module PandoraNet
               when EC_Query
                 case rcode
                   when ECC_Query_Rel
-                    p from_time = rdata[0, 4].unpack('N')[0]
-                    p pankinds = rdata[4..-1]
+                    p log_mes+'===ECC_Query_Rel'
+                    from_time = rdata[0, 4].unpack('N')[0]
+                    pankinds = rdata[4..-1]
                     trust = @skey[PandoraCrypto::KV_Trust]
                     trust = -1.0 if not (trust.is_a? Float)
+                    p log_mes+'from_time, pankinds, trust='+[from_time, pankinds, trust].inspect
                     pankinds = PandoraCrypto.allowed_kinds(trust, pankinds)
+                    p log_mes+'pankinds='+pankinds.inspect
 
                     whyer = @rkey[PandoraCrypto::KV_Creator]
                     answerer = @skey[PandoraCrypto::KV_Creator]
                     key=nil
-                    models=nil
-                    ph_list = []
-                    ph_list << PandoraModel.signed_records(whyer, from_time, pankinds, \
-                      trust, key, models)
-                    ph_list << PandoraModel.public_records(whyer, trust, from_time, \
-                      pankinds, models)
+                    #ph_list = []
+                    #ph_list << PandoraModel.signed_records(whyer, from_time, pankinds, \
+                    #  trust, key, models)
+                    ph_list = PandoraModel.public_records(whyer, trust, from_time, \
+                      pankinds, @send_models)
 
                     #panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
                     #panhash_list = PandoraModel.get_panhashes_by_whyer(whyer, trust, from_time)
 
-                    p log_mes+'--ECC_Query_PubSig  panhash_list='+ph_list.inspect
+                    p log_mes+'ph_list='+ph_list.inspect
                     ph_list = PandoraUtils.rubyobj_to_pson_elem(ph_list) if ph_list
                     @scmd = EC_News
                     @scode = ECC_News_Panhash
                     @sbuf = ph_list
                   when ECC_Query_Record  #EC_Request
-                    panhash_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
-                    p log_mes+[panhash_list, len].inspect
-                    if (panhash_list.is_a? Array) and (panhash_list.size>0)
-                      pson_records = []
-                      panhash_list.each do |panhash|
-                        p log_mes+'ECC_Query_Record -------------'
+                    p log_mes+'==ECC_Query_Record'
+                    two_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    need_ph_list, foll_list = two_list
+                    p log_mes+'need_ph_list, foll_list='+[need_ph_list, foll_list].inspect
+                    created_list = []
+                    if (foll_list.is_a? Array) and (foll_list.size>0)
+                      from_time = Time.now.to_i - 7*24*3600
+                      kinds = (1..255).to_a - [PandoraModel::PK_Message, PandoraModel::PK_Key]
+                      p 'kinds='+kinds.inspect
+                      foll_list.each do |panhash|
+                        if panhash[0].ord==PandoraModel::PK_Person
+                          cr_l = PandoraModel.created_records(panhash, from_time, kinds, @send_models)
+                          p 'cr_l='+cr_l.inspect
+                          created_list = created_list + cr_l if cr_l
+                        end
+                      end
+                      created_list.flatten!
+                      created_list.uniq!
+                      created_list.compact!
+                      created_list.sort! {|a,b| a[0]<=>b[0] }
+                      p log_mes+'created_list='+created_list.inspect
+                    end
+                    pson_records = []
+                    if (need_ph_list.is_a? Array) and (need_ph_list.size>0)
+                      p log_mes+'need_ph_list='+need_ph_list.inspect
+                      need_ph_list.each do |panhash|
                         kind = PandoraUtils.kind_from_panhash(panhash)
                         p log_mes+[panhash, kind].inspect
                         p res = PandoraModel.get_record_by_panhash(kind, panhash, true, \
@@ -6347,12 +6397,10 @@ module PandoraNet
                         pson_records << res if res
                       end
                       p log_mes+'pson_records='+pson_records.inspect
-                      if (pson_records.size>0)
-                        @scmd = EC_Record
-                        @scode = 0
-                        @sbuf = PandoraUtils.rubyobj_to_pson_elem(pson_records)
-                      end
                     end
+                    @scmd = EC_News
+                    @scode = ECC_News_Record
+                    @sbuf = PandoraUtils.rubyobj_to_pson_elem([pson_records, created_list])
                   else #запрос сорта (1-254) или всех сортов (255)
                     afrom_data = rdata
                     akind = rcode
@@ -6369,26 +6417,40 @@ module PandoraNet
               when EC_News
                 case rcode
                   when ECC_News_Panhash
-                    p log_mes+'ECC_News_Panhash'
+                    p log_mes+'==ECC_News_Panhash'
                     ph_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
                     p log_mes+'ph_list, len='+[ph_list, len].inspect
                     # Check non-existing records
-                    need_ph_list = []
-                    ph_list.each do |panhash|
-                      kind = PandoraUtils.kind_from_panhash(panhash)
-                      p log_mes+[panhash, kind].inspect
-                      p res = PandoraModel.get_record_by_panhash(kind, panhash, nil, \
-                        @send_models, 'id')
-                      need_ph_list << panhash if (not res)
-                    end
+                    need_ph_list = PandoraModel.needed_records(ph_list, @send_models)
+                    p log_mes+'need_ph_list='+ need_ph_list.inspect
 
-                    p log_mes+'+++ need_ph_list='+ need_ph_list.inspect
-                    if need_ph_list.size>0
-                      need_ph_list = PandoraUtils.rubyobj_to_pson_elem(\
-                        need_ph_list) if need_ph_list.is_a? Array
+                    two_list = [need_ph_list]
+
+                    whyer = @rkey[PandoraCrypto::KV_Creator] #me
+                    answerer = @skey[PandoraCrypto::KV_Creator]
+                    p '[whyer, answerer]='+[whyer, answerer].inspect
+                    follower = nil
+                    from_time = Time.now.to_i - 10*24*3600
+                    pankinds = nil
+                    foll_list = PandoraModel.follow_records(follower, from_time, \
+                      pankinds, @send_models)
+                    two_list << foll_list
+                    two_list = PandoraUtils.rubyobj_to_pson_elem(two_list)
+                    @scmd = EC_Query
+                    @scode = ECC_Query_Record
+                    @sbuf = two_list
+                  when ECC_News_Record
+                    p log_mes+'==ECC_News_Record'
+                    two_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    pson_records, created_list = two_list
+                    p log_mes+'pson_records, created_list='+[pson_records, created_list].inspect
+                    PandoraModel.save_records(pson_records, @recv_models)
+                    if (created_list.is_a? Array) and (created_list.size>0)
+                      need_ph_list = PandoraModel.needed_records(created_list, @send_models)
                       @scmd = EC_Query
                       @scode = ECC_Query_Record
-                      @sbuf = need_panhash_list
+                      foll_list = nil
+                      @sbuf = PandoraUtils.rubyobj_to_pson_elem([need_ph_list, foll_list])
                     end
                   else
                     p "news more!!!!"
@@ -6580,7 +6642,7 @@ module PandoraNet
             if (conn_mode & CM_Hunter)>0
               @log_mes = 'HUN: '
               @max_pack_size = MPS_Captcha
-              add_send_segment(EC_Init, true, tokey)
+              add_send_segment(EC_Auth, true, tokey)
             end
 
             # Read from socket cicle
@@ -6896,7 +6958,7 @@ module PandoraNet
                   when IS_NewsQuery
                     # запросить список новых панхэшей
                     pankinds = 1.chr + 11.chr
-                    from_time = Time.now.to_i - 5*24*3600
+                    from_time = Time.now.to_i - 10*24*3600
                     #whyer = @rkey[PandoraCrypto::KV_Creator]
                     #answerer = @skey[PandoraCrypto::KV_Creator]
                     #trust=nil
@@ -7191,7 +7253,7 @@ module PandoraNet
             PandoraUtils.log_message(LM_Info, _('Listening address')+': '+addr_str)
           rescue
             server = nil
-            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' '+host+':'+$port.to_s)
+            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' '+host.to_s+':'+$port.to_s)
           end
           Thread.current[:listen_server_socket] = server
           Thread.current[:need_to_listen] = (server != nil)
@@ -13129,19 +13191,20 @@ module PandoraGtk
         when 'Wizard'
           from_time = Time.now.to_i - 5*24*3600
           trust = 0.5
-          list = PandoraModel.public_records(nil, nil, nil, 1.chr)
+          #list = PandoraModel.public_records(nil, nil, nil, 1.chr)
           #list = PandoraModel.follow_records
           #list = PandoraModel.get_panhashes_by_kinds([1,11], from_time)
+          list = PandoraModel.created_records(nil, nil, nil, nil)
           p 'list='+list.inspect
 
-          if list
-            list.each do |panhash|
-              p '----------------'
-              kind = PandoraUtils.kind_from_panhash(panhash)
-              p [panhash, kind].inspect
-              p res = PandoraModel.get_record_by_panhash(kind, panhash, true)
-            end
-          end
+          #if list
+          #  list.each do |panhash|
+          #    p '----------------'
+          #    kind = PandoraUtils.kind_from_panhash(panhash)
+          #    p [panhash, kind].inspect
+          #    p res = PandoraModel.get_record_by_panhash(kind, panhash, true)
+          #  end
+          #end
 
 
           return
