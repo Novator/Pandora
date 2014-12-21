@@ -6371,7 +6371,7 @@ module PandoraNet
                     created_list = []
                     if (foll_list.is_a? Array) and (foll_list.size>0)
                       from_time = Time.now.to_i - 7*24*3600
-                      kinds = (1..255).to_a - [PandoraModel::PK_Message, PandoraModel::PK_Key]
+                      kinds = (1..255).to_a - [PandoraModel::PK_Message]
                       p 'kinds='+kinds.inspect
                       foll_list.each do |panhash|
                         if panhash[0].ord==PandoraModel::PK_Person
