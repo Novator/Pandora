@@ -3206,8 +3206,8 @@ module PandoraModel
     res
   end
 
-  # Get panhash list of recs created from time for kinds
-  # RU: Ищет список панхэшей записей созданных с времени для сортов
+  # Get panhash list of recs created by creator from time for kinds
+  # RU: Ищет список панхэшей записей от создателя от времени для сортов
   def self.created_records(creator=0, from_time=nil, kinds=nil, models=nil)
     res = nil
     creator ||= PandoraCrypto.current_user_or_key(true)
