@@ -6505,7 +6505,6 @@ module PandoraNet
     $inquire_block_count = 1
 
     $conn_period       = 5
-    $act_fish_period   = 7
 
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
