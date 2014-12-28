@@ -2560,19 +2560,19 @@ module PandoraUtils
       res
     end
 
-    # Get block from queue (set "ptrind" like 0,1,2..)
-    # RU: Взять блок из очереди (задавай "ptrind" как 0,1,2..)
-    def get_block_from_queue(max=MaxQueue, ptrind=nil)
+    # Get block from queue (set "reader" like 0,1,2..)
+    # RU: Взять блок из очереди (задавай "reader" как 0,1,2..)
+    def get_block_from_queue(max=MaxQueue, reader=nil)
       block = nil
       pointers = nil
       synchronize do
         ind = read_ind
-        if ptrind
+        if reader
           pointers = ind
-          ind = pointers[ptrind]
+          ind = pointers[reader]
           ind ||= -1
         end
-        #p 'get_block_from_queue:  [ptrind, ind, write_ind]='+[ptrind, ind, write_ind].inspect
+        #p 'get_block_from_queue:  [reader, ind, write_ind]='+[reader, ind, write_ind].inspect
         if ind != write_ind
           if ind<max
             ind += 1
@@ -2580,8 +2580,8 @@ module PandoraUtils
             ind = 0
           end
           block = queue[ind]
-          if ptrind
-            pointers[ptrind] = ind
+          if reader
+            pointers[reader] = ind
           else
             @read_ind = ind
           end
@@ -4670,6 +4670,7 @@ module PandoraNet
       @window = main_window
       @sessions = Array.new
       @white_list = Array.new
+      @fish_orders = PandoraUtils::RoundQueue.new(true)
     end
 
     # Add ip to white list
@@ -4750,6 +4751,10 @@ module PandoraNet
       res.uniq!
       res.compact!
       res
+    end
+
+    def add_fish_order(fish_key)
+      @fish_orders.add_block_to_queue(fish_key) if not @fish_orders.queue.include?(fish_key)
     end
 
     # Find or create session with necessary node
@@ -6499,6 +6504,9 @@ module PandoraNet
     # RU: Число запросов за цикл
     $inquire_block_count = 1
 
+    $conn_period       = 5
+    $act_fish_period   = 7
+
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
     def initialize(asocket, ahost_name, ahost_ip, aport, aproto, \
@@ -6523,6 +6531,7 @@ module PandoraNet
         need_connect = true
         attempt = 0
         work_time = nil
+        conn_period = $conn_period
 
         # Определение - сокет или донор
         if asocket.is_a? IPSocket
@@ -6547,6 +6556,7 @@ module PandoraNet
         while need_connect do
           @conn_mode = (@conn_mode & (~CM_Hunter))
 
+          # is there connection?
           # есть ли подключение?   or (@socket.closed?)
           if ((not @socket) ) \
           and ((not @donor) or (not @donor.socket) or (@donor.socket.closed?))
@@ -6559,6 +6569,7 @@ module PandoraNet
               host, port = pool.hunt_address(tokey)
             end
 
+            port = aport
             port ||= 5577
             port = port.to_i
 
@@ -6566,29 +6577,61 @@ module PandoraNet
             if (host.is_a? String) and (host.size>0) and port
               @conn_mode = (@conn_mode | CM_Hunter)
               server = host+':'+port.to_s
-              begin
-                asocket = TCPSocket.open(host, port)
-              rescue
-                if (not work_time) or ((Time.now.to_i - work_time.to_i)>15)
-                  PandoraUtils.log_message(LM_Warning, _('Cannot connect to')+': '+server)
+
+              # Try to connect
+              @conn_thread = Thread.new do
+                begin
+                  asocket = TCPSocket.open(host, port)
+                  @socket = asocket
+                rescue
+                  asocket = nil
+                  @socket = asocket
+                  if (not work_time) or ((Time.now.to_i - work_time.to_i)>15)
+                    PandoraUtils.log_message(LM_Warning, _('Fail connect to')+': '+server)
+                    conn_period = 15
+                  else
+                    sleep(conn_period-1)
+                  end
                 end
-                asocket = nil
+                @conn_thread = nil
+                if @send_thread and @send_thread.alive? and @send_thread.stop?
+                  @send_thread.run
+                end
               end
-              @socket = asocket
+
+              # Sleep until connect
+              sleep(conn_period)
+              if @conn_thread
+                @conn_thread.exit if @conn_thread.alive?
+                @conn_thread = nil
+                if not @socket
+                  PandoraUtils.log_message(LM_Trace, _('Timeout connect to')+': '+server)
+                end
+              end
             else
               asocket = false
             end
+
+            if not @socket
+              # Add fish order and wait donor
+              pool.add_fish_order(tokey)
+              while (not @donor) and (not @socket)
+                p 'Thread.stop tokey='+tokey.inspect
+                Thread.stop
+              end
+            end
+
           end
 
           work_time = Time.now
 
 
-            sss = [@socket, @donor].inspect
-            sss += '|1:'+[@socket.closed?].inspect if @socket
-            sss += '|2:'+[@donor.socket].inspect if @donor
-            sss += '|3:'+[@donor.socket.closed?].inspect if @donor and @donor.socket
-            p '==reconn: '+sss
-            sleep 0.5
+          sss = [@socket, @donor].inspect
+          sss += '|1:'+[@socket.closed?].inspect if @socket
+          sss += '|2:'+[@donor.socket].inspect if @donor
+          sss += '|3:'+[@donor.socket.closed?].inspect if @donor and @donor.socket
+          p '==reconn: '+sss
+          sleep 0.5
 
 
           if @socket
