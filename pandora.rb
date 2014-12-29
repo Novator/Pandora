@@ -2544,8 +2544,8 @@ module PandoraUtils
     # RU: Состояние одиночной очереди
     def single_read_state(max=MaxQueue)
       res = QS_NotEmpty
-      if read_ind.is_a? Integer
-        if (read_ind == write_ind)
+      if @read_ind.is_a? Integer
+        if (@read_ind == write_ind)
           res = QS_Empty
         else
           wind = write_ind
@@ -2554,7 +2554,7 @@ module PandoraUtils
           else
             wind = 0
           end
-          res = QS_Full if (read_ind == wind)
+          res = QS_Full if (@read_ind == wind)
         end
       end
       res
@@ -2566,7 +2566,7 @@ module PandoraUtils
       block = nil
       pointers = nil
       synchronize do
-        ind = read_ind
+        ind = @read_ind
         if reader
           pointers = ind
           ind = pointers[reader]
@@ -3464,10 +3464,11 @@ module PandoraModel
     res
   end
 
-  # Panobject state flages
-  # RU: Флаги состояния объекта
-  PSF_Support   = 1      # поддерживаю
-  PSF_Hurvest   = 2      # запись собирается/загружается по частям
+  # Panobject state flags
+  # RU: Флаги состояния объекта/записи
+  PSF_Support   = 1      # "поддерживаю", т.е. должна храниться
+  PSF_Hurvest   = 2      # собирается/загружается по частям
+  PSF_Deleted   = 4	     # помечена к удалению
 
 end
 
@@ -4661,7 +4662,7 @@ module PandoraNet
   # Pool
   # RU: Пул
   class Pool
-    attr_accessor :window, :sessions, :white_list
+    attr_accessor :window, :sessions, :white_list, :fish_orders
 
     MaxWhiteSize = 500
 
@@ -4752,9 +4753,13 @@ module PandoraNet
       res.compact!
       res
     end
+    
+    FishQueueSize = 100
 
+	# Add order to fishing
+	# RU: Добавить заявку на рыбалку
     def add_fish_order(fish_key)
-      @fish_orders.add_block_to_queue(fish_key) if not @fish_orders.queue.include?(fish_key)
+      @fish_orders.add_block_to_queue(fish_key, FishQueueSize) if not @fish_orders.queue.include?(fish_key)
     end
 
     # Find or create session with necessary node
@@ -4931,9 +4936,11 @@ module PandoraNet
 
   ECC_Query_Rel        = 0
   ECC_Query_Record     = 1
+  ECC_Query_Fish       = 2
 
   ECC_News_Panhash      = 0
   ECC_News_Record       = 1
+  ECC_News_Fish         = 2
 
   ECC_Channel0_Open     = 0
   ECC_Channel1_Opened   = 1
@@ -6406,6 +6413,20 @@ module PandoraNet
                     @scmd = EC_News
                     @scode = ECC_News_Record
                     @sbuf = PandoraUtils.rubyobj_to_pson_elem([pson_records, created_list])
+                  when ECC_Query_Fish
+                    to_key = rdata  
+                    p '--ECC_Query_Fish to_key='+to_key.inspect
+                    if to_key
+                      session = pool.session_of_key(to_key)
+                      if session
+                        p log_mes+' session='+session.inspect
+                        @scmd = EC_News
+                        @scode = ECC_News_Fish
+                        @sbuf = to_key
+                      else
+                        pool.add_fish_order(to_key)
+                      end
+                    end
                   else #запрос сорта (1-254) или всех сортов (255)
                     afrom_data = rdata
                     akind = rcode
@@ -6456,6 +6477,23 @@ module PandoraNet
                       @scode = ECC_Query_Record
                       foll_list = nil
                       @sbuf = PandoraUtils.rubyobj_to_pson_elem([need_ph_list, foll_list])
+                    end
+                  when ECC_News_Fish
+                    fish = rdata
+                    if fish
+                      p log_mes+'--ECC_News_Fish fish='+fish.inspect
+                      session = pool.session_waiting_fish(fish)
+                      if session
+                        p log_mes+' session='+session.inspect
+                        #out_lure = take_out_lure_for_fisher(session, to_key)
+                        #send_segment_to_fisher(out_lure)
+                        session.donor = self
+                        session.fish_lure = session.registrate_fish(fish)
+                        sthread = session.send_thread
+						if sthread and sthread.alive? and sthread.stop?
+						  sthread.run
+						end
+                      end
                     end
                   else
                     p "news more!!!!"
@@ -7135,6 +7173,17 @@ module PandoraNet
                   end
                 end
               end
+       
+			  # проверка новых заявок на рыбалку
+			  fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
+			  if fish_order 
+			    p 'New fish order: '+fish_order.inspect
+			    tokey = @skey[PandoraCrypto::KV_Panhash]
+			    if fish_order == tokey
+                  PandoraUtils.log_message(LM_Trace, _('Fishing to')+': '+PandoraUtils.bytes_to_hex(tokey))
+                  add_send_segment(EC_Query, true, tokey, ECC_Query_Fish)
+			    end
+			  end
 
               #p '---@conn_state='+@conn_state.inspect
               #sleep 0.5
