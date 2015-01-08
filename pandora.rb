@@ -2536,17 +2536,19 @@ module PandoraUtils
       res
     end
 
-    QS_Empty     = 0
-    QS_NotEmpty  = 1
-    QS_Full      = 2
+    # Queue state with single reader
+    # RU: Состояние очереди с одним читальщиком
+    SQS_Empty     = 0
+    SQS_NotEmpty  = 1
+    SQS_Full      = 2
 
     # State of single queue
     # RU: Состояние одиночной очереди
     def single_read_state(max=MaxQueue)
-      res = QS_NotEmpty
+      res = SQS_NotEmpty
       if @read_ind.is_a? Integer
         if (@read_ind == write_ind)
-          res = QS_Empty
+          res = SQS_Empty
         else
           wind = write_ind
           if wind<max
@@ -2554,7 +2556,7 @@ module PandoraUtils
           else
             wind = 0
           end
-          res = QS_Full if (@read_ind == wind)
+          res = SQS_Full if (@read_ind == wind)
         end
       end
       res
@@ -2562,7 +2564,7 @@ module PandoraUtils
 
     # Get block from queue (set "reader" like 0,1,2..)
     # RU: Взять блок из очереди (задавай "reader" как 0,1,2..)
-    def get_block_from_queue(max=MaxQueue, reader=nil)
+    def get_block_from_queue(max=MaxQueue, reader=nil, move_ptr=true)
       block = nil
       pointers = nil
       synchronize do
@@ -2580,10 +2582,12 @@ module PandoraUtils
             ind = 0
           end
           block = queue[ind]
-          if reader
-            pointers[reader] = ind
-          else
-            @read_ind = ind
+          if move_ptr
+            if reader
+              pointers[reader] = ind
+            else
+              @read_ind = ind
+            end
           end
         end
       end
@@ -3468,7 +3472,7 @@ module PandoraModel
   # RU: Флаги состояния объекта/записи
   PSF_Support   = 1      # "поддерживаю", т.е. должна храниться
   PSF_Hurvest   = 2      # собирается/загружается по частям
-  PSF_Deleted   = 4	     # помечена к удалению
+  PSF_Deleted   = 4      # помечена к удалению
 
 end
 
@@ -4753,13 +4757,16 @@ module PandoraNet
       res.compact!
       res
     end
-    
+
     FishQueueSize = 100
 
-	# Add order to fishing
-	# RU: Добавить заявку на рыбалку
-    def add_fish_order(fish_key)
-      @fish_orders.add_block_to_queue(fish_key, FishQueueSize) if not @fish_orders.queue.include?(fish_key)
+    # Add order to fishing
+    # RU: Добавить заявку на рыбалку
+    def add_fish_order(fisher_keybase, fish_keybase)
+      line = [fisher_keybase, fish_keybase]
+      if not @fish_orders.get_block_from_queue(FishQueueSize, nil, false)
+        @fish_orders.add_block_to_queue(line, FishQueueSize)
+      end
     end
 
     # Find or create session with necessary node
@@ -5026,12 +5033,12 @@ module PandoraNet
   AT_Hyperboria = 2
   AT_Netsukuku  = 3
 
-  # Inquirer steps
+  # Questioner steps
   # RU: Шаги почемучки
-  IS_ResetMessage  = 0
-  IS_CreatorCheck  = 1
-  IS_NewsQuery     = 2
-  IS_Finished      = 255
+  QS_ResetMessage  = 0
+  QS_CreatorCheck  = 1
+  QS_NewsQuery     = 2
+  QS_Finished      = 255
 
   $callback_addr = nil
   $puzzle_bit_length = 0  #8..24  (recommended 14)
@@ -5354,7 +5361,7 @@ module PandoraNet
         else
           asbuf = param
       end
-      if (@send_queue.single_read_state != PandoraUtils::RoundQueue::QS_Full)
+      if (@send_queue.single_read_state != PandoraUtils::RoundQueue::SQS_Full)
         res = @send_queue.add_block_to_queue([ascmd, ascode, asbuf])
       end
       if ascmd != EC_Media
@@ -6306,7 +6313,7 @@ module PandoraNet
                     values['panhash'] = panhash
                     res = model.update(values, nil, nil)
                     if res and (id.is_a? Integer)
-                      while (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) do
+                      while (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) do
                         sleep(0.02)
                       end
                       @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
@@ -6358,17 +6365,17 @@ module PandoraNet
                     pankinds = PandoraCrypto.allowed_kinds(trust, pankinds)
                     p log_mes+'pankinds='+pankinds.inspect
 
-                    whyer = @rkey[PandoraCrypto::KV_Creator]
+                    questioner = @rkey[PandoraCrypto::KV_Creator]
                     answerer = @skey[PandoraCrypto::KV_Creator]
                     key=nil
                     #ph_list = []
-                    #ph_list << PandoraModel.signed_records(whyer, from_time, pankinds, \
+                    #ph_list << PandoraModel.signed_records(questioner, from_time, pankinds, \
                     #  trust, key, models)
-                    ph_list = PandoraModel.public_records(whyer, trust, from_time, \
+                    ph_list = PandoraModel.public_records(questioner, trust, from_time, \
                       pankinds, @send_models)
 
                     #panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
-                    #panhash_list = PandoraModel.get_panhashes_by_whyer(whyer, trust, from_time)
+                    #panhash_list = PandoraModel.get_panhashes_by_questioner(questioner, trust, from_time)
 
                     p log_mes+'ph_list='+ph_list.inspect
                     ph_list = PandoraUtils.rubyobj_to_pson_elem(ph_list) if ph_list
@@ -6414,17 +6421,23 @@ module PandoraNet
                     @scode = ECC_News_Record
                     @sbuf = PandoraUtils.rubyobj_to_pson_elem([pson_records, created_list])
                   when ECC_Query_Fish
-                    to_key = rdata  
-                    p '--ECC_Query_Fish to_key='+to_key.inspect
-                    if to_key
-                      session = pool.session_of_key(to_key)
+                    line_raw = rdata
+                    line, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    fisher_keybase, fish_keybase = line
+                    p '--ECC_Query_Fish line='+line.inspect
+                    if fish_keybase
+                      session = pool.session_of_keybase(fish_keybase)
                       if session
                         p log_mes+' session='+session.inspect
+                        fisher_lure = registrate_keybase(session, line)
+                        fish_lure = session.registrate_keybase(self, line)
+                        session.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
+                          ECC_News_Fish)
                         @scmd = EC_News
                         @scode = ECC_News_Fish
-                        @sbuf = to_key
+                        @sbuf = fisher_lure.chr + line_raw
                       else
-                        pool.add_fish_order(to_key)
+                        pool.add_fish_order(*line)
                       end
                     end
                   else #запрос сорта (1-254) или всех сортов (255)
@@ -6452,9 +6465,9 @@ module PandoraNet
 
                     two_list = [need_ph_list]
 
-                    whyer = @rkey[PandoraCrypto::KV_Creator] #me
+                    questioner = @rkey[PandoraCrypto::KV_Creator] #me
                     answerer = @skey[PandoraCrypto::KV_Creator]
-                    p '[whyer, answerer]='+[whyer, answerer].inspect
+                    p '[questioner, answerer]='+[questioner, answerer].inspect
                     follower = nil
                     from_time = Time.now.to_i - 10*24*3600
                     pankinds = nil
@@ -6479,10 +6492,14 @@ module PandoraNet
                       @sbuf = PandoraUtils.rubyobj_to_pson_elem([need_ph_list, foll_list])
                     end
                   when ECC_News_Fish
-                    fish = rdata
-                    if fish
-                      p log_mes+'--ECC_News_Fish fish='+fish.inspect
-                      session = pool.session_waiting_fish(fish)
+                    lure = rdata[0]
+                    line_raw = rdata[1..-1]
+                    line, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    fisher_keybase, fish_keybase = line
+                    if len>0
+                      p log_mes+'--ECC_News_Fish line='+line.inspect
+                      session = pool.session_of_keybase(fish_keybase)
+                      sthread = nil
                       if session
                         p log_mes+' session='+session.inspect
                         #out_lure = take_out_lure_for_fisher(session, to_key)
@@ -6490,9 +6507,19 @@ module PandoraNet
                         session.donor = self
                         session.fish_lure = session.registrate_fish(fish)
                         sthread = session.send_thread
-						if sthread and sthread.alive? and sthread.stop?
-						  sthread.run
-						end
+                      else
+                        session = pool.session_of_keybase(fisher_keybase)
+                        if session
+                          p log_mes+' session='+session.inspect
+                          session.donor = self
+                          session.fish_lure = session.registrate_fish(fish)
+                          sthread = session.send_thread
+                        else
+                          pool.add_fish_order(*line)
+                        end
+                      end
+                      if sthread and sthread.alive? and sthread.stop?
+                        sthread.run
                       end
                     end
                   else
@@ -6861,7 +6888,7 @@ module PandoraNet
                       if rkcmd==EC_Media
                         process_media_segment(rkcode, rkdata)
                       else
-                        while (@read_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) \
+                        while (@read_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) \
                         and (@conn_state == CS_Connected)
                           sleep(0.03)
                           Thread.pass
@@ -6915,7 +6942,7 @@ module PandoraNet
                   #p log_mes+'--**** after accept: [scmd, scode, sbuf]='+[@scmd, @scode, len].inspect
 
                   if @scmd != EC_Data
-                    while (@send_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) \
+                    while (@send_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) \
                     and (@conn_state == CS_Connected)
                       sleep(0.03)
                       Thread.pass
@@ -6945,7 +6972,7 @@ module PandoraNet
 
             # Send cicle
             # RU: Цикл отправки
-            inquirer_step = IS_ResetMessage
+            questioner_step = QS_ResetMessage
             message_model = PandoraUtils.get_model('Message', @send_models)
             p log_mes+'ЦИКЛ ОТПРАВКИ начало: @conn_state='+@conn_state.inspect
 
@@ -7012,9 +7039,9 @@ module PandoraNet
               processed = 0
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$inquire_block_count) \
-              and (inquirer_step<IS_Finished)
-                case inquirer_step
-                  when IS_ResetMessage
+              and (questioner_step<QS_Finished)
+                case questioner_step
+                  when QS_ResetMessage
                     # если что-то отправлено, но не получено, то повторить
                     mypanhash = PandoraCrypto.current_user_or_key(true)
                     receiver = @skey[PandoraCrypto::KV_Creator]
@@ -7023,8 +7050,8 @@ module PandoraNet
                       filter = {'destination'=>receiver, 'state'=>1}
                       message_model.update({:state=>0}, nil, filter)
                     end
-                    inquirer_step += 1
-                  when IS_CreatorCheck
+                    questioner_step += 1
+                  when QS_CreatorCheck
                     # если собеседник неизвестен, запросить анкету
                     creator = @skey[PandoraCrypto::KV_Creator]
                     kind = PandoraUtils.kind_from_panhash(creator)
@@ -7034,25 +7061,25 @@ module PandoraNet
                       p log_mes+'Whyer: CreatorCheck  Request!'
                       set_request(creator, true)
                     end
-                    inquirer_step += 1
-                  when IS_NewsQuery
+                    questioner_step += 1
+                  when QS_NewsQuery
                     # запросить список новых панхэшей
                     pankinds = 1.chr + 11.chr
                     from_time = Time.now.to_i - 10*24*3600
-                    #whyer = @rkey[PandoraCrypto::KV_Creator]
+                    #questioner = @rkey[PandoraCrypto::KV_Creator]
                     #answerer = @skey[PandoraCrypto::KV_Creator]
                     #trust=nil
                     #key=nil
                     #models=nil
                     #ph_list = []
-                    #ph_list << PandoraModel.signed_records(whyer, from_time, pankinds, \
+                    #ph_list << PandoraModel.signed_records(questioner, from_time, pankinds, \
                     #  trust, key, models)
-                    #ph_list << PandoraModel.public_records(whyer, trust, from_time, \
+                    #ph_list << PandoraModel.public_records(questioner, trust, from_time, \
                     #  pankinds, models)
                     set_relations_query(pankinds, from_time, true)
-                    inquirer_step += 1
+                    questioner_step += 1
                   else
-                    inquirer_step = IS_Finished
+                    questioner_step = QS_Finished
                 end
                 processed += 1
               end
@@ -7063,9 +7090,10 @@ module PandoraNet
               processed = 0
               cannel = 0
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
-              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
+              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
+              and (processed<$media_block_count) \
               and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size) \
-              and (inquirer_step>IS_ResetMessage)
+              and (questioner_step>QS_ResetMessage)
                 if dialog.recv_media_pipeline[cannel] and dialog.appsrcs[cannel]
                 #and (dialog.recv_media_pipeline[cannel].get_state == Gst::STATE_PLAYING)
                   processed += 1
@@ -7107,7 +7135,7 @@ module PandoraNet
                     i = 0
                     while sel and (i<sel.size) and (processed<$mes_block_count) \
                     and (@conn_state == CS_Connected) \
-                    and (@send_queue.single_read_state != PandoraUtils::RoundQueue::QS_Full)
+                    and (@send_queue.single_read_state != PandoraUtils::RoundQueue::SQS_Full)
                       processed += 1
                       row = sel[i]
                       if add_send_segment(EC_Message, true, row)
@@ -7173,23 +7201,23 @@ module PandoraNet
                   end
                 end
               end
-       
-			  # проверка новых заявок на рыбалку
-			  fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
-			  if fish_order 
-			    p 'New fish order: '+fish_order.inspect
-			    tokey = @skey[PandoraCrypto::KV_Panhash]
-			    if fish_order == tokey
+
+              # проверка новых заявок на рыбалку
+              fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
+              if fish_order
+                p 'New fish order: '+fish_order.inspect
+                tokey = @skey[PandoraCrypto::KV_Panhash]
+                if fish_order == tokey
                   PandoraUtils.log_message(LM_Trace, _('Fishing to')+': '+PandoraUtils.bytes_to_hex(tokey))
                   add_send_segment(EC_Query, true, tokey, ECC_Query_Fish)
-			    end
-			  end
+                end
+              end
 
               #p '---@conn_state='+@conn_state.inspect
               #sleep 0.5
 
               if (socket and socket.closed?) or (@conn_state == CS_StopRead) \
-              and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::QS_Empty)
+              and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Empty)
                 @conn_state = CS_Disconnected
               elsif (not fast_data)
                 sleep(0.02)
@@ -7473,6 +7501,8 @@ module PandoraGtk
   include PandoraUtils
   include PandoraModel
 
+  # Statusbar fields
+  # RU: Поля в статусбаре
   SF_Update = 0
   SF_Auth   = 1
   SF_Listen = 2
