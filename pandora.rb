@@ -4678,6 +4678,10 @@ module PandoraNet
       @fish_orders = PandoraUtils::RoundQueue.new(true)
     end
 
+    def base_id
+      $base_id
+    end
+
     # Add ip to white list
     # RU: Добавляет ip в белый список
     def add_to_white(ip)
@@ -4718,9 +4722,9 @@ module PandoraNet
       end
     end
 
-    # Get a session for the node
-    # RU: Возвращает сессию для узла
-    def session_of_node(node)
+    # Get a session by address (ip, port, protocol)
+    # RU: Возвращает сессию для адреса
+    def session_of_address(node)
       host, port, proto = decode_node(node)
       res = sessions.find do |e|
         ((e.host_ip == host) or (e.host_name == host)) and (e.port == port) and (e.proto == proto)
@@ -4728,10 +4732,10 @@ module PandoraNet
       res
     end
 
-    # Get a session by the key and base id
-    # RU: Возвращает сессию по ключу и идентификатору базы
-    def session_of_keybase(keybase)
-      res = sessions.find { |e| (e.node_panhash == keybase) }
+    # Get a session by the node panhash
+    # RU: Возвращает сессию по панхэшу узла
+    def session_of_node(panhash)
+      res = sessions.find { |e| (e.node_panhash == panhash) }
       res
     end
 
@@ -4739,6 +4743,14 @@ module PandoraNet
     # RU: Возвращает сессию по панхэшу ключа
     def session_of_key(key)
       res = sessions.find { |e| (e.skey[PandoraCrypto::KV_Panhash] == key) }
+      res
+    end
+
+    # Get a session by the key and base id
+    # RU: Возвращает сессию по ключу и идентификатору базы
+    def session_of_keybase(key, base_id)
+      res = sessions.find { |e| (e.base_id == base_id) and \
+        (e.skey[PandoraCrypto::KV_Panhash] == key) }
       res
     end
 
@@ -4762,8 +4774,8 @@ module PandoraNet
 
     # Add order to fishing
     # RU: Добавить заявку на рыбалку
-    def add_fish_order(fisher_keybase, fish_keybase)
-      line = [fisher_keybase, fish_keybase]
+    def add_fish_order(session, fisher_key, fisher_baseid, fish_key)
+      line = [session, fisher_key, fisher_baseid, fish_key]
       if not @fish_orders.get_block_from_queue(FishQueueSize, nil, false)
         @fish_orders.add_block_to_queue(line, FishQueueSize)
       end
@@ -4771,14 +4783,14 @@ module PandoraNet
 
     # Find or create session with necessary node
     # RU: Находит или создает соединение с нужным узлом
-    def init_session(node=nil, keybase=nil, send_state_add=nil, dialog=nil, node_id=nil)
-      p 'init_session: '+[node, keybase, send_state_add, dialog, node_id].inspect
+    def init_session(node=nil, nodehash=nil, send_state_add=nil, dialog=nil, node_id=nil)
+      p 'init_session: '+[node, nodehash, send_state_add, dialog, node_id].inspect
       res = nil
       send_state_add ||= 0
       session1 = nil
       session2 = nil
-      session1 = session_of_keybase(keybase) if keybase
-      session2 = session_of_node(node) if node and (not session1)
+      session1 = session_of_node(nodehash) if nodehash
+      session2 = session_of_address(node) if node and (not session1)
       if session1 or session2
         session = session1
         session ||= session2
@@ -4826,12 +4838,12 @@ module PandoraNet
 
     # Stop session with a node
     # RU: Останавливает соединение с заданным узлом
-    def stop_session(node=nil, keybase=nil, disconnect=true)  #, wait_disconnect=true)
-      p 'stop_session1 keybase='+keybase.inspect
+    def stop_session(node=nil, nodehash=nil, disconnect=true)  #, wait_disconnect=true)
+      p 'stop_session1 nodehash='+nodehash.inspect
       session1 = nil
       session2 = nil
-      session1 = session_of_keybase(keybase) if keybase
-      session2 = session_of_node(node) if node and (not session1)
+      session1 = session_of_keybase(nodehash) if nodehash
+      session2 = session_of_address(node) if node and (not session1)
       if session1 or session2
         #p 'stop_session2 session1,session2='+[session1,session2].inspect
         session = session1
@@ -4847,9 +4859,9 @@ module PandoraNet
           #  sleep 0.05
           #  #Thread.pass
           #  #Gtk.main_iteration
-          #  session = session_of_node(node)
+          #  session = session_of_address(node)
           #end
-          #session = session_of_node(node)
+          #session = session_of_address(node)
         end
       end
       res = (session and (session.conn_state != CS_Disconnected)) #and wait_disconnect
@@ -5063,7 +5075,7 @@ module PandoraNet
       :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, :fisher_lure, :fish_lure, \
       :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, :params, \
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, \
-      :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes, :fishers
+      :media_send, :node_id, :node_panhash, :base_id, :entered_captcha, :captcha_sw, :fishes, :fishers
 
     # Set socket options
     # RU: Установить опции сокета
@@ -5331,7 +5343,6 @@ module PandoraNet
       asbuf = nil
       case ex_comm
         when EC_Auth
-          @rkey = PandoraCrypto.current_key(false, false)
           #p log_mes+'first key='+key.inspect
           if @rkey and @rkey[PandoraCrypto::KV_Obj]
             key_hash = @rkey[PandoraCrypto::KV_Panhash]
@@ -5541,6 +5552,10 @@ module PandoraNet
         end
       end
 
+      def mykeyhash
+        @rkey[PandoraCrypto::KV_Panhash]
+      end
+
       # Update record about node
       # RU: Обновить запись об узле
       def update_node(skey_panhash=nil, sbase_id=nil, trust=nil, session_key=nil)
@@ -5675,6 +5690,7 @@ module PandoraNet
         panhash = node_model.panhash(values)
         values[:panhash] = panhash
         @node_panhash = panhash
+        @base_id = abase_id
 
         res = node_model.update(values, nil, filter)
       end
@@ -5732,6 +5748,26 @@ module PandoraNet
         password
       end
 
+      def add_hole_for_fisher(fisher)
+        hole = get_hole_of_fisher(fisher)
+        if not hole
+          size = fishers.size
+          if size>0
+            i = 0
+            while (i<size) and (hole==nil)
+              hole = i if fishers[i]==nil
+              i += 1
+            end
+            hole = size if (hole==nil) and (size<256)
+            list_set(fishers, hole, fisher) if hole != nil
+          else
+            hole = 0
+            list_set(fishers, hole, fisher)
+          end
+        end
+        hole
+      end
+
       # Take out lure by input lure for the fisher
       # RU: Взять исходящую наживку по входящей наживке для заданного рыбака
       def take_out_lure_for_fisher(fisher, in_lure)
@@ -5754,12 +5790,12 @@ module PandoraNet
 
       # Check out lure by input lure and the fisher
       # RU: Проверить исходящую наживку по входящей наживке и рыбаку
-      def get_out_lure_for_fisher(fisher, in_lure)
-        val = [fisher, in_lure]
-        out_lure = @fishers.index(val)
-        p '----get_out_lure_for_fisher  in_lure, out_lure='+[in_lure, out_lure].inspect
-        out_lure
-      end
+      #def get_out_lure_for_fisher(fisher, in_lure)
+      #  val = [fisher, in_lure]
+      #  out_lure = @fishers.index(val)
+      #  p '----get_out_lure_for_fisher  in_lure, out_lure='+[in_lure, out_lure].inspect
+      #  out_lure
+      #end
 
       # Get fisher for out lure
       # RU: Определить рыбака по исходящей наживке
@@ -6421,23 +6457,26 @@ module PandoraNet
                     @scode = ECC_News_Record
                     @sbuf = PandoraUtils.rubyobj_to_pson_elem([pson_records, created_list])
                   when ECC_Query_Fish
+                    # пришла заявка на рыбалку
                     line_raw = rdata
                     line, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
-                    fisher_keybase, fish_keybase = line
+                    fisher_key, fisher_baseid, fish_key = line
                     p '--ECC_Query_Fish line='+line.inspect
                     if fish_keybase
-                      session = pool.session_of_keybase(fish_keybase)
+                      session = pool.session_of_key(fish_key)
                       if session
-                        p log_mes+' session='+session.inspect
-                        fisher_lure = registrate_keybase(session, line)
-                        fish_lure = session.registrate_keybase(self, line)
+                        p log_mes+' fish session='+session.inspect
+                        line << session.base_id
+                        fisher_lure = registrate_keybase(session, *line)
+                        fish_lure = session.registrate_keybase(self, *line)
+                        line_raw = PandoraUtils.rubyobj_to_pson_elem(line)
                         session.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
                           ECC_News_Fish)
                         @scmd = EC_News
                         @scode = ECC_News_Fish
                         @sbuf = fisher_lure.chr + line_raw
                       else
-                        pool.add_fish_order(*line)
+                        pool.add_fish_order(self, *line)
                       end
                     end
                   else #запрос сорта (1-254) или всех сортов (255)
@@ -6492,16 +6531,28 @@ module PandoraNet
                       @sbuf = PandoraUtils.rubyobj_to_pson_elem([need_ph_list, foll_list])
                     end
                   when ECC_News_Fish
-                    lure = rdata[0]
+                    # по заявке найдена рыбка, ей присвоен номер
+                    hook = rdata[0]
                     line_raw = rdata[1..-1]
                     line, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
-                    fisher_keybase, fish_keybase = line
+                    fisher_key, fisher_baseid, fish_key, fish_baseid = line
                     if len>0
                       p log_mes+'--ECC_News_Fish line='+line.inspect
-                      session = pool.session_of_keybase(fish_keybase)
+
+                      if (fish_key == mykeyhash) and (fish_baseid == pool.base_id)
+                        # это узел-рыбка, нужно найти/создать рыбацкую сессию
+                        session = pool.session_of_keybase(fisher_key, fisher_baseid)
+                      elsif (fisher_key == mykeyhash) and (fisher_baseid == pool.base_id)
+                        # это узел-рыбак, нужно найти и разбудить рыб. сессию
+                        session = pool.session_of_keybase(fish_key, fish_baseid)
+                      end
+
+
+                      session = pool.session_of_key(fish_key)
                       sthread = nil
                       if session
-                        p log_mes+' session='+session.inspect
+                        # найдена сессия с рыбкой
+                        p log_mes+' fish session='+session.inspect
                         #out_lure = take_out_lure_for_fisher(session, to_key)
                         #send_segment_to_fisher(out_lure)
                         session.donor = self
@@ -6510,12 +6561,13 @@ module PandoraNet
                       else
                         session = pool.session_of_keybase(fisher_keybase)
                         if session
-                          p log_mes+' session='+session.inspect
+                          # найдена сессия с рыбаком
+                          p log_mes+' fisher session='+session.inspect
                           session.donor = self
                           session.fish_lure = session.registrate_fish(fish)
                           sthread = session.send_thread
                         else
-                          pool.add_fish_order(*line)
+                          pool.add_fish_order(self, *line)
                         end
                       end
                       if sthread and sthread.alive? and sthread.stop?
@@ -6587,6 +6639,8 @@ module PandoraNet
       @confirm_queue  = PandoraUtils::RoundQueue.new
       @send_models    = {}
       @recv_models    = {}
+
+      @rkey = PandoraCrypto.current_key(false, false)
 
       # Main thread of session
       # RU: Главный поток сессии
@@ -6678,7 +6732,7 @@ module PandoraNet
 
             if not @socket
               # Add fish order and wait donor
-              pool.add_fish_order(tokey)
+              pool.add_fish_order(self, mykeyhash, pool.base_id, tokey)
               while (not @donor) and (not @socket)
                 p 'Thread.stop tokey='+tokey.inspect
                 Thread.stop
@@ -6725,6 +6779,7 @@ module PandoraNet
             @params         = {}
             @media_send     = false
             @node_panhash   = nil
+            @base_id        = nil
             pool.add_session(self)
             if @socket
               set_keepalive(@socket)
