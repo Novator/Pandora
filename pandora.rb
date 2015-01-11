@@ -4959,7 +4959,7 @@ module PandoraNet
 
   ECC_News_Panhash      = 0
   ECC_News_Record       = 1
-  ECC_News_Fish         = 2
+  ECC_News_Hook         = 2
 
   ECC_Channel0_Open     = 0
   ECC_Channel1_Opened   = 1
@@ -6471,9 +6471,9 @@ module PandoraNet
                         fish_lure = session.registrate_keybase(self, *line)
                         line_raw = PandoraUtils.rubyobj_to_pson_elem(line)
                         session.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
-                          ECC_News_Fish)
+                          ECC_News_Hook)
                         @scmd = EC_News
-                        @scode = ECC_News_Fish
+                        @scode = ECC_News_Hook
                         @sbuf = fisher_lure.chr + line_raw
                       else
                         pool.add_fish_order(self, *line)
@@ -6530,14 +6530,15 @@ module PandoraNet
                       foll_list = nil
                       @sbuf = PandoraUtils.rubyobj_to_pson_elem([need_ph_list, foll_list])
                     end
-                  when ECC_News_Fish
+                  when ECC_News_Hook
                     # по заявке найдена рыбка, ей присвоен номер
-                    hook = rdata[0]
+                    hook = rdata[0].ord
                     line_raw = rdata[1..-1]
                     line, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
                     fisher_key, fisher_baseid, fish_key, fish_baseid = line
                     if len>0
-                      p log_mes+'--ECC_News_Fish line='+line.inspect
+                      # данные корректны
+                      p log_mes+'--ECC_News_Hook line='+line.inspect
 
                       if (fish_key == mykeyhash) and (fish_baseid == pool.base_id)
                         # это узел-рыбка, нужно найти/создать рыбацкую сессию
@@ -6572,6 +6573,13 @@ module PandoraNet
                       end
                       if sthread and sthread.alive? and sthread.stop?
                         sthread.run
+                      else
+                        sessions = pool.find_by_order(line)
+                        if sessions
+                          sessions.each do |session|
+                            session.add_send_segment(EC_News, true, rdata, ECC_News_Hook)
+                          end
+                        end
                       end
                     end
                   else
