@@ -6543,9 +6543,14 @@ module PandoraNet
                       if (fish_key == mykeyhash) and (fish_baseid == pool.base_id)
                         # это узел-рыбка, нужно найти/создать рыбацкую сессию
                         session = pool.session_of_keybase(fisher_key, fisher_baseid)
+                        #pool.init_session(node, tokey, nil, nil, node_id)
+                        session ||= Session.new(self, nil, hook, nil, nil, \
+                          CS_Connected, nil, nil, nil, nil)
                       elsif (fisher_key == mykeyhash) and (fisher_baseid == pool.base_id)
                         # это узел-рыбак, нужно найти и разбудить рыб. сессию
                         session = pool.session_of_keybase(fish_key, fish_baseid)
+                        session ||= Session.new(self, hook, nil, nil, nil, \
+                          CS_Connected, nil, nil, nil, nil)
                       end
 
 
