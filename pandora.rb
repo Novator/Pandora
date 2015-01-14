@@ -5072,10 +5072,11 @@ module PandoraNet
     include PandoraUtils
 
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
-      :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, :fish_hook, \
+      :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, :fisher_lure, :fish_lure, \
       :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, :params, \
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, \
-      :media_send, :node_id, :node_panhash, :base_id, :entered_captcha, :captcha_sw, :fishes, :fishers
+      :media_send, :node_id, :node_panhash, :base_id, :entered_captcha, :captcha_sw, \
+      :hooks
 
     # Set socket options
     # RU: Установить опции сокета
@@ -5156,7 +5157,11 @@ module PandoraNet
       if donor
         segment = [cmd, code].pack('CC')
         segment << data if data
-        res = donor.send_queue.add_block_to_queue([EC_Hook, fish_hook, segment])
+        if fisher_lure
+          res = donor.send_queue.add_block_to_queue([EC_Lure, fisher_lure, segment])
+        else
+          res = donor.send_queue.add_block_to_queue([EC_Bite, fish_lure, segment])
+        end
       else
         data ||= ''
         data = AsciiString.new(data)
@@ -6461,17 +6466,16 @@ module PandoraNet
                     if fish_keybase
                       session = pool.session_of_key(fish_key)
                       if session
-                        # найдена рыбка
                         p log_mes+' fish session='+session.inspect
                         line << session.base_id
-                        afisher_hook = registrate_keybase(session, *line)
-                        afish_hook = session.registrate_keybase(self, *line)
+                        fisher_lure = registrate_keybase(session, *line)
+                        fish_lure = session.registrate_keybase(self, *line)
                         line_raw = PandoraUtils.rubyobj_to_pson_elem(line)
-                        session.add_send_segment(EC_News, true, afish_hook.chr + line_raw, \
+                        session.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
                           ECC_News_Hook)
                         @scmd = EC_News
                         @scode = ECC_News_Hook
-                        @sbuf = afisher_hook.chr + line_raw
+                        @sbuf = fisher_lure.chr + line_raw
                       else
                         pool.add_fish_order(self, *line)
                       end
@@ -6559,7 +6563,7 @@ module PandoraNet
                         #out_lure = take_out_lure_for_fisher(session, to_key)
                         #send_segment_to_fisher(out_lure)
                         session.donor = self
-                        session.fish_hook = session.registrate_fish(fish)
+                        session.fish_lure = session.registrate_fish(fish)
                         sthread = session.send_thread
                       else
                         session = pool.session_of_keybase(fisher_keybase)
@@ -6567,7 +6571,7 @@ module PandoraNet
                           # найдена сессия с рыбаком
                           p log_mes+' fisher session='+session.inspect
                           session.donor = self
-                          session.fish_hook = session.registrate_fish(fish)
+                          session.fish_lure = session.registrate_fish(fish)
                           sthread = session.send_thread
                         else
                           pool.add_fish_order(self, *line)
@@ -6671,7 +6675,11 @@ module PandoraNet
             # задать донора
             @donor = asocket
             # задать канал
-            @fish_hook = ahost_name
+            if ahost_name
+              @fisher_lure = ahost_name
+            else
+              @fish_lure = ahost_ip
+            end
           end
         end
 
