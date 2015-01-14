@@ -3466,9 +3466,10 @@ module PandoraModel
 
   # Panobject state flags
   # RU: Флаги состояния объекта/записи
-  PSF_Support   = 1      # "поддерживаю", т.е. должна храниться
-  PSF_Hurvest   = 2      # собирается/загружается по частям
-  PSF_Deleted   = 4	     # помечена к удалению
+  PSF_Support   = 1         # "поддерживаю", т.е. должна храниться
+  PSF_Hurvest   = 2         # собирается/загружается по частям
+  PSF_Trashed   = 0xFF00    # помечена к удалению
+  PSF_Hidden    = 0xFF01    # скрыто от показа в таблице
 
 end
 
