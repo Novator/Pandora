@@ -42,27 +42,18 @@ module PandoraUtils
     config.port = nil
     config.lang = 'ru'
     config.parameters = []
+
+    # Paths and files
+    # RU: Пути и файлы
+    $pandora_base_dir = File.join(Pandora.root, 'base')        # Database directory
+    $pandora_view_dir = File.join(Pandora.root, 'view')        # Media files directory
+    $pandora_model_dir = File.join(Pandora.root, 'model')      # Model directory
+    $pandora_lang_dir = File.join(Pandora.root, 'lang')        # Languages directory
+    $pandora_util_dir = File.join(Pandora.root, 'util')        # Utilites directory
+    $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
+    $pandora_files_dir = File.join(Pandora.root, 'files')      # Files directory
   end
 
-  p "config here>>>>"
-  p
-
-  # Pandora.config.poly_launch = true
-  # Pandora.config.host = nil
-  # Pandora.config.port = nil
-  # Pandora.config.lang = 'ru'
-  # Pandora.config.parameters = []
-
-  # Paths and files
-  # RU: Пути и файлы
-  $pandora_root_dir = Dir.pwd                                     # Current directory
-  $pandora_base_dir = File.join($pandora_root_dir, 'base')        # Database directory
-  $pandora_view_dir = File.join($pandora_root_dir, 'view')        # Media files directory
-  $pandora_model_dir = File.join($pandora_root_dir, 'model')      # Model directory
-  $pandora_lang_dir = File.join($pandora_root_dir, 'lang')        # Languages directory
-  $pandora_util_dir = File.join($pandora_root_dir, 'util')        # Utilites directory
-  $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
-  $pandora_files_dir = File.join($pandora_root_dir, 'files')      # Files directory
 
   # Log level constants
   # RU: Константы уровня логирования
@@ -11446,7 +11437,7 @@ module PandoraGtk
         sleep($update_interval) if not Thread.current[:all_step]
         $window.set_status_field(SF_Update, 'Checking')
 
-        main_script = File.join($pandora_root_dir, 'pandora.rb')
+        main_script = File.join(Pandora.root, 'pandora.rb')
         curr_size = File.size?(main_script)
         if curr_size
           if File.stat(main_script).writable?
@@ -11532,9 +11523,9 @@ module PandoraGtk
                               end
                               if unzip_path and Dir.exist?(unzip_path)
                                 begin
-                                  p 'Copy '+unzip_path+' to '+$pandora_root_dir
-                                  #FileUtils.copy_entry(unzip_path, $pandora_root_dir, true)
-                                  FileUtils.cp_r(unzip_path+'/.', $pandora_root_dir)
+                                  p 'Copy '+unzip_path+' to '+Pandora.root
+                                  #FileUtils.copy_entry(unzip_path, Pandora.root, true)
+                                  FileUtils.cp_r(unzip_path+'/.', Pandora.root)
                                   PandoraUtils.log_message(LM_Info, _('Files are updated'))
                                 rescue => err
                                   res = false
@@ -11582,7 +11573,7 @@ module PandoraGtk
                     downloaded = update_file(http, main_uri.path, main_script, main_uri.host)
                     # updating other files
                     UPD_FileList.each do |fn|
-                      pfn = File.join($pandora_root_dir, fn)
+                      pfn = File.join(Pandora.root, fn)
                       if File.exist?(pfn) and (not File.stat(pfn).writable?)
                         downloaded = false
                         PandoraUtils.log_message(LM_Warning, \
@@ -12397,7 +12388,7 @@ module PandoraGtk
     dlg.comments = _('P2P national network')
     dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
     begin
-      file = File.open(File.join($pandora_root_dir, 'LICENSE.TXT'), 'r')
+      file = File.open(File.join(Pandora.root, 'LICENSE.TXT'), 'r')
       gpl_text = '================='+_('Full text')+" LICENSE.TXT==================\n"+file.read
       file.close
     rescue

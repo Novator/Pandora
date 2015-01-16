@@ -41,6 +41,11 @@ module Pandora
     configatron.pandora
   end
 
+  # Root directory
+  def self.root
+    @@root_dir ||= File.expand_path("../../", __FILE__)
+  end
+
   class Application
     include ::Singleton
 
