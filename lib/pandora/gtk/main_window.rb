@@ -838,7 +838,7 @@ module Pandora
         end
         Pandora::Gtk.get_main_params
 
-        Gtk.main
+        ::Gtk.main
       end
 
     end  #--MainWindow

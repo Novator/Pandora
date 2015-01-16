@@ -8,6 +8,7 @@ require_relative 'gtk/date_entry_simple'
 # RU: Графический интерфейс Пандоры
 module Pandora
   module Gtk
+    include Constants
 
     # GTK is cross platform graphical user interface
     # RU: Кроссплатформенный оконный интерфейс
@@ -200,13 +201,13 @@ module Pandora
             response = http.request_head(main_uri.path)
             act_size = response.content_length
           end
-          PandoraUtils.set_param('last_check', Time.now)
+          Pandora::Utils.set_param('last_check', Time.now)
           p 'Size diff: '+[act_size, curr_size].inspect
           if (act_size == curr_size)
             http = nil
             step = 254
             $window.set_status_field(SF_Update, 'Ok', false)
-            PandoraUtils.set_param('last_update', Time.now)
+            Pandora::Utils.set_param('last_update', Time.now)
           else
             time = Time.now.to_i
           end
@@ -308,12 +309,12 @@ module Pandora
                               end
                               # Unzip arch
                               unzip_meth = 'lib'
-                              res = PandoraUtils.unzip_via_lib(zip_local, Pandora.base_dir)
+                              res = Pandora::Utils.unzip_via_lib(zip_local, Pandora.base_dir)
                               p 'unzip_file1 res='+res.inspect
                               if not res
                                 Pandora.logger.debug  _('Was not unziped with method')+': lib'
                                 unzip_meth = 'util'
-                                res = PandoraUtils.unzip_via_util(zip_local, Pandora.base_dir)
+                                res = Pandora::Utils.unzip_via_util(zip_local, Pandora.base_dir)
                                 p 'unzip_file2 res='+res.inspect
                                 if not res
                                   Pandora.logger.warn  _('Was not unziped with method')+': util'
@@ -404,7 +405,7 @@ module Pandora
                 end
               end
               if step == 255
-                PandoraUtils.set_param('last_update', Time.now)
+                Pandora::Utils.set_param('last_update', Time.now)
                 $window.set_status_field(SF_Update, 'Need restart')
                 Thread.stop
                 Kernel.abort('Pandora is updated. Run it again')
@@ -461,7 +462,7 @@ module Pandora
         sel = nil
         id = nil
         panhash0 = nil
-        lang = PandoraModel.text_to_lang(Pandora.config.lang)
+        lang = Pandora::Model.text_to_lang(Pandora.config.lang)
         panstate = 0
         created0 = nil
         creator0 = nil
@@ -474,7 +475,7 @@ module Pandora
           lang ||= 0
           panstate = panobject.namesvalues['panstate']
           panstate ||= 0
-          if (panobject.is_a? PandoraModel::Created)
+          if (panobject.is_a? Pandora::Model::Created)
             created0 = panobject.namesvalues['created']
             creator0 = panobject.namesvalues['creator']
           end
@@ -522,14 +523,14 @@ module Pandora
               if (panobject.ider=='Parameter') and (fid=='value')
                 type = panobject.field_val('type', sel[0])
                 setting = panobject.field_val('setting', sel[0])
-                ps = PandoraUtils.decode_param_setting(setting)
+                ps = Pandora::Utils.decode_param_setting(setting)
                 view = ps['view']
-                view ||= PandoraUtils.pantype_to_view(type)
+                view ||= Pandora::Utils.pantype_to_view(type)
                 field[FI_View] = view
               end
             end
 
-            val, color = PandoraUtils.val_to_view(val, type, view, true)
+            val, color = Pandora::Utils.val_to_view(val, type, view, true)
             field[FI_Value] = val
             field[FI_Color] = color
           end
@@ -537,14 +538,14 @@ module Pandora
           dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
           dialog.icon = panobjecticon if panobjecticon
 
-          dialog.lang_entry.entry.text = PandoraModel.lang_to_text(lang) if lang
+          dialog.lang_entry.entry.text = Pandora::Model.lang_to_text(lang) if lang
 
           if edit
-            count, rate, querist_rate = PandoraCrypto.rate_of_panobj(panhash0)
+            count, rate, querist_rate = Pandora::Crypto.rate_of_panobj(panhash0)
             trust = nil
-            p PandoraUtils.bytes_to_hex(panhash0)
+            p Pandora::Utils.bytes_to_hex(panhash0)
             p 'trust or num'
-            trust_or_num = PandoraCrypto.trust_in_panobj(panhash0)
+            trust_or_num = Pandora::Crypto.trust_in_panobj(panhash0)
             trust = trust_or_num if (trust_or_num.is_a? Float)
             dialog.vouch_btn.active = (trust_or_num != nil)
             dialog.vouch_btn.inconsistent = (trust_or_num.is_a? Integer)
@@ -554,16 +555,16 @@ module Pandora
             dialog.trust_scale.value = trust
             #dialog.rate_label.text = rate.to_s
 
-            dialog.keep_btn.active = (PandoraModel::PSF_Support & panstate)>0
+            dialog.keep_btn.active = (Pandora::Model::PSF_Support & panstate)>0
 
-            pub_level = PandoraModel.act_relation(nil, panhash0, RK_MinPublic, :check)
+            pub_level = Pandora::Model.act_relation(nil, panhash0, RK_MinPublic, :check)
             dialog.public_btn.active = pub_level
             dialog.public_btn.inconsistent = (pub_level == nil)
             dialog.public_scale.value = (pub_level-RK_MinPublic-10)/10.0 if pub_level
             dialog.public_scale.sensitive = pub_level
 
             p 'follow'
-            p follow = PandoraModel.act_relation(nil, panhash0, RK_Follow, :check)
+            p follow = Pandora::Model.act_relation(nil, panhash0, RK_Follow, :check)
             dialog.follow_btn.active = follow
             dialog.follow_btn.inconsistent = (follow == nil)
 
@@ -571,8 +572,8 @@ module Pandora
             #trust_lab = dialog.trust_btn.children[0]
             #trust_lab.modify_fg(::Gtk::STATE_NORMAL, Gdk::Color.parse('#777777')) if signed == 1
           else  #new or copy
-            key = PandoraCrypto.current_key(false, false)
-            key_inited = (key and key[PandoraCrypto::KV_Obj])
+            key = Pandora::Crypto.current_key(false, false)
+            key_inited = (key and key[Pandora::Crypto::KV_Obj])
             dialog.keep_btn.active = true
             dialog.follow_btn.active = key_inited
             dialog.vouch_btn.active = key_inited
@@ -589,7 +590,7 @@ module Pandora
           st_text = st_text + ' [#'+panobject.panhash(sel[0], lang, true, true)+']' if sel and sel.size>0
           Pandora::Gtk.set_statusbar_text(dialog.statusbar, st_text)
 
-          if panobject.class==PandoraModel::Key
+          if panobject.class==Pandora::Model::Key
             mi = ::Gtk::MenuItem.new("Действия")
             menu = ::Gtk::MenuBar.new
             menu.append(mi)
@@ -628,13 +629,13 @@ module Pandora
               if (panobject.ider=='Parameter') and (field[FI_Id]=='value')
                 par_type = panobject.field_val('type', sel[0])
                 setting = panobject.field_val('setting', sel[0])
-                ps = PandoraUtils.decode_param_setting(setting)
+                ps = Pandora::Utils.decode_param_setting(setting)
                 view = ps['view']
-                view ||= PandoraUtils.pantype_to_view(par_type)
+                view ||= Pandora::Utils.pantype_to_view(par_type)
               end
 
               p 'val, type, view='+[val, type, view].inspect
-              val = PandoraUtils.view_to_val(val, type, view)
+              val = Pandora::Utils.view_to_val(val, type, view)
               val = '@'+val if val and (val != '') and ((view=='blob') or (view=='text'))
               flds_hash[field[FI_Id]] = val
             end
@@ -650,33 +651,33 @@ module Pandora
             end
             lg = nil
             begin
-              lg = PandoraModel.text_to_lang(dialog.lang_entry.entry.text)
+              lg = Pandora::Model.text_to_lang(dialog.lang_entry.entry.text)
             rescue
             end
             lang = lg if lg
             lang = 5 if (not lang.is_a? Integer) or (lang<0) or (lang>255)
 
             time_now = Time.now.to_i
-            if (panobject.is_a? PandoraModel::Created)
+            if (panobject.is_a? Pandora::Model::Created)
               flds_hash['created'] = created0 if created0
               if not edit
                 flds_hash['created'] = time_now
-                creator = PandoraCrypto.current_user_or_key(true)
+                creator = Pandora::Crypto.current_user_or_key(true)
                 flds_hash['creator'] = creator
               end
             end
             flds_hash['modified'] = time_now
             panstate = 0
-            panstate = panstate | PandoraModel::PSF_Support if dialog.keep_btn.active?
+            panstate = panstate | Pandora::Model::PSF_Support if dialog.keep_btn.active?
             flds_hash['panstate'] = panstate
-            if (panobject.is_a? PandoraModel::Key)
+            if (panobject.is_a? Pandora::Model::Key)
               lang = flds_hash['rights'].to_i
             end
 
             panhash = panobject.panhash(flds_hash, lang)
             flds_hash['panhash'] = panhash
 
-            if (panobject.is_a? PandoraModel::Key) and (flds_hash['kind'].to_i == PandoraCrypto::KT_Priv) and edit
+            if (panobject.is_a? Pandora::Model::Key) and (flds_hash['kind'].to_i == Pandora::Crypto::KT_Priv) and edit
               flds_hash['panhash'] = panhash0
             end
 
@@ -713,22 +714,22 @@ module Pandora
                 end
 
                 if not dialog.vouch_btn.inconsistent?
-                  PandoraCrypto.unsign_panobject(panhash0, true)
+                  Pandora::Crypto.unsign_panobject(panhash0, true)
                   if dialog.vouch_btn.active?
                     trust = (dialog.trust_scale.value*127).round
-                    PandoraCrypto.sign_panobject(panobject, trust)
+                    Pandora::Crypto.sign_panobject(panobject, trust)
                   end
                 end
 
                 if not dialog.follow_btn.inconsistent?
-                  PandoraModel.act_relation(nil, panhash0, RK_Follow, :delete, \
+                  Pandora::Model.act_relation(nil, panhash0, RK_Follow, :delete, \
                     true, true)
                   if (panhash != panhash0)
-                    PandoraModel.act_relation(nil, panhash, RK_Follow, :delete, \
+                    Pandora::Model.act_relation(nil, panhash, RK_Follow, :delete, \
                       true, true)
                   end
                   if dialog.follow_btn.active?
-                    PandoraModel.act_relation(nil, panhash, RK_Follow, :create, \
+                    Pandora::Model.act_relation(nil, panhash, RK_Follow, :create, \
                       true, true)
                   end
                 end
@@ -736,14 +737,14 @@ module Pandora
                 if not dialog.public_btn.inconsistent?
                   public_level = RK_MinPublic + (dialog.public_scale.value*10).round+10
                   p 'public_level='+public_level.inspect
-                  PandoraModel.act_relation(nil, panhash0, RK_MinPublic, :delete, \
+                  Pandora::Model.act_relation(nil, panhash0, RK_MinPublic, :delete, \
                     true, true)
                   if (panhash != panhash0)
-                    PandoraModel.act_relation(nil, panhash, RK_MinPublic, :delete, \
+                    Pandora::Model.act_relation(nil, panhash, RK_MinPublic, :delete, \
                       true, true)
                   end
                   if dialog.public_btn.active?
-                    PandoraModel.act_relation(nil, panhash, public_level, :create, \
+                    Pandora::Model.act_relation(nil, panhash, public_level, :create, \
                       true, true)
                   end
                 end
@@ -752,7 +753,7 @@ module Pandora
           end
         end
       elsif action=='Dialog'
-        Pandora::Gtk.show_panobject_list(PandoraModel::Person)
+        Pandora::Gtk.show_panobject_list(Pandora::Model::Person)
       end
     end
 
@@ -781,9 +782,9 @@ module Pandora
         if param_view_col
           type = panobject.field_val('type', row)
           setting = panobject.field_val('setting', row)
-          ps = PandoraUtils.decode_param_setting(setting)
+          ps = Pandora::Utils.decode_param_setting(setting)
           view = ps['view']
-          view ||= PandoraUtils.pantype_to_view(type)
+          view ||= Pandora::Utils.pantype_to_view(type)
           row[param_view_col] = view
         end
       end
@@ -838,7 +839,7 @@ module Pandora
                 else
                   view = fdesc[FI_View]
                 end
-                val, color = PandoraUtils.val_to_view(val, nil, view, false)
+                val, color = Pandora::Utils.val_to_view(val, nil, view, false)
               else
                 val = val.to_s
               end
@@ -1019,16 +1020,16 @@ module Pandora
       #p '--extract_targets_from_panhash  targets='+targets.inspect
       panhashes.each do |panhash|
         if (panhash.is_a? String) and (panhash.bytesize>0)
-          kind = PandoraUtils.kind_from_panhash(panhash)
-          panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+          kind = Pandora::Utils.kind_from_panhash(panhash)
+          panobjectclass = Pandora::Model.panobjectclass_by_kind(kind)
           if panobjectclass
-            if panobjectclass <= PandoraModel::Person
+            if panobjectclass <= Pandora::Model::Person
               persons << panhash
-            elsif panobjectclass <= PandoraModel::Node
+            elsif panobjectclass <= Pandora::Model::Node
               nodes << panhash
             else
-              if panobjectclass <= PandoraModel::Created
-                model = PandoraUtils.get_model(panobjectclass.ider)
+              if panobjectclass <= Pandora::Model::Created
+                model = Pandora::Utils.get_model(panobjectclass.ider)
                 filter = {:panhash=>panhash}
                 sel = model.select(filter, false, 'creator')
                 if sel and sel.size>0
@@ -1046,7 +1047,7 @@ module Pandora
       if (keys.size == 0) and (nodes.size > 0)
         nodes.uniq!
         nodes.compact!
-        model = PandoraUtils.get_model('Node')
+        model = Pandora::Utils.get_model('Node')
         nodes.each do |node|
           sel = model.select({:panhash=>node}, false, 'key_hash')
           if sel and (sel.size>0)
@@ -1059,8 +1060,8 @@ module Pandora
       keys.uniq!
       keys.compact!
       if (persons.size == 0) and (keys.size > 0)
-        kmodel = PandoraUtils.get_model('Key')
-        smodel = PandoraUtils.get_model('Sign')
+        kmodel = Pandora::Utils.get_model('Key')
+        smodel = Pandora::Utils.get_model('Sign')
         keys.each do |key|
           sel = kmodel.select({:panhash=>key}, false, 'creator', 'modified DESC', $key_watch_lim)
           if sel and (sel.size>0)
@@ -1079,7 +1080,7 @@ module Pandora
         persons.compact!
       end
       if nodes.size == 0
-        model = PandoraUtils.get_model('Key')
+        model = Pandora::Utils.get_model('Key')
         persons.each do |person|
           sel = model.select({:creator=>person}, false, 'panhash', 'modified DESC', $key_watch_lim)
           if sel and (sel.size>0)
@@ -1089,7 +1090,7 @@ module Pandora
           end
         end
         if keys.size == 0
-          model = PandoraUtils.get_model('Sign')
+          model = Pandora::Utils.get_model('Sign')
           persons.each do |person|
             sel = model.select({:creator=>person}, false, 'key_hash', 'modified DESC', $sign_watch_lim)
             if sel and (sel.size>0)
@@ -1101,7 +1102,7 @@ module Pandora
         end
         keys.uniq!
         keys.compact!
-        model = PandoraUtils.get_model('Node')
+        model = Pandora::Utils.get_model('Node')
         keys.each do |key|
           sel = model.select({:key_hash=>key}, false, 'panhash')
           if sel and (sel.size>0)
@@ -1252,7 +1253,7 @@ module Pandora
       if (persons.size>0) and (nodes.size>0)
         room_id = construct_room_id(persons)
         if known_node
-          creator = PandoraCrypto.current_user_or_key(true)
+          creator = Pandora::Crypto.current_user_or_key(true)
           if (persons.size==1) and (persons[0]==creator)
             room_id[-1] = (room_id[-1].ord ^ 1).chr
           end
@@ -1281,7 +1282,7 @@ module Pandora
         dialog.default_response = ::Gtk::Dialog::RESPONSE_OK
         dialog.icon = $window.icon
         if (dialog.run == ::Gtk::Dialog::RESPONSE_OK)
-          Pandora::Gtk.show_panobject_list(PandoraModel::Node, nil, nil, true)
+          Pandora::Gtk.show_panobject_list(Pandora::Model::Node, nil, nil, true)
         end
         dialog.destroy
       end
@@ -1311,7 +1312,7 @@ module Pandora
     # RU: Показать панель профиля
     def self.show_profile_panel(a_person=nil)
       a_person0 = a_person
-      a_person ||= PandoraCrypto.current_user_or_key(true, true)
+      a_person ||= Pandora::Crypto.current_user_or_key(true, true)
 
       return if not a_person
 
@@ -1326,11 +1327,11 @@ module Pandora
       aname, afamily = nil, nil
       if a_person0
         mykey = nil
-        mykey = PandoraCrypto.current_key(false, false) if (not a_person0)
-        if mykey and mykey[PandoraCrypto::KV_Creator] and (mykey[PandoraCrypto::KV_Creator] != a_person)
-          aname, afamily = PandoraCrypto.name_and_family_of_person(mykey, a_person)
+        mykey = Pandora::Crypto.current_key(false, false) if (not a_person0)
+        if mykey and mykey[Pandora::Crypto::KV_Creator] and (mykey[Pandora::Crypto::KV_Creator] != a_person)
+          aname, afamily = Pandora::Crypto.name_and_family_of_person(mykey, a_person)
         else
-          aname, afamily = PandoraCrypto.name_and_family_of_person(nil, a_person)
+          aname, afamily = Pandora::Crypto.name_and_family_of_person(nil, a_person)
         end
 
         short_name = afamily[0, 15] if afamily

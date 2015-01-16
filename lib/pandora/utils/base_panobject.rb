@@ -3,6 +3,7 @@ module Pandora
     # Base Pandora's object
     # RU: Базовый объект Пандоры
     class BasePanobject
+      include Pandora::Constants
 
       class << self
         include Pandora::Constants

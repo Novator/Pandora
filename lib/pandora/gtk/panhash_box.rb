@@ -89,8 +89,8 @@ module Pandora
             @types = @types.split(',')
             @types.each do |ptype|
               ptype.strip!
-              if PandoraModel.const_defined? ptype
-                panclasses << PandoraModel.const_get(ptype)
+              if Pandora::Model.const_defined? ptype
+                panclasses << Pandora::Model.const_get(ptype)
               end
             end
           end

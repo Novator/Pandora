@@ -4,6 +4,7 @@ module Pandora
     # Dialog with enter fields
     # RU: Диалог с полями ввода
     class FieldsDialog < AdvancedDialog
+      include Pandora::Constants
 
       attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
         :keep_btn, :rate_label, :vouch_btn, :follow_btn, :trust_scale, :trust0, :public_btn, \
@@ -354,7 +355,7 @@ module Pandora
         keep_box.pack_start(follow_btn, false, false, 0)
 
         @lang_entry = ::Gtk::Combo.new
-        lang_entry.set_popdown_strings(PandoraModel.lang_list)
+        lang_entry.set_popdown_strings(Pandora::Model.lang_list)
         lang_entry.entry.text = ''
         lang_entry.entry.select_region(0, -1)
         lang_entry.set_size_request(50, -1)
@@ -551,7 +552,7 @@ module Pandora
         sw = ::Gtk::ScrolledWindow.new(nil, nil)
         page = notebook.append_page(sw, label_box2)
 
-        Pandora::Gtk.show_panobject_list(PandoraModel::Relation, nil, sw)
+        Pandora::Gtk.show_panobject_list(Pandora::Model::Relation, nil, sw)
 
         image = ::Gtk::Image.new(::Gtk::Stock::DIALOG_AUTHENTICATION, ::Gtk::IconSize::MENU)
         image.set_padding(2, 0)
@@ -559,7 +560,7 @@ module Pandora
         sw = ::Gtk::ScrolledWindow.new(nil, nil)
         page = notebook.append_page(sw, label_box2)
 
-        Pandora::Gtk.show_panobject_list(PandoraModel::Sign, nil, sw)
+        Pandora::Gtk.show_panobject_list(Pandora::Model::Sign, nil, sw)
 
         image = ::Gtk::Image.new(::Gtk::Stock::DIALOG_INFO, ::Gtk::IconSize::MENU)
         image.set_padding(2, 0)
@@ -567,7 +568,7 @@ module Pandora
         sw = ::Gtk::ScrolledWindow.new(nil, nil)
         page = notebook.append_page(sw, label_box2)
 
-        Pandora::Gtk.show_panobject_list(PandoraModel::Opinion, nil, sw)
+        Pandora::Gtk.show_panobject_list(Pandora::Model::Opinion, nil, sw)
 
         # create labels, remember them, calc middle char width
         texts_width = 0
