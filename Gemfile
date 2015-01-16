@@ -5,6 +5,9 @@ ruby "2.1.2"
 # Debug tool
 gem 'byebug'
 
+# Logging tool
+gem 'logging'
+
 # ActiveSupport
 gem 'activesupport'
 

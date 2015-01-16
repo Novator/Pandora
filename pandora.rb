@@ -14,7 +14,7 @@
 # Загрузка библиотек из папки lib
 root_path = File.expand_path("../", __FILE__)
 require "#{root_path}/lib/pandora"
-Dir["#{root_path}/lib/**/*.rb"].each {|f| p f; require f}
+Dir["#{root_path}/lib/**/*.rb"].each {|f| require f}
 
 # Array of localization phrases
 # RU: Вектор переведеных фраз
@@ -54,7 +54,8 @@ module PandoraUtils
     $pandora_sqlite_db = File.join(Pandora.base_dir, 'pandora.sqlite')  # Database file
     # Pandora.files_dir = File.join(Pandora.root, 'files')      # Files directory
   end
-  p Pandora.t('some.text')
+
+  byebug
 
 
   # Log level constants
@@ -3030,7 +3031,7 @@ module PandoraModel
         end
         str = '[' + model.sname + ': ' + Utf8String.new(str) + ']'
         if res
-          PandoraUtils.log_message(LM_Info, _('Recorded')+' '+str)
+          Pandora.logger.info  _('Recorded')+' '+str
         else
           PandoraUtils.log_message(LM_Warning, _('Cannot record')+' '+str)
         end
@@ -5010,7 +5011,7 @@ module PandoraNet
       if comm.bytesize == CommExtSize
         datasize, fullcrc32, segsize = comm.unpack('NNn')
       else
-        PandoraUtils.log_message(LM_Error, _('Wrong length of command extention'))
+        Pandora.logger.error  _('Wrong length of command extention')
       end
       [datasize, fullcrc32, segsize]
     end
@@ -5126,7 +5127,7 @@ module PandoraNet
         if sended == buf.bytesize
           res = index
         elsif sended != -1
-          PandoraUtils.log_message(LM_Error, _('Not all data was sent')+' '+sended.to_s)
+          Pandora.logger.error  _('Not all data was sent')+' '+sended.to_s
         end
         segindex = 0
         i = segdata
@@ -5170,7 +5171,7 @@ module PandoraNet
             #p log_mes+'SEND_ADD: ('+buf+')'
           elsif sended != -1
             res = nil
-            PandoraUtils.log_message(LM_Error, _('Not all data was sent')+'2 '+sended.to_s)
+            Pandora.logger.error  _('Not all data was sent')+'2 '+sended.to_s
           end
           i += segdata
         end
@@ -5255,7 +5256,7 @@ module PandoraNet
         p log_mes+'add_send_segment2: asbuf='+asbuf.inspect if sbuf
       end
       if not res
-        PandoraUtils.log_message(LM_Error, _('Cannot add segment to send queue'))
+        Pandora.logger.error  _('Cannot add segment to send queue')
         @conn_state = CS_Stoping
       end
       res
@@ -5277,7 +5278,7 @@ module PandoraNet
       end
       if send_now
         if not add_send_segment(ascmd, true, asbuf, ascode)
-          PandoraUtils.log_message(LM_Error, _('Cannot add request'))
+          Pandora.logger.error  _('Cannot add request')
         end
       else
         @scmd = ascmd
@@ -5294,7 +5295,7 @@ module PandoraNet
       asbuf = [time].pack('N') + list
       if send_now
         if not add_send_segment(ascmd, true, asbuf, ascode)
-          PandoraUtils.log_message(LM_Error, _('Cannot add query'))
+          Pandora.logger.error  _('Cannot add query')
         end
       else
         @scmd = ascmd
@@ -6140,7 +6141,7 @@ module PandoraNet
         when EC_Wait
           case rcode
             when EC_Wait1_NoFish
-              PandoraUtils.log_message(LM_Error, _('Cannot find a fish'))
+              Pandora.logger.error  _('Cannot find a fish')
           end
         when EC_Bye
           errcode = ECC_Bye_Exit
@@ -6156,7 +6157,7 @@ module PandoraNet
               p mes[0, i]
               mes = _(mes[0, i])+mes[i..-1]
             end
-            PandoraUtils.log_message(LM_Error, _('Error at other side')+' ErrCode='+rcode.to_s+' "'+mes+'"')
+            Pandora.logger.error  _('Error at other side')+' ErrCode='+rcode.to_s+' "'+mes+'"'
           end
           err_scmd(nil, errcode, false)
           @conn_state = CS_Stoping
@@ -6223,7 +6224,7 @@ module PandoraNet
                       dialog.add_mes_to_view(text, @skey, myname, time_now, created)
 
                     else
-                      PandoraUtils.log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
+                      Pandora.logger.error  'Пришло сообщение, но лоток чата не найден!'
                     end
                   end
                 else #EC_Channel
@@ -6233,7 +6234,7 @@ module PandoraNet
                     when ECC_Channel2_Close
                       p 'ECC_Channel2_Close'
                   else
-                    PandoraUtils.log_message(LM_Error, 'Неизвестный код управления каналом: '+rcode.to_s)
+                    Pandora.logger.error  'Неизвестный код управления каналом: '+rcode.to_s
                   end
                 end
               when EC_Media
@@ -6565,9 +6566,9 @@ module PandoraNet
 
           if @socket
             if ((conn_mode & CM_Hunter) == 0)
-              PandoraUtils.log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
+              Pandora.logger.info  _('Hunter connects')+': '+socket.peeraddr.inspect
             else
-              PandoraUtils.log_message(LM_Info, _('Connected to listener')+': '+server)
+              Pandora.logger.info  _('Connected to listener')+': '+server
             end
             @host_name    = ahost_name
             @host_ip      = ahost_ip
@@ -6738,7 +6739,7 @@ module PandoraNet
                       if ok1comm
                         res = @send_queue.add_block_to_queue([EC_Bye, serrcode, serrbuf])
                         if not res
-                          PandoraUtils.log_message(LM_Error, _('Cannot add error segment to send queue'))
+                          Pandora.logger.error  _('Cannot add error segment to send queue')
                         end
                       end
                       @conn_state = CS_Stoping
@@ -6760,7 +6761,7 @@ module PandoraNet
                         end
                         res = @read_queue.add_block_to_queue([rkcmd, rkcode, rkdata])
                         if not res
-                          PandoraUtils.log_message(LM_Error, _('Cannot add socket segment to read queue'))
+                          Pandora.logger.error  _('Cannot add socket segment to read queue')
                           @conn_state = CS_Stoping
                         end
                       end
@@ -6768,7 +6769,7 @@ module PandoraNet
                     end
 
                     if not ok1comm
-                      PandoraUtils.log_message(LM_Error, 'Bad first command')
+                      Pandora.logger.error  'Bad first command'
                       @conn_state = CS_Stoping
                     end
                   end
@@ -6815,7 +6816,7 @@ module PandoraNet
                     res = @send_queue.add_block_to_queue([@scmd, @scode, @sbuf])
                     @scmd = EC_Data
                     if not res
-                      PandoraUtils.log_message(LM_Error, 'Error while adding segment to queue')
+                      Pandora.logger.error  'Error while adding segment to queue'
                       @conn_state = CS_Stoping
                     end
                   end
@@ -7006,10 +7007,10 @@ module PandoraNet
                         id = row[0]
                         res = message_model.update({:state=>1}, nil, {:id=>id})
                         if not res
-                          PandoraUtils.log_message(LM_Error, _('Updating state of sent message')+' id='+id.to_s)
+                          Pandora.logger.error  _('Updating state of sent message')+' id='+id.to_s
                         end
                       else
-                        PandoraUtils.log_message(LM_Error, _('Adding message to send queue')+' id='+id.to_s)
+                        Pandora.logger.error  _('Adding message to send queue')+' id='+id.to_s
                       end
                       i += 1
                       #if (i>=sel.size) and (processed<$mes_block_count) and (@conn_state == CS_Connected)
@@ -7110,9 +7111,9 @@ module PandoraNet
             end
             if socket
               if ((conn_mode & CM_Hunter) == 0)
-                PandoraUtils.log_message(LM_Info, _('Hunter disconnects')+': '+@host_ip)
+                Pandora.logger.info  _('Hunter disconnects')+': '+@host_ip
               else
-                PandoraUtils.log_message(LM_Info, _('Disconnected from listener')+': '+@host_ip)
+                Pandora.logger.info  _('Disconnected from listener')+': '+@host_ip
               end
             end
             @socket_thread.exit if @socket_thread
@@ -7233,7 +7234,7 @@ module PandoraNet
             server = TCPServer.open(host, Pandora.config.port)
             #addr_str = server.addr.to_s
             addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
-            PandoraUtils.log_message(LM_Info, _('Listening address')+': '+addr_str)
+            Pandora.logger.info  _('Listening address')+': '+addr_str
           rescue
             server = nil
             PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' '+host.to_s+':'+Pandora.config.port.to_s)
@@ -7259,7 +7260,7 @@ module PandoraNet
                 session = Session.new(socket, host_name, host_ip, port, proto, \
                   CS_Connected, nil, nil, nil, nil)
               else
-                PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
+                Pandora.logger.info  _('IP is banned')+': '+host_ip.to_s
               end
             end
           end
@@ -11270,7 +11271,7 @@ module PandoraGtk
             File.open(pfn, 'wb+') do |file|
               file.write(filebody)
               res = true
-              PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
+              Pandora.logger.info  _('File updated')+': '+pfn
             end
           else
             PandoraUtils.log_message(LM_Warning, _('Empty downloaded body'))
@@ -11363,7 +11364,7 @@ module PandoraGtk
               proxy[1] = proxy[1].to_i if (proxy.size>1)
               proxy[2] = nil if (proxy.size>2) and (proxy[2]=='')
               proxy[3] = nil if (proxy.size>3) and (proxy[3]=='')
-              PandoraUtils.log_message(LM_Info, _('Proxy is used')+' '+proxy.inspect)
+              Pandora.logger.info  _('Proxy is used')+' '+proxy.inspect
             else
               proxy = []
             end
@@ -11391,7 +11392,7 @@ module PandoraGtk
                       main_uri = URI(zip_on_repo)
                       http, time, step = connect_http(main_uri, zip_size, step, *proxy)
                       if http
-                        PandoraUtils.log_message(LM_Info, _('Need update'))
+                        Pandora.logger.info  _('Need update')
                         $window.set_status_field(SF_Update, 'Need update')
                         Thread.stop
                         http = reconnect_if_need(http, time, main_uri, *proxy)
@@ -11422,7 +11423,7 @@ module PandoraGtk
                             end
                             # Copy files to work dir
                             if res
-                              PandoraUtils.log_message(LM_Info, _('Arch is unzipped with method')+': '+unzip_meth)
+                              Pandora.logger.info  _('Arch is unzipped with method')+': '+unzip_meth
                               # unzip_path = File.join(Pandora.base_dir, 'Pandora-master')
                               unzip_path = nil
                               p 'unzip_mask='+unzip_mask.inspect
@@ -11438,7 +11439,7 @@ module PandoraGtk
                                   p 'Copy '+unzip_path+' to '+Pandora.root
                                   #FileUtils.copy_entry(unzip_path, Pandora.root, true)
                                   FileUtils.cp_r(unzip_path+'/.', Pandora.root)
-                                  PandoraUtils.log_message(LM_Info, _('Files are updated'))
+                                  Pandora.logger.info  _('Files are updated')
                                 rescue => err
                                   res = false
                                   PandoraUtils.log_message(LM_Warning, _('Cannot copy files from zip arch')+': '+err.message)
@@ -11475,7 +11476,7 @@ module PandoraGtk
                 main_uri = URI('https://raw.githubusercontent.com/Novator/Pandora/master/pandora.rb')
                 http, time, step = connect_http(main_uri, curr_size, step, *proxy)
                 if http
-                  PandoraUtils.log_message(LM_Info, _('Need update'))
+                  Pandora.logger.info  _('Need update')
                   $window.set_status_field(SF_Update, 'Need update')
                   Thread.stop
                   http = reconnect_if_need(http, time, main_uri, *proxy)
@@ -13110,7 +13111,7 @@ module PandoraGtk
         end
       end
 
-      PandoraUtils.log_message(LM_Info, _('Table exported')+': '+filename)
+      Pandora.logger.info  _('Table exported')+': '+filename
     end
 
     # Menu event handler
