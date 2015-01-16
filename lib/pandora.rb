@@ -46,6 +46,11 @@ module Pandora
     @@root_dir ||= File.expand_path("../../", __FILE__)
   end
 
+  # Pandora's directories
+  %w(base view model lang util files).each do |method_name|
+    class_eval "def self.#{method_name}_dir; File.join root, '#{method_name}'; end"
+  end
+
   class Application
     include ::Singleton
 

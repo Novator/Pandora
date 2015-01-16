@@ -45,12 +45,12 @@ module PandoraUtils
 
     # Paths and files
     # RU: Пути и файлы
-    $pandora_base_dir = File.join(Pandora.root, 'base')        # Database directory
+    # Pandora.base_dir = File.join(Pandora.root, 'base')        # Database directory
     $pandora_view_dir = File.join(Pandora.root, 'view')        # Media files directory
     $pandora_model_dir = File.join(Pandora.root, 'model')      # Model directory
     $pandora_lang_dir = File.join(Pandora.root, 'lang')        # Languages directory
     $pandora_util_dir = File.join(Pandora.root, 'util')        # Utilites directory
-    $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
+    $pandora_sqlite_db = File.join(Pandora.base_dir, 'pandora.sqlite')  # Database file
     $pandora_files_dir = File.join(Pandora.root, 'files')      # Files directory
   end
 
@@ -11459,7 +11459,7 @@ module PandoraGtk
             while (step<2) do
               step += 1
               if update_zip
-                zip_local = File.join($pandora_base_dir, 'Pandora-master.zip')
+                zip_local = File.join(Pandora.base_dir, 'Pandora-master.zip')
                 zip_exists = File.exist?(zip_local)
                 p [zip_exists, zip_local]
                 if not zip_exists
@@ -11489,7 +11489,7 @@ module PandoraGtk
                           #res = true
                           if res
                             # Delete old arch paths
-                            unzip_mask = File.join($pandora_base_dir, dir_in_zip+'*')
+                            unzip_mask = File.join(Pandora.base_dir, dir_in_zip+'*')
                             p unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
                             unzip_paths.each do |pathfilename|
                               p 'Remove dir: '+pathfilename
@@ -11497,12 +11497,12 @@ module PandoraGtk
                             end
                             # Unzip arch
                             unzip_meth = 'lib'
-                            res = PandoraUtils.unzip_via_lib(zip_local, $pandora_base_dir)
+                            res = PandoraUtils.unzip_via_lib(zip_local, Pandora.base_dir)
                             p 'unzip_file1 res='+res.inspect
                             if not res
                               PandoraUtils.log_message(LM_Trace, _('Was not unziped with method')+': lib')
                               unzip_meth = 'util'
-                              res = PandoraUtils.unzip_via_util(zip_local, $pandora_base_dir)
+                              res = PandoraUtils.unzip_via_util(zip_local, Pandora.base_dir)
                               p 'unzip_file2 res='+res.inspect
                               if not res
                                 PandoraUtils.log_message(LM_Warning, _('Was not unziped with method')+': util')
@@ -11511,7 +11511,7 @@ module PandoraGtk
                             # Copy files to work dir
                             if res
                               PandoraUtils.log_message(LM_Info, _('Arch is unzipped with method')+': '+unzip_meth)
-                              #unzip_path = File.join($pandora_base_dir, 'Pandora-master')
+                              # unzip_path = File.join(Pandora.base_dir, 'Pandora-master')
                               unzip_path = nil
                               p 'unzip_mask='+unzip_mask.inspect
                               p unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
@@ -13616,7 +13616,7 @@ module PandoraGtk
       @cvpaned.position = cvpaned.max_position
 
       $statusbar = Gtk::Statusbar.new
-      PandoraGtk.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
+      PandoraGtk.set_statusbar_text($statusbar, _('Base directory: ')+Pandora.base_dir)
 
       add_status_field(SF_Update, _('Version') + ': ' + _('Not checked')) do
         PandoraGtk.start_updating(true)
@@ -14007,7 +14007,7 @@ end
 # Redirect console output to file, because of rubyw.exe crush
 # RU: Перенаправить консольный вывод в файл из-за краша rubyw.exe
 if Pandora::Utils.os_family=='windows'
-  $stdout.reopen(File.join($pandora_base_dir, 'stdout.log'), 'w')
+  $stdout.reopen(File.join(Pandora.base_dir, 'stdout.log'), 'w')
   $stderr = $stdout
 end
 
