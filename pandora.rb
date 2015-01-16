@@ -38,16 +38,16 @@ module PandoraUtils
 
   # Platform detection
   # RU: Определение платформы
-  def self.os_family
-    case RUBY_PLATFORM
-      when /ix/i, /ux/i, /gnu/i, /sysv/i, /solaris/i, /sunos/i, /bsd/i
-        'unix'
-      when /win/i, /ming/i
-        'windows'
-      else
-        'other'
-    end
-  end
+  # def self.os_family
+  #   case RUBY_PLATFORM
+  #     when /ix/i, /ux/i, /gnu/i, /sysv/i, /solaris/i, /sunos/i, /bsd/i
+  #       'unix'
+  #     when /win/i, /ming/i
+  #       'windows'
+  #     else
+  #       'other'
+  #   end
+  # end
 
   # Default values of variables
   # RU: Значения переменных по умолчанию
@@ -299,7 +299,7 @@ module PandoraUtils
     end
     if $rubyzip
       Zip::ZipFile.open(arch) do |za|
-        unix = (PandoraUtils.os_family != 'windows')
+        unix = (Pandora::Utils.os_family != 'windows')
         perms = nil
         za.each do |zf|
           if unix
@@ -337,7 +337,7 @@ module PandoraUtils
     res = nil
     if File.exist?(arch) and Dir.exists?(path)
       if not $unziper
-        if PandoraUtils.os_family=='windows'
+        if Pandora::Utils.os_family=='windows'
           unzip = File.join($pandora_util_dir, 'unzip.exe')
           if File.exist?(unzip)
             $unziper = '"'+unzip+'"'
@@ -353,7 +353,7 @@ module PandoraUtils
         mode = 'o'
         mode = 'n' unless overwrite
         cmd = $unziper+' -'+mode+' "'+arch+'" -d "'+path+'"'
-        if PandoraUtils.os_family=='windows'
+        if Pandora::Utils.os_family=='windows'
           #res = false
           #p 'pid = spawn(cmd)'
           #p pid = spawn(cmd)
@@ -2698,7 +2698,7 @@ module PandoraUtils
   end
 
   $mp3_player = 'mpg123'
-  if PandoraUtils.os_family=='windows'
+  if Pandora::Utils.os_family=='windows'
     if is_64bit_os?
       $mp3_player = 'mpg123x64.exe'
     else
@@ -2777,7 +2777,7 @@ module PandoraUtils
           filename = File.join(path, filename) unless filename.index('/') or filename.index("\\")
           filename = File.join(path, Default_Mp3) unless File.exist?(filename)
           cmd = $mp3_player+' "'+filename+'"'
-          if PandoraUtils.os_family=='windows'
+          if Pandora::Utils.os_family=='windows'
             win_exec(cmd)
           else
             system(cmd)
@@ -5055,7 +5055,7 @@ module PandoraNet
     # RU: Установить опции сокета
     def set_keepalive(client)
       client.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, $keep_alive)
-      if PandoraUtils.os_family != 'windows'
+      if Pandora::Utils.os_family != 'windows'
         client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPIDLE, $keep_idle)
         client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPINTVL, $keep_intvl)
         client.setsockopt(Socket::SOL_TCP, Socket::TCP_KEEPCNT, $keep_cnt)
@@ -10248,7 +10248,7 @@ module PandoraGtk
       def set_xid(area, sink)
         if (not area.destroyed?) and area.window and sink and (sink.class.method_defined? 'set_xwindow_id')
           win_id = nil
-          if PandoraUtils.os_family=='windows'
+          if Pandora::Utils.os_family=='windows'
             win_id = area.window.handle
           else
             win_id = area.window.xid
@@ -10353,7 +10353,7 @@ module PandoraGtk
         if not video_pipeline
           begin
             Gst.init
-            winos = (PandoraUtils.os_family == 'windows')
+            winos = (Pandora::Utils.os_family == 'windows')
             video_pipeline = Gst::Pipeline.new('spipe_v')
 
             ##video_src = 'v4l2src decimate=3'
@@ -10534,7 +10534,7 @@ module PandoraGtk
           begin
             Gst.init
             p 'init_video_receiver INIT'
-            winos = (PandoraUtils.os_family == 'windows')
+            winos = (Pandora::Utils.os_family == 'windows')
             @recv_media_queue[1] ||= PandoraUtils::RoundQueue.new
             dialog_id = '_v'+PandoraUtils.bytes_to_hex(room_id[-6..-1])
             @recv_media_pipeline[1] = Gst::Pipeline.new('rpipe'+dialog_id)
@@ -10647,7 +10647,7 @@ module PandoraGtk
         if not audio_pipeline
           begin
             Gst.init
-            winos = (PandoraUtils.os_family == 'windows')
+            winos = (Pandora::Utils.os_family == 'windows')
             audio_pipeline = Gst::Pipeline.new('spipe_a')
             $send_media_pipelines['audio'] = audio_pipeline
 
@@ -10767,7 +10767,7 @@ module PandoraGtk
         if (not recv_media_pipeline[0]) and init
           begin
             Gst.init
-            winos = (PandoraUtils.os_family == 'windows')
+            winos = (Pandora::Utils.os_family == 'windows')
             @recv_media_queue[0] ||= PandoraUtils::RoundQueue.new
             dialog_id = '_a'+PandoraUtils.bytes_to_hex(room_id[-6..-1])
             #p 'init_audio_receiver:  dialog_id='+dialog_id.inspect
@@ -12379,11 +12379,11 @@ module PandoraGtk
   # About dialog hooks
   # RU: Обработчики диалога "О программе"
   Gtk::AboutDialog.set_url_hook do |about, link|
-    if PandoraUtils.os_family=='windows' then a1='start'; a2='' else a1='xdg-open'; a2=' &' end;
+    if Pandora::Utils.os_family=='windows' then a1='start'; a2='' else a1='xdg-open'; a2=' &' end;
     system(a1+' '+link+a2)
   end
   Gtk::AboutDialog.set_email_hook do |about, link|
-    if PandoraUtils.os_family=='windows' then a1='start'; a2='' else a1='xdg-email'; a2=' &' end;
+    if Pandora::Utils.os_family=='windows' then a1='start'; a2='' else a1='xdg-email'; a2=' &' end;
     system(a1+' '+link+a2)
   end
 
@@ -12832,7 +12832,7 @@ module PandoraGtk
     def icon_activated(top_sens=true, force_show=false)
       #$window.skip_taskbar_hint = false
       if $window.visible? and (not force_show)
-        if (not top_sens) or ($window.has_toplevel_focus? or (PandoraUtils.os_family=='windows'))
+        if (not top_sens) or ($window.has_toplevel_focus? or (Pandora::Utils.os_family=='windows'))
           $window.hide
         else
           $window.do_menu_act('Activate')
@@ -13665,7 +13665,7 @@ module PandoraGtk
       hide_on_minimize = PandoraUtils.get_param('hide_on_minimize')
       hide_on_close = PandoraUtils.get_param('hide_on_close')
       mplayer = nil
-      if PandoraUtils.os_family=='windows'
+      if Pandora::Utils.os_family=='windows'
         mplayer = PandoraUtils.get_param('win_mp3_player')
       else
         mplayer = PandoraUtils.get_param('linux_mp3_player')
@@ -13793,13 +13793,13 @@ module PandoraGtk
         if $window.focus_timer
           $window.focus_timer = nil if ($window.focus_timer == $window)
         else
-          if (PandoraUtils.os_family=='windows') and (not $window.visible?)
+          if (Pandora::Utils.os_family=='windows') and (not $window.visible?)
             $window.do_menu_act('Activate')
           end
           $window.focus_timer = GLib::Timeout.add(500) do
             if (not $window.nil?) and (not $window.destroyed?)
               #p 'read timer!!!' + $window.has_toplevel_focus?.inspect
-              toplevel = ($window.has_toplevel_focus? or (PandoraUtils.os_family=='windows'))
+              toplevel = ($window.has_toplevel_focus? or (Pandora::Utils.os_family=='windows'))
               if toplevel and $window.visible?
                 $window.notebook.children.each do |child|
                   if (child.is_a? DialogScrollWin) and (child.has_unread)
@@ -13938,7 +13938,7 @@ GTK_WINDOW_CLASS = 'gdkWindowToplevel'
 # Prevent second execution
 # RU: Предотвратить второй запуск
 if not $poly_launch
-  if PandoraUtils.os_family=='unix'
+  if Pandora::Utils.os_family=='unix'
     psocket = nil
     begin
       psocket = UNIXSocket.new(PANDORA_USOCK)
@@ -13974,7 +13974,7 @@ if not $poly_launch
         $pserver = nil
       end
     end
-  elsif (PandoraUtils.os_family=='windows') and init_win32api
+  elsif (Pandora::Utils.os_family=='windows') and init_win32api
     FindWindow = Win32API.new('user32', 'FindWindow', ['P', 'P'], 'L')
     win_handle = FindWindow.call(GTK_WINDOW_CLASS, MAIN_WINDOW_TITLE)
     if (win_handle.is_a? Integer) and (win_handle>0)
@@ -14019,7 +14019,7 @@ end
 
 # Redirect console output to file, because of rubyw.exe crush
 # RU: Перенаправить консольный вывод в файл из-за краша rubyw.exe
-if PandoraUtils.os_family=='windows'
+if Pandora::Utils.os_family=='windows'
   $stdout.reopen(File.join($pandora_base_dir, 'stdout.log'), 'w')
   $stderr = $stdout
 end
