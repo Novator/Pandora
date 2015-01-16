@@ -10,7 +10,16 @@
 # 2012 (c) Michael Galyuk
 # RU: 2012 (c) Михаил Галюк
 
+# Bundler to manage gems
+# Используем Bundler
+require 'rubygems'
+require 'bundler/setup'
 
+# Debug tool
+# Гем для отладки приложения
+require 'byebug'
+
+# Штуки которые были по умолчанию
 require 'rexml/document'
 require 'zlib'
 require 'digest'
@@ -22,6 +31,11 @@ begin
   require 'gst'
 rescue Exception
 end
+
+# Loading lib dir
+# Загрузка библиотек из папки lib
+root_path = File.expand_path("../", __FILE__)
+Dir["#{root_path}/lib/**/*.rb"].each {|f| require f}
 
 # Array of localization phrases
 # RU: Вектор переведеных фраз
@@ -4754,7 +4768,7 @@ module PandoraNet
       res.compact!
       res
     end
-    
+
     FishQueueSize = 100
 
 	# Add order to fishing
@@ -6415,7 +6429,7 @@ module PandoraNet
                     @scode = ECC_News_Record
                     @sbuf = PandoraUtils.rubyobj_to_pson_elem([pson_records, created_list])
                   when ECC_Query_Fish
-                    to_key = rdata  
+                    to_key = rdata
                     p '--ECC_Query_Fish to_key='+to_key.inspect
                     if to_key
                       session = pool.session_of_key(to_key)
@@ -7174,10 +7188,10 @@ module PandoraNet
                   end
                 end
               end
-       
+
 			  # проверка новых заявок на рыбалку
 			  fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
-			  if fish_order 
+			  if fish_order
 			    p 'New fish order: '+fish_order.inspect
 			    tokey = @skey[PandoraCrypto::KV_Panhash]
 			    if fish_order == tokey
