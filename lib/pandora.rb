@@ -36,6 +36,11 @@ require 'singleton'
 # Очередной гениальный файл...
 module Pandora
 
+  # Application instance shortcut
+  def self.app
+    Application.instance
+  end
+
   # Application configuration
   def self.config
     configatron.pandora
@@ -61,10 +66,10 @@ module Pandora
     # You can configure application with both hash and block
     #
     # Hash:
-    # Pandora.Application.instance.configure { option1 => [:some, :values] }
+    # Pandora.app.configure { option1 => [:some, :values] }
     #
     # Block
-    # Pandora.Application.instance.configure do |config|
+    # Pandora.app.configure do |config|
     #   config.option1 = value 1
     # end
     #

@@ -37,7 +37,7 @@ end
 module PandoraUtils
   # Default values of configuration options
   # RU: Значения опций по умолчанию
-  Pandora::Application.instance.configure do |config|
+  Pandora::app.configure do |config|
     config.poly_launch = true
     config.host = nil
     config.port = nil
