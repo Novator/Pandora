@@ -7,6 +7,10 @@ gem 'byebug'
 
 # ActiveSupport
 gem 'activesupport'
+
+# Для старой версии
 gem 'sqlite3'
 gem 'gtk2'
 
+# Configuration Support
+gem 'configatron'

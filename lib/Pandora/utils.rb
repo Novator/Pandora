@@ -1,4 +1,7 @@
 module Pandora
+  # ====================================================================
+  # Utilites class of Pandora
+  # RU: Вспомогательный класс Пандоры
   class Utils
 
     # Platform detection

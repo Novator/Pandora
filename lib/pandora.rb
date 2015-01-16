@@ -7,6 +7,10 @@ require 'bundler/setup'
 # Гем для отладки приложения
 require 'byebug'
 
+# gem to work with configurations
+# Гем для работы с конфигурацией
+require 'configatron'
+
 # Штуки которые были по умолчанию
 require 'rexml/document'
 require 'zlib'
@@ -26,6 +30,39 @@ end
 require 'gtk2'
 require 'fileutils'
 
+# Все подряд
+require 'singleton'
+
+# Очередной гениальный файл...
 module Pandora
-  # Очередной гениальный файл...
+
+  # Application configuration
+  def self.config
+    configatron.pandora
+  end
+
+  class Application
+    include ::Singleton
+
+    # You can configure application with both hash and block
+    #
+    # Hash:
+    # Pandora.Application.instance.configure { option1 => [:some, :values] }
+    #
+    # Block
+    # Pandora.Application.instance.configure do |config|
+    #   config.option1 = value 1
+    # end
+    #
+    def configure(options = {})
+      configatron.configure_from_hash(options)
+
+      if block_given?
+        configatron.pandora do |config|
+          yield config
+        end
+      end
+    end
+
+  end
 end

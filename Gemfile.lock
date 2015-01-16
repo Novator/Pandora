@@ -16,6 +16,7 @@ GEM
     cairo (1.14.1)
       pkg-config (>= 1.1.5)
     columnize (0.9.0)
+    configatron (4.5.0)
     debugger-linecache (1.2.0)
     gdk_pixbuf2 (2.2.4)
       glib2 (= 2.2.4)
@@ -44,5 +45,6 @@ PLATFORMS
 DEPENDENCIES
   activesupport
   byebug
+  configatron
   gtk2
   sqlite3

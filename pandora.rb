@@ -33,29 +33,25 @@ end
 # ====================================================================
 # Utilites module of Pandora
 # RU: Вспомогательный модуль Пандоры
-
 module PandoraUtils
+  # Default values of configuration options
+  # RU: Значения опций по умолчанию
+  Pandora::Application.instance.configure do |config|
+    config.poly_launch = true
+    config.host = nil
+    config.port = nil
+    config.lang = 'ru'
+    config.parameters = []
+  end
 
-  # Platform detection
-  # RU: Определение платформы
-  # def self.os_family
-  #   case RUBY_PLATFORM
-  #     when /ix/i, /ux/i, /gnu/i, /sysv/i, /solaris/i, /sunos/i, /bsd/i
-  #       'unix'
-  #     when /win/i, /ming/i
-  #       'windows'
-  #     else
-  #       'other'
-  #   end
-  # end
+  p "config here>>>>"
+  p
 
-  # Default values of variables
-  # RU: Значения переменных по умолчанию
-  $poly_launch = true
-  $host = nil
-  $port = nil
-  $lang = 'ru'
-  $pandora_parameters = []
+  # Pandora.config.poly_launch = true
+  # Pandora.config.host = nil
+  # Pandora.config.port = nil
+  # Pandora.config.lang = 'ru'
+  # Pandora.config.parameters = []
 
   # Paths and files
   # RU: Пути и файлы
@@ -253,7 +249,7 @@ module PandoraUtils
     if plural==false
       res = sname
     elsif ((not pname) or (pname=='')) and sname
-      lang ||= $lang
+      lang ||= Pandora.config.lang
       case lang
         when 'ru'
           res = sname
@@ -2446,10 +2442,10 @@ module PandoraUtils
     sel = param_model.select({'name'=>name}, false, 'value, id, type')
     if not sel[0]
       #p 'parameter was not found: ['+name+']'
-      ind = $pandora_parameters.index{ |row| row[PF_Name]==name }
+      ind = Pandora.config.parameters.index{ |row| row[PF_Name]==name }
       if ind
         # default description is found, create parameter
-        row = $pandora_parameters[ind]
+        row = Pandora.config.parameters[ind]
         type = row[PF_Type]
         type = string_to_pantype(type) if type.is_a? String
         section = row[PF_Section]
@@ -2986,20 +2982,20 @@ module PandoraModel
             section = element.attributes['section']
             setting = element.attributes['setting']
             row = nil
-            ind = $pandora_parameters.index{ |row| row[PandoraUtils::PF_Name]==name }
+            ind = Pandora.config.parameters.index{ |row| row[PandoraUtils::PF_Name]==name }
             if ind
-              row = $pandora_parameters[ind]
+              row = Pandora.config.parameters[ind]
             else
               row = Array.new
               row[PandoraUtils::PF_Name] = name
-              $pandora_parameters << row
-              ind = $pandora_parameters.size-1
+              Pandora.config.parameters << row
+              ind = Pandora.config.parameters.size-1
             end
             row[PandoraUtils::PF_Desc] = desc if desc
             row[PandoraUtils::PF_Type] = type if type
             row[PandoraUtils::PF_Section] = section if section
             row[PandoraUtils::PF_Setting] = setting if setting
-            $pandora_parameters[ind] = row
+            Pandora.config.parameters[ind] = row
           end
         end
       end
@@ -7314,14 +7310,14 @@ module PandoraNet
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
-        $host = PandoraUtils.get_param('listen_host')
-        $port = PandoraUtils.get_param('tcp_port')
-        $host ||= 'any'
-        $port ||= 5577
+        Pandora.config.host = PandoraUtils.get_param('listen_host')
+        Pandora.config.port = PandoraUtils.get_param('tcp_port')
+        Pandora.config.host ||= 'any'
+        Pandora.config.port ||= 5577
         $listen_thread = Thread.new do
           p Socket.ip_address_list
           begin
-            host = $host
+            host = Pandora.config.host
             if (not host)
               host = ''
             elsif ((host=='any') or (host=='all'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
@@ -7331,13 +7327,13 @@ module PandoraNet
               host = '::'
               p "ipv6 all"
             end
-            server = TCPServer.open(host, $port)
+            server = TCPServer.open(host, Pandora.config.port)
             #addr_str = server.addr.to_s
             addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
             PandoraUtils.log_message(LM_Info, _('Listening address')+': '+addr_str)
           rescue
             server = nil
-            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' '+host.to_s+':'+$port.to_s)
+            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' '+host.to_s+':'+Pandora.config.port.to_s)
           end
           Thread.current[:listen_server_socket] = server
           Thread.current[:need_to_listen] = (server != nil)
@@ -7407,7 +7403,7 @@ module PandoraNet
                   rescue
                   end
                   tokey = row[4]
-                  tport = $port if (not tport) or (tport==0) or (tport=='')
+                  tport = Pandora.config.port if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
                   node = $window.pool.encode_node(domain, tport, 'tcp')
                   $window.pool.init_session(node, tokey, nil, nil, node_id)
@@ -11349,7 +11345,7 @@ module PandoraGtk
   $download_thread = nil
 
   UPD_FileList = ['model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'pandora.bat']
-  UPD_FileList.concat(['model/03-language-'+$lang+'.xml', 'lang/'+$lang+'.txt']) if ($lang and ($lang != 'en'))
+  UPD_FileList.concat(['model/03-language-'+Pandora.config.lang+'.xml', 'lang/'+Pandora.config.lang+'.txt']) if (Pandora.config.lang and (Pandora.config.lang != 'en'))
 
   # Check updated files and download them
   # RU: Проверить обновления и скачать их
@@ -11664,7 +11660,7 @@ module PandoraGtk
       sel = nil
       id = nil
       panhash0 = nil
-      lang = PandoraModel.text_to_lang($lang)
+      lang = PandoraModel.text_to_lang(Pandora.config.lang)
       panstate = 0
       created0 = nil
       creator0 = nil
@@ -13880,13 +13876,13 @@ while (ARGV.length>0) or next_arg
   end
   case arg
     when '-h','--host'
-      $host = val if val
+      Pandora.config.host = val if val
     when '-p','--port'
-      $port = val.to_i if val
+      Pandora.config.port = val.to_i if val
     when '-b', '--base'
       $pandora_sqlite_db = val if val
     when '-pl', '--poly', '--poly-launch'
-      $poly_launch = true
+      Pandora.config.poly_launch = true
     when '--shell', '--help', '/?', '-?'
       runit = '  '
       if arg=='--shell' then
@@ -13937,7 +13933,7 @@ GTK_WINDOW_CLASS = 'gdkWindowToplevel'
 
 # Prevent second execution
 # RU: Предотвратить второй запуск
-if not $poly_launch
+if not Pandora.config.poly_launch
   if Pandora::Utils.os_family=='unix'
     psocket = nil
     begin
@@ -14028,9 +14024,9 @@ end
 # RU: Взять язык из переменных окружения
 lang = ENV['LANG']
 if (lang.is_a? String) and (lang.size>1)
-  $lang = lang[0, 2].downcase
+  Pandora.config.lang = lang[0, 2].downcase
 end
-#$lang = 'en'
+#Pandora.config.lang = 'en'
 
 # Some settings
 # RU: Некоторые настройки
@@ -14039,8 +14035,8 @@ Thread.abort_on_exception = true
 
 # == Running the Pandora!
 # == RU: Запуск Пандоры!
-PandoraUtils.load_language($lang)
-PandoraModel.load_model_from_xml($lang)
+PandoraUtils.load_language(Pandora.config.lang)
+PandoraModel.load_model_from_xml(Pandora.config.lang)
 PandoraGtk::MainWindow.new(MAIN_WINDOW_TITLE)
 
 # Free unix-socket on exit
