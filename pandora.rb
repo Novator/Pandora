@@ -13,7 +13,8 @@
 # Loading lib dir
 # Загрузка библиотек из папки lib
 root_path = File.expand_path("../", __FILE__)
-Dir["#{root_path}/lib/**/*.rb"].each {|f| require f}
+require "#{root_path}/lib/pandora"
+Dir["#{root_path}/lib/**/*.rb"].each {|f| p f; require f}
 
 # Array of localization phrases
 # RU: Вектор переведеных фраз
@@ -46,13 +47,14 @@ module PandoraUtils
     # Paths and files
     # RU: Пути и файлы
     # Pandora.base_dir = File.join(Pandora.root, 'base')        # Database directory
-    $pandora_view_dir = File.join(Pandora.root, 'view')        # Media files directory
-    $pandora_model_dir = File.join(Pandora.root, 'model')      # Model directory
-    $pandora_lang_dir = File.join(Pandora.root, 'lang')        # Languages directory
-    $pandora_util_dir = File.join(Pandora.root, 'util')        # Utilites directory
+    # Pandora.view_dir = File.join(Pandora.root, 'view')        # Media files directory
+    # Pandora.model_dir = File.join(Pandora.root, 'model')      # Model directory
+    # Pandora.lang_dir = File.join(Pandora.root, 'lang')        # Languages directory
+    # Pandora.util_dir = File.join(Pandora.root, 'util')        # Utilites directory
     $pandora_sqlite_db = File.join(Pandora.base_dir, 'pandora.sqlite')  # Database file
-    $pandora_files_dir = File.join(Pandora.root, 'files')      # Files directory
+    # Pandora.files_dir = File.join(Pandora.root, 'files')      # Files directory
   end
+  p Pandora.t('some.text')
 
 
   # Log level constants
@@ -109,97 +111,7 @@ module PandoraUtils
     end
   end
 
-  # Load translated phrases
-  # RU: Загрузить переводы фраз
-  def self.load_language(lang='ru')
 
-    def self.unslash_quotes(str)
-      str ||= ''
-      str.gsub('\"', '"')
-    end
-
-    def self.addline(str, line)
-      line = unslash_quotes(line)
-      if (not str) or (str=='')
-        str = line
-      else
-        str = str.to_s + "\n" + line.to_s
-      end
-      str
-    end
-
-    def self.spaces_after?(line, pos)
-      i = line.size-1
-      while (i>=pos) and ((line[i, 1]==' ') or (line[i, 1]=="\t"))
-        i -= 1
-      end
-      (i<pos)
-    end
-
-    $lang_trans = {}
-    langfile = File.join($pandora_lang_dir, lang+'.txt')
-    if File.exist?(langfile)
-      scanmode = 0
-      frase = ''
-      trans = ''
-      IO.foreach(langfile) do |line|
-        if (line.is_a? String) and (line.size>0)
-          #line = line[0..-2] if line[-1,1]=="\n"
-          #line = line[0..-2] if line[-1,1]=="\r"
-          line.chomp!
-          end_is_found = false
-          if scanmode==0
-            end_is_found = true
-            if (line.size>0) and (line[0, 1] != '#')
-              if line[0, 1] != '"'
-                frase, trans = line.split('=>')
-                $lang_trans[frase] = trans if (frase != '') and (trans != '')
-              else
-                line = line[1..-1]
-                frase = ''
-                trans = ''
-                end_is_found = false
-              end
-            end
-          end
-
-          if not end_is_found
-            if scanmode<2
-              i = line.index('"=>"')
-              if i
-                frase = addline(frase, line[0, i])
-                line = line[i+4, line.size-i-4]
-                scanmode = 2 #composing a trans
-              else
-                scanmode = 1 #composing a frase
-              end
-            end
-            if scanmode==2
-              k = line.rindex('"')
-              if k and ((k==0) or (line[k-1, 1] != "\\"))
-                end_is_found = ((k+1)==line.size) or spaces_after?(line, k+1)
-                if end_is_found
-                  trans = addline(trans, line[0, k])
-                end
-              end
-            end
-
-            if end_is_found
-              $lang_trans[frase] = trans if (frase != '') and (trans != '')
-              scanmode = 0
-            else
-              if scanmode < 2
-                frase = addline(frase, line)
-                scanmode = 1 #composing a frase
-              else
-                trans = addline(trans, line)
-              end
-            end
-          end
-        end
-      end
-    end
-  end
 
   # Save language phrases
   # RU: Сохранить языковые фразы
@@ -216,7 +128,7 @@ module PandoraUtils
       (lastchar==' ') or (lastchar=="\t")
     end
 
-    langfile = File.join($pandora_lang_dir, lang+'.txt')
+    # langfile = File.join(Pandora.lang_dir, lang+'.txt')
     File.open(langfile, 'w') do |file|
       file.puts('# Pandora language file EN=>'+lang.upcase)
       $lang_trans.each do |value|
@@ -325,7 +237,7 @@ module PandoraUtils
     if File.exist?(arch) and Dir.exists?(path)
       if not $unziper
         if Pandora::Utils.os_family=='windows'
-          unzip = File.join($pandora_util_dir, 'unzip.exe')
+          # unzip = File.join(Pandora.util_dir, 'unzip.exe')
           if File.exist?(unzip)
             $unziper = '"'+unzip+'"'
           end
@@ -2691,7 +2603,7 @@ module PandoraUtils
     else
       $mp3_player = 'cmdmp3.exe'
     end
-    $mp3_player = File.join($pandora_util_dir, $mp3_player)
+    # $mp3_player = File.join(Pandora.util_dir, $mp3_player)
     if File.exist?($mp3_player)
       $mp3_player = '"'+$mp3_player+'"'
     else
@@ -2758,7 +2670,7 @@ module PandoraUtils
     and $statusicon.play_sounds and (filename.is_a? String) and (filename.size>0)
       $play_thread = Thread.new do
         begin
-          path ||= $pandora_view_dir
+          path ||= Pandora.view_dir
           filename ||= Default_Mp3
           filename += '.mp3' unless filename.index('.')
           filename = File.join(path, filename) unless filename.index('/') or filename.index("\\")
@@ -2835,8 +2747,8 @@ module PandoraModel
   # RU: Сформировать описание модели по XML-файлу
   def self.load_model_from_xml(lang='ru')
     lang = '.'+lang
-    #dir_mask = File.join(File.join($pandora_model_dir, '**'), '*.xml')
-    dir_mask = File.join($pandora_model_dir, '*.xml')
+    dir_mask = File.join(File.join(Pandora.model_dir, '**'), '*.xml')
+    # dir_mask = File.join(Pandora.model_dir, '*.xml')
     dir_list = Dir.glob(dir_mask).sort
     dir_list.each do |pathfilename|
       filename = File.basename(pathfilename)
@@ -8112,10 +8024,10 @@ module PandoraGtk
         filter.add_pattern('*.wav')
         dialog.add_filter(filter)
 
-        dialog.add_shortcut_folder($pandora_files_dir)
+        dialog.add_shortcut_folder(Pandora.files_dir)
         fn = @entry.text
         if fn.nil? or (fn=='')
-          dialog.current_folder = $pandora_files_dir
+          dialog.current_folder = Pandora.files_dir
         else
           dialog.filename = fn
         end
@@ -12382,7 +12294,7 @@ module PandoraGtk
     dlg.icon = $window.icon
     dlg.name = $window.title
     dlg.version = '0.3'
-    dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
+    dlg.logo = Gdk::Pixbuf.new(File.join(Pandora.view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
     dlg.comments = _('P2P national network')
@@ -12631,7 +12543,7 @@ module PandoraGtk
 
       @online_icon = nil
       begin
-        @online_icon = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'online.ico'))
+        @online_icon = Gdk::Pixbuf.new(File.join(Pandora.view_dir, 'online.ico'))
       rescue Exception
       end
       if not @online_icon
@@ -12639,7 +12551,7 @@ module PandoraGtk
       end
 
       begin
-        @message_icon = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'message.ico'))
+        @message_icon = Gdk::Pixbuf.new(File.join(Pandora.view_dir, 'message.ico'))
       rescue Exception
       end
       if not @message_icon
@@ -13177,7 +13089,7 @@ module PandoraGtk
     def export_table(panobject)
 
       ider = panobject.ider
-      filename = File.join($pandora_files_dir, ider+'.csv')
+      filename = File.join(Pandora.files_dir, ider+'.csv')
       separ = '|'
 
       File.open(filename, 'w') do |file|
@@ -13559,7 +13471,7 @@ module PandoraGtk
 
       main_icon = nil
       begin
-        main_icon = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.ico'))
+        main_icon = Gdk::Pixbuf.new(File.join(Pandora.view_dir, 'pandora.ico'))
       rescue Exception
       end
       if not main_icon
@@ -14026,7 +13938,7 @@ Thread.abort_on_exception = true
 
 # == Running the Pandora!
 # == RU: Запуск Пандоры!
-PandoraUtils.load_language(Pandora.config.lang)
+Pandora::Utils.load_language(Pandora.config.lang)
 PandoraModel.load_model_from_xml(Pandora.config.lang)
 PandoraGtk::MainWindow.new(MAIN_WINDOW_TITLE)
 

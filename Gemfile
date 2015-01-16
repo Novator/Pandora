@@ -14,3 +14,6 @@ gem 'gtk2'
 
 # Configuration Support
 gem 'configatron'
+
+# Internationalization Support
+gem 'i18n'

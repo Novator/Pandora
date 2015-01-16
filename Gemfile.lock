@@ -47,4 +47,5 @@ DEPENDENCIES
   byebug
   configatron
   gtk2
+  i18n
   sqlite3
