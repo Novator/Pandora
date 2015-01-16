@@ -514,8 +514,6 @@ require 'openssl'
 
 module PandoraCrypto
 
-  include PandoraUtils
-
   KH_None   = 0
   KH_Md5    = 0x1
   KH_Sha1   = 0x2
@@ -1690,8 +1688,6 @@ end
 
 module PandoraNet
 
-  include PandoraUtils
-
   # Pool
   # RU: Пул
   class Pool
@@ -2082,8 +2078,6 @@ module PandoraNet
 
 
   class Session
-
-    include PandoraUtils
 
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
       :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, :fisher_lure, :fish_lure, \
@@ -4500,7 +4494,6 @@ module PandoraGtk
     Kernel.abort("Gtk is not installed.\nInstall packet 'ruby-gtk'")
   end
 
-  include PandoraUtils
   include PandoraModel
 
   SF_Update = 0
@@ -5394,7 +5387,6 @@ module PandoraGtk
   # Dialog with enter fields
   # RU: Диалог с полями ввода
   class FieldsDialog < AdvancedDialog
-    include PandoraUtils
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
       :keep_btn, :rate_label, :vouch_btn, :follow_btn, :trust_scale, :trust0, :public_btn, \
@@ -10053,7 +10045,6 @@ module PandoraGtk
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
       :cvpaned, :pool, :focus_timer, :title_view, :do_on_show
 
-    include PandoraUtils
 
     # Update status of connections
     # RU: Обновить состояние подключений
