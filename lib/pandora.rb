@@ -88,3 +88,8 @@ module Pandora
 
   end
 end
+
+# Loading app configuration
+# Загрузка конфигурации приложения
+require "#{Pandora.root}/config/application"
+

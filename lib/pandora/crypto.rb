@@ -477,7 +477,7 @@ module Pandora
     # RU: Деактивирует текущий ключ
     def self.reset_current_key
       self.the_current_key = deactivate_key(self.the_current_key)
-      $window.set_status_field(PandoraGtk::SF_Auth, 'Not logged', nil, false)
+      $window.set_status_field(Pandora::Gtk::SF_Auth, 'Not logged', nil, false)
       self.the_current_key
     end
 
@@ -591,7 +591,7 @@ module Pandora
             key_vec, cipher = read_key(last_auth_key, passwd, key_model)
             #p '[key_vec, cipher]='+[key_vec, cipher].inspect
             if (not key_vec) or (not cipher) or (cipher != 0) or (not $first_key_init)
-              dialog = PandoraGtk::AdvancedDialog.new(_('Key init'))
+              dialog = Pandora::Gtk::AdvancedDialog.new(_('Key init'))
               dialog.set_default_size(420, 190)
 
               vbox = Gtk::VBox.new
@@ -599,7 +599,7 @@ module Pandora
 
               label = Gtk::Label.new(_('Key'))
               vbox.pack_start(label, false, false, 2)
-              key_entry = PandoraGtk::PanhashBox.new('Panhash(Key)')
+              key_entry = Pandora::Gtk::PanhashBox.new('Panhash(Key)')
               key_entry.text = PandoraUtils.bytes_to_hex(last_auth_key)
               #key_entry.editable = false
               vbox.pack_start(key_entry, false, false, 2)
@@ -627,7 +627,7 @@ module Pandora
                 dialog.def_widget = pass_entry
               end
 
-              changebtn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::EDIT)
+              changebtn = Pandora::Gtk::SafeToggleToolButton.new(Gtk::Stock::EDIT)
               changebtn.tooltip_text = _('Change password')
               changebtn.safe_signal_clicked do |*args|
                 if not new_label
@@ -688,7 +688,7 @@ module Pandora
           end
           if (not key_vec) and getting
             getting = false
-            dialog = PandoraGtk::AdvancedDialog.new(_('Key generation'))
+            dialog = Pandora::Gtk::AdvancedDialog.new(_('Key generation'))
             dialog.set_default_size(420, 250)
 
             vbox = ::Gtk::VBox.new
@@ -697,7 +697,7 @@ module Pandora
             #creator = PandoraUtils.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
             label = ::Gtk::Label.new(_('Person panhash'))
             vbox.pack_start(label, false, false, 2)
-            user_entry = PandoraGtk::PanhashBox.new('Panhash(Person)')
+            user_entry = Pandora::Gtk::PanhashBox.new('Panhash(Person)')
             #user_entry.text = PandoraUtils.bytes_to_hex(creator)
             vbox.pack_start(user_entry, false, false, 2)
 
@@ -793,7 +793,7 @@ module Pandora
                 dialog.default_response = Gtk::Dialog::RESPONSE_OK
                 dialog.icon = $window.icon
                 if (dialog.run == Gtk::Dialog::RESPONSE_OK)
-                  PandoraGtk.show_panobject_list(PandoraModel::Person, nil, nil, true)
+                  Pandora::Gtk.show_panobject_list(PandoraModel::Person, nil, nil, true)
                 end
                 dialog.destroy
               end
@@ -810,7 +810,7 @@ module Pandora
               else
                 text = 'Logged'
               end
-              $window.set_status_field(PandoraGtk::SF_Auth, text, nil, true)
+              $window.set_status_field(Pandora::Gtk::SF_Auth, text, nil, true)
               if last_auth_key0 != last_auth_key
                 PandoraUtils.set_param('last_auth_key', last_auth_key)
               end
