@@ -2,6 +2,10 @@ require 'logging'
 
 module Pandora
   def self.logger
-    @@logger ||= Logging.logger(STDOUT)
+    if !@logger
+      @logger = Logging.logger(STDOUT)
+      @logger.level = Pandora.config.logger.level
+    end
+    @logger
   end
 end

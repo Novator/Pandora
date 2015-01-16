@@ -16,6 +16,10 @@ root_path = File.expand_path("../", __FILE__)
 require "#{root_path}/lib/pandora"
 Dir["#{root_path}/lib/**/*.rb"].each {|f| require f}
 
+# Loading app configuration
+# Загрузка конфигурации приложения
+require "#{root_path}/config/application"
+
 # Array of localization phrases
 # RU: Вектор переведеных фраз
 $lang_trans = {}
@@ -37,81 +41,6 @@ end
 module PandoraUtils
   # Default values of configuration options
   # RU: Значения опций по умолчанию
-  Pandora::app.configure do |config|
-    config.poly_launch = true
-    config.host = nil
-    config.port = nil
-    config.lang = 'ru'
-    config.parameters = []
-
-    # Paths and files
-    # RU: Пути и файлы
-    # Pandora.base_dir = File.join(Pandora.root, 'base')        # Database directory
-    # Pandora.view_dir = File.join(Pandora.root, 'view')        # Media files directory
-    # Pandora.model_dir = File.join(Pandora.root, 'model')      # Model directory
-    # Pandora.lang_dir = File.join(Pandora.root, 'lang')        # Languages directory
-    # Pandora.util_dir = File.join(Pandora.root, 'util')        # Utilites directory
-    $pandora_sqlite_db = File.join(Pandora.base_dir, 'pandora.sqlite')  # Database file
-    # Pandora.files_dir = File.join(Pandora.root, 'files')      # Files directory
-  end
-
-  byebug
-
-
-  # Log level constants
-  # RU: Константы уровня логирования
-  LM_Error    = 0
-  LM_Warning  = 1
-  LM_Info     = 2
-  LM_Trace    = 3
-
-  # Log level on human view
-  # RU: Уровень логирования по-человечьи
-  def self.level_to_str(level)
-    mes = ''
-    case level
-      when LM_Error
-        mes = _('Error')
-      when LM_Warning
-        mes = _('Warning')
-      when LM_Trace
-        mes = _('Trace')
-    end
-  end
-
-  MaxLogViewLineCount = 500
-
-  # Default log level
-  # RU: Уровень логирования по умолчанию
-  $show_log_level = LM_Trace
-
-  # Add the message to log
-  # RU: Добавить сообщение в лог
-  def self.log_message(level, mes)
-    if (level <= $show_log_level)
-      time = Time.now
-      lev = level_to_str(level)
-      lev = ' ['+lev+']' if (lev.is_a? String) and (lev.size>0)
-      lev ||= ''
-      mes = time.strftime('%H:%M:%S') + lev + ': '+mes
-      log_view = $window.log_view
-      if log_view
-        value = log_view.parent.vadjustment.value
-        log_view.before_addition(time, value)
-        log_view.buffer.insert(log_view.buffer.end_iter, mes+"\n")
-        aline_count = log_view.buffer.line_count
-        if aline_count>MaxLogViewLineCount
-          first = log_view.buffer.start_iter
-          last = log_view.buffer.get_iter_at_line_offset(aline_count-MaxLogViewLineCount-1, 0)
-          log_view.buffer.delete(first, last)
-        end
-        log_view.after_addition
-      else
-        puts mes
-      end
-    end
-  end
-
 
 
   # Save language phrases
@@ -3033,13 +2962,13 @@ module PandoraModel
         if res
           Pandora.logger.info  _('Recorded')+' '+str
         else
-          PandoraUtils.log_message(LM_Warning, _('Cannot record')+' '+str)
+          Pandora.logger.warn  _('Cannot record')+' '+str
         end
       end
     else
-      PandoraUtils.log_message(LM_Warning, _('Non-equal panhashes ')+' '+ \
+      Pandora.logger.warn _('Non-equal panhashes ')+' '+ \
         PandoraUtils.bytes_to_hex(panhash) + '<>' + \
-        PandoraUtils.bytes_to_hex(require_panhash))
+        PandoraUtils.bytes_to_hex(require_panhash)
       res = nil
     end
     res
@@ -3054,7 +2983,7 @@ module PandoraModel
         lang = record[1].ord
         values = PandoraUtils.pson_to_namehash(record[2..-1])
         if not PandoraModel.save_record(kind, lang, values, models)
-          PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 2')
+          Pandora.logger.warn  _('Cannot write a record')+' 2'
         end
       end
     end
@@ -3559,7 +3488,7 @@ module PandoraCrypto
                 data = nil
               end
             else
-              PandoraUtils.log_message(LM_Warning, _('Bad data encrypted on key'))
+              Pandora.logger.warn  _('Bad data encrypted on key')
               data = nil
             end
           end
@@ -4251,8 +4180,8 @@ module PandoraCrypto
           values['panhash'] = panhash
           res = sign_model.update(values, nil, nil)
         else
-          PandoraUtils.log_message(LM_Warning, _('Cannot create sign')+' ['+\
-            panobject.show_panhash(obj_hash)+']')
+          Pandora.logger.warn _('Cannot create sign')+' ['+\
+            panobject.show_panhash(obj_hash)+']'
         end
       end
     end
@@ -4404,7 +4333,7 @@ module PandoraCrypto
           key_vec = 0
         end
       else
-        PandoraUtils.log_message(LM_Warning, _('Achieved limit of opened keys')+': '+$open_keys.size.to_s)
+        Pandora.logger.warn  _('Achieved limit of opened keys')+': '+$open_keys.size.to_s
       end
     else
       key_vec = panhash
@@ -5204,7 +5133,7 @@ module PandoraNet
         mesadd = ' err=' + code.to_s if code
         mes = _(mes)
         logmes = mes + ' ' + logmes0 if mes and (mes.bytesize>0)
-        PandoraUtils.log_message(LM_Warning, logmes+mesadd)
+        Pandora.logger.warn  logmes+mesadd
       end
     end
 
@@ -6088,9 +6017,9 @@ module PandoraNet
                   init_skey_or_error(false)
                 end
               elsif res==false
-                PandoraUtils.log_message(LM_Warning, _('Record came with wrong panhash'))
+                Pandora.logger.warn  _('Record came with wrong panhash')
               else
-                PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 1')
+                Pandora.logger.warn  _('Cannot write a record')+' 1'
               end
             else
               err_scmd('Record ('+kind.to_s+') came on wrong stage')
@@ -6132,7 +6061,7 @@ module PandoraNet
                   p log_mes+'update confirm  kind,id='+[kind, id].inspect
                   res = model.update({:state=>2}, nil, {:id=>id})
                   if not res
-                    PandoraUtils.log_message(LM_Warning, _('Cannot update record of confirm')+' kind,id='+[kind,id].inspect)
+                    Pandora.logger.warn  _('Cannot update record of confirm')+' kind,id='+[kind,id].inspect
                   end
                   i += 5
                 end
@@ -6517,7 +6446,7 @@ module PandoraNet
                   asocket = nil
                   @socket = asocket
                   if (not work_time) or ((Time.now.to_i - work_time.to_i)>15)
-                    PandoraUtils.log_message(LM_Warning, _('Fail connect to')+': '+server)
+                    Pandora.logger.warn  _('Fail connect to')+': '+server
                     conn_period = 15
                   else
                     sleep(conn_period-1)
@@ -6535,7 +6464,7 @@ module PandoraNet
                 @conn_thread.exit if @conn_thread.alive?
                 @conn_thread = nil
                 if not @socket
-                  PandoraUtils.log_message(LM_Trace, _('Timeout connect to')+': '+server)
+                  Pandora.logger.debug  _('Timeout connect to')+': '+server
                 end
               end
             else
@@ -7073,7 +7002,7 @@ module PandoraNet
 			    p 'New fish order: '+fish_order.inspect
 			    tokey = @skey[PandoraCrypto::KV_Panhash]
 			    if fish_order == tokey
-                  PandoraUtils.log_message(LM_Trace, _('Fishing to')+': '+PandoraUtils.bytes_to_hex(tokey))
+                  Pandora.logger.debug  _('Fishing to')+': '+PandoraUtils.bytes_to_hex(tokey)
                   add_send_segment(EC_Query, true, tokey, ECC_Query_Fish)
 			    end
 			  end
@@ -7237,7 +7166,7 @@ module PandoraNet
             Pandora.logger.info  _('Listening address')+': '+addr_str
           rescue
             server = nil
-            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' '+host.to_s+':'+Pandora.config.port.to_s)
+            Pandora.logger.warn  _('Cannot open port')+' '+host.to_s+':'+Pandora.config.port.to_s
           end
           Thread.current[:listen_server_socket] = server
           Thread.current[:need_to_listen] = (server != nil)
@@ -7265,7 +7194,7 @@ module PandoraNet
             end
           end
           server.close if server and (not server.closed?)
-          PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
+          Pandora.logger.info _('Listener stops')+' '+addr_str if server
           $window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
           $listen_thread = nil
         end
@@ -10346,7 +10275,7 @@ module PandoraGtk
           rescue => err
             $send_media_pipelines['video'] = nil
             mes = 'Camera init exception'
-            PandoraUtils.log_message(LM_Warning, _(mes))
+            Pandora.logger.warn  _(mes)
             puts mes+': '+err.message
             vid_button.active = false
           end
@@ -10481,7 +10410,7 @@ module PandoraGtk
           rescue => err
             @recv_media_pipeline[1] = nil
             mes = 'Video receiver init exception'
-            PandoraUtils.log_message(LM_Warning, _(mes))
+            Pandora.logger.warn  _(mes)
             puts mes+': '+err.message
             vid_button.active = false
           end
@@ -10616,7 +10545,7 @@ module PandoraGtk
           rescue => err
             $send_media_pipelines['audio'] = nil
             mes = 'Microphone init exception'
-            PandoraUtils.log_message(LM_Warning, _(mes))
+            Pandora.logger.warn  _(mes)
             puts mes+': '+err.message
             snd_button.active = false
           end
@@ -10714,7 +10643,7 @@ module PandoraGtk
           rescue => err
             @recv_media_pipeline[0] = nil
             mes = 'Audio receiver init exception'
-            PandoraUtils.log_message(LM_Warning, _(mes))
+            Pandora.logger.warn  _(mes)
             puts mes+': '+err.message
             snd_button.active = false
           end
@@ -11263,8 +11192,8 @@ module PandoraGtk
       FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
       if Dir.exists?(dir)
         begin
-          PandoraUtils.log_message(LM_Info, _('Download from') + ': ' + \
-            host + path + '..')
+          Pandora.logger.info _('Download from') + ': ' + \
+                                host + path + '..'
           response = http.request_get(path)
           filebody = response.body
           if filebody and (filebody.size>0)
@@ -11274,13 +11203,13 @@ module PandoraGtk
               Pandora.logger.info  _('File updated')+': '+pfn
             end
           else
-            PandoraUtils.log_message(LM_Warning, _('Empty downloaded body'))
+            Pandora.logger.warn  _('Empty downloaded body')
           end
         rescue => err
-          PandoraUtils.log_message(LM_Warning, _('Update error')+': '+err.message)
+          Pandora.logger.warn  _('Update error')+': '+err.message
         end
       else
-        PandoraUtils.log_message(LM_Warning, _('Cannot create directory')+': '+dir)
+        Pandora.logger.warn  _('Cannot create directory')+': '+dir
       end
       res
     end
@@ -11288,8 +11217,8 @@ module PandoraGtk
     def self.connect_http(main_uri, curr_size, step, p_addr=nil, p_port=nil, p_user=nil, p_pass=nil)
       http = nil
       time = 0
-      PandoraUtils.log_message(LM_Info, _('Connect to') + ': ' + \
-        main_uri.host + main_uri.path + ':' + main_uri.port.to_s + '..')
+      Pandora.logger.info _('Connect to') + ': ' + \
+          main_uri.host + main_uri.path + ':' + main_uri.port.to_s + '..'
       begin
         http = Net::HTTP.new(main_uri.host, main_uri.port, p_addr, p_port, p_user, p_pass)
         http.use_ssl = true
@@ -11315,8 +11244,8 @@ module PandoraGtk
       rescue => err
         http = nil
         $window.set_status_field(SF_Update, 'Connection error')
-        PandoraUtils.log_message(LM_Warning, _('Cannot connect to repo to check update')+\
-          [main_uri.host, main_uri.port].inspect)
+        Pandora.logger.warn _('Cannot connect to repo to check update')+\
+          [main_uri.host, main_uri.port].inspect
         puts err.message
       end
       [http, time, step]
@@ -11332,7 +11261,7 @@ module PandoraGtk
         rescue => err
           http = nil
           $window.set_status_field(SF_Update, 'Connection error')
-          PandoraUtils.log_message(LM_Warning, _('Cannot reconnect to repo to update'))
+          Pandora.logger.warn  _('Cannot reconnect to repo to update')
           puts err.message
         end
       end
@@ -11413,12 +11342,12 @@ module PandoraGtk
                             res = PandoraUtils.unzip_via_lib(zip_local, Pandora.base_dir)
                             p 'unzip_file1 res='+res.inspect
                             if not res
-                              PandoraUtils.log_message(LM_Trace, _('Was not unziped with method')+': lib')
+                              Pandora.logger.debug  _('Was not unziped with method')+': lib'
                               unzip_meth = 'util'
                               res = PandoraUtils.unzip_via_util(zip_local, Pandora.base_dir)
                               p 'unzip_file2 res='+res.inspect
                               if not res
-                                PandoraUtils.log_message(LM_Warning, _('Was not unziped with method')+': util')
+                                Pandora.logger.warn  _('Was not unziped with method')+': util'
                               end
                             end
                             # Copy files to work dir
@@ -11442,33 +11371,33 @@ module PandoraGtk
                                   Pandora.logger.info  _('Files are updated')
                                 rescue => err
                                   res = false
-                                  PandoraUtils.log_message(LM_Warning, _('Cannot copy files from zip arch')+': '+err.message)
+                                  Pandora.logger.warn  _('Cannot copy files from zip arch')+': '+err.message
                                 end
                                 # Remove used arch dir
                                 begin
                                   FileUtils.remove_dir(unzip_path)
                                 rescue => err
-                                  PandoraUtils.log_message(LM_Warning, _('Cannot remove arch dir')+' ['+unzip_path+']: '+err.message)
+                                  Pandora.logger.warn  _('Cannot remove arch dir')+' ['+unzip_path+']: '+err.message
                                 end
                                 step = 255 if res
                               else
-                                PandoraUtils.log_message(LM_Warning, _('Unzipped directory does not exist'))
+                                Pandora.logger.warn  _('Unzipped directory does not exist')
                               end
                             else
-                              PandoraUtils.log_message(LM_Warning, _('Arch was not unzipped'))
+                              Pandora.logger.warn  _('Arch was not unzipped')
                             end
                           else
-                            PandoraUtils.log_message(LM_Warning, _('Cannot download arch'))
+                            Pandora.logger.warn  _('Cannot download arch')
                           end
                         end
                       end
                     else
                       $window.set_status_field(SF_Update, 'Read only')
-                      PandoraUtils.log_message(LM_Warning, _('Zip is unrewritable'))
+                      Pandora.logger.warn  _('Zip is unrewritable')
                     end
                   else
                     $window.set_status_field(SF_Update, 'Size error')
-                    PandoraUtils.log_message(LM_Warning, _('Zip size error'))
+                    Pandora.logger.warn  _('Zip size error')
                   end
                 end
                 update_zip = false
@@ -11489,8 +11418,7 @@ module PandoraGtk
                       pfn = File.join(Pandora.root, fn)
                       if File.exist?(pfn) and (not File.stat(pfn).writable?)
                         downloaded = false
-                        PandoraUtils.log_message(LM_Warning, \
-                          _('Not exist or read only')+': '+pfn)
+                        Pandora.logger.warn _('Not exist or read only')+': '+pfn
                       else
                         downloaded = downloaded and \
                           update_file(http, '/Novator/Pandora/master/'+fn, pfn)
@@ -11499,7 +11427,7 @@ module PandoraGtk
                     if downloaded
                       step = 255
                     else
-                      PandoraUtils.log_message(LM_Warning, _('Direct download error'))
+                      Pandora.logger.warn  _('Direct download error')
                     end
                   end
                 end
@@ -13251,7 +13179,7 @@ module PandoraGtk
             panobject_class = PandoraModel.const_get(panobj_id)
             PandoraGtk.show_panobject_list(panobject_class, widget)
           else
-            PandoraUtils.log_message(LM_Warning, _('Menu handler is not defined yet')+' "'+panobj_id+'"')
+            Pandora.logger.warn  _('Menu handler is not defined yet')+' "'+panobj_id+'"'
           end
       end
     end
