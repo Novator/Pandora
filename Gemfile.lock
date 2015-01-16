@@ -7,16 +7,33 @@ GEM
       minitest (~> 5.1)
       thread_safe (~> 0.3, >= 0.3.4)
       tzinfo (~> 1.1)
+    atk (2.2.4)
+      glib2 (= 2.2.4)
     byebug (3.5.1)
       columnize (~> 0.8)
       debugger-linecache (~> 1.2)
       slop (~> 3.6)
+    cairo (1.14.1)
+      pkg-config (>= 1.1.5)
     columnize (0.9.0)
     debugger-linecache (1.2.0)
+    gdk_pixbuf2 (2.2.4)
+      glib2 (= 2.2.4)
+    glib2 (2.2.4)
+      pkg-config
+    gtk2 (2.2.4)
+      atk (= 2.2.4)
+      gdk_pixbuf2 (= 2.2.4)
+      pango (= 2.2.4)
     i18n (0.7.0)
     json (1.8.2)
     minitest (5.5.1)
+    pango (2.2.4)
+      cairo (>= 1.14.0)
+      glib2 (= 2.2.4)
+    pkg-config (1.1.6)
     slop (3.6.0)
+    sqlite3 (1.3.10)
     thread_safe (0.3.4)
     tzinfo (1.2.2)
       thread_safe (~> 0.1)
@@ -27,3 +44,5 @@ PLATFORMS
 DEPENDENCIES
   activesupport
   byebug
+  gtk2
+  sqlite3

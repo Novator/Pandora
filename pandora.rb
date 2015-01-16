@@ -10,28 +10,6 @@
 # 2012 (c) Michael Galyuk
 # RU: 2012 (c) Михаил Галюк
 
-# Bundler to manage gems
-# Используем Bundler
-require 'rubygems'
-require 'bundler/setup'
-
-# Debug tool
-# Гем для отладки приложения
-require 'byebug'
-
-# Штуки которые были по умолчанию
-require 'rexml/document'
-require 'zlib'
-require 'digest'
-require 'base64'
-require 'net/http'
-require 'net/https'
-require 'sqlite3'
-begin
-  require 'gst'
-rescue Exception
-end
-
 # Loading lib dir
 # Загрузка библиотек из папки lib
 root_path = File.expand_path("../", __FILE__)
@@ -7472,14 +7450,11 @@ end
 # ====================================================================
 # Graphical user interface of Pandora
 # RU: Графический интерфейс Пандоры
-
-require 'fileutils'
-
 module PandoraGtk
   # GTK is cross platform graphical user interface
   # RU: Кроссплатформенный оконный интерфейс
   begin
-    require 'gtk2'
+    # require 'gtk2'
     Gtk.init
   rescue Exception
     Kernel.abort("Gtk is not installed.\nInstall packet 'ruby-gtk'")

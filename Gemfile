@@ -7,4 +7,6 @@ gem 'byebug'
 
 # ActiveSupport
 gem 'activesupport'
+gem 'sqlite3'
+gem 'gtk2'
 
