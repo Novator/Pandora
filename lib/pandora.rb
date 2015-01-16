@@ -33,6 +33,9 @@ require 'fileutils'
 # Все подряд
 require 'singleton'
 
+# Порядок модулей программы
+require_relative 'pandora/constants'
+
 # Очередной гениальный файл...
 module Pandora
 
