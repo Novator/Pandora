@@ -74,7 +74,7 @@ module Pandora
         bbox.border_width = 5
         bbox.spacing = 5
 
-        @online_button = SafeCheckButton.new(_('Online'), true)
+        @online_button = SafeCheckButton.new(Pandora.t('Online'), true)
         online_button.safe_signal_clicked do |widget|
           if widget.active?
             widget.safe_set_active(false)
@@ -91,7 +91,7 @@ module Pandora
 
         bbox.pack_start(online_button, false, false, 0)
 
-        @snd_button = SafeCheckButton.new(_('Sound'), true)
+        @snd_button = SafeCheckButton.new(Pandora.t('Sound'), true)
         snd_button.safe_signal_clicked do |widget|
           if widget.active?
             if init_audio_sender(true)
@@ -104,7 +104,7 @@ module Pandora
         end
         bbox.pack_start(snd_button, false, false, 0)
 
-        @vid_button = SafeCheckButton.new(_('Video'), true)
+        @vid_button = SafeCheckButton.new(Pandora.t('Video'), true)
         vid_button.safe_signal_clicked do |widget|
           if widget.active?
             if init_video_sender(true)
@@ -180,7 +180,7 @@ module Pandora
         sender_box.pack_start(option_box, false, true, 0)
         sender_box.pack_start(editbox, true, true, 0)
 
-        vouch_btn = SafeCheckButton.new(_('vouch'), true)
+        vouch_btn = SafeCheckButton.new(Pandora.t('vouch'), true)
         vouch_btn.safe_signal_clicked do |widget|
           #update_btn.clicked
         end
@@ -196,12 +196,12 @@ module Pandora
         trust_scale.value_pos = ::Gtk::POS_RIGHT
         option_box.pack_start(trust_scale, false, false, 0)
 
-        smile_btn = ::Gtk::Button.new(_('smile'))
+        smile_btn = ::Gtk::Button.new(Pandora.t('smile'))
         option_box.pack_start(smile_btn, false, false, 4)
-        game_btn = ::Gtk::Button.new(_('game'))
+        game_btn = ::Gtk::Button.new(Pandora.t('game'))
         option_box.pack_start(game_btn, false, false, 4)
 
-        require_sign_btn = SafeCheckButton.new(_('require sign'), true)
+        require_sign_btn = SafeCheckButton.new(Pandora.t('require sign'), true)
         require_sign_btn.safe_signal_clicked do |widget|
           #update_btn.clicked
         end
@@ -244,7 +244,7 @@ module Pandora
 
         #title_widget = ::Gtk::HBox.new
         #title_widget.pack_start(tit_image, false, false, 0)
-        #title_label = ::Gtk::Label.new(_('People'))
+        #title_label = ::Gtk::Label.new(Pandora.t('People'))
         #title_widget.pack_start(title_label, false, false, 0)
         column.widget = tit_image
 
@@ -257,7 +257,7 @@ module Pandora
         # column for description
         renderer = ::Gtk::CellRendererText.new
 
-        column = ::Gtk::TreeViewColumn.new(_('Nodes'), renderer, 'text' => CL_Name)
+        column = ::Gtk::TreeViewColumn.new(Pandora.t('Nodes'), renderer, 'text' => CL_Name)
         column.set_sort_column_id(CL_Name)
         list_tree.append_column(column)
 
@@ -616,7 +616,7 @@ module Pandora
             color = Gdk::Color.parse($tab_color)
             tab_widget.label.modify_fg(::Gtk::STATE_NORMAL, color)
             tab_widget.label.modify_fg(::Gtk::STATE_ACTIVE, color)
-            $statusicon.set_message(_('Message')+' ['+tab_widget.label.text+']')
+            $statusicon.set_message(Pandora.t('Message')+' ['+tab_widget.label.text+']')
             Pandora::Utils.play_mp3('message')
           end
           # run reading thread
@@ -1077,7 +1077,7 @@ module Pandora
             rescue => err
               $send_media_pipelines['video'] = nil
               mes = 'Camera init exception'
-              Pandora.logger.warn  _(mes)
+              Pandora.logger.warn  Pandora.t(mes)
               puts mes+': '+err.message
               vid_button.active = false
             end
@@ -1212,7 +1212,7 @@ module Pandora
             rescue => err
               @recv_media_pipeline[1] = nil
               mes = 'Video receiver init exception'
-              Pandora.logger.warn  _(mes)
+              Pandora.logger.warn  Pandora.t(mes)
               puts mes+': '+err.message
               vid_button.active = false
             end
@@ -1347,7 +1347,7 @@ module Pandora
             rescue => err
               $send_media_pipelines['audio'] = nil
               mes = 'Microphone init exception'
-              Pandora.logger.warn  _(mes)
+              Pandora.logger.warn  Pandora.t(mes)
               puts mes+': '+err.message
               snd_button.active = false
             end
@@ -1445,7 +1445,7 @@ module Pandora
             rescue => err
               @recv_media_pipeline[0] = nil
               mes = 'Audio receiver init exception'
-              Pandora.logger.warn  _(mes)
+              Pandora.logger.warn  Pandora.t(mes)
               puts mes+': '+err.message
               snd_button.active = false
             end

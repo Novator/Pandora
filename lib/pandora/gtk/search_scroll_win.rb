@@ -36,20 +36,20 @@ module Pandora
 
         vpaned = ::Gtk::VPaned.new
 
-        search_btn = ::Gtk::ToolButton.new(::Gtk::Stock::FIND, _('Search'))
-        search_btn.tooltip_text = _('Start searching')
+        search_btn = ::Gtk::ToolButton.new(::Gtk::Stock::FIND, Pandora.t('Search'))
+        search_btn.tooltip_text = Pandora.t('Start searching')
         Pandora::Gtk.set_readonly(search_btn, true)
 
-        stop_btn = ::Gtk::ToolButton.new(::Gtk::Stock::STOP, _('Stop'))
-        stop_btn.tooltip_text = _('Stop searching')
+        stop_btn = ::Gtk::ToolButton.new(::Gtk::Stock::STOP, Pandora.t('Stop'))
+        stop_btn.tooltip_text = Pandora.t('Stop searching')
         Pandora::Gtk.set_readonly(stop_btn, true)
 
-        prev_btn = ::Gtk::ToolButton.new(::Gtk::Stock::GO_BACK, _('Previous'))
-        prev_btn.tooltip_text = _('Previous search')
+        prev_btn = ::Gtk::ToolButton.new(::Gtk::Stock::GO_BACK, Pandora.t('Previous'))
+        prev_btn.tooltip_text = Pandora.t('Previous search')
         Pandora::Gtk.set_readonly(prev_btn, true)
 
-        next_btn = ::Gtk::ToolButton.new(::Gtk::Stock::GO_FORWARD, _('Next'))
-        next_btn.tooltip_text = _('Next search')
+        next_btn = ::Gtk::ToolButton.new(::Gtk::Stock::GO_FORWARD, Pandora.t('Next'))
+        next_btn.tooltip_text = Pandora.t('Next search')
         Pandora::Gtk.set_readonly(next_btn, true)
 
         search_entry = ::Gtk::Entry.new
@@ -101,7 +101,7 @@ module Pandora
         vbox.pack_start(option_box, false, true, 0)
 
         #kind_btn = Pandora::Gtk::SafeToggleToolButton.new(::Gtk::Stock::PROPERTIES)
-        #kind_btn.tooltip_text = _('Change password')
+        #kind_btn.tooltip_text = Pandora.t('Change password')
         #kind_btn.safe_signal_clicked do |*args|
         #  #kind_btn.active?
         #end
@@ -126,19 +126,19 @@ module Pandora
         #Загрузки — Ctrl + J, Ctrl + Y
         #Закладки — Ctrl + B, Ctrl + I
 
-        local_btn = SafeCheckButton.new(_('locally'), true)
+        local_btn = SafeCheckButton.new(Pandora.t('locally'), true)
         local_btn.safe_signal_clicked do |widget|
           #update_btn.clicked
         end
         local_btn.safe_set_active(true)
 
-        active_btn = SafeCheckButton.new(_('active only'), true)
+        active_btn = SafeCheckButton.new(Pandora.t('active only'), true)
         active_btn.safe_signal_clicked do |widget|
           #update_btn.clicked
         end
         active_btn.safe_set_active(true)
 
-        hunt_btn = SafeCheckButton.new(_('hunt!'), true)
+        hunt_btn = SafeCheckButton.new(Pandora.t('hunt!'), true)
         hunt_btn.safe_signal_clicked do |widget|
           #update_btn.clicked
         end
@@ -224,7 +224,7 @@ module Pandora
         list_tree.append_column(column)
 
         renderer = ::Gtk::CellRendererText.new
-        column = ::Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
+        column = ::Gtk::TreeViewColumn.new(Pandora.t('Record'), renderer, 'text' => 1)
         column.set_sort_column_id(1)
         list_tree.append_column(column)
 

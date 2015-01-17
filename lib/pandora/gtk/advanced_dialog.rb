@@ -41,7 +41,7 @@ module Pandora
 
         image = ::Gtk::Image.new(::Gtk::Stock::PROPERTIES, ::Gtk::IconSize::MENU)
         image.set_padding(2, 0)
-        label_box1 = TabLabelBox.new(image, _('Basic'), nil, false, 0)
+        label_box1 = TabLabelBox.new(image, Pandora.t('Basic'), nil, false, 0)
 
         @notebook = ::Gtk::Notebook.new
         @notebook.scrollable = true

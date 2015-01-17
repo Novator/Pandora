@@ -36,7 +36,7 @@ module Pandora
           pixbuf_loader = Gdk::PixbufLoader.new
           pixbuf_loader.last_write(captcha_buf) if captcha_buf
 
-          label = ::Gtk::Label.new(_('Far node'))
+          label = ::Gtk::Label.new(Pandora.t('Far node'))
           vbox.pack_start(label, false, false, 2)
           entry = ::Gtk::Entry.new
           node_text = Pandora::Utils.bytes_to_hex(srckey)
@@ -59,7 +59,7 @@ module Pandora
           rescue
           end
 
-          label = ::Gtk::Label.new(_('Enter text from picture'))
+          label = ::Gtk::Label.new(Pandora.t('Enter text from picture'))
           vbox.pack_start(label, false, false, 2)
 
           captcha_entry = Pandora::Gtk::MaskEntry.new
@@ -117,15 +117,15 @@ module Pandora
           vbox.pack_start(hbox, false, false, 2)
 
           if clue
-            label = ::Gtk::Label.new(_(clue))
+            label = ::Gtk::Label.new(Pandora.t(clue))
             vbox.pack_start(label, false, false, 2)
           end
           if length
-            label = ::Gtk::Label.new(_('Length')+'='+length.to_s)
+            label = ::Gtk::Label.new(Pandora.t('Length')+'='+length.to_s)
             vbox.pack_start(label, false, false, 2)
           end
           if symbols
-            sym_text = _('Symbols')+': '+symbols.to_s
+            sym_text = Pandora.t('Symbols')+': '+symbols.to_s
             i = 30
             while i<sym_text.size do
               sym_text = sym_text[0,i]+"\n"+sym_text[i+1..-1]

@@ -10,9 +10,9 @@ module Pandora
       def initialize
         super
         @latitude   = CoordEntry.new
-        latitude.tooltip_text = _('Latitude')+': 60.716, 60 43\', 60.43\'00"N'+"\n["+latitude.mask+']'
+        latitude.tooltip_text = Pandora.t('Latitude')+': 60.716, 60 43\', 60.43\'00"N'+"\n["+latitude.mask+']'
         @longitude  = CoordEntry.new
-        longitude.tooltip_text = _('Longitude')+': -114.9, W114 54\' 0", 114.9W'+"\n["+longitude.mask+']'
+        longitude.tooltip_text = Pandora.t('Longitude')+': -114.9, W114 54\' 0", 114.9W'+"\n["+longitude.mask+']'
         latitude.width_request = CoordWidth
         longitude.width_request = CoordWidth
         self.pack_start(latitude, false, false, 0)

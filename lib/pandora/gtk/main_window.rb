@@ -62,8 +62,8 @@ module Pandora
       def set_status_field(index, text, enabled=nil, toggle=nil)
         btn = $status_fields[index]
         if btn
-          str = _(text)
-          str = _('Version') + ': ' + str if (index==SF_Update)
+          str = Pandora.t(text)
+          str = Pandora.t('Version') + ': ' + str if (index==SF_Update)
           btn.label = str
           if (enabled != nil)
             btn.sensitive = enabled
@@ -203,7 +203,7 @@ module Pandora
           end
         end
 
-        Pandora.logger.info  _('Table exported')+': '+filename
+        Pandora.logger.info  Pandora.t('Table exported')+': '+filename
       end
 
       # Menu event handler
@@ -343,7 +343,7 @@ module Pandora
               panobject_class = Pandora::Model.const_get(panobj_id)
               Pandora::Gtk.show_panobject_list(panobject_class, widget)
             else
-              Pandora.logger.warn  _('Menu handler is not defined yet')+' "'+panobj_id+'"'
+              Pandora.logger.warn  Pandora.t('Menu handler is not defined yet')+' "'+panobj_id+'"'
             end
         end
       end
@@ -433,7 +433,7 @@ module Pandora
         menu = nil
         MENU_ITEMS.each do |mi|
           if mi[0]==nil or menu==nil
-            menuitem = ::Gtk::MenuItem.new(_(mi[2]))
+            menuitem = ::Gtk::MenuItem.new(Pandora.t(mi[2]))
             menubar.append(menuitem)
             menu = ::Gtk::Menu.new
             menuitem.set_submenu(menu)
@@ -499,7 +499,7 @@ module Pandora
                 #  ::Gtk::Dialog::MODAL | ::Gtk::Dialog::DESTROY_WITH_PARENT, \
                 #  ::Gtk::MessageDialog::INFO, ::Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
                 #  message)
-                #dialog.title = _('Task')
+                #dialog.title = Pandora.t('Task')
                 #dialog.default_response = ::Gtk::Dialog::RESPONSE_OK
                 #dialog.icon = $window.icon
                 #if (dialog.run == ::Gtk::Dialog::RESPONSE_OK)
@@ -508,20 +508,20 @@ module Pandora
                 #dialog.destroy
 
                 if not @scheduler_dialog
-                  @scheduler_dialog = Pandora::Gtk::AdvancedDialog.new(_('Tasks'))
+                  @scheduler_dialog = Pandora::Gtk::AdvancedDialog.new(Pandora.t('Tasks'))
                   dialog = @scheduler_dialog
                   dialog.set_default_size(420, 250)
                   vbox = ::Gtk::VBox.new
                   dialog.viewport.add(vbox)
 
-                  label = ::Gtk::Label.new(_('Message'))
+                  label = ::Gtk::Label.new(Pandora.t('Message'))
                   vbox.pack_start(label, false, false, 2)
                   user_entry = ::Gtk::Entry.new
                   user_entry.text = message
                   vbox.pack_start(user_entry, false, false, 2)
 
 
-                  label = ::Gtk::Label.new(_('Here'))
+                  label = ::Gtk::Label.new(Pandora.t('Here'))
                   vbox.pack_start(label, false, false, 2)
                   pass_entry = ::Gtk::Entry.new
                   pass_entry.width_request = 250
@@ -621,18 +621,18 @@ module Pandora
         @cvpaned.position = cvpaned.max_position
 
         $statusbar = ::Gtk::Statusbar.new
-        Pandora::Gtk.set_statusbar_text($statusbar, _('Base directory: ')+Pandora.base_dir)
+        Pandora::Gtk.set_statusbar_text($statusbar, Pandora.t('Base directory: ')+Pandora.base_dir)
 
-        add_status_field(SF_Update, _('Version') + ': ' + _('Not checked')) do
+        add_status_field(SF_Update, Pandora.t('Version') + ': ' + Pandora.t('Not checked')) do
           Pandora::Gtk.start_updating(true)
         end
-        add_status_field(SF_Auth, _('Not logged')) do
+        add_status_field(SF_Auth, Pandora.t('Not logged')) do
           do_menu_act('Authorize')
         end
-        add_status_field(SF_Listen, _('Not listen')) do
+        add_status_field(SF_Listen, Pandora.t('Not listen')) do
           do_menu_act('Listen')
         end
-        add_status_field(SF_Hunt, _('No hunt')) do
+        add_status_field(SF_Hunt, Pandora.t('No hunt')) do
           do_menu_act('Hunt')
         end
         add_status_field(SF_Conn, '0/0/0') do

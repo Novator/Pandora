@@ -145,13 +145,13 @@ module Pandora
           end
           str = '[' + model.sname + ': ' + Utf8String.new(str) + ']'
           if res
-            Pandora.logger.info  _('Recorded')+' '+str
+            Pandora.logger.info  Pandora.t('Recorded')+' '+str
           else
-            Pandora.logger.warn  _('Cannot record')+' '+str
+            Pandora.logger.warn  Pandora.t('Cannot record')+' '+str
           end
         end
       else
-        Pandora.logger.warn _('Non-equal panhashes ')+' '+ \
+        Pandora.logger.warn Pandora.t('Non-equal panhashes ')+' '+ \
           Pandora::Utils.bytes_to_hex(panhash) + '<>' + \
           Pandora::Utils.bytes_to_hex(require_panhash)
         res = nil
@@ -168,7 +168,7 @@ module Pandora
           lang = record[1].ord
           values = Pandora::Utils.pson_to_namehash(record[2..-1])
           if not save_record(kind, lang, values, models)
-            Pandora.logger.warn  _('Cannot write a record')+' 2'
+            Pandora.logger.warn  Pandora.t('Cannot write a record')+' 2'
           end
         end
       end
@@ -504,7 +504,7 @@ module Pandora
                   parent_class = element.attributes['parent']
                   if (not parent_class) or (parent_class=='') or (not (Pandora::Model.const_defined? parent_class))
                     if parent_class
-                      puts _('Parent is not defined, ignored')+' /'+filename+':'+panobj_id+'<'+parent_class
+                      puts Pandora.t('Parent is not defined, ignored')+' /'+filename+':'+panobj_id+'<'+parent_class
                     end
                     parent_class = 'Panobject'
                   end
@@ -593,7 +593,7 @@ module Pandora
                     flds[i][FI_View] = fld_view if fld_view and (fld_view != '')
                   else
                     # not new panobject, field doesn't exists
-                    puts _('Property was not defined, ignored')+' /'+filename+':'+panobj_id+'.'+sub_elem.name
+                    puts Pandora.t('Property was not defined, ignored')+' /'+filename+':'+panobj_id+'.'+sub_elem.name
                   end
                 end
               end

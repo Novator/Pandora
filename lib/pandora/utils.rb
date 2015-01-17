@@ -507,17 +507,17 @@ module Pandora
       if min_ago < 0
         val = val.strftime('%d.%m.%Y')
       elsif min_ago == 0
-        val = _('just now')
+        val = Pandora.t('just now')
       elsif min_ago == 1
-        val = _('a min. ago')
+        val = Pandora.t('a min. ago')
       else
         midnight = calc_midnight(time_now)
         if (min_ago <= 90) and ((val >= midnight) or (min_ago <= 10))
-          val = min_ago.to_s + ' ' + _('min. ago')
+          val = min_ago.to_s + ' ' + Pandora.t('min. ago')
         elsif val >= midnight
-          val = _('today')+' '+val.strftime('%R')
+          val = Pandora.t('today')+' '+val.strftime('%R')
         elsif val.to_i >= (midnight.to_i-24*3600)  #last midnight
-          val = _('yester')+' '+val.strftime('%R')
+          val = Pandora.t('yester')+' '+val.strftime('%R')
         else
           val = val.strftime('%d.%m.%y %R')
         end

@@ -188,7 +188,7 @@ module Pandora
                   data = nil
                 end
               else
-                Pandora.logger.warn  _('Bad data encrypted on key')
+                Pandora.logger.warn  Pandora.t('Bad data encrypted on key')
                 data = nil
               end
             end
@@ -591,20 +591,20 @@ module Pandora
             key_vec, cipher = read_key(last_auth_key, passwd, key_model)
             #p '[key_vec, cipher]='+[key_vec, cipher].inspect
             if (not key_vec) or (not cipher) or (cipher != 0) or (not $first_key_init)
-              dialog = Pandora::Gtk::AdvancedDialog.new(_('Key init'))
+              dialog = Pandora::Gtk::AdvancedDialog.new(Pandora.t('Key init'))
               dialog.set_default_size(420, 190)
 
               vbox = ::Gtk::VBox.new
               dialog.viewport.add(vbox)
 
-              label = ::Gtk::Label.new(_('Key'))
+              label = ::Gtk::Label.new(Pandora.t('Key'))
               vbox.pack_start(label, false, false, 2)
               key_entry = Pandora::Gtk::PanhashBox.new('Panhash(Key)')
               key_entry.text = Pandora::Utils.bytes_to_hex(last_auth_key)
               #key_entry.editable = false
               vbox.pack_start(key_entry, false, false, 2)
 
-              label = ::Gtk::Label.new(_('Password'))
+              label = ::Gtk::Label.new(Pandora.t('Password'))
               vbox.pack_start(label, false, false, 2)
               pass_entry = ::Gtk::Entry.new
               pass_entry.visibility = false
@@ -628,10 +628,10 @@ module Pandora
               end
 
               changebtn = Pandora::Gtk::SafeToggleToolButton.new(::Gtk::Stock::EDIT)
-              changebtn.tooltip_text = _('Change password')
+              changebtn.tooltip_text = Pandora.t('Change password')
               changebtn.safe_signal_clicked do |*args|
                 if not new_label
-                  new_label = Gtk::Label.new(_('New password'))
+                  new_label = Gtk::Label.new(Pandora.t('New password'))
                   vbox.pack_start(new_label, false, false, 2)
                   new_pass_entry = Gtk::Entry.new
                   new_pass_entry.width_request = 200
@@ -651,8 +651,8 @@ module Pandora
               end
               dialog.hbox.pack_start(changebtn, false, false, 0)
 
-              gen_button = ::Gtk::ToolButton.new(::Gtk::Stock::NEW, _('New'))
-              gen_button.tooltip_text = _('Generate new key pair')
+              gen_button = ::Gtk::ToolButton.new(::Gtk::Stock::NEW, Pandora.t('New'))
+              gen_button.tooltip_text = Pandora.t('Generate new key pair')
               #gen_button.width_request = 110
               gen_button.signal_connect('clicked') { |*args| dialog.response=3 }
               dialog.hbox.pack_start(gen_button, false, false, 0)
@@ -688,36 +688,36 @@ module Pandora
           end
           if (not key_vec) and getting
             getting = false
-            dialog = Pandora::Gtk::AdvancedDialog.new(_('Key generation'))
+            dialog = Pandora::Gtk::AdvancedDialog.new(Pandora.t('Key generation'))
             dialog.set_default_size(420, 250)
 
             vbox = ::Gtk::VBox.new
             dialog.viewport.add(vbox)
 
             #creator = Pandora::Utils.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
-            label = ::Gtk::Label.new(_('Person panhash'))
+            label = ::Gtk::Label.new(Pandora.t('Person panhash'))
             vbox.pack_start(label, false, false, 2)
             user_entry = Pandora::Gtk::PanhashBox.new('Panhash(Person)')
             #user_entry.text = Pandora::Utils.bytes_to_hex(creator)
             vbox.pack_start(user_entry, false, false, 2)
 
             rights = KS_Exchange | KS_Voucher
-            label = ::Gtk::Label.new(_('Key credentials'))
+            label = ::Gtk::Label.new(Pandora.t('Key credentials'))
             vbox.pack_start(label, false, false, 2)
 
             hbox = ::Gtk::HBox.new
 
-            exchange_btn = ::Gtk::CheckButton.new(_('exchange'), true)
+            exchange_btn = ::Gtk::CheckButton.new(Pandora.t('exchange'), true)
             exchange_btn.active = ((rights & KS_Exchange)>0)
             hbox.pack_start(exchange_btn, true, true, 2)
 
-            voucher_btn = ::Gtk::CheckButton.new(_('voucher'), true)
+            voucher_btn = ::Gtk::CheckButton.new(Pandora.t('voucher'), true)
             voucher_btn.active = ((rights & KS_Voucher)>0)
             hbox.pack_start(voucher_btn, true, true, 2)
 
             vbox.pack_start(hbox, false, false, 2)
 
-            label = ::Gtk::Label.new(_('Password'))
+            label = ::Gtk::Label.new(Pandora.t('Password'))
             vbox.pack_start(label, false, false, 2)
             pass_entry = ::Gtk::Entry.new
             pass_entry.width_request = 250
@@ -788,8 +788,8 @@ module Pandora
                 dialog = Gtk::MessageDialog.new($window, \
                   Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
                   Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-                  _('Panhash must consist of 44 symbols'))
-                dialog.title = _('Note')
+                  Pandora.t('Panhash must consist of 44 symbols'))
+                dialog.title = Pandora.t('Note')
                 dialog.default_response = Gtk::Dialog::RESPONSE_OK
                 dialog.icon = $window.icon
                 if (dialog.run == Gtk::Dialog::RESPONSE_OK)
@@ -817,8 +817,8 @@ module Pandora
             else
               dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
                 Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-                _('Cannot activate key. Try again?')+"\n[" +Pandora::Utils.bytes_to_hex(last_auth_key[2,16])+']')
-              dialog.title = _('Key init')
+                Pandora.t('Cannot activate key. Try again?')+"\n[" +Pandora::Utils.bytes_to_hex(last_auth_key[2,16])+']')
+              dialog.title = Pandora.t('Key init')
               dialog.default_response = Gtk::Dialog::RESPONSE_OK
               dialog.icon = $window.icon
               getting = (dialog.run == Gtk::Dialog::RESPONSE_OK)
@@ -880,7 +880,7 @@ module Pandora
             values['panhash'] = panhash
             res = sign_model.update(values, nil, nil)
           else
-            Pandora.logger.warn _('Cannot create sign')+' ['+\
+            Pandora.logger.warn Pandora.t('Cannot create sign')+' ['+\
               panobject.show_panhash(obj_hash)+']'
           end
         end
@@ -1033,7 +1033,7 @@ module Pandora
             key_vec = 0
           end
         else
-          Pandora.logger.warn  _('Achieved limit of opened keys')+': '+$open_keys.size.to_s
+          Pandora.logger.warn  Pandora.t('Achieved limit of opened keys')+': '+$open_keys.size.to_s
         end
       else
         key_vec = panhash

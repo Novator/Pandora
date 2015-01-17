@@ -77,7 +77,7 @@ module Pandora
       if mi[0] == '-'
         menuitem = ::Gtk::SeparatorMenuItem.new
       else
-        text = _(mi[2])
+        text = Pandora.t(mi[2])
         #if (mi[4] == :check)
         #  menuitem = ::Gtk::CheckMenuItem.new(mi[2])
         #  label = menuitem.children[0]
@@ -119,7 +119,7 @@ module Pandora
         btn.active = toggle if toggle
       else
         image = ::Gtk::Image.new(stock, ::Gtk::IconSize::MENU)
-        btn = ::Gtk::ToolButton.new(image, _(title))
+        btn = ::Gtk::ToolButton.new(image, Pandora.t(title))
         #btn = ::Gtk::ToolButton.new(stock)
         btn.signal_connect('clicked') do |*args|
           yield(*args) if block_given?
@@ -127,7 +127,7 @@ module Pandora
         btn.label = title
       end
       toolbar.add(btn)
-      title = _(title)
+      title = Pandora.t(title)
       title.gsub!('_', '')
       btn.tooltip_text = title
       btn.label = title
@@ -162,7 +162,7 @@ module Pandora
         FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
         if Dir.exists?(dir)
           begin
-            Pandora.logger.info _('Download from') + ': ' + \
+            Pandora.logger.info Pandora.t('Download from') + ': ' + \
                                   host + path + '..'
             response = http.request_get(path)
             filebody = response.body
@@ -170,16 +170,16 @@ module Pandora
               File.open(pfn, 'wb+') do |file|
                 file.write(filebody)
                 res = true
-                Pandora.logger.info  _('File updated')+': '+pfn
+                Pandora.logger.info  Pandora.t('File updated')+': '+pfn
               end
             else
-              Pandora.logger.warn  _('Empty downloaded body')
+              Pandora.logger.warn  Pandora.t('Empty downloaded body')
             end
           rescue => err
-            Pandora.logger.warn  _('Update error')+': '+err.message
+            Pandora.logger.warn  Pandora.t('Update error')+': '+err.message
           end
         else
-          Pandora.logger.warn  _('Cannot create directory')+': '+dir
+          Pandora.logger.warn  Pandora.t('Cannot create directory')+': '+dir
         end
         res
       end
@@ -187,7 +187,7 @@ module Pandora
       def self.connect_http(main_uri, curr_size, step, p_addr=nil, p_port=nil, p_user=nil, p_pass=nil)
         http = nil
         time = 0
-        Pandora.logger.info _('Connect to') + ': ' + \
+        Pandora.logger.info Pandora.t('Connect to') + ': ' + \
             main_uri.host + main_uri.path + ':' + main_uri.port.to_s + '..'
         begin
           http = Net::HTTP.new(main_uri.host, main_uri.port, p_addr, p_port, p_user, p_pass)
@@ -214,7 +214,7 @@ module Pandora
         rescue => err
           http = nil
           $window.set_status_field(SF_Update, 'Connection error')
-          Pandora.logger.warn _('Cannot connect to repo to check update')+\
+          Pandora.logger.warn Pandora.t('Cannot connect to repo to check update')+\
             [main_uri.host, main_uri.port].inspect
           puts err.message
         end
@@ -231,7 +231,7 @@ module Pandora
           rescue => err
             http = nil
             $window.set_status_field(SF_Update, 'Connection error')
-            Pandora.logger.warn  _('Cannot reconnect to repo to update')
+            Pandora.logger.warn  Pandora.t('Cannot reconnect to repo to update')
             puts err.message
           end
         end
@@ -263,7 +263,7 @@ module Pandora
                 proxy[1] = proxy[1].to_i if (proxy.size>1)
                 proxy[2] = nil if (proxy.size>2) and (proxy[2]=='')
                 proxy[3] = nil if (proxy.size>3) and (proxy[3]=='')
-                Pandora.logger.info  _('Proxy is used')+' '+proxy.inspect
+                Pandora.logger.info  Pandora.t('Proxy is used')+' '+proxy.inspect
               else
                 proxy = []
               end
@@ -291,7 +291,7 @@ module Pandora
                         main_uri = URI(zip_on_repo)
                         http, time, step = connect_http(main_uri, zip_size, step, *proxy)
                         if http
-                          Pandora.logger.info  _('Need update')
+                          Pandora.logger.info  Pandora.t('Need update')
                           $window.set_status_field(SF_Update, 'Need update')
                           Thread.stop
                           http = reconnect_if_need(http, time, main_uri, *proxy)
@@ -312,17 +312,17 @@ module Pandora
                               res = Pandora::Utils.unzip_via_lib(zip_local, Pandora.base_dir)
                               p 'unzip_file1 res='+res.inspect
                               if not res
-                                Pandora.logger.debug  _('Was not unziped with method')+': lib'
+                                Pandora.logger.debug  Pandora.t('Was not unziped with method')+': lib'
                                 unzip_meth = 'util'
                                 res = Pandora::Utils.unzip_via_util(zip_local, Pandora.base_dir)
                                 p 'unzip_file2 res='+res.inspect
                                 if not res
-                                  Pandora.logger.warn  _('Was not unziped with method')+': util'
+                                  Pandora.logger.warn  Pandora.t('Was not unziped with method')+': util'
                                 end
                               end
                               # Copy files to work dir
                               if res
-                                Pandora.logger.info  _('Arch is unzipped with method')+': '+unzip_meth
+                                Pandora.logger.info  Pandora.t('Arch is unzipped with method')+': '+unzip_meth
                                 # unzip_path = File.join(Pandora.base_dir, 'Pandora-master')
                                 unzip_path = nil
                                 p 'unzip_mask='+unzip_mask.inspect
@@ -338,36 +338,36 @@ module Pandora
                                     p 'Copy '+unzip_path+' to '+Pandora.root
                                     #FileUtils.copy_entry(unzip_path, Pandora.root, true)
                                     FileUtils.cp_r(unzip_path+'/.', Pandora.root)
-                                    Pandora.logger.info  _('Files are updated')
+                                    Pandora.logger.info  Pandora.t('Files are updated')
                                   rescue => err
                                     res = false
-                                    Pandora.logger.warn  _('Cannot copy files from zip arch')+': '+err.message
+                                    Pandora.logger.warn  Pandora.t('Cannot copy files from zip arch')+': '+err.message
                                   end
                                   # Remove used arch dir
                                   begin
                                     FileUtils.remove_dir(unzip_path)
                                   rescue => err
-                                    Pandora.logger.warn  _('Cannot remove arch dir')+' ['+unzip_path+']: '+err.message
+                                    Pandora.logger.warn  Pandora.t('Cannot remove arch dir')+' ['+unzip_path+']: '+err.message
                                   end
                                   step = 255 if res
                                 else
-                                  Pandora.logger.warn  _('Unzipped directory does not exist')
+                                  Pandora.logger.warn  Pandora.t('Unzipped directory does not exist')
                                 end
                               else
-                                Pandora.logger.warn  _('Arch was not unzipped')
+                                Pandora.logger.warn  Pandora.t('Arch was not unzipped')
                               end
                             else
-                              Pandora.logger.warn  _('Cannot download arch')
+                              Pandora.logger.warn  Pandora.t('Cannot download arch')
                             end
                           end
                         end
                       else
                         $window.set_status_field(SF_Update, 'Read only')
-                        Pandora.logger.warn  _('Zip is unrewritable')
+                        Pandora.logger.warn  Pandora.t('Zip is unrewritable')
                       end
                     else
                       $window.set_status_field(SF_Update, 'Size error')
-                      Pandora.logger.warn  _('Zip size error')
+                      Pandora.logger.warn  Pandora.t('Zip size error')
                     end
                   end
                   update_zip = false
@@ -375,7 +375,7 @@ module Pandora
                   main_uri = URI('https://raw.githubusercontent.com/Novator/Pandora/master/pandora.rb')
                   http, time, step = connect_http(main_uri, curr_size, step, *proxy)
                   if http
-                    Pandora.logger.info  _('Need update')
+                    Pandora.logger.info  Pandora.t('Need update')
                     $window.set_status_field(SF_Update, 'Need update')
                     Thread.stop
                     http = reconnect_if_need(http, time, main_uri, *proxy)
@@ -388,7 +388,7 @@ module Pandora
                         pfn = File.join(Pandora.root, fn)
                         if File.exist?(pfn) and (not File.stat(pfn).writable?)
                           downloaded = false
-                          Pandora.logger.warn _('Not exist or read only')+': '+pfn
+                          Pandora.logger.warn Pandora.t('Not exist or read only')+': '+pfn
                         else
                           downloaded = downloaded and \
                             update_file(http, '/Novator/Pandora/master/'+fn, pfn)
@@ -397,7 +397,7 @@ module Pandora
                       if downloaded
                         step = 255
                       else
-                        Pandora.logger.warn  _('Direct download error')
+                        Pandora.logger.warn  Pandora.t('Direct download error')
                       end
                     end
                   end
@@ -489,8 +489,8 @@ module Pandora
             dialog = ::Gtk::MessageDialog.new($window, ::Gtk::Dialog::MODAL | ::Gtk::Dialog::DESTROY_WITH_PARENT,
               ::Gtk::MessageDialog::QUESTION,
               ::Gtk::MessageDialog::BUTTONS_OK_CANCEL,
-              _('Record will be deleted. Sure?')+"\n["+info+']')
-            dialog.title = _('Deletion')+': '+panobject.sname
+              Pandora.t('Record will be deleted. Sure?')+"\n["+info+']')
+            dialog.title = Pandora.t('Deletion')+': '+panobject.sname
             dialog.default_response = ::Gtk::Dialog::RESPONSE_OK
             dialog.icon = panobjecticon if panobjecticon
             if dialog.run == ::Gtk::Dialog::RESPONSE_OK
@@ -606,9 +606,9 @@ module Pandora
 
           titadd = nil
           if not edit
-          #  titadd = _('edit')
+          #  titadd = Pandora.t('edit')
           #else
-            titadd = _('new')
+            titadd = Pandora.t('new')
           end
           dialog.title += ' ('+titadd+')' if titadd and (titadd != '')
 
@@ -909,19 +909,19 @@ module Pandora
       end
 
       menu = ::Gtk::Menu.new
-      menu.append(create_menu_item(['Create', ::Gtk::Stock::NEW, _('Create'), 'Insert'], treeview))
-      menu.append(create_menu_item(['Edit', ::Gtk::Stock::EDIT, _('Edit'), 'Return'], treeview))
-      menu.append(create_menu_item(['Delete', ::Gtk::Stock::DELETE, _('Delete'), 'Delete'], treeview))
-      menu.append(create_menu_item(['Copy', ::Gtk::Stock::COPY, _('Copy'), '<control>Insert'], treeview))
+      menu.append(create_menu_item(['Create', ::Gtk::Stock::NEW, Pandora.t('Create'), 'Insert'], treeview))
+      menu.append(create_menu_item(['Edit', ::Gtk::Stock::EDIT, Pandora.t('Edit'), 'Return'], treeview))
+      menu.append(create_menu_item(['Delete', ::Gtk::Stock::DELETE, Pandora.t('Delete'), 'Delete'], treeview))
+      menu.append(create_menu_item(['Copy', ::Gtk::Stock::COPY, Pandora.t('Copy'), '<control>Insert'], treeview))
       menu.append(create_menu_item(['-', nil, nil], treeview))
-      menu.append(create_menu_item(['Dialog', ::Gtk::Stock::MEDIA_PLAY, _('Dialog'), '<control>D'], treeview))
-      menu.append(create_menu_item(['Opinion', ::Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace'], treeview))
-      menu.append(create_menu_item(['Connect', ::Gtk::Stock::CONNECT, _('Connect'), '<control>N'], treeview))
-      menu.append(create_menu_item(['Relate', ::Gtk::Stock::INDEX, _('Relate'), '<control>R'], treeview))
+      menu.append(create_menu_item(['Dialog', ::Gtk::Stock::MEDIA_PLAY, Pandora.t('Dialog'), '<control>D'], treeview))
+      menu.append(create_menu_item(['Opinion', ::Gtk::Stock::JUMP_TO, Pandora.t('Opinions'), '<control>BackSpace'], treeview))
+      menu.append(create_menu_item(['Connect', ::Gtk::Stock::CONNECT, Pandora.t('Connect'), '<control>N'], treeview))
+      menu.append(create_menu_item(['Relate', ::Gtk::Stock::INDEX, Pandora.t('Relate'), '<control>R'], treeview))
       menu.append(create_menu_item(['-', nil, nil], treeview))
-      menu.append(create_menu_item(['Convert', ::Gtk::Stock::CONVERT, _('Convert')], treeview))
-      menu.append(create_menu_item(['Import', ::Gtk::Stock::OPEN, _('Import')], treeview))
-      menu.append(create_menu_item(['Export', ::Gtk::Stock::SAVE, _('Export')], treeview))
+      menu.append(create_menu_item(['Convert', ::Gtk::Stock::CONVERT, Pandora.t('Convert')], treeview))
+      menu.append(create_menu_item(['Import', ::Gtk::Stock::OPEN, Pandora.t('Import')], treeview))
+      menu.append(create_menu_item(['Export', ::Gtk::Stock::SAVE, Pandora.t('Export')], treeview))
       menu.show_all
 
       treeview.add_events(Gdk::Event::BUTTON_PRESS_MASK)
@@ -1194,24 +1194,18 @@ module Pandora
       dlg.name = $window.title
       dlg.version = '0.3'
       dlg.logo = Gdk::Pixbuf.new(File.join(Pandora.view_dir, 'pandora.png'))
-      dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
-      dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
-      dlg.comments = _('P2P national network')
-      dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
+      dlg.authors = [Pandora.t('Michael Galyuk')+' <robux@mail.ru>']
+      dlg.artists = ['© '+Pandora.t('Rights to logo are owned by 21th Century Fox')]
+      dlg.comments = Pandora.t('P2P national network')
+      dlg.copyright = Pandora.t('Free software')+' 2012, '+Pandora.t('Michael Galyuk')
       begin
         file = File.open(File.join(Pandora.root, 'LICENSE.TXT'), 'r')
-        gpl_text = '================='+_('Full text')+" LICENSE.TXT==================\n"+file.read
+        gpl_text = '================='+Pandora.t('Full text')+" LICENSE.TXT==================\n"+file.read
         file.close
       rescue
-        gpl_text = _('Full text is in the file')+' LICENSE.TXT.'
+        gpl_text = Pandora.t('Full text is in the file')+' LICENSE.TXT.'
       end
-      dlg.license = _("Pandora is licensed under GNU GPLv2.\n"+
-        "\nFundamentals:\n"+
-        "- program code is open, distributed free and without warranty;\n"+
-        "- author does not require you money, but demands respect authorship;\n"+
-        "- you can change the code, sent to the authors for inclusion in the next release;\n"+
-        "- your own release you must distribute with another name and only licensed under GPL;\n"+
-        "- if you do not understand the GPL or disagree with it, you have to uninstall the program.\n\n")+gpl_text
+      dlg.license = Pandora.t("License GNU GPLv2")+gpl_text
       dlg.website = 'https://github.com/Novator/Pandora'
       dlg.program_name = dlg.name
       dlg.skip_taskbar_hint = true
@@ -1272,13 +1266,13 @@ module Pandora
           sw = DialogScrollWin.new(known_node, room_id, targets)
         end
       elsif (not known_node)
-        mes = _('node') if nodes.size == 0
-        mes = _('person') if persons.size == 0
+        mes = Pandora.t('node') if nodes.size == 0
+        mes = Pandora.t('person') if persons.size == 0
         dialog = ::Gtk::MessageDialog.new($window, \
           ::Gtk::Dialog::MODAL | ::Gtk::Dialog::DESTROY_WITH_PARENT, \
           ::Gtk::MessageDialog::INFO, ::Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-          mes = _('No one')+' '+mes+' '+_('is not found')+".\n"+_('Add nodes and do hunt'))
-        dialog.title = _('Note')
+          mes = Pandora.t('No one')+' '+mes+' '+Pandora.t('is not found')+".\n"+Pandora.t('Add nodes and do hunt'))
+        dialog.title = Pandora.t('Note')
         dialog.default_response = ::Gtk::Dialog::RESPONSE_OK
         dialog.icon = $window.icon
         if (dialog.run == ::Gtk::Dialog::RESPONSE_OK)
@@ -1297,7 +1291,7 @@ module Pandora
       image = ::Gtk::Image.new(::Gtk::Stock::FIND, ::Gtk::IconSize::MENU)
       image.set_padding(2, 0)
 
-      label_box = TabLabelBox.new(image, _('Search'), sw, false, 0) do
+      label_box = TabLabelBox.new(image, Pandora.t('Search'), sw, false, 0) do
         #store.clear
         #treeview.destroy
         #sw.destroy
@@ -1352,9 +1346,9 @@ module Pandora
       list_store = ::Gtk::ListStore.new(String)
 
       user_iter = list_store.append
-      user_iter[0] = _('Profile')
+      user_iter[0] = Pandora.t('Profile')
       user_iter = list_store.append
-      user_iter[0] = _('Events')
+      user_iter[0] = Pandora.t('Events')
 
       # create tree view
       list_tree = ::Gtk::TreeView.new(list_store)
@@ -1367,7 +1361,7 @@ module Pandora
       list_tree.append_column(column)
 
       #renderer = ::Gtk::CellRendererText.new
-      #column = ::Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
+      #column = ::Gtk::TreeViewColumn.new(Pandora.t('Record'), renderer, 'text' => 1)
       #column.set_sort_column_id(1)
       #list_tree.append_column(column)
 
@@ -1385,7 +1379,7 @@ module Pandora
       image = ::Gtk::Image.new(::Gtk::Stock::HOME, ::Gtk::IconSize::MENU)
       image.set_padding(2, 0)
 
-      short_name = _('Profile') if not((short_name.is_a? String) and (short_name.size>0))
+      short_name = Pandora.t('Profile') if not((short_name.is_a? String) and (short_name.size>0))
 
       label_box = TabLabelBox.new(image, short_name, sw, false, 0) do
         #store.clear
@@ -1412,7 +1406,7 @@ module Pandora
 
       image = ::Gtk::Image.new(::Gtk::Stock::JUSTIFY_FILL, ::Gtk::IconSize::MENU)
       image.set_padding(2, 0)
-      label_box = TabLabelBox.new(image, _('Sessions'), sw, false, 0) do
+      label_box = TabLabelBox.new(image, Pandora.t('Sessions'), sw, false, 0) do
         #sw.destroy
       end
       page = $window.notebook.append_page(sw, label_box)

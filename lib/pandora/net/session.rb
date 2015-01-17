@@ -69,7 +69,7 @@ module Pandora
         if comm.bytesize == CommExtSize
           datasize, fullcrc32, segsize = comm.unpack('NNn')
         else
-          Pandora.logger.error  _('Wrong length of command extention')
+          Pandora.logger.error  Pandora.t('Wrong length of command extention')
         end
         [datasize, fullcrc32, segsize]
       end
@@ -185,7 +185,7 @@ module Pandora
           if sended == buf.bytesize
             res = index
           elsif sended != -1
-            Pandora.logger.error  _('Not all data was sent')+' '+sended.to_s
+            Pandora.logger.error  Pandora.t('Not all data was sent')+' '+sended.to_s
           end
           segindex = 0
           i = segdata
@@ -229,7 +229,7 @@ module Pandora
               #p log_mes+'SEND_ADD: ('+buf+')'
             elsif sended != -1
               res = nil
-              Pandora.logger.error  _('Not all data was sent')+'2 '+sended.to_s
+              Pandora.logger.error  Pandora.t('Not all data was sent')+'2 '+sended.to_s
             end
             i += segdata
           end
@@ -260,7 +260,7 @@ module Pandora
           @sbuf = logmes
           mesadd = ''
           mesadd = ' err=' + code.to_s if code
-          mes = _(mes)
+          mes = Pandora.t(mes)
           logmes = mes + ' ' + logmes0 if mes and (mes.bytesize>0)
           Pandora.logger.warn  logmes+mesadd
         end
@@ -314,7 +314,7 @@ module Pandora
           p log_mes+'add_send_segment2: asbuf='+asbuf.inspect if sbuf
         end
         if not res
-          Pandora.logger.error  _('Cannot add segment to send queue')
+          Pandora.logger.error  Pandora.t('Cannot add segment to send queue')
           @conn_state = CS_Stoping
         end
         res
@@ -336,7 +336,7 @@ module Pandora
         end
         if send_now
           if not add_send_segment(ascmd, true, asbuf, ascode)
-            Pandora.logger.error  _('Cannot add request')
+            Pandora.logger.error  Pandora.t('Cannot add request')
           end
         else
           @scmd = ascmd
@@ -353,7 +353,7 @@ module Pandora
         asbuf = [time].pack('N') + list
         if send_now
           if not add_send_segment(ascmd, true, asbuf, ascode)
-            Pandora.logger.error  _('Cannot add query')
+            Pandora.logger.error  Pandora.t('Cannot add query')
           end
         else
           @scmd = ascmd
@@ -1146,9 +1146,9 @@ module Pandora
                     init_skey_or_error(false)
                   end
                 elsif res==false
-                  Pandora.logger.warn  _('Record came with wrong panhash')
+                  Pandora.logger.warn  Pandora.t('Record came with wrong panhash')
                 else
-                  Pandora.logger.warn  _('Cannot write a record')+' 1'
+                  Pandora.logger.warn  Pandora.t('Cannot write a record')+' 1'
                 end
               else
                 err_scmd('Record ('+kind.to_s+') came on wrong stage')
@@ -1190,7 +1190,7 @@ module Pandora
                     p log_mes+'update confirm  kind,id='+[kind, id].inspect
                     res = model.update({:state=>2}, nil, {:id=>id})
                     if not res
-                      Pandora.logger.warn  _('Cannot update record of confirm')+' kind,id='+[kind,id].inspect
+                      Pandora.logger.warn  Pandora.t('Cannot update record of confirm')+' kind,id='+[kind,id].inspect
                     end
                     i += 5
                   end
@@ -1199,7 +1199,7 @@ module Pandora
           when EC_Wait
             case rcode
               when EC_Wait1_NoFish
-                Pandora.logger.error  _('Cannot find a fish')
+                Pandora.logger.error  Pandora.t('Cannot find a fish')
             end
           when EC_Bye
             errcode = ECC_Bye_Exit
@@ -1213,9 +1213,9 @@ module Pandora
               p mes
               if i
                 p mes[0, i]
-                mes = _(mes[0, i])+mes[i..-1]
+                mes = Pandora.t(mes[0, i])+mes[i..-1]
               end
-              Pandora.logger.error  _('Error at other side')+' ErrCode='+rcode.to_s+' "'+mes+'"'
+              Pandora.logger.error  Pandora.t('Error at other side')+' ErrCode='+rcode.to_s+' "'+mes+'"'
             end
             err_scmd(nil, errcode, false)
             @conn_state = CS_Stoping
@@ -1575,7 +1575,7 @@ module Pandora
                     asocket = nil
                     @socket = asocket
                     if (not work_time) or ((Time.now.to_i - work_time.to_i)>15)
-                      Pandora.logger.warn  _('Fail connect to')+': '+server
+                      Pandora.logger.warn  Pandora.t('Fail connect to')+': '+server
                       conn_period = 15
                     else
                       sleep(conn_period-1)
@@ -1593,7 +1593,7 @@ module Pandora
                   @conn_thread.exit if @conn_thread.alive?
                   @conn_thread = nil
                   if not @socket
-                    Pandora.logger.debug  _('Timeout connect to')+': '+server
+                    Pandora.logger.debug  Pandora.t('Timeout connect to')+': '+server
                   end
                 end
               else
@@ -1624,9 +1624,9 @@ module Pandora
 
             if @socket
               if ((conn_mode & CM_Hunter) == 0)
-                Pandora.logger.info  _('Hunter connects')+': '+socket.peeraddr.inspect
+                Pandora.logger.info  Pandora.t('Hunter connects')+': '+socket.peeraddr.inspect
               else
-                Pandora.logger.info  _('Connected to listener')+': '+server
+                Pandora.logger.info  Pandora.t('Connected to listener')+': '+server
               end
               @host_name    = ahost_name
               @host_ip      = ahost_ip
@@ -1797,7 +1797,7 @@ module Pandora
                         if ok1comm
                           res = @send_queue.add_block_to_queue([EC_Bye, serrcode, serrbuf])
                           if not res
-                            Pandora.logger.error  _('Cannot add error segment to send queue')
+                            Pandora.logger.error  Pandora.t('Cannot add error segment to send queue')
                           end
                         end
                         @conn_state = CS_Stoping
@@ -1819,7 +1819,7 @@ module Pandora
                           end
                           res = @read_queue.add_block_to_queue([rkcmd, rkcode, rkdata])
                           if not res
-                            Pandora.logger.error  _('Cannot add socket segment to read queue')
+                            Pandora.logger.error  Pandora.t('Cannot add socket segment to read queue')
                             @conn_state = CS_Stoping
                           end
                         end
@@ -2065,10 +2065,10 @@ module Pandora
                           id = row[0]
                           res = message_model.update({:state=>1}, nil, {:id=>id})
                           if not res
-                            Pandora.logger.error  _('Updating state of sent message')+' id='+id.to_s
+                            Pandora.logger.error  Pandora.t('Updating state of sent message')+' id='+id.to_s
                           end
                         else
-                          Pandora.logger.error  _('Adding message to send queue')+' id='+id.to_s
+                          Pandora.logger.error  Pandora.t('Adding message to send queue')+' id='+id.to_s
                         end
                         i += 1
                         #if (i>=sel.size) and (processed<$mes_block_count) and (@conn_state == CS_Connected)
@@ -2131,7 +2131,7 @@ module Pandora
             p 'New fish order: '+fish_order.inspect
             tokey = @skey[Pandora::Crypto::KV_Panhash]
             if fish_order == tokey
-                    Pandora.logger.debug  _('Fishing to')+': '+Pandora::Utils.bytes_to_hex(tokey)
+                    Pandora.logger.debug  Pandora.t('Fishing to')+': '+Pandora::Utils.bytes_to_hex(tokey)
                     add_send_segment(EC_Query, true, tokey, ECC_Query_Fish)
             end
           end
@@ -2169,9 +2169,9 @@ module Pandora
               end
               if socket
                 if ((conn_mode & CM_Hunter) == 0)
-                  Pandora.logger.info  _('Hunter disconnects')+': '+@host_ip
+                  Pandora.logger.info  Pandora.t('Hunter disconnects')+': '+@host_ip
                 else
-                  Pandora.logger.info  _('Disconnected from listener')+': '+@host_ip
+                  Pandora.logger.info  Pandora.t('Disconnected from listener')+': '+@host_ip
                 end
               end
               @socket_thread.exit if @socket_thread

@@ -34,11 +34,11 @@ module Pandora
         button.signal_connect('clicked') do |*args|
           @entry.grab_focus
           set_classes
-          dialog = Pandora::Gtk::AdvancedDialog.new(_('Choose object'))
+          dialog = Pandora::Gtk::AdvancedDialog.new(Pandora.t('Choose object'))
           dialog.set_default_size(600, 400)
           auto_create = true
           panclasses.each_with_index do |panclass, i|
-            title = _(Pandora::Utils.get_name_or_names(panclass.name, true))
+            title = Pandora.t(Pandora::Utils.get_name_or_names(panclass.name, true))
             dialog.main_sw.destroy if i==0
             image = ::Gtk::Image.new(::Gtk::Stock::INDEX, ::Gtk::IconSize::MENU)
             image.set_padding(2, 0)

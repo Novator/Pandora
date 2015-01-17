@@ -70,7 +70,7 @@ module Pandora
       def create_menu
         menu = ::Gtk::Menu.new
 
-        checkmenuitem = ::Gtk::CheckMenuItem.new(_('Flash on new'))
+        checkmenuitem = ::Gtk::CheckMenuItem.new(Pandora.t('Flash on new'))
         checkmenuitem.active = @flash_on_new
         checkmenuitem.signal_connect('activate') do |w|
           @flash_on_new = w.active?
@@ -78,7 +78,7 @@ module Pandora
         end
         menu.append(checkmenuitem)
 
-        checkmenuitem = ::Gtk::CheckMenuItem.new(_('Update window icon'))
+        checkmenuitem = ::Gtk::CheckMenuItem.new(Pandora.t('Update window icon'))
         checkmenuitem.active = @update_win_icon
         checkmenuitem.signal_connect('activate') do |w|
           @update_win_icon = w.active?
@@ -86,14 +86,14 @@ module Pandora
         end
         menu.append(checkmenuitem)
 
-        checkmenuitem = ::Gtk::CheckMenuItem.new(_('Play sounds'))
+        checkmenuitem = ::Gtk::CheckMenuItem.new(Pandora.t('Play sounds'))
         checkmenuitem.active = @play_sounds
         checkmenuitem.signal_connect('activate') do |w|
           @play_sounds = w.active?
         end
         menu.append(checkmenuitem)
 
-        checkmenuitem = ::Gtk::CheckMenuItem.new(_('Hide on minimize'))
+        checkmenuitem = ::Gtk::CheckMenuItem.new(Pandora.t('Hide on minimize'))
         checkmenuitem.active = @hide_on_minimize
         checkmenuitem.signal_connect('activate') do |w|
           @hide_on_minimize = w.active?
@@ -102,7 +102,7 @@ module Pandora
 
         menuitem = ::Gtk::ImageMenuItem.new(::Gtk::Stock::PROPERTIES)
         alabel = menuitem.children[0]
-        alabel.set_text(_('All parameters')+'..', true)
+        alabel.set_text(Pandora.t('All parameters')+'..', true)
         menuitem.signal_connect('activate') do |w|
           icon_activated(false, true)
           Pandora::Gtk.show_panobject_list(Pandora::Model::Parameter, nil, nil, true)
@@ -112,7 +112,7 @@ module Pandora
         menuitem = ::Gtk::SeparatorMenuItem.new
         menu.append(menuitem)
 
-        menuitem = ::Gtk::MenuItem.new(_('Show/Hide'))
+        menuitem = ::Gtk::MenuItem.new(Pandora.t('Show/Hide'))
         menuitem.signal_connect('activate') do |w|
           icon_activated(false)
         end
@@ -120,7 +120,7 @@ module Pandora
 
         menuitem = ::Gtk::ImageMenuItem.new(::Gtk::Stock::QUIT)
         alabel = menuitem.children[0]
-        alabel.set_text(_('_Quit'), true)
+        alabel.set_text(Pandora.t('_Quit'), true)
         menuitem.signal_connect('activate') do |w|
           self.set_visible(false)
           $window.destroy

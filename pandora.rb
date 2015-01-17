@@ -16,21 +16,6 @@ root_path = File.expand_path("../", __FILE__)
 require "#{root_path}/lib/pandora"
 Dir["#{root_path}/lib/**/*.rb"].each {|f| require f}
 
-
-# Array of localization phrases
-# RU: Вектор переведеных фраз
-$lang_trans = {}
-
-# Translation of the phrase
-# RU: Перевод фразы
-def _(frase)
-  trans = $lang_trans[frase]
-  if not trans or (trans.size==0) and frase and (frase.size>0)
-    trans = frase
-  end
-  trans
-end
-
 # ============================================================
 # MAIN
 

@@ -19,30 +19,30 @@ module Pandora
         vbox = ::Gtk::VBox.new
         hbox = ::Gtk::HBox.new
 
-        title = _('Update')
+        title = Pandora.t('Update')
         @update_btn = ::Gtk::ToolButton.new(::Gtk::Stock::REFRESH, title)
         update_btn.tooltip_text = title
         update_btn.label = title
 
-        hunted_btn = SafeCheckButton.new(_('hunted'), true)
+        hunted_btn = SafeCheckButton.new(Pandora.t('hunted'), true)
         hunted_btn.safe_signal_clicked do |widget|
           update_btn.clicked
         end
         hunted_btn.safe_set_active(true)
 
-        hunters_btn = SafeCheckButton.new(_('hunters'), true)
+        hunters_btn = SafeCheckButton.new(Pandora.t('hunters'), true)
         hunters_btn.safe_signal_clicked do |widget|
           update_btn.clicked
         end
         hunters_btn.safe_set_active(true)
 
-        fishers_btn = SafeCheckButton.new(_('fishers'), true)
+        fishers_btn = SafeCheckButton.new(Pandora.t('fishers'), true)
         fishers_btn.safe_signal_clicked do |widget|
           update_btn.clicked
         end
         fishers_btn.safe_set_active(true)
 
-        title = _('Delete')
+        title = Pandora.t('Delete')
         delete_btn = ::Gtk::ToolButton.new(::Gtk::Stock::DELETE, title)
         delete_btn.tooltip_text = title
         delete_btn.label = title
@@ -98,42 +98,42 @@ module Pandora
         list_tree.append_column(column)
 
         renderer = ::Gtk::CellRendererText.new
-        column = ::Gtk::TreeViewColumn.new(_('Ip'), renderer, 'text' => 1)
+        column = ::Gtk::TreeViewColumn.new(Pandora.t('Ip'), renderer, 'text' => 1)
         column.set_sort_column_id(1)
         list_tree.append_column(column)
 
         renderer = ::Gtk::CellRendererText.new
-        column = ::Gtk::TreeViewColumn.new(_('Port'), renderer, 'text' => 2)
+        column = ::Gtk::TreeViewColumn.new(Pandora.t('Port'), renderer, 'text' => 2)
         column.set_sort_column_id(2)
         list_tree.append_column(column)
 
         renderer = ::Gtk::CellRendererText.new
-        column = ::Gtk::TreeViewColumn.new(_('Node'), renderer, 'text' => 3)
+        column = ::Gtk::TreeViewColumn.new(Pandora.t('Node'), renderer, 'text' => 3)
         column.set_sort_column_id(3)
         list_tree.append_column(column)
 
         renderer = ::Gtk::CellRendererText.new
-        column = ::Gtk::TreeViewColumn.new(_('conn_mode'), renderer, 'text' => 4)
+        column = ::Gtk::TreeViewColumn.new(Pandora.t('conn_mode'), renderer, 'text' => 4)
         column.set_sort_column_id(4)
         list_tree.append_column(column)
 
         renderer = ::Gtk::CellRendererText.new
-        column = ::Gtk::TreeViewColumn.new(_('conn_state'), renderer, 'text' => 5)
+        column = ::Gtk::TreeViewColumn.new(Pandora.t('conn_state'), renderer, 'text' => 5)
         column.set_sort_column_id(5)
         list_tree.append_column(column)
 
         renderer = ::Gtk::CellRendererText.new
-        column = ::Gtk::TreeViewColumn.new(_('stage'), renderer, 'text' => 6)
+        column = ::Gtk::TreeViewColumn.new(Pandora.t('stage'), renderer, 'text' => 6)
         column.set_sort_column_id(6)
         list_tree.append_column(column)
 
         renderer = ::Gtk::CellRendererText.new
-        column = ::Gtk::TreeViewColumn.new(_('read_state'), renderer, 'text' => 7)
+        column = ::Gtk::TreeViewColumn.new(Pandora.t('read_state'), renderer, 'text' => 7)
         column.set_sort_column_id(7)
         list_tree.append_column(column)
 
         renderer = ::Gtk::CellRendererText.new
-        column = ::Gtk::TreeViewColumn.new(_('send_state'), renderer, 'text' => 8)
+        column = ::Gtk::TreeViewColumn.new(Pandora.t('send_state'), renderer, 'text' => 8)
         column.set_sort_column_id(8)
         list_tree.append_column(column)
 

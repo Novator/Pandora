@@ -136,7 +136,7 @@ module Pandora
             end
           end
         rescue => err
-          err_text = _('Image loading error')+":\n"+err.message
+          err_text = Pandora.t('Image loading error')+":\n"+err.message
           label = ::Gtk::Label.new(err_text)
           widget = label
         end
@@ -282,7 +282,7 @@ module Pandora
                         link_name = nil
                       end
                     else
-                      err_text = _('File does not exist')+":\n"+link_name
+                      err_text = Pandora.t('File does not exist')+":\n"+link_name
                       label = ::Gtk::Label.new(err_text)
                       bodywid = label
                     end
@@ -329,7 +329,7 @@ module Pandora
         @statusbar = ::Gtk::Statusbar.new
         Pandora::Gtk.set_statusbar_text(statusbar, '')
         statusbar.pack_start(::Gtk::SeparatorToolItem.new, false, false, 0)
-        panhash_btn = ::Gtk::Button.new(_('Rate: '))
+        panhash_btn = ::Gtk::Button.new(Pandora.t('Rate: '))
         panhash_btn.relief = ::Gtk::RELIEF_NONE
         statusbar.pack_start(panhash_btn, false, false, 0)
 
@@ -339,14 +339,14 @@ module Pandora
         #rbvbox = ::Gtk::VBox.new
 
         keep_box = ::Gtk::VBox.new
-        @keep_btn = ::Gtk::CheckButton.new(_('keep'), true)
+        @keep_btn = ::Gtk::CheckButton.new(Pandora.t('keep'), true)
         #keep_btn.signal_connect('toggled') do |widget|
         #  p "keep"
         #end
         #rbvbox.pack_start(keep_btn, false, false, 0)
         #@rate_label = ::Gtk::Label.new('-')
         keep_box.pack_start(keep_btn, false, false, 0)
-        @follow_btn = ::Gtk::CheckButton.new(_('follow'), true)
+        @follow_btn = ::Gtk::CheckButton.new(Pandora.t('follow'), true)
         follow_btn.signal_connect('clicked') do |widget|
           if widget.active?
             @keep_btn.active = true
@@ -367,7 +367,7 @@ module Pandora
 
         trust0 = nil
         @trust_scale = nil
-        @vouch_btn = ::Gtk::CheckButton.new(_('vouch'), true)
+        @vouch_btn = ::Gtk::CheckButton.new(Pandora.t('vouch'), true)
         vouch_btn.signal_connect('clicked') do |widget|
           if not widget.destroyed?
             if widget.inconsistent?
@@ -393,8 +393,8 @@ module Pandora
         #@scale_button.set_icons(['gtk-goto-bottom', 'gtk-goto-top', 'gtk-execute'])
         #@scale_button.signal_connect('value-changed') { |widget, value| puts "value changed: #{value}" }
 
-        tips = [_('evil'), _('destructive'), _('dirty'), _('harmful'), _('bad'), _('vain'), \
-          _('good'), _('useful'), _('constructive'), _('creative'), _('genial')]
+        tips = [Pandora.t('evil'), Pandora.t('destructive'), Pandora.t('dirty'), Pandora.t('harmful'), Pandora.t('bad'), Pandora.t('vain'), \
+          Pandora.t('good'), Pandora.t('useful'), Pandora.t('constructive'), Pandora.t('creative'), Pandora.t('genial')]
 
         #@trust ||= (127*0.4).round
         #val = trust/127.0
@@ -440,7 +440,7 @@ module Pandora
 
         pub_lev0 = nil
         public_box = ::Gtk::VBox.new
-        @public_btn = ::Gtk::CheckButton.new(_('public'), true)
+        @public_btn = ::Gtk::CheckButton.new(Pandora.t('public'), true)
         public_btn.signal_connect('clicked') do |widget|
           if not widget.destroyed?
             if widget.inconsistent?
@@ -548,7 +548,7 @@ module Pandora
 
         image = ::Gtk::Image.new(::Gtk::Stock::INDEX, ::Gtk::IconSize::MENU)
         image.set_padding(2, 0)
-        label_box2 = TabLabelBox.new(image, _('Relations'), nil, false, 0)
+        label_box2 = TabLabelBox.new(image, Pandora.t('Relations'), nil, false, 0)
         sw = ::Gtk::ScrolledWindow.new(nil, nil)
         page = notebook.append_page(sw, label_box2)
 
@@ -556,7 +556,7 @@ module Pandora
 
         image = ::Gtk::Image.new(::Gtk::Stock::DIALOG_AUTHENTICATION, ::Gtk::IconSize::MENU)
         image.set_padding(2, 0)
-        label_box2 = TabLabelBox.new(image, _('Signs'), nil, false, 0)
+        label_box2 = TabLabelBox.new(image, Pandora.t('Signs'), nil, false, 0)
         sw = ::Gtk::ScrolledWindow.new(nil, nil)
         page = notebook.append_page(sw, label_box2)
 
@@ -564,7 +564,7 @@ module Pandora
 
         image = ::Gtk::Image.new(::Gtk::Stock::DIALOG_INFO, ::Gtk::IconSize::MENU)
         image.set_padding(2, 0)
-        label_box2 = TabLabelBox.new(image, _('Opinions'), nil, false, 0)
+        label_box2 = TabLabelBox.new(image, Pandora.t('Opinions'), nil, false, 0)
         sw = ::Gtk::ScrolledWindow.new(nil, nil)
         page = notebook.append_page(sw, label_box2)
 

@@ -29,18 +29,18 @@ module Pandora
 
         button.signal_connect('clicked') do |*args|
           @entry.grab_focus
-          dialog =  ::Gtk::FileChooserDialog.new(_('Choose a file'), @window,
+          dialog =  ::Gtk::FileChooserDialog.new(Pandora.t('Choose a file'), @window,
             ::Gtk::FileChooser::ACTION_OPEN, 'gnome-vfs',
             [::Gtk::Stock::OPEN, ::Gtk::Dialog::RESPONSE_ACCEPT],
             [::Gtk::Stock::CANCEL, ::Gtk::Dialog::RESPONSE_CANCEL])
 
           filter = ::Gtk::FileFilter.new
-          filter.name = _('All files')+' (*.*)'
+          filter.name = Pandora.t('All files')+' (*.*)'
           filter.add_pattern('*.*')
           dialog.add_filter(filter)
 
           filter = ::Gtk::FileFilter.new
-          filter.name = _('Pictures')+' (png,jpg,gif)'
+          filter.name = Pandora.t('Pictures')+' (png,jpg,gif)'
           filter.add_pattern('*.png')
           filter.add_pattern('*.jpg')
           filter.add_pattern('*.jpeg')
@@ -48,7 +48,7 @@ module Pandora
           dialog.add_filter(filter)
 
           filter = ::Gtk::FileFilter.new
-          filter.name = _('Sounds')+' (mp3,wav)'
+          filter.name = Pandora.t('Sounds')+' (mp3,wav)'
           filter.add_pattern('*.mp3')
           filter.add_pattern('*.wav')
           dialog.add_filter(filter)

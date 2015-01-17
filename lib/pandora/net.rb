@@ -213,10 +213,10 @@ module Pandora
               server = TCPServer.open(host, Pandora.config.port)
               #addr_str = server.addr.to_s
               addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
-              Pandora.logger.info  _('Listening address')+': '+addr_str
+              Pandora.logger.info  Pandora.t('Listening address')+': '+addr_str
             rescue
               server = nil
-              Pandora.logger.warn  _('Cannot open port')+' '+host.to_s+':'+Pandora.config.port.to_s
+              Pandora.logger.warn  Pandora.t('Cannot open port')+' '+host.to_s+':'+Pandora.config.port.to_s
             end
             Thread.current[:listen_server_socket] = server
             Thread.current[:need_to_listen] = (server != nil)
@@ -239,12 +239,12 @@ module Pandora
                   session = Session.new(socket, host_name, host_ip, port, proto, \
                     CS_Connected, nil, nil, nil, nil)
                 else
-                  Pandora.logger.info  _('IP is banned')+': '+host_ip.to_s
+                  Pandora.logger.info  Pandora.t('IP is banned')+': '+host_ip.to_s
                 end
               end
             end
             server.close if server and (not server.closed?)
-            Pandora.logger.info _('Listener stops')+' '+addr_str if server
+            Pandora.logger.info Pandora.t('Listener stops')+' '+addr_str if server
             $window.set_status_field(Pandora::Gtk::SF_Listen, 'Not listen', nil, false)
             $listen_thread = nil
           end
@@ -308,8 +308,8 @@ module Pandora
             dialog = Gtk::MessageDialog.new($window, \
               Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
               Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-              _('Enter at least one node'))
-            dialog.title = _('Note')
+              Pandora.t('Enter at least one node'))
+            dialog.title = Pandora.t('Note')
             dialog.default_response = Gtk::Dialog::RESPONSE_OK
             dialog.icon = $window.icon
             if (dialog.run == Gtk::Dialog::RESPONSE_OK)

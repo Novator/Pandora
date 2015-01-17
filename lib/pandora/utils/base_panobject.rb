@@ -80,7 +80,7 @@ module Pandora
             res ||= fd[FI_Name]
             res ||= fd[FI_Id]
           end
-          res = _(res) if not lang_exist
+          res = Pandora.t(res) if not lang_exist
           res ||= ''
           res
         end
@@ -520,11 +520,11 @@ module Pandora
       end
 
       def sname
-        _(Pandora::Utils.get_name_or_names(name))
+        Pandora.t(Pandora::Utils.get_name_or_names(name))
       end
 
       def pname
-        _(Pandora::Utils.get_name_or_names(name, true))
+        Pandora.t(Pandora::Utils.get_name_or_names(name, true))
       end
 
       attr_accessor :namesvalues
