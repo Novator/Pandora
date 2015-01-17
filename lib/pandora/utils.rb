@@ -12,6 +12,23 @@ module Pandora
 
     include Pandora::Constants
 
+    # Codes of data types in PSON
+    # RU: Коды типов данных в PSON
+    PT_Int   = 0
+    PT_Str   = 1
+    PT_Bool  = 2
+    PT_Time  = 3
+    PT_Array = 4
+    PT_Hash  = 5
+    PT_Sym   = 6
+    PT_Real  = 7
+    # 8..14 - reserved for other types
+    PT_Unknown = 15
+    PT_Negative = 16
+
+    $rubyzip = nil  # Flag of using Zip library
+    $unziper = nil  # Zip utility
+
     # Platform detection
     # RU: Определение платформы
     def self.os_family
@@ -22,130 +39,6 @@ module Pandora
           'windows'
         else
           'other'
-      end
-    end
-
-    # Load translated phrases
-    # RU: Загрузить переводы фраз
-    def self.load_language(lang='ru')
-
-      def self.unslash_quotes(str)
-        str ||= ''
-        str.gsub('\"', '"')
-      end
-
-      def self.addline(str, line)
-        line = unslash_quotes(line)
-        if (not str) or (str=='')
-          str = line
-        else
-          str = str.to_s + "\n" + line.to_s
-        end
-        str
-      end
-
-      def self.spaces_after?(line, pos)
-        i = line.size-1
-        while (i>=pos) and ((line[i, 1]==' ') or (line[i, 1]=="\t"))
-          i -= 1
-        end
-        (i<pos)
-      end
-
-      $lang_trans = {}
-      langfile = File.join(Pandora.lang_dir, lang +'.txt')
-      if File.exist?(langfile)
-        scanmode = 0
-        frase = ''
-        trans = ''
-        IO.foreach(langfile) do |line|
-          if (line.is_a? String) and (line.size>0)
-            #line = line[0..-2] if line[-1,1]=="\n"
-            #line = line[0..-2] if line[-1,1]=="\r"
-            line.chomp!
-            end_is_found = false
-            if scanmode==0
-              end_is_found = true
-              if (line.size>0) and (line[0, 1] != '#')
-                if line[0, 1] != '"'
-                  frase, trans = line.split('=>')
-                  $lang_trans[frase] = trans if (frase != '') and (trans != '')
-                else
-                  line = line[1..-1]
-                  frase = ''
-                  trans = ''
-                  end_is_found = false
-                end
-              end
-            end
-
-            if not end_is_found
-              if scanmode<2
-                i = line.index('"=>"')
-                if i
-                  frase = addline(frase, line[0, i])
-                  line = line[i+4, line.size-i-4]
-                  scanmode = 2 #composing a trans
-                else
-                  scanmode = 1 #composing a frase
-                end
-              end
-              if scanmode==2
-                k = line.rindex('"')
-                if k and ((k==0) or (line[k-1, 1] != "\\"))
-                  end_is_found = ((k+1)==line.size) or spaces_after?(line, k+1)
-                  if end_is_found
-                    trans = addline(trans, line[0, k])
-                  end
-                end
-              end
-
-              if end_is_found
-                $lang_trans[frase] = trans if (frase != '') and (trans != '')
-                scanmode = 0
-              else
-                if scanmode < 2
-                  frase = addline(frase, line)
-                  scanmode = 1 #composing a frase
-                else
-                  trans = addline(trans, line)
-                end
-              end
-            end
-          end
-        end
-      end
-    end
-
-    # Save language phrases
-    # RU: Сохранить языковые фразы
-    def self.save_as_language(lang='ru')
-
-      # RU: Экранирует кавычки слэшем
-      def self.slash_quotes(str)
-        str.gsub('"', '\"')
-      end
-
-      # RU: Есть конечный пробел или табуляция?
-      def self.there_are_end_space?(str)
-        lastchar = str[str.size-1, 1]
-        (lastchar==' ') or (lastchar=="\t")
-      end
-
-      # langfile = File.join(Pandora.lang_dir, lang+'.txt')
-      File.open(langfile, 'w') do |file|
-        file.puts('# Pandora language file EN=>'+lang.upcase)
-        $lang_trans.each do |value|
-          if (not value[0].index('"')) and (not value[1].index('"')) \
-            and (not value[0].index("\n")) and (not value[1].index("\n")) \
-            and (not there_are_end_space?(value[0])) and (not there_are_end_space?(value[1]))
-          then
-            str = value[0]+'=>'+value[1]
-          else
-            str = '"'+slash_quotes(value[0])+'"=>"'+slash_quotes(value[1])+'"'
-          end
-          file.puts(str)
-        end
       end
     end
 
@@ -185,9 +78,6 @@ module Pandora
       end
       res
     end
-
-
-    $rubyzip = nil  # Flag of using Zip library
 
     # Unzip archive via Zip library
     # RU: Распаковывает архив с помощью библиотеки Zip
@@ -232,8 +122,6 @@ module Pandora
       end
       res
     end
-
-    $unziper = nil  # Zip utility
 
     # Unzip archive via Zip utility
     # RU: Распаковывает архив с помощью Zip утилиты
@@ -421,20 +309,6 @@ module Pandora
         end
       end
     end
-
-    # Codes of data types in PSON
-    # RU: Коды типов данных в PSON
-    PT_Int   = 0
-    PT_Str   = 1
-    PT_Bool  = 2
-    PT_Time  = 3
-    PT_Array = 4
-    PT_Hash  = 5
-    PT_Sym   = 6
-    PT_Real  = 7
-    # 8..14 - reserved for other types
-    PT_Unknown = 15
-    PT_Negative = 16
 
     # Convert string notation type to code of type
     # RU: Преобразует строковое представление типа в код типа
@@ -1428,7 +1302,6 @@ module Pandora
       end
       res
     end
-
 
   end
 end

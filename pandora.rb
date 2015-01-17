@@ -201,7 +201,6 @@ Thread.abort_on_exception = true
 
 # == Running the Pandora!
 # == RU: Запуск Пандоры!
-Pandora::Utils.load_language(Pandora.config.lang)
 Pandora::Model.load_from_xml(Pandora.config.lang)
 Pandora::Gtk::MainWindow.new(MAIN_WINDOW_TITLE)
 
