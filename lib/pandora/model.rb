@@ -5,6 +5,20 @@ module Pandora
   module Model
     include Pandora::Constants
 
+    # Realtion kinds
+    # RU: Виды связей
+    RK_Unknown  = 0
+    RK_Equal    = 1
+    RK_Similar  = 2
+    RK_Antipod  = 3
+    RK_PartOf   = 4
+    RK_Cause    = 5
+    RK_Follow   = 6
+    RK_Ignore   = 7
+    RK_CameFrom = 8
+    RK_MinPublic = 235
+    RK_MaxPublic = 255
+
     $panobject_list = []
 
     # Compose pandora model definition from XML file
@@ -56,9 +70,9 @@ module Pandora
     getfields=nil)
       # pson_with_kind: nil - raw data, false - short panhash+pson, true - panhash+pson
       res = nil
-      panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+      panobjectclass = panobjectclass_by_kind(kind)
       if panobjectclass
-        model = PandoraUtils.get_model(panobjectclass.ider, models)
+        model = Pandora::Utils.get_model(panobjectclass.ider, models)
         if model
           filter = {'panhash'=>panhash}
           if (kind==PK_Key)
@@ -74,12 +88,12 @@ module Pandora
               fields = model.clear_excess_fields(sel[0])
               p 'get_rec: matter_fields='+fields.inspect
               # need get all fields (except: id, panhash, modified) + kind
-              lang = PandoraUtils.lang_from_panhash(panhash)
+              lang = Pandora::Utils.lang_from_panhash(panhash)
               res = AsciiString.new
               res << [kind].pack('C') if pson_with_kind
               res << [lang].pack('C')
               p 'get_record_by_panhash|||  fields='+fields.inspect
-              res << PandoraUtils.namehash_to_pson(fields)
+              res << Pandora::Utils.namehash_to_pson(fields)
             else
               res = sel
             end
@@ -94,9 +108,9 @@ module Pandora
     def self.save_record(kind, lang, values, models=nil, require_panhash=nil)
       res = false
       p '=======save_record  [kind, lang, values]='+[kind, lang, values].inspect
-      panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+      panobjectclass = panobjectclass_by_kind(kind)
       ider = panobjectclass.ider
-      model = PandoraUtils.get_model(ider, models)
+      model = Pandora::Utils.get_model(ider, models)
       panhash = model.panhash(values, lang)
       p 'panhash='+panhash.inspect
       if (not require_panhash) or (panhash==require_panhash)
@@ -116,7 +130,7 @@ module Pandora
           str = ''
           mfields.each do |n,v|
             fd = model.field_des(n)
-            val, color = PandoraUtils.val_to_view(v, fd[FI_Type], fd[FI_View], false)
+            val, color = Pandora::Utils.val_to_view(v, fd[FI_Type], fd[FI_View], false)
             if val
               str << '|' if (str.size>0)
               if val.size>14
@@ -138,8 +152,8 @@ module Pandora
         end
       else
         Pandora.logger.warn _('Non-equal panhashes ')+' '+ \
-          PandoraUtils.bytes_to_hex(panhash) + '<>' + \
-          PandoraUtils.bytes_to_hex(require_panhash)
+          Pandora::Utils.bytes_to_hex(panhash) + '<>' + \
+          Pandora::Utils.bytes_to_hex(require_panhash)
         res = nil
       end
       res
@@ -152,8 +166,8 @@ module Pandora
         records.each do |record|
           kind = record[0].ord
           lang = record[1].ord
-          values = PandoraUtils.pson_to_namehash(record[2..-1])
-          if not PandoraModel.save_record(kind, lang, values, models)
+          values = Pandora::Utils.pson_to_namehash(record[2..-1])
+          if not save_record(kind, lang, values, models)
             Pandora.logger.warn  _('Cannot write a record')+' 2'
           end
         end
@@ -165,8 +179,8 @@ module Pandora
     def self.needed_records(ph_list, models=nil)
       need_list = []
       ph_list.each do |panhash|
-        kind = PandoraUtils.kind_from_panhash(panhash)
-        res = PandoraModel.get_record_by_panhash(kind, panhash, nil, models, 'id')
+        kind = Pandora::Utils.kind_from_panhash(panhash)
+        res = get_record_by_panhash(kind, panhash, nil, models, 'id')
         need_list << panhash if (not res)  #add if record was not found
       end
       p 'needed_records='+need_list.inspect
@@ -178,11 +192,11 @@ module Pandora
     def self.modified_records(from_time=nil, kinds=nil, models=nil)
       res = nil
       kinds ||= (1..254)
-      kinds = PandoraUtils.str_to_bytes(kinds)
+      kinds = Pandora::Utils.str_to_bytes(kinds)
       kinds.each do |kind|
-        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+        panobjectclass = panobjectclass_by_kind(kind)
         if panobjectclass
-          model = PandoraUtils.get_model(panobjectclass.ider, models)
+          model = Pandora::Utils.get_model(panobjectclass.ider, models)
           if model
             filter = [['modified >= ', from_time.to_i]]
             p sel = model.select(filter, false, 'panhash', 'id ASC')
@@ -202,16 +216,16 @@ module Pandora
     # RU: Ищет список панхэшей записей от создателя от времени для сортов
     def self.created_records(creator=0, from_time=nil, kinds=nil, models=nil)
       res = nil
-      creator ||= PandoraCrypto.current_user_or_key(true)
+      creator ||= Pandora::Crypto.current_user_or_key(true)
       if creator
         # creator=0 - all recs, creator=1 - created recs, creator=String - recs of the creator
         # RU: Все записи (0), записи Created (1), записи указанного создателя (String)
         kinds ||= (1..254)
-        kinds = PandoraUtils.str_to_bytes(kinds)
+        kinds = Pandora::Utils.str_to_bytes(kinds)
         kinds.each do |kind|
-          panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-          if panobjectclass and ((creator==0) or (panobjectclass <= PandoraModel::Created))
-            model = PandoraUtils.get_model(panobjectclass.ider, models)
+          panobjectclass = panobjectclass_by_kind(kind)
+          if panobjectclass and ((creator==0) or (panobjectclass <= Created))
+            model = Pandora::Utils.get_model(panobjectclass.ider, models)
             if model
               filter = []
               filter << ['modified >= ', from_time.to_i] if from_time
@@ -235,15 +249,15 @@ module Pandora
     # RU: Ищет список панхэшей записей подписанных с времени для сортов
     def self.signed_records(signer=nil, from_time=nil, pankinds=nil, trust=nil, key=nil, models=nil)
       sel = nil
-      signer ||= PandoraCrypto.current_user_or_key(true)
+      signer ||= Pandora::Crypto.current_user_or_key(true)
       if signer
-        sign_model = PandoraUtils.get_model('Sign', models)
+        sign_model = Pandora::Utils.get_model('Sign', models)
         if sign_model
           filter = [['creator=', signer]]
           filter << ['modified >=', from_time.to_i] if from_time
           filter << ['trust=', trust_to_int255(trust)] if trust
           filter << ['key=', key] if key
-          pankinds = PandoraUtils.str_to_bytes(pankinds)
+          pankinds = Pandora::Utils.str_to_bytes(pankinds)
           if ((pankinds.is_a? Array) and (pankinds.size==1))
             filter << ['obj_hash LIKE', pankinds[0].chr+'%']
             #filter << ['second REGEXP', '['+pankinds[0].chr+'].*']  #pankinds[0].chr
@@ -283,15 +297,15 @@ module Pandora
     # RU: Ищет список панхэшей опубликованных записей с времени для уровня и сортов
     def self.public_records(publisher=nil, trust=nil, from_time=nil, pankinds=nil, models=nil)
       sel = nil
-      publisher ||= PandoraCrypto.current_user_or_key(true)
+      publisher ||= Pandora::Crypto.current_user_or_key(true)
       if publisher
-        relation_model = PandoraUtils.get_model('Relation', models)
+        relation_model = Pandora::Utils.get_model('Relation', models)
         if relation_model
           pub_level = trust
           pub_level = trust2_to_pub235(trust) unless trust.is_a? Numeric
           filter = [['first=', publisher], ['kind >=', pub_level]]
           filter << ['modified >=', from_time.to_i] if from_time
-          pankinds = PandoraUtils.str_to_bytes(pankinds)
+          pankinds = Pandora::Utils.str_to_bytes(pankinds)
           if ((pankinds.is_a? Array) and (pankinds.size==1))
             filter << ['second LIKE', pankinds[0].chr+'%']
             #filter << ['second REGEXP', '['+pankinds[0].chr+'].*']  #pankinds[0].chr
@@ -318,13 +332,13 @@ module Pandora
     # RU: Ищет список панхэшей следуемых записей с времени для сортов
     def self.follow_records(follower=nil, from_time=nil, pankinds=nil, models=nil)
       sel = nil
-      follower ||= PandoraCrypto.current_user_or_key(true)
+      follower ||= Pandora::Crypto.current_user_or_key(true)
       if follower
-        relation_model = PandoraUtils.get_model('Relation', models)
+        relation_model = Pandora::Utils.get_model('Relation', models)
         if relation_model
           filter = [['first=', follower], ['kind=', RK_Follow]]
           filter << ['modified >=', from_time.to_i] if filter
-          pankinds = PandoraUtils.str_to_bytes(pankinds)
+          pankinds = Pandora::Utils.str_to_bytes(pankinds)
           #if ((pankinds.is_a? Array) and (pankinds.size==1))
           #  filter << ['panhash LIKE', pankinds[0]+'%']  REGEXP
           #  pankinds = nil
@@ -364,19 +378,7 @@ module Pandora
       res ||= ''
     end
 
-    # Realtion kinds
-    # RU: Виды связей
-    RK_Unknown  = 0
-    RK_Equal    = 1
-    RK_Similar  = 2
-    RK_Antipod  = 3
-    RK_PartOf   = 4
-    RK_Cause    = 5
-    RK_Follow   = 6
-    RK_Ignore   = 7
-    RK_CameFrom = 8
-    RK_MinPublic = 235
-    RK_MaxPublic = 255
+
 
     # Relation is symmetric
     # RU: Связь симметрична
@@ -391,7 +393,7 @@ module Pandora
       res = nil
       if panhash1 or panhash2
         if not (panhash1 and panhash2)
-          panhash = PandoraCrypto.current_user_or_key(creator, init)
+          panhash = Pandora::Crypto.current_user_or_key(creator, init)
           if panhash
             if not panhash1
               panhash1 = panhash
@@ -401,8 +403,8 @@ module Pandora
           end
         end
         if panhash1 and panhash2 #and (panhash1 != panhash2)
-          #p 'relat [p1,p2,t]='+[PandoraUtils.bytes_to_hex(panhash1), PandoraUtils.bytes_to_hex(panhash2), rel_kind.inspect
-          relation_model = PandoraUtils.get_model('Relation', models)
+          #p 'relat [p1,p2,t]='+[Pandora::Utils.bytes_to_hex(panhash1), Pandora::Utils.bytes_to_hex(panhash2), rel_kind.inspect
+          relation_model = Pandora::Utils.get_model('Relation', models)
           if relation_model
             kind_op = '='
             pub_kind = (rel_kind >= RK_MinPublic)
@@ -416,7 +418,7 @@ module Pandora
             if relation_is_symmetric?(rel_kind) and (panhash1 != panhash2)
               filter = [['first=', panhash2], ['second=', panhash1], [kind_op, rel_kind]]
             end
-            #p 'relat2 [p1,p2,t]='+[PandoraUtils.bytes_to_hex(panhash1), PandoraUtils.bytes_to_hex(panhash2), rel_kind].inspect
+            #p 'relat2 [p1,p2,t]='+[Pandora::Utils.bytes_to_hex(panhash1), Pandora::Utils.bytes_to_hex(panhash2), rel_kind].inspect
             #p 'act='+act.inspect
             if (act == :delete)
               res = relation_model.update(nil, nil, filter)
@@ -498,7 +500,7 @@ module Pandora
               else
                 # create new class
                 panobj_name = panobj_id
-                if not panobject_class #not PandoraModel.const_defined? panobj_id
+                if not panobject_class #not const_defined? panobj_id
                   parent_class = element.attributes['parent']
                   if (not parent_class) or (parent_class=='') or (not (Pandora::Model.const_defined? parent_class))
                     if parent_class

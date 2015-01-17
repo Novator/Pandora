@@ -175,11 +175,11 @@ module Pandora
             if encode
               data = recrypt(key_vec, data, encode)
               if data
-                key_and_data = PandoraUtils.rubyobj_to_pson_elem([key_vec[KV_Panhash], data])
+                key_and_data = Pandora::Utils.rubyobj_to_pson_elem([key_vec[KV_Panhash], data])
                 data = key_and_data
               end
             else
-              key_and_data, len = PandoraUtils.pson_elem_to_rubyobj(data)
+              key_and_data, len = Pandora::Utils.pson_elem_to_rubyobj(data)
               if key_and_data.is_a? Array
                 keyhash, data = key_and_data
                 if (keyhash == key_vec[KV_Panhash])
@@ -211,7 +211,7 @@ module Pandora
             if encode
               iv = key.random_iv
             else
-              data, len = PandoraUtils.pson_elem_to_rubyobj(data)   # pson to array
+              data, len = Pandora::Utils.pson_elem_to_rubyobj(data)   # pson to array
               if data.is_a? Array
                 iv = AsciiString.new(data[1])
                 data = AsciiString.new(data[0])  # data from array
@@ -221,7 +221,7 @@ module Pandora
             end
             cipher_vec[KV_Pub] = iv
             data = recrypt(cipher_vec, data, encode) if data
-            data = PandoraUtils.rubyobj_to_pson_elem([data, iv]) if encode and data
+            data = Pandora::Utils.rubyobj_to_pson_elem([data, iv]) if encode and data
           end
         end
       end
@@ -249,11 +249,11 @@ module Pandora
           #keypub.force_encoding('ASCII-8BIT')
           #keypriv = ''
           #keypriv.force_encoding('ASCII-8BIT')
-          keypub = AsciiString.new(PandoraUtils.bigint_to_bytes(key.params['n']))
-          keypriv = AsciiString.new(PandoraUtils.bigint_to_bytes(key.params['p']))
+          keypub = AsciiString.new(Pandora::Utils.bigint_to_bytes(key.params['n']))
+          keypriv = AsciiString.new(Pandora::Utils.bigint_to_bytes(key.params['p']))
           #p keypub = key.params['n']
           #keypriv = key.params['p']
-          #p PandoraUtils.bytes_to_bigin(keypub)
+          #p Pandora::Utils.bytes_to_bigin(keypub)
           #p '************8'
 
           #puts key.to_text
@@ -297,7 +297,7 @@ module Pandora
           when KT_Rsa
             #p '------'
             #p key.params
-            n = PandoraUtils.bytes_to_bigint(keypub)
+            n = Pandora::Utils.bytes_to_bigint(keypub)
             #p 'n='+n.inspect
             e = OpenSSL::BN.new(RSA_exponent.to_s)
             p0 = nil
@@ -305,7 +305,7 @@ module Pandora
               #p '[cipher, keypriv]='+[cipher, keypriv].inspect
               keypriv = key_recrypt(keypriv, false, cipher_hash, pass)
               #p 'key2='+key2.inspect
-              p0 = PandoraUtils.bytes_to_bigint(keypriv) if keypriv
+              p0 = Pandora::Utils.bytes_to_bigint(keypriv) if keypriv
             else
               p0 = 0
             end
@@ -345,7 +345,7 @@ module Pandora
                 #p asn_seq = OpenSSL::ASN1.decode(key)
                 # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
                 #seq1 = asn_seq.value[1]
-                #str_val = PandoraUtils.bigint_to_bytes(seq1.value)
+                #str_val = Pandora::Utils.bigint_to_bytes(seq1.value)
                 #p 'str_val.size='+str_val.size.to_s
                 #p Base64.encode64(str_val)
                 #key2 = key.public_key
@@ -460,8 +460,8 @@ module Pandora
     # RU: Деактивирует текущий или указанный ключ
     def self.deactivate_key(key_vec)
       if key_vec.is_a? Array
-        PandoraUtils.fill_by_zeros(key_vec[PandoraCrypto::KV_Priv])  #private key
-        PandoraUtils.fill_by_zeros(key_vec[PandoraCrypto::KV_Pass])
+        Pandora::Utils.fill_by_zeros(key_vec[PandoraCrypto::KV_Priv])  #private key
+        Pandora::Utils.fill_by_zeros(key_vec[PandoraCrypto::KV_Pass])
         key_vec.each_index do |i|
           key_vec[i] = nil
         end
@@ -553,7 +553,7 @@ module Pandora
               if key2
                 time_now = Time.now.to_i
                 filter = {:panhash=>panhash, :kind=>KT_Priv}
-                panstate = PandoraModel::PSF_Support
+                panstate = Pandora::Model::PSF_Support
                 values = {:panstate=>panstate, :cipher=>cipher_hash, :body=>key2, :modified=>time_now}
                 res = key_model.update(values, nil, filter)
                 if res
@@ -578,7 +578,7 @@ module Pandora
         last_auth_key = Pandora::Utils.get_param('last_auth_key')
         last_auth_key0 = last_auth_key
         if last_auth_key.is_a? Integer
-          last_auth_key = AsciiString.new(PandoraUtils.bigint_to_bytes(last_auth_key))
+          last_auth_key = AsciiString.new(Pandora::Utils.bigint_to_bytes(last_auth_key))
         end
         passwd = nil
         key_model = Pandora::Utils.get_model('Key')
@@ -594,26 +594,26 @@ module Pandora
               dialog = Pandora::Gtk::AdvancedDialog.new(_('Key init'))
               dialog.set_default_size(420, 190)
 
-              vbox = Gtk::VBox.new
+              vbox = ::Gtk::VBox.new
               dialog.viewport.add(vbox)
 
-              label = Gtk::Label.new(_('Key'))
+              label = ::Gtk::Label.new(_('Key'))
               vbox.pack_start(label, false, false, 2)
               key_entry = Pandora::Gtk::PanhashBox.new('Panhash(Key)')
-              key_entry.text = PandoraUtils.bytes_to_hex(last_auth_key)
+              key_entry.text = Pandora::Utils.bytes_to_hex(last_auth_key)
               #key_entry.editable = false
               vbox.pack_start(key_entry, false, false, 2)
 
-              label = Gtk::Label.new(_('Password'))
+              label = ::Gtk::Label.new(_('Password'))
               vbox.pack_start(label, false, false, 2)
-              pass_entry = Gtk::Entry.new
+              pass_entry = ::Gtk::Entry.new
               pass_entry.visibility = false
               if (not cipher) or (cipher == 0)
                 pass_entry.editable = false
                 pass_entry.sensitive = false
               end
               pass_entry.width_request = 200
-              align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+              align = ::Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
               align.add(pass_entry)
               vbox.pack_start(align, false, false, 2)
 
@@ -627,7 +627,7 @@ module Pandora
                 dialog.def_widget = pass_entry
               end
 
-              changebtn = Pandora::Gtk::SafeToggleToolButton.new(Gtk::Stock::EDIT)
+              changebtn = Pandora::Gtk::SafeToggleToolButton.new(::Gtk::Stock::EDIT)
               changebtn.tooltip_text = _('Change password')
               changebtn.safe_signal_clicked do |*args|
                 if not new_label
@@ -651,7 +651,7 @@ module Pandora
               end
               dialog.hbox.pack_start(changebtn, false, false, 0)
 
-              gen_button = Gtk::ToolButton.new(Gtk::Stock::NEW, _('New'))
+              gen_button = ::Gtk::ToolButton.new(::Gtk::Stock::NEW, _('New'))
               gen_button.tooltip_text = _('Generate new key pair')
               #gen_button.width_request = 110
               gen_button.signal_connect('clicked') { |*args| dialog.response=3 }
@@ -664,7 +664,7 @@ module Pandora
                   getting = true
                 else
                   key_vec = key_vec0
-                  panhash = PandoraUtils.hex_to_bytes(key_entry.text)
+                  panhash = Pandora::Utils.hex_to_bytes(key_entry.text)
                   passwd = pass_entry.text
                   if changebtn.active? and new_pass_entry
                     key_vec, cipher, passwd = recrypt_key(key_model, key_vec, cipher, panhash, \
@@ -694,11 +694,11 @@ module Pandora
             vbox = ::Gtk::VBox.new
             dialog.viewport.add(vbox)
 
-            #creator = PandoraUtils.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
+            #creator = Pandora::Utils.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
             label = ::Gtk::Label.new(_('Person panhash'))
             vbox.pack_start(label, false, false, 2)
             user_entry = Pandora::Gtk::PanhashBox.new('Panhash(Person)')
-            #user_entry.text = PandoraUtils.bytes_to_hex(creator)
+            #user_entry.text = Pandora::Utils.bytes_to_hex(creator)
             vbox.pack_start(user_entry, false, false, 2)
 
             rights = KS_Exchange | KS_Voucher
@@ -729,7 +729,7 @@ module Pandora
             dialog.def_widget = user_entry.entry
 
             dialog.run2 do
-              creator = PandoraUtils.hex_to_bytes(user_entry.text)
+              creator = Pandora::Utils.hex_to_bytes(user_entry.text)
               if creator.size==22
                 #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
                 passwd = pass_entry.text
@@ -764,7 +764,7 @@ module Pandora
                 expire = Time.local(y+5, m, d).to_i
 
                 time_now = time_now.to_i
-                panstate = PandoraModel::PSF_Support
+                panstate = Pandora::Model::PSF_Support
                 values = {:panstate=>panstate, :kind=>type_klen, :rights=>rights, :expire=>expire, \
                   :creator=>creator, :created=>time_now, :cipher=>0, :body=>pub, :modified=>time_now}
                 panhash = key_model.panhash(values, rights)
@@ -793,7 +793,7 @@ module Pandora
                 dialog.default_response = Gtk::Dialog::RESPONSE_OK
                 dialog.icon = $window.icon
                 if (dialog.run == Gtk::Dialog::RESPONSE_OK)
-                  Pandora::Gtk.show_panobject_list(PandoraModel::Person, nil, nil, true)
+                  Pandora::Gtk.show_panobject_list(Pandora::Model::Person, nil, nil, true)
                 end
                 dialog.destroy
               end
@@ -804,7 +804,7 @@ module Pandora
             key_vec = init_key(key_vec)
             if key_vec and key_vec[KV_Obj]
               self.the_current_key = key_vec
-              text = PandoraCrypto.short_name_of_person(key_vec, nil, 1)
+              text = short_name_of_person(key_vec, nil, 1)
               if text and (text.size>0)
                 #text = '['+text+']'
               else
@@ -812,12 +812,12 @@ module Pandora
               end
               $window.set_status_field(Pandora::Gtk::SF_Auth, text, nil, true)
               if last_auth_key0 != last_auth_key
-                PandoraUtils.set_param('last_auth_key', last_auth_key)
+                Pandora::Utils.set_param('last_auth_key', last_auth_key)
               end
             else
               dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
                 Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-                _('Cannot activate key. Try again?')+"\n[" +PandoraUtils.bytes_to_hex(last_auth_key[2,16])+']')
+                _('Cannot activate key. Try again?')+"\n[" +Pandora::Utils.bytes_to_hex(last_auth_key[2,16])+']')
               dialog.title = _('Key init')
               dialog.default_response = Gtk::Dialog::RESPONSE_OK
               dialog.icon = $window.icon
@@ -860,7 +860,7 @@ module Pandora
         matter_fields = panobject.matter_fields
 
         obj_hash = namesvalues['panhash']
-        if not PandoraUtils.panhash_nil?(obj_hash)
+        if not Pandora::Utils.panhash_nil?(obj_hash)
           #p 'sign: matter_fields='+matter_fields.inspect
           sign = make_sign(key, Pandora::Utils.namehash_to_pson(matter_fields))
           if sign
@@ -875,7 +875,7 @@ module Pandora
 
             sign_model = Pandora::Utils.get_model('Sign', models)
             panhash = sign_model.panhash(values)
-            #p '!!!!!!panhash='+PandoraUtils.bytes_to_hex(panhash).inspect
+            #p '!!!!!!panhash='+Pandora::Utils.bytes_to_hex(panhash).inspect
 
             values['panhash'] = panhash
             res = sign_model.update(values, nil, nil)
@@ -894,7 +894,7 @@ module Pandora
       res = true
       key_hash = current_user_or_key(false, (not delete_all))
       if obj_hash and (delete_all or key_hash)
-        sign_model = PandoraUtils.get_model('Sign', models)
+        sign_model = Pandora::Utils.get_model('Sign', models)
         filter = {:obj_hash=>obj_hash}
         filter[:key_hash] = key_hash if key_hash
         res = sign_model.update(nil, nil, filter)
@@ -910,7 +910,7 @@ module Pandora
       res = nil
       if panhash and (panhash != '')
         key_hash = current_user_or_key(false, false)
-        sign_model = PandoraUtils.get_model('Sign', models)
+        sign_model = Pandora::Utils.get_model('Sign', models)
         filter = {:obj_hash => panhash}
         filter[:key_hash] = key_hash if key_hash
         sel = sign_model.select(filter, false, 'created, trust', 'created DESC', 1)
@@ -925,7 +925,7 @@ module Pandora
               if created>last_date
                 #p 'sign2: [creator, created, trust]='+[creator, created, trust].inspect
                 last_date = created
-                res = PandoraModel.trust_to_int255(trust, false)
+                res = Pandora::Model.trust_to_int255(trust, false)
               end
             end
           else
@@ -950,8 +950,8 @@ module Pandora
           querist = current_user_or_key(false, true)
         end
         if querist and (querist != '')
-          #kind = PandoraUtils.kind_from_panhash(panhash)
-          sign_model = PandoraUtils.get_model('Sign', models)
+          #kind = Pandora::Utils.kind_from_panhash(panhash)
+          sign_model = Pandora::Utils.get_model('Sign', models)
           filter = { :obj_hash => panhash, :key_hash => querist }
           #filter = {:obj_hash => panhash}
           sel = sign_model.select(filter, false, 'creator, created, trust', 'creator')
@@ -976,7 +976,7 @@ module Pandora
                 if (creator != prev_creator) or (i==last_i)
                   p 'sign3: [creator, created, last_trust]='+[creator, created, last_trust].inspect
                   person_trust = 1.0 #trust_of_person(creator, my_key_hash)
-                  rate += PandoraModel.trust_to_int255(last_trust, false) * person_trust
+                  rate += Pandora::Model.trust_to_int255(last_trust, false) * person_trust
                   prev_creator = creator
                   last_date = created
                   last_trust = trust
@@ -1004,7 +1004,7 @@ module Pandora
           cur_trust = trust_in_panobj(panhash)
           key_vec[KV_Trust] = cur_trust if cur_trust
         elsif ($open_keys.size<$max_opened_keys)
-          model = PandoraUtils.get_model('Key', models)
+          model = Pandora::Utils.get_model('Key', models)
           filter = {:panhash => panhash}
           sel = model.select(filter, false)
           #p 'openkey sel='+sel.inspect
@@ -1073,8 +1073,8 @@ module Pandora
         aname, afamily = nf
       elsif (person or key)
         person ||= key[KV_Creator] if key
-        kind = PandoraUtils.kind_from_panhash(person)
-        sel = PandoraModel.get_record_by_panhash(kind, person, nil, nil, 'first_name, last_name')
+        kind = Pandora::Utils.kind_from_panhash(person)
+        sel = Pandora::Model.get_record_by_panhash(kind, person, nil, nil, 'first_name, last_name')
         #p 'key, person, sel='+[key, person, sel].inspect
         if (sel.is_a? Array) and (sel.size>0)
           aname, afamily = Utf8String.new(sel[0][0]), Utf8String.new(sel[0][1])
@@ -1083,16 +1083,16 @@ module Pandora
         if (not aname) and (not afamily) and (key.is_a? Array)
           aname = key[KV_Creator]
           aname = aname[2, 5] if aname
-          aname = PandoraUtils.bytes_to_hex(aname)
+          aname = Pandora::Utils.bytes_to_hex(aname)
           afamily = key[KV_Panhash]
           afamily = afamily[2, 5] if afamily
-          afamily = PandoraUtils.bytes_to_hex(afamily)
+          afamily = Pandora::Utils.bytes_to_hex(afamily)
         end
         if (not aname) and (not afamily) and person
           aname = person[2, 3]
-          aname = PandoraUtils.bytes_to_hex(aname) if aname
+          aname = Pandora::Utils.bytes_to_hex(aname) if aname
           afamily = person[5, 4]
-          afamily = PandoraUtils.bytes_to_hex(afamily) if afamily
+          afamily = Pandora::Utils.bytes_to_hex(afamily) if afamily
         end
         key[KV_NameFamily] = [aname, afamily] if key
       end
@@ -1138,7 +1138,7 @@ module Pandora
       end
       i = 0
       while (not res) and (i<0xFFFFFFFF)
-        add = PandoraUtils.bigint_to_bytes(i)
+        add = Pandora::Utils.bigint_to_bytes(i)
         hash = Digest::SHA1.digest(phrase+add)
         offer = hash[0, len]
         if (offer==puzzle) and ((not tailbyte) or ((hash[len].ord & tailmask)==tailbyte))

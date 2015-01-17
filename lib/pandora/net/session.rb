@@ -275,17 +275,17 @@ module Pandora
         asbuf = nil
         case ex_comm
           when EC_Auth
-            @rkey = PandoraCrypto.current_key(false, false)
+            @rkey = Pandora::Crypto.current_key(false, false)
             #p log_mes+'first key='+key.inspect
-            if @rkey and @rkey[PandoraCrypto::KV_Obj]
-              key_hash = @rkey[PandoraCrypto::KV_Panhash]
+            if @rkey and @rkey[Pandora::Crypto::KV_Obj]
+              key_hash = @rkey[Pandora::Crypto::KV_Panhash]
               ascode = EC_Auth
               ascode = ECC_Auth_Hello
               params['mykey'] = key_hash
               params['tokey'] = param
               hparams = {:version=>0, :mode=>0, :mykey=>key_hash, :tokey=>param}
               hparams[:addr] = $callback_addr if $callback_addr and (not ($callback_addr != ''))
-              asbuf = PandoraUtils.namehash_to_pson(hparams)
+              asbuf = Pandora::Utils.namehash_to_pson(hparams)
             else
               ascmd = EC_Bye
               ascode = ECC_Bye_Exit
@@ -294,10 +294,10 @@ module Pandora
           when EC_Message
             #???values = {:destination=>panhash, :text=>text, :state=>state, \
             #  :creator=>creator, :created=>time_now, :modified=>time_now}
-            #      kind = PandoraUtils.kind_from_panhash(panhash)
+            #      kind = Pandora::Utils.kind_from_panhash(panhash)
             #      record = PandoraModel.get_record_by_panhash(kind, panhash, true, @recv_models)
-            #      p log_mes+'EC_Request panhashes='+PandoraUtils.bytes_to_hex(panhash).inspect
-            asbuf = PandoraUtils.rubyobj_to_pson_elem(param)
+            #      p log_mes+'EC_Request panhashes='+Pandora::Utils.bytes_to_hex(panhash).inspect
+            asbuf = Pandora::Utils.rubyobj_to_pson_elem(param)
           when EC_Bye
             ascmd = EC_Bye
             ascode = ECC_Bye_Exit
@@ -328,10 +328,10 @@ module Pandora
         asbuf = nil
         if panhashes.is_a? Array
           # any panhashes
-          asbuf = PandoraUtils.rubyobj_to_pson_elem(panhashes)
+          asbuf = Pandora::Utils.rubyobj_to_pson_elem(panhashes)
         else
           # one panhash
-          ascode = PandoraUtils.kind_from_panhash(panhashes)
+          ascode = Pandora::Utils.kind_from_panhash(panhashes)
           asbuf = panhashes[1..-1]
         end
         if send_now
@@ -369,7 +369,7 @@ module Pandora
         # Recognize hello data
         # RU: Распознает данные приветствия
         def recognize_params
-          hash = PandoraUtils.pson_to_namehash(rdata)
+          hash = Pandora::Utils.pson_to_namehash(rdata)
           if not hash
             err_scmd('Hello data is wrong')
           end
@@ -431,7 +431,7 @@ module Pandora
               params['puzzle_start'] = Time.now.to_i
               set_max_pack_size(ES_Puzzle)
             else
-              @skey = PandoraCrypto.open_key(skey_panhash, @recv_models, false)
+              @skey = Pandora::Crypto.open_key(skey_panhash, @recv_models, false)
               # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
               # or just 4? other later!
               if (@skey.is_a? Integer) and (@skey==0)
@@ -467,13 +467,13 @@ module Pandora
         # Compose a captcha command
         # RU: Компоновать команду с капчой
         def send_captcha
-          attempts = @skey[PandoraCrypto::KV_Trust]
+          attempts = @skey[Pandora::Crypto::KV_Trust]
           p log_mes+'send_captcha:  attempts='+attempts.to_s
           if attempts<$captcha_attempts
-            @skey[PandoraCrypto::KV_Trust] = attempts+1
+            @skey[Pandora::Crypto::KV_Trust] = attempts+1
             @scmd = EC_Auth
             @scode = ECC_Auth_Captcha
-            text, buf = PandoraUtils.generate_captcha(nil, $captcha_length)
+            text, buf = Pandora::Utils.generate_captcha(nil, $captcha_length)
             params['captcha'] = text.downcase
             clue_text = 'You may enter small letters|'+$captcha_length.to_s+'|'+PandoraGtk::CapSymbols
             clue_text = clue_text[0,255]
@@ -488,7 +488,7 @@ module Pandora
         # Update record about node
         # RU: Обновить запись об узле
         def update_node(skey_panhash=nil, sbase_id=nil, trust=nil, session_key=nil)
-          node_model = PandoraUtils.get_model('Node', @recv_models)
+          node_model = Pandora::Utils.get_model('Node', @recv_models)
           time_now = Time.now.to_i
           astate = 0
           asended = 0
@@ -548,7 +548,7 @@ module Pandora
 
           values = {}
           if (not acreator) or (not acreated)
-            acreator ||= PandoraCrypto.current_user_or_key(true)
+            acreator ||= Pandora::Crypto.current_user_or_key(true)
             values[:creator] = acreator
             values[:created] = time_now
           end
@@ -627,13 +627,13 @@ module Pandora
         # RU: Обработать медиа сегмент
         def process_media_segment(cannel, mediabuf)
           if not dialog
-            @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
-            #node = PandoraNet.encode_node(host_ip, port, proto)
-            panhash = @skey[PandoraCrypto::KV_Creator]
+            @conn_mode = (@conn_mode | Pandora::Net::CM_KeepHere)
+            #node = Pandora::Net.encode_node(host_ip, port, proto)
+            panhash = @skey[Pandora::Crypto::KV_Creator]
             @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
             dialog.update_state(true)
             Thread.pass
-            #PandoraUtils.play_mp3('online')
+            #Pandora::Utils.play_mp3('online')
           end
           recv_buf = dialog.recv_media_queue[cannel]
           if not recv_buf
@@ -653,7 +653,7 @@ module Pandora
               #buf.timestamp = Time.now.to_i * Gst::NSECOND
               appsrc = dialog.appsrcs[cannel]
               appsrc.push_buffer(buf)
-              appsrc.play if (not PandoraUtils::elem_playing?(appsrc))
+              appsrc.play if (not Pandora::Utils::elem_playing?(appsrc))
             else  #video puts to queue
               recv_buf.add_block_to_queue(mediabuf, $media_buf_size)
             end
@@ -665,7 +665,7 @@ module Pandora
         def get_simple_answer_to_node
           password = nil
           if @node_id
-            node_model = PandoraUtils.get_model('Node', @recv_models)
+            node_model = Pandora::Utils.get_model('Node', @recv_models)
             filter = {:id=>@node_id}
             sel = node_model.select(filter, false, 'password', nil, 1)
             if sel and sel.size>0
@@ -902,7 +902,7 @@ module Pandora
                     else #phrase for sign
                       #p log_mes+'SIGN'
                       rphrase = OpenSSL::Digest::SHA384.digest(rphrase)
-                      sign = PandoraCrypto.make_sign(@rkey, rphrase)
+                      sign = Pandora::Crypto.make_sign(@rkey, rphrase)
                       if sign
                         len = $base_id.bytesize
                         len = 255 if len>255
@@ -911,7 +911,7 @@ module Pandora
                         if @stage == ES_Greeting
                           @stage = ES_Exchange
                           set_max_pack_size(ES_Exchange)
-                          PandoraUtils.play_mp3('online')
+                          Pandora::Utils.play_mp3('online')
                         end
                       else
                         err_scmd('Cannot create sign')
@@ -934,7 +934,7 @@ module Pandora
                   else
                     suffix = rdata
                     sphrase = params['sphrase']
-                    if PandoraCrypto.check_sha1_solution(sphrase, suffix)
+                    if Pandora::Crypto.check_sha1_solution(sphrase, suffix)
                       init_skey_or_error(false)
                     else
                       err_scmd('Wrong sha1 solution')
@@ -945,27 +945,27 @@ module Pandora
                   sbase_id = rdata[1, len]
                   rsign = rdata[len+1..-1]
                   #p log_mes+'recived rsign len='+rsign.bytesize.to_s
-                  @skey = PandoraCrypto.open_key(@skey, @recv_models, true)
-                  if @skey and @skey[PandoraCrypto::KV_Obj]
-                    if PandoraCrypto.verify_sign(@skey, OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
-                      creator = PandoraCrypto.current_user_or_key(true)
-                      if ((conn_mode & CM_Hunter) != 0) or (not @skey[PandoraCrypto::KV_Creator]) \
-                      or (@skey[PandoraCrypto::KV_Creator] != creator)
+                  @skey = Pandora::Crypto.open_key(@skey, @recv_models, true)
+                  if @skey and @skey[Pandora::Crypto::KV_Obj]
+                    if Pandora::Crypto.verify_sign(@skey, OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
+                      creator = Pandora::Crypto.current_user_or_key(true)
+                      if ((conn_mode & CM_Hunter) != 0) or (not @skey[Pandora::Crypto::KV_Creator]) \
+                      or (@skey[Pandora::Crypto::KV_Creator] != creator)
                         # check messages if it's not session to myself
                         @send_state = (@send_state | CSF_Message)
                       end
-                      trust = @skey[PandoraCrypto::KV_Trust]
-                      update_node(@skey[PandoraCrypto::KV_Panhash], sbase_id, trust)
+                      trust = @skey[Pandora::Crypto::KV_Trust]
+                      update_node(@skey[Pandora::Crypto::KV_Panhash], sbase_id, trust)
                       if ((conn_mode & CM_Hunter) == 0)
                         trust = 0 if (not trust) and $trust_for_captchaed
                       elsif $trust_for_listener and (not (trust.is_a? Float))
                         trust = 0.01
-                        @skey[PandoraCrypto::KV_Trust] = trust
+                        @skey[Pandora::Crypto::KV_Trust] = trust
                       end
                       p log_mes+'----trust='+trust.inspect
                       if ($captcha_length>0) and (trust.is_a? Integer) \
                       and ((conn_mode & CM_Hunter) == 0)
-                        @skey[PandoraCrypto::KV_Trust] = 0
+                        @skey[Pandora::Crypto::KV_Trust] = 0
                         send_captcha
                       elsif trust.is_a? Float
                         if trust>=$low_conn_trust
@@ -976,7 +976,7 @@ module Pandora
                           else
                             @stage = ES_Exchange
                             set_max_pack_size(ES_Exchange)
-                            #PandoraUtils.play_mp3('online')
+                            #Pandora::Utils.play_mp3('online')
                           end
                           @scmd = EC_Data
                           @scode = 0
@@ -1004,7 +1004,7 @@ module Pandora
                     @scmd = EC_Auth
                     @scode = ECC_Auth_Answer
                     @sbuf = answer
-                    @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
+                    @conn_mode = (@conn_mode | Pandora::Net::CM_KeepHere)
                   else
                     err_scmd('Node password is not setted')
                   end
@@ -1042,11 +1042,11 @@ module Pandora
                   p log_mes+'recived captcha='+captcha if captcha
                   if captcha.downcase==params['captcha']
                     @stage = ES_Greeting
-                    if not (@skey[PandoraCrypto::KV_Trust].is_a? Float)
+                    if not (@skey[Pandora::Crypto::KV_Trust].is_a? Float)
                       if $trust_for_captchaed
-                        @skey[PandoraCrypto::KV_Trust] = 0.01
+                        @skey[Pandora::Crypto::KV_Trust] = 0.01
                       else
-                        @skey[PandoraCrypto::KV_Trust] = nil
+                        @skey[Pandora::Crypto::KV_Trust] = nil
                       end
                     end
                     p 'Captcha is GONE!'
@@ -1079,7 +1079,7 @@ module Pandora
             if (@stage==ES_Exchange) or (@stage==ES_Greeting) or panhash
               panhashes = nil
               if kind==0
-                panhashes, len = PandoraUtils.pson_elem_to_rubyobj(panhashes)
+                panhashes, len = Pandora::Utils.pson_elem_to_rubyobj(panhashes)
               else
                 panhash = [kind].pack('C')+rdata if (not panhash) and rdata
                 panhashes = [panhash]
@@ -1087,14 +1087,14 @@ module Pandora
               p log_mes+'panhashes='+panhashes.inspect
               if panhashes.size==1
                 panhash = panhashes[0]
-                kind = PandoraUtils.kind_from_panhash(panhash)
+                kind = Pandora::Utils.kind_from_panhash(panhash)
                 pson = PandoraModel.get_record_by_panhash(kind, panhash, false, @recv_models)
                 if pson
                   @scmd = EC_Record
                   @scode = kind
                   @sbuf = pson
                   lang = @sbuf[0].ord
-                  values = PandoraUtils.pson_to_namehash(@sbuf[1..-1])
+                  values = Pandora::Utils.pson_to_namehash(@sbuf[1..-1])
                   p log_mes+'SEND RECORD !!! [pson, values]='+[pson, values].inspect
                 else
                   p log_mes+'NO RECORD panhash='+panhash.inspect
@@ -1105,9 +1105,9 @@ module Pandora
               else
                 rec_array = Array.new
                 panhashes.each do |panhash|
-                  kind = PandoraUtils.kind_from_panhash(panhash)
+                  kind = Pandora::Utils.kind_from_panhash(panhash)
                   record = PandoraModel.get_record_by_panhash(kind, panhash, true, @recv_models)
-                  p log_mes+'EC_Request panhashes='+PandoraUtils.bytes_to_hex(panhash).inspect
+                  p log_mes+'EC_Request panhashes='+Pandora::Utils.bytes_to_hex(panhash).inspect
                   rec_array << record if record
                 end
                 if rec_array.size>0
@@ -1134,7 +1134,7 @@ module Pandora
               kind = rcode
               if (@stage==ES_Exchange) or ((kind==PandoraModel::PK_Key) and (@stage==ES_KeyRequest))
                 lang = rdata[0].ord
-                values = PandoraUtils.pson_to_namehash(rdata[1..-1])
+                values = Pandora::Utils.pson_to_namehash(rdata[1..-1])
                 panhash = nil
                 if @stage==ES_KeyRequest
                   panhash = params['srckey']
@@ -1154,7 +1154,7 @@ module Pandora
                 err_scmd('Record ('+kind.to_s+') came on wrong stage')
               end
             elsif (@stage==ES_Exchange)
-              records, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+              records, len = Pandora::Utils.pson_elem_to_rubyobj(rdata)
               p log_mes+"!record2! recs="+records.inspect
               PandoraModel.save_records(records, @recv_models)
             else
@@ -1183,7 +1183,7 @@ module Pandora
                     kind = confirms[i].ord
                     if (not prev_kind) or (kind != prev_kind)
                       panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-                      model = PandoraUtils.get_model(panobjectclass.ider, @recv_models)
+                      model = Pandora::Utils.get_model(panobjectclass.ider, @recv_models)
                       prev_kind = kind
                     end
                     id = confirms[i+1, 4].unpack('N')
@@ -1224,22 +1224,22 @@ module Pandora
               case rcmd
                 when EC_Message, EC_Channel
                   if (not dialog) or dialog.destroyed?
-                    @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
-                    panhash = @skey[PandoraCrypto::KV_Creator]
+                    @conn_mode = (@conn_mode | Pandora::Net::CM_KeepHere)
+                    panhash = @skey[Pandora::Crypto::KV_Creator]
                     @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
                     Thread.pass
-                    #PandoraUtils.play_mp3('online')
+                    #Pandora::Utils.play_mp3('online')
                   end
                   if rcmd==EC_Message
                     row = @rdata
                     if row.is_a? String
-                      row, len = PandoraUtils.pson_elem_to_rubyobj(row)
+                      row, len = Pandora::Utils.pson_elem_to_rubyobj(row)
                       t = Time.now
                       id = nil
                       time_now = t.to_i
-                      creator = @skey[PandoraCrypto::KV_Creator]
+                      creator = @skey[Pandora::Crypto::KV_Creator]
                       created = time_now
-                      destination = @rkey[PandoraCrypto::KV_Creator]
+                      destination = @rkey[Pandora::Crypto::KV_Creator]
                       text = nil
                       if row.is_a? Array
                         id = row[0]
@@ -1252,7 +1252,7 @@ module Pandora
 
                       values = {:destination=>destination, :text=>text, :state=>2, \
                         :creator=>creator, :created=>created, :modified=>time_now}
-                      model = PandoraUtils.get_model('Message', @recv_models)
+                      model = Pandora::Utils.get_model('Message', @recv_models)
                       panhash = model.panhash(values)
                       values['panhash'] = panhash
                       res = model.update(values, nil, nil)
@@ -1271,8 +1271,8 @@ module Pandora
                         #talkview.before_addition(t)
                         #talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
                         #talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
-                        myname = PandoraCrypto.short_name_of_person(@rkey)
-                        #dude_name = PandoraCrypto.short_name_of_person(@skey, nil, 0, myname)
+                        myname = Pandora::Crypto.short_name_of_person(@rkey)
+                        #dude_name = Pandora::Crypto.short_name_of_person(@skey, nil, 0, myname)
                         #talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', 'dude_bold')
                         #talkview.buffer.insert(talkview.buffer.end_iter, ' '+text)
                         #talkview.after_addition
@@ -1303,14 +1303,14 @@ module Pandora
                       p log_mes+'===ECC_Query_Rel'
                       from_time = rdata[0, 4].unpack('N')[0]
                       pankinds = rdata[4..-1]
-                      trust = @skey[PandoraCrypto::KV_Trust]
+                      trust = @skey[Pandora::Crypto::KV_Trust]
                       trust = -1.0 if not (trust.is_a? Float)
                       p log_mes+'from_time, pankinds, trust='+[from_time, pankinds, trust].inspect
-                      pankinds = PandoraCrypto.allowed_kinds(trust, pankinds)
+                      pankinds = Pandora::Crypto.allowed_kinds(trust, pankinds)
                       p log_mes+'pankinds='+pankinds.inspect
 
-                      whyer = @rkey[PandoraCrypto::KV_Creator]
-                      answerer = @skey[PandoraCrypto::KV_Creator]
+                      whyer = @rkey[Pandora::Crypto::KV_Creator]
+                      answerer = @skey[Pandora::Crypto::KV_Creator]
                       key=nil
                       #ph_list = []
                       #ph_list << PandoraModel.signed_records(whyer, from_time, pankinds, \
@@ -1322,13 +1322,13 @@ module Pandora
                       #panhash_list = PandoraModel.get_panhashes_by_whyer(whyer, trust, from_time)
 
                       p log_mes+'ph_list='+ph_list.inspect
-                      ph_list = PandoraUtils.rubyobj_to_pson_elem(ph_list) if ph_list
+                      ph_list = Pandora::Utils.rubyobj_to_pson_elem(ph_list) if ph_list
                       @scmd = EC_News
                       @scode = ECC_News_Panhash
                       @sbuf = ph_list
                     when ECC_Query_Record  #EC_Request
                       p log_mes+'==ECC_Query_Record'
-                      two_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                      two_list, len = Pandora::Utils.pson_elem_to_rubyobj(rdata)
                       need_ph_list, foll_list = two_list
                       p log_mes+'need_ph_list, foll_list='+[need_ph_list, foll_list].inspect
                       created_list = []
@@ -1353,7 +1353,7 @@ module Pandora
                       if (need_ph_list.is_a? Array) and (need_ph_list.size>0)
                         p log_mes+'need_ph_list='+need_ph_list.inspect
                         need_ph_list.each do |panhash|
-                          kind = PandoraUtils.kind_from_panhash(panhash)
+                          kind = Pandora::Utils.kind_from_panhash(panhash)
                           p log_mes+[panhash, kind].inspect
                           p res = PandoraModel.get_record_by_panhash(kind, panhash, true, \
                             @send_models)
@@ -1363,7 +1363,7 @@ module Pandora
                       end
                       @scmd = EC_News
                       @scode = ECC_News_Record
-                      @sbuf = PandoraUtils.rubyobj_to_pson_elem([pson_records, created_list])
+                      @sbuf = Pandora::Utils.rubyobj_to_pson_elem([pson_records, created_list])
                     when ECC_Query_Fish
                       to_key = rdata
                       p '--ECC_Query_Fish to_key='+to_key.inspect
@@ -1395,7 +1395,7 @@ module Pandora
                   case rcode
                     when ECC_News_Panhash
                       p log_mes+'==ECC_News_Panhash'
-                      ph_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                      ph_list, len = Pandora::Utils.pson_elem_to_rubyobj(rdata)
                       p log_mes+'ph_list, len='+[ph_list, len].inspect
                       # Check non-existing records
                       need_ph_list = PandoraModel.needed_records(ph_list, @send_models)
@@ -1403,8 +1403,8 @@ module Pandora
 
                       two_list = [need_ph_list]
 
-                      whyer = @rkey[PandoraCrypto::KV_Creator] #me
-                      answerer = @skey[PandoraCrypto::KV_Creator]
+                      whyer = @rkey[Pandora::Crypto::KV_Creator] #me
+                      answerer = @skey[Pandora::Crypto::KV_Creator]
                       p '[whyer, answerer]='+[whyer, answerer].inspect
                       follower = nil
                       from_time = Time.now.to_i - 10*24*3600
@@ -1412,13 +1412,13 @@ module Pandora
                       foll_list = PandoraModel.follow_records(follower, from_time, \
                         pankinds, @send_models)
                       two_list << foll_list
-                      two_list = PandoraUtils.rubyobj_to_pson_elem(two_list)
+                      two_list = Pandora::Utils.rubyobj_to_pson_elem(two_list)
                       @scmd = EC_Query
                       @scode = ECC_Query_Record
                       @sbuf = two_list
                     when ECC_News_Record
                       p log_mes+'==ECC_News_Record'
-                      two_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                      two_list, len = Pandora::Utils.pson_elem_to_rubyobj(rdata)
                       pson_records, created_list = two_list
                       p log_mes+'pson_records, created_list='+[pson_records, created_list].inspect
                       PandoraModel.save_records(pson_records, @recv_models)
@@ -1427,7 +1427,7 @@ module Pandora
                         @scmd = EC_Query
                         @scode = ECC_Query_Record
                         foll_list = nil
-                        @sbuf = PandoraUtils.rubyobj_to_pson_elem([need_ph_list, foll_list])
+                        @sbuf = Pandora::Utils.rubyobj_to_pson_elem([need_ph_list, foll_list])
                       end
                     when ECC_News_Fish
                       fish = rdata
@@ -1897,7 +1897,7 @@ module Pandora
               # Send cicle
               # RU: Цикл отправки
               inquirer_step = IS_ResetMessage
-              message_model = PandoraUtils.get_model('Message', @send_models)
+              message_model = Pandora::Utils.get_model('Message', @send_models)
               p log_mes+'ЦИКЛ ОТПРАВКИ начало: @conn_state='+@conn_state.inspect
 
               while (@conn_state != CS_Disconnected)
@@ -1967,8 +1967,8 @@ module Pandora
                   case inquirer_step
                     when IS_ResetMessage
                       # если что-то отправлено, но не получено, то повторить
-                      mypanhash = PandoraCrypto.current_user_or_key(true)
-                      receiver = @skey[PandoraCrypto::KV_Creator]
+                      mypanhash = Pandora::Crypto.current_user_or_key(true)
+                      receiver = @skey[Pandora::Crypto::KV_Creator]
                       if (receiver.is_a? String) and (receiver.bytesize>0) \
                       and (((conn_mode & CM_Hunter) != 0) or (mypanhash != receiver))
                         filter = {'destination'=>receiver, 'state'=>1}
@@ -1977,8 +1977,8 @@ module Pandora
                       inquirer_step += 1
                     when IS_CreatorCheck
                       # если собеседник неизвестен, запросить анкету
-                      creator = @skey[PandoraCrypto::KV_Creator]
-                      kind = PandoraUtils.kind_from_panhash(creator)
+                      creator = @skey[Pandora::Crypto::KV_Creator]
+                      kind = Pandora::Utils.kind_from_panhash(creator)
                       res = PandoraModel.get_record_by_panhash(kind, creator, nil, @send_models, 'id')
                       p log_mes+'Whyer: CreatorCheck  creator='+creator.inspect
                       if not res
@@ -1990,8 +1990,8 @@ module Pandora
                       # запросить список новых панхэшей
                       pankinds = 1.chr + 11.chr
                       from_time = Time.now.to_i - 10*24*3600
-                      #whyer = @rkey[PandoraCrypto::KV_Creator]
-                      #answerer = @skey[PandoraCrypto::KV_Creator]
+                      #whyer = @rkey[Pandora::Crypto::KV_Creator]
+                      #answerer = @skey[Pandora::Crypto::KV_Creator]
                       #trust=nil
                       #key=nil
                       #models=nil
@@ -2029,7 +2029,7 @@ module Pandora
                       buf.data = recv_media_chunk
                       buf.timestamp = Time.now.to_i * Gst::NSECOND
                       dialog.appsrcs[cannel].push_buffer(buf)
-                      #recv_media_chunk = PandoraUtils.get_block_from_queue(dialog.recv_media_queue[cannel], $media_buf_size)
+                      #recv_media_chunk = Pandora::Utils.get_block_from_queue(dialog.recv_media_queue[cannel], $media_buf_size)
                     else
                       cannel += 1
                     end
@@ -2048,7 +2048,7 @@ module Pandora
                 and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
                   fast_data = true
                   @send_state = (send_state & (~CSF_Message))
-                  receiver = @skey[PandoraCrypto::KV_Creator]
+                  receiver = @skey[Pandora::Crypto::KV_Creator]
                   if @skey and receiver
                     filter = {'destination'=>receiver, 'state'=>0}
                     fields = 'id, creator, created, text'
@@ -2126,12 +2126,12 @@ module Pandora
                 end
 
           # проверка новых заявок на рыбалку
-          fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
+          fish_order = pool.fish_orders.get_block_from_queue(Pandora::Net::Pool::FishQueueSize, self)
           if fish_order
             p 'New fish order: '+fish_order.inspect
-            tokey = @skey[PandoraCrypto::KV_Panhash]
+            tokey = @skey[Pandora::Crypto::KV_Panhash]
             if fish_order == tokey
-                    Pandora.logger.debug  _('Fishing to')+': '+PandoraUtils.bytes_to_hex(tokey)
+                    Pandora.logger.debug  _('Fishing to')+': '+Pandora::Utils.bytes_to_hex(tokey)
                     add_send_segment(EC_Query, true, tokey, ECC_Query_Fish)
             end
           end
@@ -2222,7 +2222,7 @@ module Pandora
             @dialog = nil
           end
           @send_thread = nil
-          PandoraUtils.play_mp3('offline')
+          Pandora::Utils.play_mp3('offline')
         end
         #??
       end

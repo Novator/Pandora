@@ -652,13 +652,13 @@ module Pandora
           if ['integer', 'word', 'byte', 'lang', 'coord'].include? hfor
             if hfor == 'coord'
               if fval.is_a? String
-                fval = PandoraUtils.bytes_to_bigint(fval[2,4])
+                fval = Pandora::Utils.bytes_to_bigint(fval[2,4])
               end
               res = fval.to_i
-              coord = PandoraUtils.int_to_coord(res)
-              coord[0] = PandoraUtils.simplify_coord(coord[0])
-              coord[1] = PandoraUtils.simplify_coord(coord[1])
-              fval = PandoraUtils.coord_to_int(*coord)
+              coord = Pandora::Utils.int_to_coord(res)
+              coord[0] = Pandora::Utils.simplify_coord(coord[0])
+              coord[1] = Pandora::Utils.simplify_coord(coord[1])
+              fval = Pandora::Utils.coord_to_int(*coord)
               fval ||= res
               fval = 1 if (fval.is_a? Integer) and (fval==0)
             elsif not (fval.is_a? Integer)
@@ -676,7 +676,7 @@ module Pandora
             res += (1970-1900)*365   #mesure data from 1900
           else
             if fval.is_a? Integer
-              fval = PandoraUtils.bigint_to_bytes(fval)
+              fval = Pandora::Utils.bigint_to_bytes(fval)
             elsif fval.is_a? Float
               fval = fval.to_s
             end
@@ -720,8 +720,8 @@ module Pandora
             end
           end
           if res.is_a? Integer
-            res = AsciiString.new(PandoraUtils.bigint_to_bytes(res))
-            res = PandoraUtils.fill_zeros_from_left(res, hlen)
+            res = AsciiString.new(Pandora::Utils.bigint_to_bytes(res))
+            res = Pandora::Utils.fill_zeros_from_left(res, hlen)
           elsif not fval.is_a? String
             res = AsciiString.new(res.to_s)
           end
@@ -742,10 +742,10 @@ module Pandora
       def show_panhash(val, prefix=true)
         res = ''
         if prefix
-          res = PandoraUtils.bytes_to_hex(val[0,2])+' '
+          res = Pandora::Utils.bytes_to_hex(val[0,2])+' '
           val = val[2..-1]
         end
-        res2 = PandoraUtils.bytes_to_hex(val)
+        res2 = Pandora::Utils.bytes_to_hex(val)
         i = 0
         panhash_pattern.each do |pp|
           if (i>0) and (i<res2.size)
@@ -799,7 +799,7 @@ module Pandora
             fname = pat[0]
             if fname
               fval = namesvalues[fname]
-              if (pack_empty or (not PandoraUtils.value_is_empty?(fval)))
+              if (pack_empty or (not Pandora::Utils.value_is_empty?(fval)))
                 res[fname] = fval
               end
             end

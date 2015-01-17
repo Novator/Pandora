@@ -66,10 +66,10 @@ module Pandora
                 panhash = sel[0][0] if sel and (sel.size>0)
               end
             end
-            if PandoraUtils.panhash_nil?(panhash)
+            if Pandora::Utils.panhash_nil?(panhash)
               @entry.text = ''
             else
-              @entry.text = PandoraUtils.bytes_to_hex(panhash) if (panhash.is_a? String)
+              @entry.text = Pandora::Utils.bytes_to_hex(panhash) if (panhash.is_a? String)
             end
           end
           #yield if block_given?

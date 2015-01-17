@@ -10,6 +10,8 @@ module Pandora
   # RU: Вспомогательный класс Пандоры
   module Utils
 
+    include Pandora::Constants
+
     # Platform detection
     # RU: Определение платформы
     def self.os_family
@@ -568,26 +570,26 @@ module Pandora
         elsif view=='phash'
           if val.is_a? String
             if can_edit
-              val = PandoraUtils.bytes_to_hex(val)
+              val = bytes_to_hex(val)
               color = 'dark blue'
             else
-              val = PandoraUtils.bytes_to_hex(val[2,16])
+              val = bytes_to_hex(val[2,16])
               color = 'blue'
             end
           end
         elsif view=='panhash'
-          if val.is_a? String
+          if val.is_a? Stri1ng
             if can_edit
-              val = PandoraUtils.bytes_to_hex(val)
+              val = bytes_to_hex(val)
             else
-              val = PandoraUtils.bytes_to_hex(val[0,2])+' '+PandoraUtils.bytes_to_hex(val[2,16])
+              val = bytes_to_hex(val[0,2])+' '+bytes_to_hex(val[2,16])
             end
             color = 'navy'
           end
         elsif view=='hex'
           #val = val.to_i
-          val = PandoraUtils.bigint_to_bytes(val) if val.is_a? Integer
-          val = PandoraUtils.bytes_to_hex(val)
+          val = bigint_to_bytes(val) if val.is_a? Integer
+          val = bytes_to_hex(val)
           #end
           color = 'dark blue'
         elsif view=='boolean'
@@ -638,7 +640,7 @@ module Pandora
             if (type.is_a? String) and \
             ((['Bigint', 'Panhash', 'String', 'Blob', 'Text', 'Filename'].include? type) \
             or (type[0,7]=='Panhash'))
-              val = PandoraUtils.hex_to_bytes(val)
+              val = hex_to_bytes(val)
             else
               val = val.to_i(16)
             end
@@ -865,12 +867,12 @@ module Pandora
         when Integer
           type, count, neg = encode_pson_type(PT_Int, rubyobj)
           rubyobj = -rubyobj if neg
-          data << PandoraUtils.bigint_to_bytes(rubyobj)
+          data << bigint_to_bytes(rubyobj)
         when Time
           rubyobj = rubyobj.to_i
           type, count, neg = encode_pson_type(PT_Time, rubyobj)
           rubyobj = -rubyobj if neg
-          data << PandoraUtils.bigint_to_bytes(rubyobj)
+          data << bigint_to_bytes(rubyobj)
         when TrueClass, FalseClass
           if rubyobj
             data << [1].pack('C')
@@ -902,10 +904,10 @@ module Pandora
       res << [type].pack('C')
       data = AsciiString.new(data) if data.is_a? String
       if elem_size
-        res << PandoraUtils.fill_zeros_from_left(PandoraUtils.bigint_to_bytes(elem_size), \
+        res << fill_zeros_from_left(bigint_to_bytes(elem_size), \
           count+1) + data
       else
-        res << PandoraUtils.fill_zeros_from_left(data, count+1)
+        res << fill_zeros_from_left(data, count+1)
       end
       res = AsciiString.new(res)
     end
@@ -922,7 +924,7 @@ module Pandora
         basetype, vlen, neg = decode_pson_type(type)
         vlen += 1
         if data.bytesize >= len+vlen
-          int = PandoraUtils.bytes_to_int(data[len, vlen])
+          int = bytes_to_int(data[len, vlen])
           case basetype
             when PT_Int
               val = int
@@ -1029,7 +1031,7 @@ module Pandora
     # Create new base ID
     # RU: Создаёт новый идентификатор базы
     def self.create_base_id
-      res = PandoraUtils.fill_zeros_from_left(PandoraUtils.bigint_to_bytes(Time.now.to_i), 4)[0,4]
+      res = fill_zeros_from_left(bigint_to_bytes(Time.now.to_i), 4)[0,4]
       res << OpenSSL::Random.random_bytes(12)
       res
     end
@@ -1149,7 +1151,7 @@ module Pandora
           type = row[PF_Type]
           type = string_to_pantype(type) if type.is_a? String
           section = row[PF_Section]
-          section = PandoraUtils.get_param('section_'+section) if section.is_a? String
+          section = get_param('section_'+section) if section.is_a? String
           section ||= row[PF_Section].to_i
           values = { :name=>name, :desc=>row[PF_Desc],
             :value=>calc_default_param_val(type, row[PF_Setting]), :type=>type,
@@ -1177,8 +1179,8 @@ module Pandora
     # RU: Задаёт значение параметра
     def self.set_param(name, value, definition=nil)
       res = false
-      old_value, id = PandoraUtils.get_param(name, true)
-      param_model = PandoraUtils.get_model('Parameter')
+      old_value, id = get_param(name, true)
+      param_model = get_model('Parameter')
       if (value != old_value) and param_model
         values = {:value=>value, :modified=>Time.now.to_i}
         res = param_model.update(values, nil, 'id='+id.to_s)

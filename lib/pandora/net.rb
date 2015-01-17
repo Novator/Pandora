@@ -181,7 +181,7 @@ module Pandora
     # Open server socket and begin listen
     # RU: Открывает серверный сокет и начинает слушать
     def self.start_or_stop_listen
-      PandoraNet.get_exchange_params
+      get_exchange_params
       if $listen_thread
         server = $listen_thread[:listen_server_socket]
         $listen_thread[:need_to_listen] = false
@@ -190,9 +190,9 @@ module Pandora
         #$listen_thread.exit if $listen_thread
         $window.correct_lis_btn_state
       else
-        user = PandoraCrypto.current_user_or_key(true)
+        user = Pandora::Crypto.current_user_or_key(true)
         if user
-          $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
+          $window.set_status_field(Pandora::Gtk::SF_Listen, 'Listening', nil, true)
           Pandora.config.host = Pandora::Utils.get_param('listen_host')
           Pandora.config.port = Pandora::Utils.get_param('tcp_port')
           Pandora.config.host ||= 'any'
@@ -245,7 +245,7 @@ module Pandora
             end
             server.close if server and (not server.closed?)
             Pandora.logger.info _('Listener stops')+' '+addr_str if server
-            $window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
+            $window.set_status_field(Pandora::Gtk::SF_Listen, 'Not listen', nil, false)
             $listen_thread = nil
           end
         else
@@ -264,16 +264,16 @@ module Pandora
         $hunter_thread = nil
         $window.correct_hunt_btn_state
       else
-        user = PandoraCrypto.current_user_or_key(true)
+        user = Pandora::Crypto.current_user_or_key(true)
         if user
-          node_model = PandoraModel::Node.new
+          node_model = Pandora::Model::Node.new
           filter = 'addr<>"" OR domain<>""'
           flds = 'id, addr, domain, tport, key_hash'
           sel = node_model.select(filter, false, flds)
           if sel and sel.size>0
             $hunter_thread = Thread.new(node_model, filter, flds, sel) \
             do |node_model, filter, flds, sel|
-              $window.set_status_field(PandoraGtk::SF_Hunt, 'Hunting', nil, true)
+              $window.set_status_field(Pandora::Gtk::SF_Hunt, 'Hunting', nil, true)
               while round_count>0
                 if sel and sel.size>0
                   sel.each do |row|
@@ -301,7 +301,7 @@ module Pandora
                 end
               end
               $hunter_thread = nil
-              $window.set_status_field(PandoraGtk::SF_Hunt, 'No hunt', nil, false)
+              $window.set_status_field(Pandora::Gtk::SF_Hunt, 'No hunt', nil, false)
             end
           else
             $window.correct_hunt_btn_state
@@ -313,7 +313,7 @@ module Pandora
             dialog.default_response = Gtk::Dialog::RESPONSE_OK
             dialog.icon = $window.icon
             if (dialog.run == Gtk::Dialog::RESPONSE_OK)
-              PandoraGtk.show_panobject_list(PandoraModel::Node, nil, nil, true)
+              PandoraGtk.show_panobject_list(Pandora::Model::Node, nil, nil, true)
             end
             dialog.destroy
           end

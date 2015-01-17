@@ -252,22 +252,22 @@ module Pandora
               end
             end
           when 'Listen'
-            PandoraNet.start_or_stop_listen
+            Pandora::Net.start_or_stop_listen
           when 'Hunt'
-            PandoraNet.hunt_nodes
+            Pandora::Net.hunt_nodes
           when 'Authorize'
-            key = PandoraCrypto.current_key(false, false)
+            key = Pandora::Crypto.current_key(false, false)
             if key and $listen_thread
-              PandoraNet.start_or_stop_listen
+              Pandora::Net.start_or_stop_listen
             end
-            key = PandoraCrypto.current_key(true)
+            key = Pandora::Crypto.current_key(true)
           when 'Wizard'
             from_time = Time.now.to_i - 5*24*3600
             trust = 0.5
-            #list = PandoraModel.public_records(nil, nil, nil, 1.chr)
-            #list = PandoraModel.follow_records
-            #list = PandoraModel.get_panhashes_by_kinds([1,11], from_time)
-            list = PandoraModel.created_records(nil, nil, nil, nil)
+            #list = Pandora::Model.public_records(nil, nil, nil, 1.chr)
+            #list = Pandora::Model.follow_records
+            #list = Pandora::Model.get_panhashes_by_kinds([1,11], from_time)
+            list = Pandora::Model.created_records(nil, nil, nil, nil)
             p 'list='+list.inspect
 
             #if list
@@ -275,7 +275,7 @@ module Pandora
             #    p '----------------'
             #    kind = PandoraUtils.kind_from_panhash(panhash)
             #    p [panhash, kind].inspect
-            #    p res = PandoraModel.get_record_by_panhash(kind, panhash, true)
+            #    p res = Pandora::Model.get_record_by_panhash(kind, panhash, true)
             #  end
             #end
 
@@ -309,20 +309,20 @@ module Pandora
 
             p data = 'Тестовое сообщение!'
 
-            cipher_hash = PandoraCrypto.encode_cipher_and_hash(PandoraCrypto::KT_Rsa | \
+            cipher_hash = Pandora::Crypto.encode_cipher_and_hash(PandoraCrypto::KT_Rsa | \
               PandoraCrypto::KL_bit2048, PandoraCrypto::KH_None)
-            p cipher_vec = PandoraCrypto.generate_key(PandoraCrypto::KT_Bf, cipher_hash)
+            p cipher_vec = Pandora::Crypto.generate_key(PandoraCrypto::KT_Bf, cipher_hash)
 
             p 'initkey'
-            p cipher_vec = PandoraCrypto.init_key(cipher_vec)
+            p cipher_vec = Pandora::Crypto.init_key(cipher_vec)
             p cipher_vec[PandoraCrypto::KV_Pub] = cipher_vec[PandoraCrypto::KV_Obj].random_iv
 
             p 'coded:'
 
-            p data = PandoraCrypto.recrypt(cipher_vec, data, true)
+            p data = Pandora::Crypto.recrypt(cipher_vec, data, true)
 
             p 'decoded:'
-            puts data = PandoraCrypto.recrypt(cipher_vec, data, false)
+            puts data = Pandora::Crypto.recrypt(cipher_vec, data, false)
 
             #typ, count = encode_pson_type(PT_Str, 0x1FF)
             #p decode_pson_type(typ)
@@ -339,8 +339,8 @@ module Pandora
             Pandora::Gtk.show_session_panel
           else
             panobj_id = command
-            if PandoraModel.const_defined? panobj_id
-              panobject_class = PandoraModel.const_get(panobj_id)
+            if Pandora::Model.const_defined? panobj_id
+              panobject_class = Pandora::Model.const_get(panobj_id)
               Pandora::Gtk.show_panobject_list(panobject_class, widget)
             else
               Pandora.logger.warn  _('Menu handler is not defined yet')+' "'+panobj_id+'"'
@@ -463,7 +463,7 @@ module Pandora
                 index = nil
                 case command
                   when 'Listen'
-                    index = SF_Listen
+                    index = Pandora::Gtk::SF_Listen
                   when 'Hunt'
                     index = SF_Hunt
                 end
@@ -684,7 +684,7 @@ module Pandora
           while (not $window.notebook.destroyed?) and ($window.notebook.children.count>0)
             $window.notebook.children[0].destroy if (not $window.notebook.children[0].destroyed?)
           end
-          PandoraCrypto.reset_current_key
+          Pandora::Crypto.reset_current_key
           $statusicon.visible = false if ($statusicon and (not $statusicon.destroyed?))
           $window = nil
           Gtk.main_quit
@@ -696,7 +696,7 @@ module Pandora
           and event.state.control_mask?)
             $window.hide
           elsif event.keyval == Gdk::Keyval::GDK_F5
-            PandoraNet.hunt_nodes
+            Pandora::Net.hunt_nodes
           elsif event.state.control_mask? and (Gdk::Keyval::GDK_0..Gdk::Keyval::GDK_9).include?(event.keyval)
             num = $window.notebook.n_pages
             if num>0
@@ -723,7 +723,7 @@ module Pandora
             if curpage.is_a? Pandora::Gtk::PanobjScrollWin
               res = false
             else
-              res = Pandora::Gtk.show_panobject_list(PandoraModel::Person)
+              res = Pandora::Gtk.show_panobject_list(Pandora::Model::Person)
               res = (res != nil)
             end
           else
@@ -763,7 +763,7 @@ module Pandora
           if $window.do_on_show > 0
             key = Pandora::Crypto.current_key(false, true)
             if ($window.do_on_show>1) and key and (not $listen_thread)
-              PandoraNet.start_or_stop_listen
+              Pandora::Net.start_or_stop_listen
             end
             $window.do_on_show = 0
           end

@@ -371,7 +371,7 @@ module Pandora
         vouch_btn.signal_connect('clicked') do |widget|
           if not widget.destroyed?
             if widget.inconsistent?
-              if PandoraCrypto.current_user_or_key(false)
+              if Pandora::Crypto.current_user_or_key(false)
                 widget.inconsistent = false
                 widget.active = true
                 trust0 ||= 0.1
@@ -444,7 +444,7 @@ module Pandora
         public_btn.signal_connect('clicked') do |widget|
           if not widget.destroyed?
             if widget.inconsistent?
-              if PandoraCrypto.current_user_or_key(false)
+              if Pandora::Crypto.current_user_or_key(false)
                 widget.inconsistent = false
                 widget.active = true
                 pub_lev0 ||= 0.0

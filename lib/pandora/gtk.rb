@@ -557,14 +557,14 @@ module Pandora
 
             dialog.keep_btn.active = (Pandora::Model::PSF_Support & panstate)>0
 
-            pub_level = Pandora::Model.act_relation(nil, panhash0, RK_MinPublic, :check)
+            pub_level = Pandora::Model.act_relation(nil, panhash0, Pandora::Model::RK_MinPublic, :check)
             dialog.public_btn.active = pub_level
             dialog.public_btn.inconsistent = (pub_level == nil)
-            dialog.public_scale.value = (pub_level-RK_MinPublic-10)/10.0 if pub_level
+            dialog.public_scale.value = (pub_level-Pandora::Model::RK_MinPublic-10)/10.0 if pub_level
             dialog.public_scale.sensitive = pub_level
 
             p 'follow'
-            p follow = Pandora::Model.act_relation(nil, panhash0, RK_Follow, :check)
+            p follow = Pandora::Model.act_relation(nil, panhash0, Pandora::Model::RK_Follow, :check)
             dialog.follow_btn.active = follow
             dialog.follow_btn.inconsistent = (follow == nil)
 
@@ -722,25 +722,25 @@ module Pandora
                 end
 
                 if not dialog.follow_btn.inconsistent?
-                  Pandora::Model.act_relation(nil, panhash0, RK_Follow, :delete, \
+                  Pandora::Model.act_relation(nil, panhash0, Pandora::Model::RK_Follow, :delete, \
                     true, true)
                   if (panhash != panhash0)
-                    Pandora::Model.act_relation(nil, panhash, RK_Follow, :delete, \
+                    Pandora::Model.act_relation(nil, panhash, Pandora::Model::RK_Follow, :delete, \
                       true, true)
                   end
                   if dialog.follow_btn.active?
-                    Pandora::Model.act_relation(nil, panhash, RK_Follow, :create, \
+                    Pandora::Model.act_relation(nil, panhash, Pandora::Model::RK_Follow, :create, \
                       true, true)
                   end
                 end
 
                 if not dialog.public_btn.inconsistent?
-                  public_level = RK_MinPublic + (dialog.public_scale.value*10).round+10
+                  public_level = Pandora::Model::RK_MinPublic + (dialog.public_scale.value*10).round+10
                   p 'public_level='+public_level.inspect
-                  Pandora::Model.act_relation(nil, panhash0, RK_MinPublic, :delete, \
+                  Pandora::Model.act_relation(nil, panhash0, Pandora::Model::RK_MinPublic, :delete, \
                     true, true)
                   if (panhash != panhash0)
-                    Pandora::Model.act_relation(nil, panhash, RK_MinPublic, :delete, \
+                    Pandora::Model.act_relation(nil, panhash, Pandora::Model::RK_MinPublic, :delete, \
                       true, true)
                   end
                   if dialog.public_btn.active?
