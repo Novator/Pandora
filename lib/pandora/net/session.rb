@@ -295,7 +295,7 @@ module Pandora
             #???values = {:destination=>panhash, :text=>text, :state=>state, \
             #  :creator=>creator, :created=>time_now, :modified=>time_now}
             #      kind = Pandora::Utils.kind_from_panhash(panhash)
-            #      record = PandoraModel.get_record_by_panhash(kind, panhash, true, @recv_models)
+            #      record = Pandora::Model.get_record_by_panhash(kind, panhash, true, @recv_models)
             #      p log_mes+'EC_Request panhashes='+Pandora::Utils.bytes_to_hex(panhash).inspect
             asbuf = Pandora::Utils.rubyobj_to_pson_elem(param)
           when EC_Bye
@@ -437,7 +437,7 @@ module Pandora
               if (@skey.is_a? Integer) and (@skey==0)
                 # unknown key, need request
                 @scmd = EC_Request
-                kind = PandoraModel::PK_Key
+                kind = Pandora::Model::PK_Key
                 @scode = kind
                 @sbuf = nil
                 @stage = ES_KeyRequest
@@ -1072,7 +1072,7 @@ module Pandora
             kind = rcode
             p log_mes+'EC_Request  kind='+kind.to_s+'  stage='+@stage.to_s
             panhash = nil
-            if (kind==PandoraModel::PK_Key) and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
+            if (kind==Pandora::Model::PK_Key) and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
               panhash = params['mykey']
               p 'params[mykey]='+panhash
             end
@@ -1088,7 +1088,7 @@ module Pandora
               if panhashes.size==1
                 panhash = panhashes[0]
                 kind = Pandora::Utils.kind_from_panhash(panhash)
-                pson = PandoraModel.get_record_by_panhash(kind, panhash, false, @recv_models)
+                pson = Pandora::Model.get_record_by_panhash(kind, panhash, false, @recv_models)
                 if pson
                   @scmd = EC_Record
                   @scode = kind
@@ -1106,7 +1106,7 @@ module Pandora
                 rec_array = Array.new
                 panhashes.each do |panhash|
                   kind = Pandora::Utils.kind_from_panhash(panhash)
-                  record = PandoraModel.get_record_by_panhash(kind, panhash, true, @recv_models)
+                  record = Pandora::Model.get_record_by_panhash(kind, panhash, true, @recv_models)
                   p log_mes+'EC_Request panhashes='+Pandora::Utils.bytes_to_hex(panhash).inspect
                   rec_array << record if record
                 end
@@ -1132,14 +1132,14 @@ module Pandora
             p log_mes+' EC_Record: [rcode, rdata.bytesize]='+[rcode, rdata.bytesize].inspect
             if rcode>0
               kind = rcode
-              if (@stage==ES_Exchange) or ((kind==PandoraModel::PK_Key) and (@stage==ES_KeyRequest))
+              if (@stage==ES_Exchange) or ((kind==Pandora::Model::PK_Key) and (@stage==ES_KeyRequest))
                 lang = rdata[0].ord
                 values = Pandora::Utils.pson_to_namehash(rdata[1..-1])
                 panhash = nil
                 if @stage==ES_KeyRequest
                   panhash = params['srckey']
                 end
-                res = PandoraModel.save_record(kind, lang, values, @recv_models, panhash)
+                res = Pandora::Model.save_record(kind, lang, values, @recv_models, panhash)
                 if res
                   if @stage==ES_KeyRequest
                     @stage = ES_Protocol
@@ -1156,7 +1156,7 @@ module Pandora
             elsif (@stage==ES_Exchange)
               records, len = Pandora::Utils.pson_elem_to_rubyobj(rdata)
               p log_mes+"!record2! recs="+records.inspect
-              PandoraModel.save_records(records, @recv_models)
+              Pandora::Model.save_records(records, @recv_models)
             else
               err_scmd('Records came on wrong stage')
             end
@@ -1182,7 +1182,7 @@ module Pandora
                   while (i<confirms.bytesize)
                     kind = confirms[i].ord
                     if (not prev_kind) or (kind != prev_kind)
-                      panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+                      panobjectclass = Pandora::Model.panobjectclass_by_kind(kind)
                       model = Pandora::Utils.get_model(panobjectclass.ider, @recv_models)
                       prev_kind = kind
                     end
@@ -1260,7 +1260,7 @@ module Pandora
                         while (@confirm_queue.single_read_state == Pandora::Utils::RoundQueue::QS_Full) do
                           sleep(0.02)
                         end
-                        @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
+                        @confirm_queue.add_block_to_queue([Pandora::Model::PK_Message].pack('C') \
                           +[id].pack('N'))
                       end
 
@@ -1313,13 +1313,13 @@ module Pandora
                       answerer = @skey[Pandora::Crypto::KV_Creator]
                       key=nil
                       #ph_list = []
-                      #ph_list << PandoraModel.signed_records(whyer, from_time, pankinds, \
+                      #ph_list << Pandora::Model.signed_records(whyer, from_time, pankinds, \
                       #  trust, key, models)
-                      ph_list = PandoraModel.public_records(whyer, trust, from_time, \
+                      ph_list = Pandora::Model.public_records(whyer, trust, from_time, \
                         pankinds, @send_models)
 
-                      #panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
-                      #panhash_list = PandoraModel.get_panhashes_by_whyer(whyer, trust, from_time)
+                      #panhash_list = Pandora::Model.get_panhashes_by_kinds(kind_list, from_time)
+                      #panhash_list = Pandora::Model.get_panhashes_by_whyer(whyer, trust, from_time)
 
                       p log_mes+'ph_list='+ph_list.inspect
                       ph_list = Pandora::Utils.rubyobj_to_pson_elem(ph_list) if ph_list
@@ -1334,11 +1334,11 @@ module Pandora
                       created_list = []
                       if (foll_list.is_a? Array) and (foll_list.size>0)
                         from_time = Time.now.to_i - 7*24*3600
-                        kinds = (1..255).to_a - [PandoraModel::PK_Message]
+                        kinds = (1..255).to_a - [Pandora::Model::PK_Message]
                         p 'kinds='+kinds.inspect
                         foll_list.each do |panhash|
-                          if panhash[0].ord==PandoraModel::PK_Person
-                            cr_l = PandoraModel.created_records(panhash, from_time, kinds, @send_models)
+                          if panhash[0].ord==Pandora::Model::PK_Person
+                            cr_l = Pandora::Model.created_records(panhash, from_time, kinds, @send_models)
                             p 'cr_l='+cr_l.inspect
                             created_list = created_list + cr_l if cr_l
                           end
@@ -1355,7 +1355,7 @@ module Pandora
                         need_ph_list.each do |panhash|
                           kind = Pandora::Utils.kind_from_panhash(panhash)
                           p log_mes+[panhash, kind].inspect
-                          p res = PandoraModel.get_record_by_panhash(kind, panhash, true, \
+                          p res = Pandora::Model.get_record_by_panhash(kind, panhash, true, \
                             @send_models)
                           pson_records << res if res
                         end
@@ -1398,7 +1398,7 @@ module Pandora
                       ph_list, len = Pandora::Utils.pson_elem_to_rubyobj(rdata)
                       p log_mes+'ph_list, len='+[ph_list, len].inspect
                       # Check non-existing records
-                      need_ph_list = PandoraModel.needed_records(ph_list, @send_models)
+                      need_ph_list = Pandora::Model.needed_records(ph_list, @send_models)
                       p log_mes+'need_ph_list='+ need_ph_list.inspect
 
                       two_list = [need_ph_list]
@@ -1409,7 +1409,7 @@ module Pandora
                       follower = nil
                       from_time = Time.now.to_i - 10*24*3600
                       pankinds = nil
-                      foll_list = PandoraModel.follow_records(follower, from_time, \
+                      foll_list = Pandora::Model.follow_records(follower, from_time, \
                         pankinds, @send_models)
                       two_list << foll_list
                       two_list = Pandora::Utils.rubyobj_to_pson_elem(two_list)
@@ -1421,9 +1421,9 @@ module Pandora
                       two_list, len = Pandora::Utils.pson_elem_to_rubyobj(rdata)
                       pson_records, created_list = two_list
                       p log_mes+'pson_records, created_list='+[pson_records, created_list].inspect
-                      PandoraModel.save_records(pson_records, @recv_models)
+                      Pandora::Model.save_records(pson_records, @recv_models)
                       if (created_list.is_a? Array) and (created_list.size>0)
-                        need_ph_list = PandoraModel.needed_records(created_list, @send_models)
+                        need_ph_list = Pandora::Model.needed_records(created_list, @send_models)
                         @scmd = EC_Query
                         @scode = ECC_Query_Record
                         foll_list = nil
@@ -1979,7 +1979,7 @@ module Pandora
                       # если собеседник неизвестен, запросить анкету
                       creator = @skey[Pandora::Crypto::KV_Creator]
                       kind = Pandora::Utils.kind_from_panhash(creator)
-                      res = PandoraModel.get_record_by_panhash(kind, creator, nil, @send_models, 'id')
+                      res = Pandora::Model.get_record_by_panhash(kind, creator, nil, @send_models, 'id')
                       p log_mes+'Whyer: CreatorCheck  creator='+creator.inspect
                       if not res
                         p log_mes+'Whyer: CreatorCheck  Request!'
@@ -1996,9 +1996,9 @@ module Pandora
                       #key=nil
                       #models=nil
                       #ph_list = []
-                      #ph_list << PandoraModel.signed_records(whyer, from_time, pankinds, \
+                      #ph_list << Pandora::Model.signed_records(whyer, from_time, pankinds, \
                       #  trust, key, models)
-                      #ph_list << PandoraModel.public_records(whyer, trust, from_time, \
+                      #ph_list << Pandora::Model.public_records(whyer, trust, from_time, \
                       #  pankinds, models)
                       set_relations_query(pankinds, from_time, true)
                       inquirer_step += 1

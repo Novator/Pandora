@@ -578,7 +578,7 @@ module Pandora
             end
           end
         elsif view=='panhash'
-          if val.is_a? Stri1ng
+          if val.is_a? String
             if can_edit
               val = bytes_to_hex(val)
             else

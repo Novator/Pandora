@@ -4,6 +4,12 @@ module Pandora
     # Round queue buffer
     # RU: Циклический буфер
     class RoundQueue < Mutex
+      MaxQueue = 20
+
+      QS_Empty     = 0
+      QS_NotEmpty  = 1
+      QS_Full      = 2
+
       # Init empty queue. Poly read is possible
       # RU: Создание пустой очереди. Возможно множественное чтение
       attr_accessor :queue, :write_ind, :read_ind
@@ -19,7 +25,6 @@ module Pandora
         end
       end
 
-      MaxQueue = 20
 
       # Add block to queue
       # RU: Добавить блок в очередь
@@ -38,10 +43,6 @@ module Pandora
         end
         res
       end
-
-      QS_Empty     = 0
-      QS_NotEmpty  = 1
-      QS_Full      = 2
 
       # State of single queue
       # RU: Состояние одиночной очереди
@@ -66,18 +67,22 @@ module Pandora
       # Get block from queue (set "reader" like 0,1,2..)
       # RU: Взять блок из очереди (задавай "reader" как 0,1,2..)
       def get_block_from_queue(max=MaxQueue, reader=nil)
-        block = nil
+        block    = nil
         pointers = nil
+
         synchronize do
-          ind = @read_ind
-          if reader
-            pointers = ind
-            ind = pointers[reader]
-            ind ||= -1
-          end
+          #Temporarily how ;)
+          ind = -1
+          # if reader
+          #   pointers = ind
+          #   ind = pointers[reader]
+          #   ind ||= -1
+          # end
+
           #p 'get_block_from_queue:  [reader, ind, write_ind]='+[reader, ind, write_ind].inspect
+
           if ind != write_ind
-            if ind<max
+            if ind < max
               ind += 1
             else
               ind = 0
