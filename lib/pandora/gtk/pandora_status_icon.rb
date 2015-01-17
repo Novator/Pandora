@@ -105,7 +105,7 @@ module Pandora
         alabel.set_text(_('All parameters')+'..', true)
         menuitem.signal_connect('activate') do |w|
           icon_activated(false, true)
-          Pandora::Gtk.show_panobject_list(PandoraModel::Parameter, nil, nil, true)
+          Pandora::Gtk.show_panobject_list(Pandora::Model::Parameter, nil, nil, true)
         end
         menu.append(menuitem)
 

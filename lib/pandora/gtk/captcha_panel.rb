@@ -39,7 +39,7 @@ module Pandora
           label = ::Gtk::Label.new(_('Far node'))
           vbox.pack_start(label, false, false, 2)
           entry = ::Gtk::Entry.new
-          node_text = PandoraUtils.bytes_to_hex(srckey)
+          node_text = Pandora::Utils.bytes_to_hex(srckey)
           node_text = node if (not node_text) or (node_text=='')
           node_text ||= ''
           entry.text = node_text

@@ -27,7 +27,7 @@ module Pandora
 
         p 'TALK INIT [known_node, a_room_id, a_targets]='+[known_node, a_room_id, a_targets].inspect
 
-        model = PandoraUtils.get_model('Node')
+        model = Pandora::Utils.get_model('Node')
 
         set_policy(::Gtk::POLICY_AUTOMATIC, ::Gtk::POLICY_AUTOMATIC)
         #sw.name = title
@@ -165,7 +165,7 @@ module Pandora
             false
           end
         end
-        PandoraGtk.hack_enter_bug(editbox)
+        Pandora::Gtk.hack_enter_bug(editbox)
 
         hpaned2 = ::Gtk::HPaned.new
         @area_send = ViewDrawingArea.new
@@ -217,7 +217,7 @@ module Pandora
         list_store = ::Gtk::ListStore.new(TrueClass, String)
         targets[CSI_Nodes].each do |keybase|
           user_iter = list_store.append
-          user_iter[CL_Name] = PandoraUtils.bytes_to_hex(keybase)
+          user_iter[CL_Name] = Pandora::Utils.bytes_to_hex(keybase)
         end
 
         # create tree view
@@ -363,8 +363,8 @@ module Pandora
         if mes
           notice = false
           if not myname
-            mykey = PandoraCrypto.current_key(false, false)
-            myname = PandoraCrypto.short_name_of_person(mykey)
+            mykey = Pandora::Crypto.current_key(false, false)
+            myname = Pandora::Crypto.short_name_of_person(mykey)
           end
 
           time_style = 'you'
@@ -372,9 +372,9 @@ module Pandora
           user_name = nil
           if key_or_panhash
             if key_or_panhash.is_a? String
-              user_name = PandoraCrypto.short_name_of_person(nil, key_or_panhash, 0, myname)
+              user_name = Pandora::Crypto.short_name_of_person(nil, key_or_panhash, 0, myname)
             else
-              user_name = PandoraCrypto.short_name_of_person(key_or_panhash, nil, 0, myname)
+              user_name = Pandora::Crypto.short_name_of_person(key_or_panhash, nil, 0, myname)
             end
             time_style = 'dude'
             name_style = 'dude_bold'
@@ -382,8 +382,8 @@ module Pandora
           else
             user_name = myname
             #if not user_name
-            #  mykey = PandoraCrypto.current_key(false, false)
-            #  user_name = PandoraCrypto.short_name_of_person(mykey)
+            #  mykey = Pandora::Crypto.current_key(false, false)
+            #  user_name = Pandora::Crypto.short_name_of_person(mykey)
             #end
           end
           user_name = 'noname' if (not user_name) or (user_name=='')
@@ -394,7 +394,7 @@ module Pandora
           #vals = time_now.to_a
           #ny, nm, nd = vals[5], vals[4], vals[3]
           #midnight = Time.local(y, m, d)
-          ##midnight = PandoraUtils.calc_midnight(time_now)
+          ##midnight = Pandora::Utils.calc_midnight(time_now)
 
           #if created
           #  vals = modified.to_a
@@ -422,10 +422,10 @@ module Pandora
           #'(28.07.2013 15:59:33)'
 
           time_str = ''
-          time_str << PandoraUtils.time_to_dialog_str(created, time_now) if created
+          time_str << Pandora::Utils.time_to_dialog_str(created, time_now) if created
           if modified and ((not created) or ((modified.to_i-created.to_i).abs>30))
             time_str << ' ' if (time_str != '')
-            time_str << '('+PandoraUtils.time_to_dialog_str(modified, time_now)+')'
+            time_str << '('+Pandora::Utils.time_to_dialog_str(modified, time_now)+')'
           end
 
           talkview.before_addition(time_now) if to_end.nil?
@@ -448,13 +448,13 @@ module Pandora
           messages = []
           fields = 'creator, created, destination, state, text, panstate, modified'
 
-          mypanhash = PandoraCrypto.current_user_or_key(true)
-          myname = PandoraCrypto.short_name_of_person(nil, mypanhash)
+          mypanhash = Pandora::Crypto.current_user_or_key(true)
+          myname = Pandora::Crypto.short_name_of_person(nil, mypanhash)
 
           persons = targets[CSI_Persons]
           nil_create_time = false
           persons.each do |person|
-            model = PandoraUtils.get_model('Message')
+            model = Pandora::Utils.get_model('Message')
             max_message2 = max_message
             max_message2 = max_message * 2 if (person == mypanhash)
             sel = model.select({:creator=>person, :destination=>mypanhash}, false, fields, \
@@ -539,7 +539,7 @@ module Pandora
           if person_recs[i]
             aname, afamily = person_recs[i]
           else
-            aname, afamily = PandoraCrypto.name_and_family_of_person(nil, person)
+            aname, afamily = Pandora::Crypto.name_and_family_of_person(nil, person)
             person_recs[i] = [aname, afamily]
           end
         end
@@ -554,7 +554,7 @@ module Pandora
           @sessions << session if (not @sessions.include?(session))
         else
           @sessions.delete(session)
-          session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
+          session.conn_mode = (session.conn_mode & (~Pandora::Net::CM_KeepHere))
           session.dialog = nil
         end
         active = (@sessions.size>0)
@@ -571,7 +571,7 @@ module Pandora
       # RU: Отправляет сообщение на узел
       def add_and_send_mes(text)
         res = false
-        creator = PandoraCrypto.current_user_or_key(true)
+        creator = Pandora::Crypto.current_user_or_key(true)
         if creator
           online_button.active = true if (not online_button.active?)
           #Thread.pass
@@ -581,7 +581,7 @@ module Pandora
             #p 'ADD_MESS panhash='+panhash.inspect
             values = {:destination=>panhash, :text=>text, :state=>state, \
               :creator=>creator, :created=>time_now, :modified=>time_now}
-            model = PandoraUtils.get_model('Message')
+            model = Pandora::Utils.get_model('Message')
             panhash = model.panhash(values)
             values['panhash'] = panhash
             res1 = model.update(values, nil, nil)
@@ -589,8 +589,8 @@ module Pandora
           end
           dlg_sessions = $window.pool.sessions_on_dialog(self)
           dlg_sessions.each do |session|
-            session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
-            session.send_state = (session.send_state | PandoraNet::CSF_Message)
+            session.conn_mode = (session.conn_mode | Pandora::Net::CM_KeepHere)
+            session.send_state = (session.send_state | Pandora::Net::CSF_Message)
           end
         end
         res
@@ -617,7 +617,7 @@ module Pandora
             tab_widget.label.modify_fg(::Gtk::STATE_NORMAL, color)
             tab_widget.label.modify_fg(::Gtk::STATE_ACTIVE, color)
             $statusicon.set_message(_('Message')+' ['+tab_widget.label.text+']')
-            PandoraUtils.play_mp3('message')
+            Pandora::Utils.play_mp3('message')
           end
           # run reading thread
           timer_setted = false
@@ -956,12 +956,12 @@ module Pandora
       def init_video_sender(start=true, just_upd_area=false)
         video_pipeline = $send_media_pipelines['video']
         if not start
-          if $webcam_xvimagesink and (PandoraUtils::elem_playing?($webcam_xvimagesink))
+          if $webcam_xvimagesink and (Pandora::Utils::elem_playing?($webcam_xvimagesink))
             $webcam_xvimagesink.pause
           end
           if just_upd_area
             area_send.set_expose_event(nil)
-            tsw = PandoraGtk.find_another_active_sender(self)
+            tsw = Pandora::Gtk.find_another_active_sender(self)
             if $webcam_xvimagesink and (not $webcam_xvimagesink.destroyed?) and tsw \
             and tsw.area_send and tsw.area_send.window
               link_sink_to_area($webcam_xvimagesink, tsw.area_send)
@@ -971,8 +971,8 @@ module Pandora
             area_send.queue_draw if area_send and (not area_send.destroyed?)
           else
             #$webcam_xvimagesink.xwindow_id = 0
-            count = PandoraGtk.nil_send_ptrind_by_room(room_id)
-            if video_pipeline and (count==0) and (not PandoraUtils::elem_stopped?(video_pipeline))
+            count = Pandora::Gtk.nil_send_ptrind_by_room(room_id)
+            if video_pipeline and (count==0) and (not Pandora::Utils::elem_stopped?(video_pipeline))
               video_pipeline.stop
               area_send.set_expose_event(nil)
               #p '==STOP!!'
@@ -1090,7 +1090,7 @@ module Pandora
             end
             if not just_upd_area
               #???
-              video_pipeline.stop if (not PandoraUtils::elem_stopped?(video_pipeline))
+              video_pipeline.stop if (not Pandora::Utils::elem_stopped?(video_pipeline))
               area_send.set_expose_event(nil)
             end
             #if not area_send.expose_event
@@ -1101,16 +1101,16 @@ module Pandora
             #  link_sink_to_area($webcam_xvimagesink, area_send)
             #end
             if just_upd_area
-              video_pipeline.play if (not PandoraUtils::elem_playing?(video_pipeline))
+              video_pipeline.play if (not Pandora::Utils::elem_playing?(video_pipeline))
             else
-              ptrind = PandoraGtk.set_send_ptrind_by_room(room_id)
-              count = PandoraGtk.nil_send_ptrind_by_room(nil)
+              ptrind = Pandora::Gtk.set_send_ptrind_by_room(room_id)
+              count = Pandora::Gtk.nil_send_ptrind_by_room(nil)
               if count>0
                 #Gtk.main_iteration
                 #???
                 p 'PLAAAAAAAAAAAAAAY 1'
-                p PandoraUtils::elem_playing?(video_pipeline)
-                video_pipeline.play if (not PandoraUtils::elem_playing?(video_pipeline))
+                p Pandora::Utils::elem_playing?(video_pipeline)
+                video_pipeline.play if (not Pandora::Utils::elem_playing?(video_pipeline))
                 p 'PLAAAAAAAAAAAAAAY 2'
                 #p '==*** PLAY'
               end
@@ -1149,7 +1149,7 @@ module Pandora
       # RU: Инициализирует приёмщика видео
       def init_video_receiver(start=true, can_play=true, init=true)
         if not start
-          if ximagesink and (PandoraUtils::elem_playing?(ximagesink))
+          if ximagesink and (Pandora::Utils::elem_playing?(ximagesink))
             if can_play
               ximagesink.pause
             else
@@ -1167,7 +1167,7 @@ module Pandora
               p 'init_video_receiver INIT'
               winos = (Pandora::Utils.os_family == 'windows')
               @recv_media_queue[1] ||= Pandora::Utils::RoundQueue.new
-              dialog_id = '_v'+PandoraUtils.bytes_to_hex(room_id[-6..-1])
+              dialog_id = '_v'+Pandora::Utils.bytes_to_hex(room_id[-6..-1])
               @recv_media_pipeline[1] = Gst::Pipeline.new('rpipe'+dialog_id)
               vidpipe = @recv_media_pipeline[1]
 
@@ -1225,7 +1225,7 @@ module Pandora
           #p '[recv_media_pipeline[1], can_play]='+[recv_media_pipeline[1], can_play].inspect
           if recv_media_pipeline[1] and can_play and area_recv.window
             #if (not area_recv.expose_event) and
-            if (not PandoraUtils::elem_playing?(recv_media_pipeline[1])) or (not PandoraUtils::elem_playing?(ximagesink))
+            if (not Pandora::Utils::elem_playing?(recv_media_pipeline[1])) or (not Pandora::Utils::elem_playing?(ximagesink))
               #p 'PLAYYYYYYYYYYYYYYYYYY!!!!!!!!!! '
               #ximagesink.stop
               #recv_media_pipeline[1].stop
@@ -1269,9 +1269,9 @@ module Pandora
         audio_pipeline = $send_media_pipelines['audio']
         #p 'init_audio_sender pipe='+audio_pipeline.inspect+'  btn='+snd_button.active?.inspect
         if not start
-          #count = PandoraGtk.nil_send_ptrind_by_room(room_id)
+          #count = Pandora::Gtk.nil_send_ptrind_by_room(room_id)
           #if audio_pipeline and (count==0) and (audio_pipeline.get_state != Gst::STATE_NULL)
-          if audio_pipeline and (not PandoraUtils::elem_stopped?(audio_pipeline))
+          if audio_pipeline and (not Pandora::Utils::elem_stopped?(audio_pipeline))
             audio_pipeline.stop
           end
         elsif (not self.destroyed?) and (not snd_button.destroyed?) and snd_button.active?
@@ -1354,10 +1354,10 @@ module Pandora
           end
 
           if audio_pipeline
-            ptrind = PandoraGtk.set_send_ptrind_by_room(room_id)
-            count = PandoraGtk.nil_send_ptrind_by_room(nil)
+            ptrind = Pandora::Gtk.set_send_ptrind_by_room(room_id)
+            count = Pandora::Gtk.nil_send_ptrind_by_room(nil)
             #p 'AAAAAAAAAAAAAAAAAAA count='+count.to_s
-            if (count>0) and (not PandoraUtils::elem_playing?(audio_pipeline))
+            if (count>0) and (not Pandora::Utils::elem_playing?(audio_pipeline))
             #if (audio_pipeline.get_state != Gst::STATE_PLAYING)
               audio_pipeline.play
             end
@@ -1391,7 +1391,7 @@ module Pandora
       # RU: Инициализирует приёмщика аудио
       def init_audio_receiver(start=true, can_play=true, init=true)
         if not start
-          if recv_media_pipeline[0] and (not PandoraUtils::elem_stopped?(recv_media_pipeline[0]))
+          if recv_media_pipeline[0] and (not Pandora::Utils::elem_stopped?(recv_media_pipeline[0]))
             recv_media_pipeline[0].stop
           end
         elsif (not self.destroyed?)
@@ -1400,7 +1400,7 @@ module Pandora
               Gst.init
               winos = (Pandora::Utils.os_family == 'windows')
               @recv_media_queue[0] ||= Pandora::Utils::RoundQueue.new
-              dialog_id = '_a'+PandoraUtils.bytes_to_hex(room_id[-6..-1])
+              dialog_id = '_a'+Pandora::Utils.bytes_to_hex(room_id[-6..-1])
               #p 'init_audio_receiver:  dialog_id='+dialog_id.inspect
               @recv_media_pipeline[0] = Gst::Pipeline.new('rpipe'+dialog_id)
               audpipe = @recv_media_pipeline[0]
@@ -1452,7 +1452,7 @@ module Pandora
             recv_media_pipeline[0].stop if recv_media_pipeline[0]  #this is a hack, else doesn't work!
           end
           if recv_media_pipeline[0] and can_play
-            recv_media_pipeline[0].play if (not PandoraUtils::elem_playing?(recv_media_pipeline[0]))
+            recv_media_pipeline[0].play if (not Pandora::Utils::elem_playing?(recv_media_pipeline[0]))
           end
         end
       end

@@ -33,7 +33,7 @@ module Pandora
           i = nil
         end
         if i
-          coord = PandoraUtils.int_to_coord(i)
+          coord = Pandora::Utils.int_to_coord(i)
         else
           coord = ['', '']
         end
@@ -42,7 +42,7 @@ module Pandora
       end
 
       def text
-        res = PandoraUtils.coord_to_int(latitude.text, longitude.text).to_s
+        res = Pandora::Utils.coord_to_int(latitude.text, longitude.text).to_s
       end
 
       def width_request=(wr)

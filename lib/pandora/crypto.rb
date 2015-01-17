@@ -460,8 +460,8 @@ module Pandora
     # RU: Деактивирует текущий или указанный ключ
     def self.deactivate_key(key_vec)
       if key_vec.is_a? Array
-        Pandora::Utils.fill_by_zeros(key_vec[PandoraCrypto::KV_Priv])  #private key
-        Pandora::Utils.fill_by_zeros(key_vec[PandoraCrypto::KV_Pass])
+        Pandora::Utils.fill_by_zeros(key_vec[Pandora::Crypto::KV_Priv])  #private key
+        Pandora::Utils.fill_by_zeros(key_vec[Pandora::Crypto::KV_Pass])
         key_vec.each_index do |i|
           key_vec[i] = nil
         end

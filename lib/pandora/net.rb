@@ -313,7 +313,7 @@ module Pandora
             dialog.default_response = Gtk::Dialog::RESPONSE_OK
             dialog.icon = $window.icon
             if (dialog.run == Gtk::Dialog::RESPONSE_OK)
-              PandoraGtk.show_panobject_list(Pandora::Model::Node, nil, nil, true)
+              Pandora::Gtk.show_panobject_list(Pandora::Model::Node, nil, nil, true)
             end
             dialog.destroy
           end

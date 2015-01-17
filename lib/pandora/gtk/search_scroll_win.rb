@@ -12,7 +12,7 @@ module Pandora
       def search_in_bases(text, th, bases='auto')
         res = nil
         while th[:processing] and (not res)
-          model = PandoraUtils.get_model('Person')
+          model = Pandora::Utils.get_model('Person')
           fields = nil
           sort = nil
           limit = nil
@@ -38,22 +38,22 @@ module Pandora
 
         search_btn = ::Gtk::ToolButton.new(::Gtk::Stock::FIND, _('Search'))
         search_btn.tooltip_text = _('Start searching')
-        PandoraGtk.set_readonly(search_btn, true)
+        Pandora::Gtk.set_readonly(search_btn, true)
 
         stop_btn = ::Gtk::ToolButton.new(::Gtk::Stock::STOP, _('Stop'))
         stop_btn.tooltip_text = _('Stop searching')
-        PandoraGtk.set_readonly(stop_btn, true)
+        Pandora::Gtk.set_readonly(stop_btn, true)
 
         prev_btn = ::Gtk::ToolButton.new(::Gtk::Stock::GO_BACK, _('Previous'))
         prev_btn.tooltip_text = _('Previous search')
-        PandoraGtk.set_readonly(prev_btn, true)
+        Pandora::Gtk.set_readonly(prev_btn, true)
 
         next_btn = ::Gtk::ToolButton.new(::Gtk::Stock::GO_FORWARD, _('Next'))
         next_btn.tooltip_text = _('Next search')
-        PandoraGtk.set_readonly(next_btn, true)
+        Pandora::Gtk.set_readonly(next_btn, true)
 
         search_entry = ::Gtk::Entry.new
-        #PandoraGtk.hack_enter_bug(search_entry)
+        #Pandora::Gtk.hack_enter_bug(search_entry)
         search_entry.signal_connect('key-press-event') do |widget, event|
           res = false
           if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
@@ -67,7 +67,7 @@ module Pandora
         end
         search_entry.signal_connect('changed') do |widget, event|
           cant_find = (@search_thread or (search_entry.text.size==0))
-          PandoraGtk.set_readonly(search_btn, cant_find)
+          Pandora::Gtk.set_readonly(search_btn, cant_find)
           false
         end
 
@@ -155,14 +155,14 @@ module Pandora
         list_store = ::Gtk::ListStore.new(Integer, String)
 
         prev_btn.signal_connect('clicked') do |widget|
-          PandoraGtk.set_readonly(next_btn, false)
-          PandoraGtk.set_readonly(prev_btn, true)
+          Pandora::Gtk.set_readonly(next_btn, false)
+          Pandora::Gtk.set_readonly(prev_btn, true)
           false
         end
 
         next_btn.signal_connect('clicked') do |widget|
-          PandoraGtk.set_readonly(next_btn, true)
-          PandoraGtk.set_readonly(prev_btn, false)
+          Pandora::Gtk.set_readonly(next_btn, true)
+          Pandora::Gtk.set_readonly(prev_btn, false)
           false
         end
 
@@ -173,8 +173,8 @@ module Pandora
             @search_thread = Thread.new do
               th = Thread.current
               th[:processing] = true
-              PandoraGtk.set_readonly(stop_btn, false)
-              PandoraGtk.set_readonly(widget, true)
+              Pandora::Gtk.set_readonly(stop_btn, false)
+              Pandora::Gtk.set_readonly(widget, true)
               res = search_in_bases(text, th, 'auto')
               if res.is_a? Array
                 res.each_with_index do |row, i|
@@ -183,13 +183,13 @@ module Pandora
                   user_iter[1] = row.to_s
                 end
               end
-              PandoraGtk.set_readonly(stop_btn, true)
+              Pandora::Gtk.set_readonly(stop_btn, true)
               if th[:processing]
                 th[:processing] = false
               end
-              PandoraGtk.set_readonly(widget, false)
-              PandoraGtk.set_readonly(prev_btn, false)
-              PandoraGtk.set_readonly(next_btn, true)
+              Pandora::Gtk.set_readonly(widget, false)
+              Pandora::Gtk.set_readonly(prev_btn, false)
+              Pandora::Gtk.set_readonly(next_btn, true)
               @search_thread = nil
             end
           end
@@ -201,7 +201,7 @@ module Pandora
             if @search_thread[:processing]
               @search_thread[:processing] = false
             else
-              PandoraGtk.set_readonly(stop_btn, true)
+              Pandora::Gtk.set_readonly(stop_btn, true)
               @search_thread.exit
               @search_thread = nil
             end
@@ -241,7 +241,7 @@ module Pandora
         self.add_with_viewport(vpaned)
         #self.add(hpaned)
 
-        PandoraGtk.hack_grab_focus(search_entry)
+        Pandora::Gtk.hack_grab_focus(search_entry)
       end
     end
   end

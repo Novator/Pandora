@@ -44,7 +44,7 @@ module Pandora
             @cal = ::Gtk::Calendar.new
             cal = @cal
 
-            date = PandoraUtils.str_to_date(@entry.text)
+            date = Pandora::Utils.str_to_date(@entry.text)
             date ||= Time.new
             @month = date.month
             @year = date.year
@@ -58,7 +58,7 @@ module Pandora
             cal.signal_connect('day_selected') do
               year, month, day = @cal.date
               if (@month==month) and (@year==year)
-                @entry.text = PandoraUtils.date_to_str(Time.local(year, month, day))
+                @entry.text = Pandora::Utils.date_to_str(Time.local(year, month, day))
                 @calwin.destroy
                 @calwin = nil
               else

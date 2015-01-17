@@ -273,7 +273,7 @@ module Pandora
             #if list
             #  list.each do |panhash|
             #    p '----------------'
-            #    kind = PandoraUtils.kind_from_panhash(panhash)
+            #    kind = Pandora::Utils.kind_from_panhash(panhash)
             #    p [panhash, kind].inspect
             #    p res = Pandora::Model.get_record_by_panhash(kind, panhash, true)
             #  end
@@ -287,11 +287,11 @@ module Pandora
 
             a = rand
             if a<0.33
-              PandoraUtils.play_mp3('online')
+              Pandora::Utils.play_mp3('online')
             elsif a<0.66
-              PandoraUtils.play_mp3('offline')
+              Pandora::Utils.play_mp3('offline')
             else
-              PandoraUtils.play_mp3('message')
+              Pandora::Utils.play_mp3('message')
             end
             return
 
@@ -309,13 +309,13 @@ module Pandora
 
             p data = 'Тестовое сообщение!'
 
-            cipher_hash = Pandora::Crypto.encode_cipher_and_hash(PandoraCrypto::KT_Rsa | \
-              PandoraCrypto::KL_bit2048, PandoraCrypto::KH_None)
-            p cipher_vec = Pandora::Crypto.generate_key(PandoraCrypto::KT_Bf, cipher_hash)
+            cipher_hash = Pandora::Crypto.encode_cipher_and_hash(Pandora::Crypto::KT_Rsa | \
+              Pandora::Crypto::KL_bit2048, Pandora::Crypto::KH_None)
+            p cipher_vec = Pandora::Crypto.generate_key(Pandora::Crypto::KT_Bf, cipher_hash)
 
             p 'initkey'
             p cipher_vec = Pandora::Crypto.init_key(cipher_vec)
-            p cipher_vec[PandoraCrypto::KV_Pub] = cipher_vec[PandoraCrypto::KV_Obj].random_iv
+            p cipher_vec[Pandora::Crypto::KV_Pub] = cipher_vec[Pandora::Crypto::KV_Obj].random_iv
 
             p 'coded:'
 

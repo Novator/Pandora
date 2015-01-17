@@ -76,14 +76,14 @@ module Pandora
       # Get a session by the key panhash
       # RU: Возвращает сессию по панхэшу ключа
       def session_of_key(key)
-        res = sessions.find { |e| (e.skey[PandoraCrypto::KV_Panhash] == key) }
+        res = sessions.find { |e| (e.skey[Pandora::Crypto::KV_Panhash] == key) }
         res
       end
 
       # Get a session by the person panhash
       # RU: Возвращает сессию по панхэшу человека
       def session_of_person(person)
-        res = sessions.find { |e| (e.skey[PandoraCrypto::KV_Creator] == person) }
+        res = sessions.find { |e| (e.skey[Pandora::Crypto::KV_Creator] == person) }
         res
       end
 
@@ -123,7 +123,7 @@ module Pandora
           if session.dialog and (not session.dialog.destroyed?) and session.dialog.online_button \
           and ((session.socket and (not session.socket.closed?)) or session.donor)
             session.dialog.online_button.safe_set_active(true)
-            session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
+            session.conn_mode = (session.conn_mode | Pandora::Net::CM_KeepHere)
           end
           res = true
         elsif (node or keybase)
@@ -132,7 +132,7 @@ module Pandora
             host, port, proto = decode_node(node)
             sel = [[host, port]]
           else
-            node_model = PandoraUtils.get_model('Node')
+            node_model = Pandora::Utils.get_model('Node')
             if node_id
               filter = {:id=>node_id}
             else
@@ -173,7 +173,7 @@ module Pandora
           session ||= session2
           if session and (session.conn_state != CS_Disconnected)
             #p 'stop_session3 session='+session.inspect
-            session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
+            session.conn_mode = (session.conn_mode & (~Pandora::Net::CM_KeepHere))
             if disconnect
               session.conn_state = CS_StopRead
             end
@@ -240,7 +240,7 @@ module Pandora
           fish = Session.new(fisher, nil, in_lure, nil, nil, CS_Connected, \
             nil, nil, nil, nil)
         else  # alien key
-          fish = @sessions.index { |session| session.skey[PandoraCrypto::KV_Panhash] == keyhash }
+          fish = @sessions.index { |session| session.skey[Pandora::Crypto::KV_Panhash] == keyhash }
         end
         fish
       end

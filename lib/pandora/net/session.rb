@@ -475,7 +475,7 @@ module Pandora
             @scode = ECC_Auth_Captcha
             text, buf = Pandora::Utils.generate_captcha(nil, $captcha_length)
             params['captcha'] = text.downcase
-            clue_text = 'You may enter small letters|'+$captcha_length.to_s+'|'+PandoraGtk::CapSymbols
+            clue_text = 'You may enter small letters|'+$captcha_length.to_s+'|'+Pandora::Gtk::CapSymbols
             clue_text = clue_text[0,255]
             @sbuf = [clue_text.bytesize].pack('C')+clue_text+buf
             @stage = ES_Captcha
@@ -630,7 +630,7 @@ module Pandora
             @conn_mode = (@conn_mode | Pandora::Net::CM_KeepHere)
             #node = Pandora::Net.encode_node(host_ip, port, proto)
             panhash = @skey[Pandora::Crypto::KV_Creator]
-            @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
+            @dialog = Pandora::Gtk.show_talk_dialog(panhash, @node_panhash)
             dialog.update_state(true)
             Thread.pass
             #Pandora::Utils.play_mp3('online')
@@ -890,7 +890,7 @@ module Pandora
                         start_time = 0
                         end_time = 0
                         start_time = Time.now.to_i if delay
-                        suffix = PandoraGtk.find_sha1_solution(rphrase)
+                        suffix = Pandora::Gtk.find_sha1_solution(rphrase)
                         end_time = Time.now.to_i if delay
                         if delay
                           need_sleep = delay - (end_time - start_time) + 0.5
@@ -1111,7 +1111,7 @@ module Pandora
                   rec_array << record if record
                 end
                 if rec_array.size>0
-                  records = PandoraGtk.rubyobj_to_pson_elem(rec_array)
+                  records = Pandora::Gtk.rubyobj_to_pson_elem(rec_array)
                   @scmd = EC_Record
                   @scode = 0
                   @sbuf = records
@@ -1226,7 +1226,7 @@ module Pandora
                   if (not dialog) or dialog.destroyed?
                     @conn_mode = (@conn_mode | Pandora::Net::CM_KeepHere)
                     panhash = @skey[Pandora::Crypto::KV_Creator]
-                    @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
+                    @dialog = Pandora::Gtk.show_talk_dialog(panhash, @node_panhash)
                     Thread.pass
                     #Pandora::Utils.play_mp3('online')
                   end
@@ -1665,7 +1665,7 @@ module Pandora
               end
 
               #Thread.critical = true
-              #PandoraGtk.add_session(self)
+              #Pandora::Gtk.add_session(self)
               #Thread.critical = false
 
               @max_pack_size = MPS_Proto
@@ -1804,7 +1804,7 @@ module Pandora
                       elsif (readmode == RM_Comm)
                         #p log_mes+'-- from socket to read queue: [rkcmd, rcode, rkdata.size]='+[rkcmd, rkcode, rkdata.size].inspect
                         if @r_encode and rkdata and (rkdata.bytesize>0)
-                          #@rkdata = PandoraGtk.recrypt(@rkey, @rkdata, false, true)
+                          #@rkdata = Pandora::Gtk.recrypt(@rkey, @rkdata, false, true)
                           #@rkdata = Base64.strict_decode64(@rkdata)
                           #p log_mes+'::: decode rkdata.size='+rkdata.size.to_s
                         end
@@ -1927,7 +1927,7 @@ module Pandora
                     #p log_mes+' send_segment='+send_segment.inspect
                     sscmd, sscode, ssbuf = send_segment
                     if ssbuf and (ssbuf.bytesize>0) and @s_encode
-                      #ssbuf = PandoraGtk.recrypt(@skey, ssbuf, true, false)
+                      #ssbuf = Pandora::Gtk.recrypt(@skey, ssbuf, true, false)
                       #ssbuf = Base64.strict_encode64(@sbuf)
                     end
                     #p log_mes+'MAIN SEND: '+[@sindex, sscmd, sscode, ssbuf].inspect
@@ -2096,7 +2096,7 @@ module Pandora
                 or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
                   fast_data = true
                   #p 'packbuf '+cannel.to_s
-                  pointer_ind = PandoraGtk.get_send_ptrind_by_room(dialog.room_id)
+                  pointer_ind = Pandora::Gtk.get_send_ptrind_by_room(dialog.room_id)
                   processed = 0
                   cannel = 0
                   while (@conn_state == CS_Connected) \

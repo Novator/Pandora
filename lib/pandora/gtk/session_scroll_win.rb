@@ -62,7 +62,7 @@ module Pandora
         update_btn.signal_connect('clicked') do |*args|
           list_store.clear
           $window.pool.sessions.each do |session|
-            hunter = ((session.conn_mode & PandoraNet::CM_Hunter)>0)
+            hunter = ((session.conn_mode & Pandora::Net::CM_Hunter)>0)
             if ((hunted_btn.active? and (not hunter)) \
             or (hunters_btn.active? and hunter) \
             or (fishers_btn.active? and session.donor))
@@ -70,7 +70,7 @@ module Pandora
               sess_iter[0] = $window.pool.sessions.index(session).to_s
               sess_iter[1] = session.host_ip.to_s
               sess_iter[2] = session.port.to_s
-              sess_iter[3] = PandoraUtils.bytes_to_hex(session.node_panhash)
+              sess_iter[3] = Pandora::Utils.bytes_to_hex(session.node_panhash)
               sess_iter[4] = session.conn_mode
               sess_iter[5] = session.conn_state
               sess_iter[6] = session.stage
