@@ -4757,8 +4757,8 @@ module PandoraNet
 
     FishQueueSize = 100
 
-  # Add order to fishing
-  # RU: Добавить заявку на рыбалку
+    # Add order to fishing
+    # RU: Добавить заявку на рыбалку
     def add_fish_order(fish_key)
       @fish_orders.add_block_to_queue(fish_key, FishQueueSize) if not @fish_orders.queue.include?(fish_key)
     end
@@ -6491,9 +6491,9 @@ module PandoraNet
                         session.donor = self
                         session.fish_lure = session.registrate_fish(fish)
                         sthread = session.send_thread
-            if sthread and sthread.alive? and sthread.stop?
-              sthread.run
-            end
+                        if sthread and sthread.alive? and sthread.stop?
+                          sthread.run
+                        end
                       end
                     end
                   else
@@ -7175,16 +7175,16 @@ module PandoraNet
                 end
               end
 
-        # проверка новых заявок на рыбалку
-        fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
-        if fish_order
-          p 'New fish order: '+fish_order.inspect
-          tokey = @skey[PandoraCrypto::KV_Panhash]
-          if fish_order == tokey
-                  PandoraUtils.log_message(LM_Trace, _('Fishing to')+': '+PandoraUtils.bytes_to_hex(tokey))
-                  add_send_segment(EC_Query, true, tokey, ECC_Query_Fish)
-          end
-        end
+              # проверка новых заявок на рыбалку
+              #fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
+              #if fish_order
+              #  p 'New fish order: '+fish_order.inspect
+              #  tokey = @skey[PandoraCrypto::KV_Panhash]
+              #  if fish_order == tokey
+              #    PandoraUtils.log_message(LM_Trace, _('Fishing to')+': '+PandoraUtils.bytes_to_hex(tokey))
+              #      add_send_segment(EC_Query, true, tokey, ECC_Query_Fish)
+              #  end
+              #end
 
               #p '---@conn_state='+@conn_state.inspect
               #sleep 0.5
