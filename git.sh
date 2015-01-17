@@ -89,7 +89,9 @@ git push -u github master
 #git branch --no-merged
 #git branch -d testing
 
-##Backup to previous commit
-#git reset --hard HEAD
+##Reset last commit with save fales
+#git reset --soft HEAD^
+##Reset last commit without save fales
+#git reset --hard HEAD^
 #git push -f origin master
 

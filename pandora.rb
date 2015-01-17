@@ -4754,11 +4754,11 @@ module PandoraNet
       res.compact!
       res
     end
-    
+
     FishQueueSize = 100
 
-	# Add order to fishing
-	# RU: Добавить заявку на рыбалку
+  # Add order to fishing
+  # RU: Добавить заявку на рыбалку
     def add_fish_order(fish_key)
       @fish_orders.add_block_to_queue(fish_key, FishQueueSize) if not @fish_orders.queue.include?(fish_key)
     end
@@ -6415,7 +6415,7 @@ module PandoraNet
                     @scode = ECC_News_Record
                     @sbuf = PandoraUtils.rubyobj_to_pson_elem([pson_records, created_list])
                   when ECC_Query_Fish
-                    to_key = rdata  
+                    to_key = rdata
                     p '--ECC_Query_Fish to_key='+to_key.inspect
                     if to_key
                       session = pool.session_of_key(to_key)
@@ -6491,9 +6491,9 @@ module PandoraNet
                         session.donor = self
                         session.fish_lure = session.registrate_fish(fish)
                         sthread = session.send_thread
-						if sthread and sthread.alive? and sthread.stop?
-						  sthread.run
-						end
+            if sthread and sthread.alive? and sthread.stop?
+              sthread.run
+            end
                       end
                     end
                   else
@@ -7174,17 +7174,17 @@ module PandoraNet
                   end
                 end
               end
-       
-			  # проверка новых заявок на рыбалку
-			  fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
-			  if fish_order 
-			    p 'New fish order: '+fish_order.inspect
-			    tokey = @skey[PandoraCrypto::KV_Panhash]
-			    if fish_order == tokey
+
+        # проверка новых заявок на рыбалку
+        fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
+        if fish_order
+          p 'New fish order: '+fish_order.inspect
+          tokey = @skey[PandoraCrypto::KV_Panhash]
+          if fish_order == tokey
                   PandoraUtils.log_message(LM_Trace, _('Fishing to')+': '+PandoraUtils.bytes_to_hex(tokey))
                   add_send_segment(EC_Query, true, tokey, ECC_Query_Fish)
-			    end
-			  end
+          end
+        end
 
               #p '---@conn_state='+@conn_state.inspect
               #sleep 0.5
@@ -7322,8 +7322,8 @@ module PandoraNet
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
-        $host = PandoraUtils.get_param('listen_host')
-        $port = PandoraUtils.get_param('tcp_port')
+        $host ||= PandoraUtils.get_param('listen_host')
+        $port ||= PandoraUtils.get_param('tcp_port')
         $host ||= 'any'
         $port ||= 5577
         $listen_thread = Thread.new do
