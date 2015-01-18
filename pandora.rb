@@ -57,25 +57,6 @@ module PandoraUtils
     end
   end
 
-  # Default values of variables
-  # RU: Значения переменных по умолчанию
-  $poly_launch = true
-  $host = nil
-  $port = nil
-  $lang = 'ru'
-  $pandora_parameters = []
-
-  # Paths and files
-  # RU: Пути и файлы
-  $pandora_root_dir = Dir.pwd                                     # Current directory
-  $pandora_base_dir = File.join($pandora_root_dir, 'base')        # Database directory
-  $pandora_view_dir = File.join($pandora_root_dir, 'view')        # Media files directory
-  $pandora_model_dir = File.join($pandora_root_dir, 'model')      # Model directory
-  $pandora_lang_dir = File.join($pandora_root_dir, 'lang')        # Languages directory
-  $pandora_util_dir = File.join($pandora_root_dir, 'util')        # Utilites directory
-  $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
-  $pandora_files_dir = File.join($pandora_root_dir, 'files')      # Files directory
-
   # Log level constants
   # RU: Константы уровня логирования
   LM_Error    = 0
@@ -4803,8 +4784,8 @@ module PandoraNet
           session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
         end
         res = true
-      elsif (node or keybase)
-        p 'NEED connect: '+[node, keybase].inspect
+      elsif (node or nodehash)
+        p 'NEED connect: '+[node, nodehash].inspect
         if node
           host, port, proto = decode_node(node)
           sel = [[host, port]]
@@ -4813,7 +4794,7 @@ module PandoraNet
           if node_id
             filter = {:id=>node_id}
           else
-            filter = {:panhash=>keybase}
+            filter = {:panhash=>nodehash}
           end
           sel = node_model.select(filter, false, 'addr, tport, domain')
         end
@@ -4827,7 +4808,7 @@ module PandoraNet
             proto = 'tcp'
             if (host and (host != '')) or (addr and (addr != ''))
               session = Session.new(nil, host, addr, port, proto, \
-                CS_Connecting, node_id, dialog, keybase, send_state_add)
+                CS_Connecting, node_id, dialog, nodehash, send_state_add)
               res = true
             end
           end
@@ -6653,8 +6634,8 @@ module PandoraNet
       @confirm_queue  = PandoraUtils::RoundQueue.new
       @send_models    = {}
       @recv_models    = {}
-
       @rkey = PandoraCrypto.current_key(false, false)
+      pool.add_session(self)
 
       # Main thread of session
       # RU: Главный поток сессии
@@ -6794,7 +6775,6 @@ module PandoraNet
             @media_send     = false
             @node_panhash   = nil
             @base_id        = nil
-            pool.add_session(self)
             if @socket
               set_keepalive(@socket)
             end
@@ -7418,8 +7398,8 @@ module PandoraNet
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
-        $host = PandoraUtils.get_param('listen_host')
-        $port = PandoraUtils.get_param('tcp_port')
+        $host ||= PandoraUtils.get_param('listen_host')
+        $port ||= PandoraUtils.get_param('tcp_port')
         $host ||= 'any'
         $port ||= 5577
         $listen_thread = Thread.new do
@@ -13966,6 +13946,26 @@ end
 # ============================================================
 # MAIN
 
+
+# Default values of variables
+# RU: Значения переменных по умолчанию
+$poly_launch = true
+$host = nil
+$port = nil
+$lang = 'ru'
+$pandora_parameters = []
+
+# Paths and files
+# RU: Пути и файлы
+$pandora_root_dir = Dir.pwd                                     # Current directory
+$pandora_base_dir = File.join($pandora_root_dir, 'base')        # Database directory
+$pandora_view_dir = File.join($pandora_root_dir, 'view')        # Media files directory
+$pandora_model_dir = File.join($pandora_root_dir, 'model')      # Model directory
+$pandora_lang_dir = File.join($pandora_root_dir, 'lang')        # Languages directory
+$pandora_util_dir = File.join($pandora_root_dir, 'util')        # Utilites directory
+$pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
+$pandora_files_dir = File.join($pandora_root_dir, 'files')      # Files directory
+
 # Expand the arguments of command line
 # RU: Разобрать аргументы командной строки
 arg = nil
@@ -13992,8 +13992,10 @@ while (ARGV.length>0) or next_arg
       $host = val if val
     when '-p','--port'
       $port = val.to_i if val
+      p 'port='+$port.inspect
     when '-b', '--base'
       $pandora_sqlite_db = val if val
+      p 'base='+$pandora_sqlite_db.inspect
     when '-pl', '--poly', '--poly-launch'
       $poly_launch = true
     when '--shell', '--help', '/?', '-?'
