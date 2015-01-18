@@ -16,54 +16,6 @@ root_path = File.expand_path("../", __FILE__)
 require "#{root_path}/lib/pandora"
 Dir["#{root_path}/lib/**/*.rb"].each {|f| require f}
 
-
-# Expand the arguments of command line
-# RU: Разобрать аргументы командной строки
-arg = nil
-val = nil
-next_arg = nil
-while (ARGV.length>0) or next_arg
-  if next_arg
-    arg = next_arg
-    next_arg = nil
-  else
-    arg = ARGV.shift
-  end
-  if (arg.is_a? String) and (arg[0,1]=='-')
-    if ARGV.length>0
-      next_arg = ARGV.shift
-    end
-    if next_arg and next_arg.is_a? String and (next_arg[0,1] != '-')
-      val = next_arg
-      next_arg = nil
-    end
-  end
-  case arg
-    when '-h','--host'
-      Pandora.config.host = val if val
-    when '-p','--port'
-      Pandora.config.port = val.to_i if val
-    when '-b', '--base'
-      $pandora_sqlite_db = val if val
-    when '-pl', '--poly', '--poly-launch'
-      Pandora.config.poly_launch = true
-    when '--shell', '--help', '/?', '-?'
-      runit = '  '
-      if arg=='--shell' then
-        runit += 'pandora.sh'
-      else
-        runit += 'ruby pandora.rb'
-      end
-      runit += ' '
-      puts 'Оriginal Pandora params for examples:'
-      puts runit+'-h localhost    - set listen address'
-      puts runit+'-p 5577         - set listen port'
-      puts runit+'-b base/pandora2.sqlite  - set filename of database'
-      Kernel.exit!
-  end
-  val = nil
-end
-
 # Check second launch
 # RU: Проверить второй запуск
 

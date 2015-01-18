@@ -13,7 +13,7 @@ module Pandora
           adap = @adapter
         else
           adap = SQLiteDbSession.new
-          adap.conn_param = $pandora_sqlite_db
+          adap.conn_param = Pandora.config.db.path
           @adapter = adap
         end
         table_name = table_ptr[1]

@@ -5,11 +5,13 @@ Thread.abort_on_exception = true
 
 # Pandora::Application configuration
 Pandora::app.configure do |config|
-  config.poly_launch = true
-  config.host = nil
-  config.port = nil
+  cli_options = Pandora.app.cli_options
+
+  config.poly_launch = cli_options.poly?
+  config.host = cli_options[:host]
+  config.port = cli_options[:port]
   config.lang = 'ru'
   config.parameters = []
   config.logger.level = :warn
-  $pandora_sqlite_db = File.join(Pandora.base_dir, 'pandora.sqlite')  # Database file
+  config.db.path = File.join(Pandora.base_dir, cli_options[:base])  # Database file
 end

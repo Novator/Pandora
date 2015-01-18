@@ -8,6 +8,9 @@ gem 'byebug'
 # Logging tool
 gem 'logging'
 
+# Command line options parser
+gem 'slop', '4.0.0'
+
 # ActiveSupport
 gem 'activesupport'
 

@@ -11,6 +11,10 @@ require 'byebug'
 # Гем для работы с конфигурацией
 require 'configatron'
 
+# gem to parse cli arguments
+# Гем для парсинга аргументов командной строки
+require 'slop'
+
 # Штуки которые были по умолчанию
 require 'rexml/document'
 require 'zlib'
@@ -78,12 +82,12 @@ module Pandora
     # end
     #
     def configure(options = {})
-      configatron.configure_from_hash(options)
-
       if block_given?
         configatron.pandora do |config|
           yield config
         end
+      else
+        configatron.configure_from_hash(options)
       end
     end
 
@@ -92,6 +96,17 @@ module Pandora
     def run
       Pandora::Model.load_from_xml(Pandora.config.lang)
       Pandora::Gtk::MainWindow.new(MAIN_WINDOW_TITLE)
+    end
+
+    # Expand the arguments of command line
+    # RU: Разобрать аргументы командной строки
+    def cli_options
+      @cli_options ||= Slop.parse do |o|
+        o.string '-h', '--host', 'Hostname or IP address'
+        o.integer '-p', '--port', 'Port', default: 5577
+        o.string '-b', '--base', 'Database name', default: 'pandora.sqlite'
+        o.bool '-pl', '--poly', 'Enable poly launch', default: false
+      end
     end
 
   end
