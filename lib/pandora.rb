@@ -87,10 +87,16 @@ module Pandora
       end
     end
 
+    # == Running the Pandora!
+    # == RU: Запуск Пандоры!
+    def run
+      Pandora::Model.load_from_xml(Pandora.config.lang)
+      Pandora::Gtk::MainWindow.new(MAIN_WINDOW_TITLE)
+    end
+
   end
 end
 
 # Loading app configuration
 # Загрузка конфигурации приложения
 require "#{Pandora.root}/config/application"
-

@@ -16,8 +16,6 @@ root_path = File.expand_path("../", __FILE__)
 require "#{root_path}/lib/pandora"
 Dir["#{root_path}/lib/**/*.rb"].each {|f| require f}
 
-# ============================================================
-# MAIN
 
 # Expand the arguments of command line
 # RU: Разобрать аргументы командной строки
@@ -192,20 +190,12 @@ lang = ENV['LANG']
 if (lang.is_a? String) and (lang.size>1)
   Pandora.config.lang = lang[0, 2].downcase
 end
-#Pandora.config.lang = 'en'
 
-# Some settings
-# RU: Некоторые настройки
-BasicSocket.do_not_reverse_lookup = true
-Thread.abort_on_exception = true
-
-# == Running the Pandora!
-# == RU: Запуск Пандоры!
-Pandora::Model.load_from_xml(Pandora.config.lang)
-Pandora::Gtk::MainWindow.new(MAIN_WINDOW_TITLE)
+# ============================================================
+# MAIN
+Pandora.app.run
 
 # Free unix-socket on exit
 # Освободить unix-сокет при выходе
 $pserver.close if ($pserver and (not $pserver.closed?))
 delete_psocket
-

@@ -1,3 +1,9 @@
+# Some settings
+# RU: Некоторые настройки
+BasicSocket.do_not_reverse_lookup = true
+Thread.abort_on_exception = true
+
+# Pandora::Application configuration
 Pandora::app.configure do |config|
   config.poly_launch = true
   config.host = nil
