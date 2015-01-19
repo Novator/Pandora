@@ -4808,7 +4808,7 @@ module PandoraNet
             proto = 'tcp'
             if (host and (host != '')) or (addr and (addr != ''))
               session = Session.new(nil, host, addr, port, proto, \
-                CS_Connecting, node_id, dialog, nodehash, send_state_add)
+                CS_Connecting, node_id, dialog, send_state_add, tokey, nodehash)
               res = true
             end
           end
@@ -4823,7 +4823,7 @@ module PandoraNet
       p 'stop_session1 nodehash='+nodehash.inspect
       session1 = nil
       session2 = nil
-      session1 = session_of_keybase(nodehash) if nodehash
+      session1 = session_of_node(nodehash) if nodehash
       session2 = session_of_address(node) if node and (not session1)
       if session1 or session2
         #p 'stop_session2 session1,session2='+[session1,session2].inspect
@@ -6621,7 +6621,7 @@ module PandoraNet
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
     def initialize(asocket, ahost_name, ahost_ip, aport, aproto, \
-    aconn_state, anode_id, a_dialog, tokey, send_state_add)
+    aconn_state, anode_id, a_dialog, send_state_add, tokey=nil, tokeybase=nil)
       super()
       @conn_state  = CS_Connecting
       @socket      = nil
@@ -6679,7 +6679,7 @@ module PandoraNet
             host = ahost_ip if ((not host) or (host == ''))
 
             if (not host) or (host=='')
-              host, port = pool.hunt_address(tokey)
+              host, port = pool.hunt_address(tokey, tokeybase)
             end
 
             port = aport
@@ -6727,7 +6727,7 @@ module PandoraNet
 
             if not @socket
               # Add fish order and wait donor
-              pool.add_fish_order(self, mykeyhash, pool.base_id, tokey)
+              pool.add_fish_order(self, mykeyhash, pool.base_id, tokey, tokeybase)
               while (not @donor) and (not @socket)
                 p 'Thread.stop tokey='+tokey.inspect
                 Thread.stop
@@ -7255,10 +7255,10 @@ module PandoraNet
               fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
               if fish_order
                 p 'New fish order: '+fish_order.inspect
-                tokey = @skey[PandoraCrypto::KV_Panhash]
-                if fish_order == tokey
-                  PandoraUtils.log_message(LM_Trace, _('Fishing to')+': '+PandoraUtils.bytes_to_hex(tokey))
-                  add_send_segment(EC_Query, true, tokey, ECC_Query_Fish)
+                to_key = @skey[PandoraCrypto::KV_Panhash]
+                if fish_order == to_key
+                  PandoraUtils.log_message(LM_Trace, _('Fishing to')+': '+PandoraUtils.bytes_to_hex(to_key))
+                  add_send_segment(EC_Query, true, to_key, ECC_Query_Fish)
                 end
               end
 
@@ -12563,8 +12563,12 @@ module PandoraGtk
         sw = DialogScrollWin.new(known_node, room_id, targets)
       end
     elsif (not known_node)
+      mes = ''
       mes = _('node') if nodes.size == 0
-      mes = _('person') if persons.size == 0
+      if persons.size == 0
+        mes << ', ' if mes.size>0
+        mes << _('person') 
+      end
       dialog = Gtk::MessageDialog.new($window, \
         Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
         Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
