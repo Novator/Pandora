@@ -7252,7 +7252,7 @@ module PandoraNet
               end
 
               # проверка новых заявок на рыбалку
-              fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
+              fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self.object_id)
               if fish_order
                 p 'New fish order: '+fish_order.inspect
                 to_key = @skey[PandoraCrypto::KV_Panhash]
@@ -12541,7 +12541,7 @@ module PandoraGtk
     nodes.compact!
     p 'targets='+targets.inspect
 
-    if (persons.size>0) and (nodes.size>0)
+    if (persons.size>0) or (nodes.size>0) or (keys.size>0)
       room_id = construct_room_id(persons)
       if known_node
         creator = PandoraCrypto.current_user_or_key(true)
@@ -12567,7 +12567,7 @@ module PandoraGtk
       mes = _('node') if nodes.size == 0
       if persons.size == 0
         mes << ', ' if mes.size>0
-        mes << _('person') 
+        mes << _('person')
       end
       dialog = Gtk::MessageDialog.new($window, \
         Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
