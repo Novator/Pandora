@@ -37,9 +37,14 @@ require 'fileutils'
 # Все подряд
 require 'singleton'
 
-# Порядок модулей программы
+# Loading main Pandora modules in specified order
+# Загрузка основных модулей Пандоры в определённом порядке
+require_relative 'pandora/log'
 require_relative 'pandora/constants'
 require_relative 'pandora/utils'
+require_relative 'pandora/model'
+
+Pandora.logger.debug "Requirements loaded."
 
 # Очередной гениальный файл...
 module Pandora
@@ -71,6 +76,13 @@ module Pandora
   class Application
     include ::Singleton
 
+    def initialize
+      Pandora.logger.debug "Application initialization started..."
+      # require "#{Pandora.root}/config/application"
+      config.version = "0.3.factor"
+      Pandora.logger.debug "Application initialized."
+    end
+
     # You can configure application with both hash and block
     #
     # Hash:
@@ -81,19 +93,18 @@ module Pandora
     #   config.option1 = value 1
     # end
     #
-    def configure(options = {})
+    def configure(options = {}, &block)
       if block_given?
-        configatron.pandora do |config|
-          yield config
-        end
+        block.call config
       else
-        configatron.configure_from_hash(options)
+        config.configure_from_hash(options)
       end
     end
 
     # == Running the Pandora!
     # == RU: Запуск Пандоры!
     def run
+      delete_unix_socket
       Pandora::Model.load_from_xml(Pandora.config.lang)
       Pandora::Gtk::MainWindow.new(MAIN_WINDOW_TITLE)
     end
@@ -106,8 +117,22 @@ module Pandora
         o.integer '-p', '--port', 'Port', default: 5577
         o.string '-b', '--base', 'Database name', default: 'pandora.sqlite'
         o.bool '-pl', '--poly', 'Enable poly launch', default: false
+        o.string '-ln', '--lang', 'Language', default: 'ru'
       end
     end
+
+    private
+
+      # Delete Pandora unix socket
+      # RU: Удаляет unix-сокет Пандоры
+      def delete_unix_socket
+        File.delete(config.usock) if File.exist?(config.usock)
+      end
+
+      # Get application config
+      def config
+        @config ||= configatron.pandora
+      end
 
   end
 end
