@@ -19,6 +19,24 @@ module Pandora
     RK_MinPublic = 235
     RK_MaxPublic = 255
 
+    Languages = {
+      0  =>'all',
+      1  =>'en',
+      2  =>'zh',
+      3  =>'es',
+      4  =>'hi',
+      5  =>'ru',
+      6  =>'ar',
+      7  =>'fr',
+      8  =>'pt',
+      9  =>'ja',
+      10 =>'de',
+      11 =>'ko',
+      12 =>'it',
+      13 =>'be',
+      14 =>'id'
+    }
+
     $panobject_list = []
 
     # Compose pandora model definition from XML file
@@ -359,8 +377,6 @@ module Pandora
       sel
     end
 
-    Languages = {0=>'all', 1=>'en', 2=>'zh', 3=>'es', 4=>'hi', 5=>'ru', 6=>'ar', \
-      7=>'fr', 8=>'pt', 9=>'ja', 10=>'de', 11=>'ko', 12=>'it', 13=>'be', 14=>'id'}
 
     def self.lang_list
       res = Languages.values
@@ -457,8 +473,6 @@ module Pandora
       end
       res
     end
-
-
 
     def self.with_each_model(models_path, &block)
       Dir.glob(models_path).sort.each do |model_xml_file|
