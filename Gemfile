@@ -23,3 +23,7 @@ gem 'configatron'
 
 # Internationalization Support
 gem 'i18n'
+
+# RSpec for TDD
+gem 'rspec'
+gem 'rspec-its'
