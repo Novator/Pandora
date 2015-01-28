@@ -3451,9 +3451,10 @@ module PandoraModel
 
   # Panobject state flags
   # RU: Флаги состояния объекта/записи
-  PSF_Support   = 1      # "поддерживаю", т.е. должна храниться
-  PSF_Hurvest   = 2      # собирается/загружается по частям
-  PSF_Deleted   = 4      # помечена к удалению
+  PSF_Support    = 1      # must keep on this node (else will be deleted by GC)
+  PSF_Harvest    = 2      # download by pieces in progress
+  PSF_Deleted    = 4      # marked to delete
+  PSF_Verified   = 8      # signature was verified
 
 end
 
@@ -4707,8 +4708,8 @@ module PandoraNet
     # RU: Возвращает сессию для адреса
     def session_of_address(node)
       host, port, proto = decode_node(node)
-      res = sessions.find do |e|
-        ((e.host_ip == host) or (e.host_name == host)) and (e.port == port) and (e.proto == proto)
+      res = sessions.find do |s|
+        ((s.host_ip == host) or (s.host_name == host)) and (s.port == port) and (s.proto == proto)
       end
       res
     end
@@ -4716,21 +4717,21 @@ module PandoraNet
     # Get a session by the node panhash
     # RU: Возвращает сессию по панхэшу узла
     def session_of_node(panhash)
-      res = sessions.find { |e| (e.node_panhash == panhash) }
+      res = sessions.find { |s| (s.node_panhash == panhash) }
       res
     end
 
     # Get a session by the key panhash
     # RU: Возвращает сессию по панхэшу ключа
-    def session_of_key(key)
-      res = sessions.find { |e| (e.skey[PandoraCrypto::KV_Panhash] == key) }
+    def session_of_key(keyhash)
+      res = sessions.find { |s| (s.skey[PandoraCrypto::KV_Panhash] == keyhash) }
       res
     end
 
     # Get a session by the key and base id
     # RU: Возвращает сессию по ключу и идентификатору базы
     def session_of_keybase(key, base_id)
-      res = sessions.find { |e| (e.base_id == base_id) and \
+      res = sessions.find { |s| (s.base_id == base_id) and \
         (e.skey[PandoraCrypto::KV_Panhash] == key) }
       res
     end
@@ -4738,14 +4739,14 @@ module PandoraNet
     # Get a session by the person panhash
     # RU: Возвращает сессию по панхэшу человека
     def session_of_person(person)
-      res = sessions.find { |e| (e.skey[PandoraCrypto::KV_Creator] == person) }
+      res = sessions.find { |s| (s.skey[PandoraCrypto::KV_Creator] == person) }
       res
     end
 
     # Get a session by the dialog
     # RU: Возвращает сессию по диалогу
     def sessions_on_dialog(dialog)
-      res = sessions.select { |e| (e.dialog == dialog) }
+      res = sessions.select { |s| (s.dialog == dialog) }
       res.uniq!
       res.compact!
       res
@@ -6621,7 +6622,7 @@ module PandoraNet
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
     def initialize(asocket, ahost_name, ahost_ip, aport, aproto, \
-    aconn_state, anode_id, a_dialog, send_state_add, tokey=nil, tokeybase=nil)
+    aconn_state, anode_id, a_dialog, send_state_add, tokey=nil)
       super()
       @conn_state  = CS_Connecting
       @socket      = nil
@@ -6678,10 +6679,6 @@ module PandoraNet
             host = ahost_name
             host = ahost_ip if ((not host) or (host == ''))
 
-            if (not host) or (host=='')
-              host, port = pool.hunt_address(tokey, tokeybase)
-            end
-
             port = aport
             port ||= 5577
             port = port.to_i
@@ -6727,7 +6724,7 @@ module PandoraNet
 
             if not @socket
               # Add fish order and wait donor
-              pool.add_fish_order(self, mykeyhash, pool.base_id, tokey, tokeybase)
+              pool.add_fish_order(self, mykeyhash, pool.base_id, tokey)
               while (not @donor) and (not @socket)
                 p 'Thread.stop tokey='+tokey.inspect
                 Thread.stop
