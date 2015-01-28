@@ -4723,8 +4723,8 @@ module PandoraNet
 
     # Get a session by the key panhash
     # RU: Возвращает сессию по панхэшу ключа
-    def session_of_key(keyhash)
-      res = sessions.find { |s| (s.skey[PandoraCrypto::KV_Panhash] == keyhash) }
+    def session_of_key(key)
+      res = sessions.find { |s| (s.skey[PandoraCrypto::KV_Panhash] == key) }
       res
     end
 
@@ -4732,14 +4732,14 @@ module PandoraNet
     # RU: Возвращает сессию по ключу и идентификатору базы
     def session_of_keybase(key, base_id)
       res = sessions.find { |s| (s.base_id == base_id) and \
-        (e.skey[PandoraCrypto::KV_Panhash] == key) }
+        (s.skey[PandoraCrypto::KV_Panhash] == key) }
       res
     end
 
     # Get a session by the person panhash
     # RU: Возвращает сессию по панхэшу человека
     def session_of_person(person)
-      res = sessions.find { |s| (s.skey[PandoraCrypto::KV_Creator] == person) }
+      res = sessions.find { |s| (esskey[PandoraCrypto::KV_Creator] == person) }
       res
     end
 
@@ -8829,8 +8829,13 @@ module PandoraGtk
       #@scale_button.set_icons(['gtk-goto-bottom', 'gtk-goto-top', 'gtk-execute'])
       #@scale_button.signal_connect('value-changed') { |widget, value| puts "value changed: #{value}" }
 
-      tips = [_('evil'), _('destructive'), _('dirty'), _('harmful'), _('bad'), _('vain'), \
-        _('good'), _('useful'), _('constructive'), _('creative'), _('genial')]
+      tips = nil
+      j = nil
+      if @panobject.ider=='Person'
+        tips = [_('very destructive'), _('harmful'), _('critic'), _('neutral'), \
+          _('constructive'), _('useful'), _('very creative')]
+        j = (tips.size-1)/2
+      end
 
       #@trust ||= (127*0.4).round
       #val = trust/127.0
@@ -8840,7 +8845,6 @@ module PandoraGtk
       trust_scale.update_policy = Gtk::UPDATE_DELAYED
       trust_scale.digits = 1
       trust_scale.draw_value = true
-      step = 254.fdiv(tips.size-1)
       trust_scale.signal_connect('value-changed') do |widget|
         #val = (widget.value*20).round/20.0
         val = widget.value
@@ -8864,8 +8868,17 @@ module PandoraGtk
         color = Gdk::Color.new(r, g, b)
         widget.modify_fg(Gtk::STATE_NORMAL, color)
         @vouch_btn.modify_bg(Gtk::STATE_ACTIVE, color)
-        i = ((trust+127)/step).round
-        tip = tips[i]
+        if tips
+          i = ((trust+127)/127.0*j).round
+          if (i == j) and (trust != 0)
+            if trust>0
+              i += 1
+            else
+              i -= 1
+            end
+          end
+          tip = tips[i]
+        end
         widget.tooltip_text = tip
       end
       #scale.signal_connect('change-value') do |widget|
@@ -8919,7 +8932,6 @@ module PandoraGtk
       public_scale.update_policy = Gtk::UPDATE_DELAYED
       public_scale.digits = 1
       public_scale.draw_value = true
-      step = 19.fdiv(tips.size-1)
       public_scale.signal_connect('value-changed') do |widget|
         val = widget.value
         trust = (val*10).round
@@ -8936,13 +8948,10 @@ module PandoraGtk
             r = -mul+20000
           end
         end
-        tip = val.to_s
         color = Gdk::Color.new(r, g, b)
         widget.modify_fg(Gtk::STATE_NORMAL, color)
         @vouch_btn.modify_bg(Gtk::STATE_ACTIVE, color)
-        i = ((trust+127)/step).round
-        tip = tips[i]
-        widget.tooltip_text = tip
+        widget.tooltip_text = val.to_s
       end
       public_box.pack_start(public_scale, false, false, 0)
 
