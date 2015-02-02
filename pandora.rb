@@ -4765,14 +4765,14 @@ module PandoraNet
 
     # Find or create session with necessary node
     # RU: Находит или создает соединение с нужным узлом
-    def init_session(node=nil, nodehash=nil, send_state_add=nil, dialog=nil, node_id=nil)
-      p 'init_session: '+[node, nodehash, send_state_add, dialog, node_id].inspect
+    def init_session(addr=nil, nodehash=nil, send_state_add=nil, dialog=nil, node_id=nil)
+      p 'init_session: '+[addr, nodehash, send_state_add, dialog, node_id].inspect
       res = nil
       send_state_add ||= 0
       session1 = nil
       session2 = nil
       session1 = session_of_node(nodehash) if nodehash
-      session2 = session_of_address(node) if node and (not session1)
+      session2 = session_of_address(addr) if addr and (not session1)
       if session1 or session2
         session = session1
         session ||= session2
@@ -4785,10 +4785,10 @@ module PandoraNet
           session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
         end
         res = true
-      elsif (node or nodehash)
-        p 'NEED connect: '+[node, nodehash].inspect
-        if node
-          host, port, proto = decode_node(node)
+      elsif (addr or nodehash)
+        p 'NEED connect: '+[addr, nodehash].inspect
+        if addr
+          host, port, proto = decode_node(addr)
           sel = [[host, port]]
         else
           node_model = PandoraUtils.get_model('Node')
