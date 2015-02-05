@@ -7378,15 +7378,22 @@ module PandoraNet
     $low_conn_trust ||= 0.0
   end
 
-  $listen_thread = nil
+  $tcp_listen_thread = nil
+  $udp_listen_thread = nil
 
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen
     PandoraNet.get_exchange_params
-    if $listen_thread
-      server = $listen_thread[:listen_server_socket]
-      $listen_thread[:need_to_listen] = false
+    if $tcp_listen_thread or $udp_listen_thread
+      if $tcp_listen_thread
+        server = $tcp_listen_thread[:listen_server_socket]
+        $tcp_listen_thread[:need_to_listen] = false
+      end
+      if $udp_listen_thread
+        server = $udp_listen_thread[:listen_server_socket]
+        $udp_listen_thread[:need_to_listen] = false
+      end
       #server.close if not server.closed?
       #$listen_thread.join(2) if $listen_thread
       #$listen_thread.exit if $listen_thread
@@ -7396,29 +7403,30 @@ module PandoraNet
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
         $host ||= PandoraUtils.get_param('listen_host')
-        $port ||= PandoraUtils.get_param('tcp_port')
         $host ||= 'any'
-        $port ||= 5577
-        $listen_thread = Thread.new do
-          p Socket.ip_address_list
+        host = $host
+        if (not host)
+          host = ''
+        elsif ((host=='any') or (host=='all'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
+          host = Socket::INADDR_ANY
+          p "ipv4 all"
+        elsif ((host=='any6') or (host=='all6'))
+          host = '::'
+          p "ipv6 all"
+        end
+        p Socket.ip_address_list
+
+        # TCP Listener
+        $tcp_port ||= PandoraUtils.get_param('tcp_port')
+        $tcp_port ||= 5577
+        $tcp_listen_thread = Thread.new do
           begin
-            host = $host
-            if (not host)
-              host = ''
-            elsif ((host=='any') or (host=='all'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
-              host = Socket::INADDR_ANY
-              p "ipv4 all"
-            elsif ((host=='any6') or (host=='all6'))
-              host = '::'
-              p "ipv6 all"
-            end
-            server = TCPServer.open(host, $port)
-            #addr_str = server.addr.to_s
+            server = TCPServer.open(host, $tcp_port)
             addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
             PandoraUtils.log_message(LM_Info, _('Listening address')+': '+addr_str)
           rescue
             server = nil
-            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' '+host.to_s+':'+$port.to_s)
+            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' TCP '+host.to_s+':'+$tcp_port.to_s)
           end
           Thread.current[:listen_server_socket] = server
           Thread.current[:need_to_listen] = (server != nil)
@@ -7448,7 +7456,59 @@ module PandoraNet
           server.close if server and (not server.closed?)
           PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
           $window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
-          $listen_thread = nil
+          $tcp_listen_thread = nil
+        end
+
+        # UDP Listener
+        $udp_port ||= PandoraUtils.get_param('udp_port')
+        $udp_port ||= 5577
+        $udp_listen_thread = Thread.new do
+          begin
+            BasicSocket.do_not_reverse_lookup = true
+            # Create socket and bind to address
+            udp_server = UDPSocket.new
+            udp_server.bind(host, $udp_port)
+
+            #addr_str = server.addr.to_s
+            udp_addr_str = udp_server.addr[3].to_s+(' udp')+udp_server.addr[1].to_s
+            PandoraUtils.log_message(LM_Info, _('Listening address')+': '+udp_addr_str)
+
+          rescue
+            udp_server = nil
+            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' UDP '+host.to_s+':'+$udp_port.to_s)
+          end
+          Thread.current[:listen_server_socket] = udp_server
+          Thread.current[:need_to_listen] = (udp_server != nil)
+
+          data, addr = udp_server.recvfrom(1024)
+          puts "From addr: '%s', msg: '%s'" % [addr[0], data]
+          #while Thread.current[:need_to_listen] and server and (not server.closed?)
+          #  socket = get_listener_client_or_nil(server)
+          #  while Thread.current[:need_to_listen] and not server.closed? and not socket
+          #    sleep 0.05
+          #    #Thread.pass
+          #    #Gtk.main_iteration
+          #    socket = get_listener_client_or_nil(server)
+          #  end
+          #
+          #  if Thread.current[:need_to_listen] and (not server.closed?) and socket
+          #    host_ip = socket.peeraddr[2]
+          #    unless $window.pool.is_black?(host_ip)
+          #      host_name = socket.peeraddr[3]
+          #      port = socket.peeraddr[1]
+          #      proto = 'tcp'
+          #      p 'LISTEN: '+[host_name, host_ip, port, proto].inspect
+          #      session = Session.new(socket, host_name, host_ip, port, proto, \
+          #        CS_Connected, nil, nil, nil, nil)
+          #    else
+          #      PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
+          #    end
+          #  end
+          #end
+          udp_server.close if udp_server and (not udp_server.closed?)
+          PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+udp_addr_str) if udp_server
+          #$window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
+          $udp_listen_thread = nil
         end
       else
         $window.correct_lis_btn_state
