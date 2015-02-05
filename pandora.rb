@@ -7392,6 +7392,7 @@ module PandoraNet
       end
       if $udp_listen_thread
         server = $udp_listen_thread[:listen_server_socket]
+        server.close if server and (not server.closed?)
         $udp_listen_thread[:need_to_listen] = false
       end
       #server.close if not server.closed?
