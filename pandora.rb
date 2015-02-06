@@ -933,9 +933,9 @@ module PandoraUtils
     [basetype, count, negative]
   end
 
-  # Convert ruby object to PSON (Pandora Simple Object Notation)
-  # RU: Конвертирует объект руби в PSON ("простая нотация объектов в Пандоре")
-  def self.rubyobj_to_pson_elem(rubyobj)
+  # Convert ruby object to PSON (Pandora simple object notation)
+  # RU: Конвертирует объект руби в PSON
+  def self.rubyobj_to_pson(rubyobj)
     type = PT_Unknown
     count = 0
     data = AsciiString.new
@@ -971,14 +971,14 @@ module PandoraUtils
         type, count = encode_pson_type(PT_Real, elem_size)
       when Array
         rubyobj.each do |a|
-          data << rubyobj_to_pson_elem(a)
+          data << rubyobj_to_pson(a)
         end
         elem_size = rubyobj.size
         type, count = encode_pson_type(PT_Array, elem_size)
       when Hash
         rubyobj = rubyobj.sort_by {|k,v| k.to_s}
         rubyobj.each do |a|
-          data << rubyobj_to_pson_elem(a[0]) << rubyobj_to_pson_elem(a[1])
+          data << rubyobj_to_pson(a[0]) << rubyobj_to_pson(a[1])
         end
         elem_size = rubyobj.bytesize
         type, count = encode_pson_type(PT_Hash, elem_size)
@@ -999,7 +999,7 @@ module PandoraUtils
 
   # Convert PSON to ruby object
   # RU: Конвертирует PSON в объект руби
-  def self.pson_elem_to_rubyobj(data)
+  def self.pson_to_rubyobj(data)
     data = AsciiString.new(data)
     val = nil
     len = 0
@@ -1038,7 +1038,7 @@ module PandoraUtils
             int *= 2 if basetype == PT_Hash
             while (data.bytesize-1-vlen>0) and (int>0)
               int -= 1
-              aval, alen = pson_elem_to_rubyobj(data[len+vlen..-1])
+              aval, alen = pson_to_rubyobj(data[len+vlen..-1])
               val << aval
               vlen += alen
             end
@@ -1063,7 +1063,7 @@ module PandoraUtils
 
   # Pack PanObject fields to PSON binary format
   # RU: Пакует поля панобъекта в бинарный формат PSON
-  def self.namehash_to_pson(fldvalues, pack_empty=false)
+  def self.hash_to_namepson(fldvalues, pack_empty=false)
     #bytes = ''
     #bytes.force_encoding('ASCII-8BIT')
     bytes = AsciiString.new
@@ -1074,7 +1074,7 @@ module PandoraUtils
         nsize = nam.bytesize
         nsize = 255 if nsize>255
         bytes << [nsize].pack('C') + nam[0, nsize]
-        pson_elem = rubyobj_to_pson_elem(val)
+        pson_elem = rubyobj_to_pson(val)
         bytes << pson_elem
       end
     }
@@ -1083,7 +1083,7 @@ module PandoraUtils
 
   # Convert PSON block to PanObject fields
   # RU: Преобразует PSON блок в поля панобъекта
-  def self.pson_to_namehash(pson)
+  def self.namepson_to_hash(pson)
     hash = {}
     while pson and (pson.bytesize>1)
       flen = pson[0].ord
@@ -1092,7 +1092,7 @@ module PandoraUtils
         val = nil
         if pson.bytesize-flen>1
           pson = pson[1+flen..-1]  # drop getted name
-          val, len = pson_elem_to_rubyobj(pson)
+          val, len = pson_to_rubyobj(pson)
           pson = pson[len..-1]     # drop getted value
         else
           pson = nil
@@ -3072,7 +3072,7 @@ module PandoraModel
             res << [kind].pack('C') if pson_with_kind
             res << [lang].pack('C')
             p 'get_record_by_panhash|||  fields='+fields.inspect
-            res << PandoraUtils.namehash_to_pson(fields)
+            res << PandoraUtils.hash_to_namepson(fields)
           else
             res = sel
           end
@@ -3145,7 +3145,7 @@ module PandoraModel
       records.each do |record|
         kind = record[0].ord
         lang = record[1].ord
-        values = PandoraUtils.pson_to_namehash(record[2..-1])
+        values = PandoraUtils.namepson_to_hash(record[2..-1])
         if not PandoraModel.save_record(kind, lang, values, models)
           PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 2')
         end
@@ -3639,11 +3639,11 @@ module PandoraCrypto
           if encode
             data = recrypt(key_vec, data, encode)
             if data
-              key_and_data = PandoraUtils.rubyobj_to_pson_elem([key_vec[KV_Panhash], data])
+              key_and_data = PandoraUtils.rubyobj_to_pson([key_vec[KV_Panhash], data])
               data = key_and_data
             end
           else
-            key_and_data, len = PandoraUtils.pson_elem_to_rubyobj(data)
+            key_and_data, len = PandoraUtils.pson_to_rubyobj(data)
             if key_and_data.is_a? Array
               keyhash, data = key_and_data
               if (keyhash == key_vec[KV_Panhash])
@@ -3675,7 +3675,7 @@ module PandoraCrypto
           if encode
             iv = key.random_iv
           else
-            data, len = PandoraUtils.pson_elem_to_rubyobj(data)   # pson to array
+            data, len = PandoraUtils.pson_to_rubyobj(data)   # pson to array
             if data.is_a? Array
               iv = AsciiString.new(data[1])
               data = AsciiString.new(data[0])  # data from array
@@ -3685,7 +3685,7 @@ module PandoraCrypto
           end
           cipher_vec[KV_Pub] = iv
           data = recrypt(cipher_vec, data, encode) if data
-          data = PandoraUtils.rubyobj_to_pson_elem([data, iv]) if encode and data
+          data = PandoraUtils.rubyobj_to_pson([data, iv]) if encode and data
         end
       end
     end
@@ -3949,7 +3949,7 @@ module PandoraCrypto
 
   # Return current key or allow to choose and activate a key
   # RU: Возвращает текущий ключ или позволяет выбрать и активировать ключ
-  def self.current_key(switch_key=false, need_init=true)
+  def self.current_key(switch_init=false, need_init=true)
 
     # Read a key from database
     # RU: Считывает ключ из базы
@@ -4035,7 +4035,7 @@ module PandoraCrypto
     # body of current_key
 
     key_vec = self.the_current_key
-    if key_vec and switch_key
+    if key_vec and switch_init
       key_vec = reset_current_key
     elsif (not key_vec) and need_init
       getting = true
@@ -4312,6 +4312,17 @@ module PandoraCrypto
     panhash
   end
 
+  # Get panhash of current user and key
+  # RU: Возвращает панхэш текущего пользователя и ключа
+  def self.current_user_and_key(user=true, init=true)
+    res = nil
+    key = current_key(false, init)
+    if key and key[KV_Obj]
+      res = [key[KV_Panhash], key[KV_Creator]]
+    end
+    res
+  end
+
   PT_Pson1   = 1
 
   # Sign PSON of PanObject and save a sign as record
@@ -4326,7 +4337,7 @@ module PandoraCrypto
       obj_hash = namesvalues['panhash']
       if not PandoraUtils.panhash_nil?(obj_hash)
         #p 'sign: matter_fields='+matter_fields.inspect
-        sign = make_sign(key, PandoraUtils.namehash_to_pson(matter_fields))
+        sign = make_sign(key, PandoraUtils.hash_to_namepson(matter_fields))
         if sign
           time_now = Time.now.to_i
           key_hash = key[KV_Panhash]
@@ -5334,8 +5345,8 @@ module PandoraNet
             params['mykey'] = key_hash
             params['tokey'] = param
             hparams = {:version=>0, :mode=>0, :mykey=>key_hash, :tokey=>param}
-            hparams[:addr] = $callback_addr if $callback_addr and (not ($callback_addr != ''))
-            asbuf = PandoraUtils.namehash_to_pson(hparams)
+            hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
+            asbuf = PandoraUtils.hash_to_namepson(hparams)
           else
             ascmd = EC_Bye
             ascode = ECC_Bye_Exit
@@ -5347,7 +5358,7 @@ module PandoraNet
           #      kind = PandoraUtils.kind_from_panhash(panhash)
           #      record = PandoraModel.get_record_by_panhash(kind, panhash, true, @recv_models)
           #      p log_mes+'EC_Request panhashes='+PandoraUtils.bytes_to_hex(panhash).inspect
-          asbuf = PandoraUtils.rubyobj_to_pson_elem(param)
+          asbuf = PandoraUtils.rubyobj_to_pson(param)
         when EC_Bye
           ascmd = EC_Bye
           ascode = ECC_Bye_Exit
@@ -5378,7 +5389,7 @@ module PandoraNet
       asbuf = nil
       if panhashes.is_a? Array
         # any panhashes
-        asbuf = PandoraUtils.rubyobj_to_pson_elem(panhashes)
+        asbuf = PandoraUtils.rubyobj_to_pson(panhashes)
       else
         # one panhash
         ascode = PandoraUtils.kind_from_panhash(panhashes)
@@ -5419,7 +5430,7 @@ module PandoraNet
       # Recognize hello data
       # RU: Распознает данные приветствия
       def recognize_params
-        hash = PandoraUtils.pson_to_namehash(rdata)
+        hash = PandoraUtils.namepson_to_hash(rdata)
         if not hash
           err_scmd('Hello data is wrong')
         end
@@ -6154,7 +6165,7 @@ module PandoraNet
           if (@stage==ES_Exchange) or (@stage==ES_Greeting) or panhash
             panhashes = nil
             if kind==0
-              panhashes, len = PandoraUtils.pson_elem_to_rubyobj(panhashes)
+              panhashes, len = PandoraUtils.pson_to_rubyobj(panhashes)
             else
               panhash = [kind].pack('C')+rdata if (not panhash) and rdata
               panhashes = [panhash]
@@ -6169,7 +6180,7 @@ module PandoraNet
                 @scode = kind
                 @sbuf = pson
                 lang = @sbuf[0].ord
-                values = PandoraUtils.pson_to_namehash(@sbuf[1..-1])
+                values = PandoraUtils.namepson_to_hash(@sbuf[1..-1])
                 p log_mes+'SEND RECORD !!! [pson, values]='+[pson, values].inspect
               else
                 p log_mes+'NO RECORD panhash='+panhash.inspect
@@ -6186,7 +6197,7 @@ module PandoraNet
                 rec_array << record if record
               end
               if rec_array.size>0
-                records = PandoraGtk.rubyobj_to_pson_elem(rec_array)
+                records = PandoraGtk.rubyobj_to_pson(rec_array)
                 @scmd = EC_Record
                 @scode = 0
                 @sbuf = records
@@ -6209,7 +6220,7 @@ module PandoraNet
             kind = rcode
             if (@stage==ES_Exchange) or ((kind==PandoraModel::PK_Key) and (@stage==ES_KeyRequest))
               lang = rdata[0].ord
-              values = PandoraUtils.pson_to_namehash(rdata[1..-1])
+              values = PandoraUtils.namepson_to_hash(rdata[1..-1])
               panhash = nil
               if @stage==ES_KeyRequest
                 panhash = params['srckey']
@@ -6229,7 +6240,7 @@ module PandoraNet
               err_scmd('Record ('+kind.to_s+') came on wrong stage')
             end
           elsif (@stage==ES_Exchange)
-            records, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+            records, len = PandoraUtils.pson_to_rubyobj(rdata)
             p log_mes+"!record2! recs="+records.inspect
             PandoraModel.save_records(records, @recv_models)
           else
@@ -6308,7 +6319,7 @@ module PandoraNet
                 if rcmd==EC_Message
                   row = @rdata
                   if row.is_a? String
-                    row, len = PandoraUtils.pson_elem_to_rubyobj(row)
+                    row, len = PandoraUtils.pson_to_rubyobj(row)
                     t = Time.now
                     id = nil
                     time_now = t.to_i
@@ -6397,13 +6408,13 @@ module PandoraNet
                     #panhash_list = PandoraModel.get_panhashes_by_questioner(questioner, trust, from_time)
 
                     p log_mes+'ph_list='+ph_list.inspect
-                    ph_list = PandoraUtils.rubyobj_to_pson_elem(ph_list) if ph_list
+                    ph_list = PandoraUtils.rubyobj_to_pson(ph_list) if ph_list
                     @scmd = EC_News
                     @scode = ECC_News_Panhash
                     @sbuf = ph_list
                   when ECC_Query_Record  #EC_Request
                     p log_mes+'==ECC_Query_Record'
-                    two_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    two_list, len = PandoraUtils.pson_to_rubyobj(rdata)
                     need_ph_list, foll_list = two_list
                     p log_mes+'need_ph_list, foll_list='+[need_ph_list, foll_list].inspect
                     created_list = []
@@ -6438,11 +6449,11 @@ module PandoraNet
                     end
                     @scmd = EC_News
                     @scode = ECC_News_Record
-                    @sbuf = PandoraUtils.rubyobj_to_pson_elem([pson_records, created_list])
+                    @sbuf = PandoraUtils.rubyobj_to_pson([pson_records, created_list])
                   when ECC_Query_Fish
                     # пришла заявка на рыбалку
                     line_raw = rdata
-                    line, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    line, len = PandoraUtils.pson_to_rubyobj(rdata)
                     fisher_key, fisher_baseid, fish_key = line
                     p '--ECC_Query_Fish line='+line.inspect
                     if fish_keybase
@@ -6452,7 +6463,7 @@ module PandoraNet
                         line << session.base_id
                         fisher_lure = registrate_keybase(session, *line)
                         fish_lure = session.registrate_keybase(self, *line)
-                        line_raw = PandoraUtils.rubyobj_to_pson_elem(line)
+                        line_raw = PandoraUtils.rubyobj_to_pson(line)
                         session.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
                           ECC_News_Hook)
                         @scmd = EC_News
@@ -6479,7 +6490,7 @@ module PandoraNet
                 case rcode
                   when ECC_News_Panhash
                     p log_mes+'==ECC_News_Panhash'
-                    ph_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    ph_list, len = PandoraUtils.pson_to_rubyobj(rdata)
                     p log_mes+'ph_list, len='+[ph_list, len].inspect
                     # Check non-existing records
                     need_ph_list = PandoraModel.needed_records(ph_list, @send_models)
@@ -6496,13 +6507,13 @@ module PandoraNet
                     foll_list = PandoraModel.follow_records(follower, from_time, \
                       pankinds, @send_models)
                     two_list << foll_list
-                    two_list = PandoraUtils.rubyobj_to_pson_elem(two_list)
+                    two_list = PandoraUtils.rubyobj_to_pson(two_list)
                     @scmd = EC_Query
                     @scode = ECC_Query_Record
                     @sbuf = two_list
                   when ECC_News_Record
                     p log_mes+'==ECC_News_Record'
-                    two_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    two_list, len = PandoraUtils.pson_to_rubyobj(rdata)
                     pson_records, created_list = two_list
                     p log_mes+'pson_records, created_list='+[pson_records, created_list].inspect
                     PandoraModel.save_records(pson_records, @recv_models)
@@ -6511,13 +6522,13 @@ module PandoraNet
                       @scmd = EC_Query
                       @scode = ECC_Query_Record
                       foll_list = nil
-                      @sbuf = PandoraUtils.rubyobj_to_pson_elem([need_ph_list, foll_list])
+                      @sbuf = PandoraUtils.rubyobj_to_pson([need_ph_list, foll_list])
                     end
                   when ECC_News_Hook
                     # по заявке найдена рыбка, ей присвоен номер
                     hook = rdata[0].ord
                     line_raw = rdata[1..-1]
-                    line, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    line, len = PandoraUtils.pson_to_rubyobj(rdata)
                     fisher_key, fisher_baseid, fish_key, fish_baseid = line
                     if len>0
                       # данные корректны
@@ -7476,16 +7487,18 @@ module PandoraNet
         $udp_port ||= PandoraUtils.get_param('udp_port')
         $udp_port ||= 5577
         $udp_listen_thread = Thread.new do
+          # Init UDP listener
           begin
             BasicSocket.do_not_reverse_lookup = true
             # Create socket and bind to address
             udp_server = UDPSocket.new
+            udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, true)
+            #udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)
             udp_server.bind(host, $udp_port)
 
             #addr_str = server.addr.to_s
             udp_addr_str = udp_server.addr[3].to_s+(' udp')+udp_server.addr[1].to_s
             PandoraUtils.log_message(LM_Info, _('Listening address')+': '+udp_addr_str)
-
           rescue
             udp_server = nil
             PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' UDP '+host.to_s+':'+$udp_port.to_s)
@@ -7493,24 +7506,46 @@ module PandoraNet
           Thread.current[:listen_server_socket] = udp_server
           Thread.current[:need_to_listen] = (udp_server != nil)
 
+          # Send UDP broadcast hello
           GLib::Timeout.add(2000) do
-            # Broadcast signal
-            udp_brdcst = UDPSocket.new
-            udp_brdcst.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, true)
-            udp_brdcst.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)
-            data = 'I sent this'
-            udp_brdcst.send(data, 0, '<broadcast>', $udp_port)
-            udp_brdcst.close
+            res = PandoraCrypto.current_user_and_key(false, false)
+            if res.is_a? Array
+              person_hash, key_hash = res
+              hparams = {:version=>0, :iam=>person_hash, :mykey=>key_hash, :base=>$base_id}
+              hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
+              hello = PandoraUtils.hash_to_namepson(hparams)
+              udp_server.send(hello, 0, '<broadcast>', $udp_port)
+            end
+            false
           end
 
-          p [Thread.current[:need_to_listen], udp_server, udp_server.closed?]
-
+          # Catch UDP datagrams
           while Thread.current[:need_to_listen] and udp_server and (not udp_server.closed?)
             data, addr = udp_server.recvfrom(1024)
-            puts "Received from addr: '%s', msg: '%s'" % [addr[3], data]
-            sleep 1
-            p 'Sending..'
-            udp_server.send('Test!', 0, addr[3], $udp_port)
+            far_ip = addr[3]
+            far_port = addr[1]
+            hash = PandoraUtils.namepson_to_hash(data)
+            if hash.is_a? Hash
+              res = PandoraCrypto.current_user_and_key(false, false)
+              if res.is_a? Array
+                person_hash, key_hash = res
+                far_version = hash['version']
+                far_person_hash = hash['iam']
+                far_key_hash = hash['mykey']
+                far_base_id = hash['base']
+                if ((far_person_hash != nil) or (far_key_hash != nil) or \
+                  (far_base_id != nil)) and \
+                  ((far_person_hash != person_hash) or (far_key_hash != key_hash) or \
+                  (far_base_id != $base_id))
+                then
+                  node = $window.pool.encode_node(far_ip, far_port, 'tcp')
+                  $window.pool.init_session(node, far_key_hash, nil, nil, nil)
+                end
+              end
+            end
+            #p hash
+            #sleep 5
+            #udp_server.send('Test!', 0, far_ip, far_port)
           #  socket = get_listener_client_or_nil(server)
           #  while Thread.current[:need_to_listen] and not server.closed? and not socket
           #    sleep 0.05
@@ -13525,8 +13560,8 @@ module PandoraGtk
           #typ, count = encode_pson_type(PT_Str, 0x1FF)
           #p decode_pson_type(typ)
 
-          #p pson = namehash_to_pson({:first_name=>'Ivan', :last_name=>'Inavov', 'ddd'=>555})
-          #p hash = pson_to_namehash(pson)
+          #p pson = hash_to_namepson({:first_name=>'Ivan', :last_name=>'Inavov', 'ddd'=>555})
+          #p hash = namepson_to_hash(pson)
 
           #p PandoraUtils.get_param('base_id')
         when 'Profile'
