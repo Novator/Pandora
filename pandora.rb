@@ -7387,17 +7387,29 @@ module PandoraNet
     PandoraNet.get_exchange_params
     if $tcp_listen_thread or $udp_listen_thread
       if $tcp_listen_thread
-        server = $tcp_listen_thread[:listen_server_socket]
+        #server = $tcp_listen_thread[:listen_server_socket]
+        #server.close if server and (not server.closed?)
+        if $tcp_listen_thread[:need_to_listen]
+          GLib::Timeout.add(2000) do
+            $tcp_listen_thread.exit if $tcp_listen_thread and $tcp_listen_thread.alive?
+            $tcp_listen_thread = nil
+            false
+          end
+        end
         $tcp_listen_thread[:need_to_listen] = false
       end
       if $udp_listen_thread
         server = $udp_listen_thread[:listen_server_socket]
         server.close if server and (not server.closed?)
+        if $udp_listen_thread[:need_to_listen]
+          GLib::Timeout.add(2000) do
+            $udp_listen_thread.exit if $udp_listen_thread and $udp_listen_thread.alive?
+            $udp_listen_thread = nil
+            false
+          end
+        end
         $udp_listen_thread[:need_to_listen] = false
       end
-      #server.close if not server.closed?
-      #$listen_thread.join(2) if $listen_thread
-      #$listen_thread.exit if $listen_thread
       $window.correct_lis_btn_state
     else
       user = PandoraCrypto.current_user_or_key(true)
@@ -7481,9 +7493,24 @@ module PandoraNet
           Thread.current[:listen_server_socket] = udp_server
           Thread.current[:need_to_listen] = (udp_server != nil)
 
-          data, addr = udp_server.recvfrom(1024)
-          puts "From addr: '%s', msg: '%s'" % [addr[0], data]
-          #while Thread.current[:need_to_listen] and server and (not server.closed?)
+          GLib::Timeout.add(2000) do
+            # Broadcast signal
+            udp_brdcst = UDPSocket.new
+            udp_brdcst.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, true)
+            udp_brdcst.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)
+            data = 'I sent this'
+            udp_brdcst.send(data, 0, '<broadcast>', $udp_port)
+            udp_brdcst.close
+          end
+
+          p [Thread.current[:need_to_listen], udp_server, udp_server.closed?]
+
+          while Thread.current[:need_to_listen] and udp_server and (not udp_server.closed?)
+            data, addr = udp_server.recvfrom(1024)
+            puts "Received from addr: '%s', msg: '%s'" % [addr[3], data]
+            sleep 1
+            p 'Sending..'
+            udp_server.send('Test!', 0, addr[3], $udp_port)
           #  socket = get_listener_client_or_nil(server)
           #  while Thread.current[:need_to_listen] and not server.closed? and not socket
           #    sleep 0.05
@@ -7505,7 +7532,7 @@ module PandoraNet
           #      PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
           #    end
           #  end
-          #end
+          end
           udp_server.close if udp_server and (not udp_server.closed?)
           PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+udp_addr_str) if udp_server
           #$window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
@@ -13197,7 +13224,10 @@ module PandoraGtk
     # RU: Изменить состояние кнопки слушателя
     def correct_lis_btn_state
       tool_btn = $toggle_buttons[PandoraGtk::SF_Listen]
-      tool_btn.safe_set_active($listen_thread != nil) if tool_btn
+      if tool_btn
+        lis_act = ($tcp_listen_thread != nil) or ($udp_listen_thread != nil)
+        tool_btn.safe_set_active(lis_act)
+      end
     end
 
     # Change hunter button state
