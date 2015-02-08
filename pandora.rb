@@ -4717,9 +4717,9 @@ module PandoraNet
 
     # Get a session by address (ip, port, protocol)
     # RU: Возвращает сессию для адреса
-    def session_of_address(node)
+    def sessions_of_address(node)
       host, port, proto = decode_node(node)
-      res = sessions.find do |s|
+      res = sessions.select do |s|
         ((s.host_ip == host) or (s.host_name == host)) and (s.port == port) and (s.proto == proto)
       end
       res
@@ -4727,30 +4727,50 @@ module PandoraNet
 
     # Get a session by the node panhash
     # RU: Возвращает сессию по панхэшу узла
-    def session_of_node(panhash)
-      res = sessions.find { |s| (s.node_panhash == panhash) }
+    def sessions_of_node(panhash)
+      res = sessions.select { |s| (s.node_panhash == panhash) }
       res
     end
 
     # Get a session by the key panhash
     # RU: Возвращает сессию по панхэшу ключа
-    def session_of_key(key)
-      res = sessions.find { |s| (s.skey[PandoraCrypto::KV_Panhash] == key) }
+    def sessions_of_key(key)
+      res = sessions.select { |s| (s.skey[PandoraCrypto::KV_Panhash] == key) }
       res
     end
 
-    # Get a session by the key and base id
+    # Get a session by key and base id
     # RU: Возвращает сессию по ключу и идентификатору базы
-    def session_of_keybase(key, base_id)
-      res = sessions.find { |s| (s.base_id == base_id) and \
+    def sessions_of_keybase(key, base_id)
+      res = sessions.select { |s| (s.to_base_id == base_id) and \
         (s.skey[PandoraCrypto::KV_Panhash] == key) }
       res
     end
 
-    # Get a session by the person panhash
+    # Get a session by person, key and base id
+    # RU: Возвращает сессию по человеку, ключу и идентификатору базы
+    def sessions_of_personkeybase(person, key, base_id)
+      res = nil
+      if (person or key) and base_id
+        res = sessions.select do |s|
+          sperson, skey = nil
+          if s.skey
+            sperson = s.skey[PandoraCrypto::KV_Creator]
+            skey = s.skey[PandoraCrypto::KV_Panhash]
+          end
+          ((person.nil? or (sperson == person)) and \
+          (key.nil? or (skey == key)) and \
+          (base_id.nil? or (s.to_base_id == base_id)))
+        end
+      end
+      res ||= []
+      res
+    end
+
+    # Get a session by person panhash
     # RU: Возвращает сессию по панхэшу человека
-    def session_of_person(person)
-      res = sessions.find { |s| (esskey[PandoraCrypto::KV_Creator] == person) }
+    def sessions_of_person(person)
+      res = sessions.select { |s| (s.skey[PandoraCrypto::KV_Creator] == person) }
       res
     end
 
@@ -4776,24 +4796,29 @@ module PandoraNet
 
     # Find or create session with necessary node
     # RU: Находит или создает соединение с нужным узлом
-    def init_session(addr=nil, nodehash=nil, send_state_add=nil, dialog=nil, node_id=nil)
-      p 'init_session: '+[addr, nodehash, send_state_add, dialog, node_id].inspect
+    def init_session(addr=nil, nodehash=nil, send_state_add=nil, dialog=nil, \
+    node_id=nil, person=nil, key=nil, base_id=nil)
+      p '-------init_session: '+[addr, nodehash, send_state_add, dialog, node_id, \
+        person, key, base_id].inspect
       res = nil
       send_state_add ||= 0
-      session1 = nil
-      session2 = nil
-      session1 = session_of_node(nodehash) if nodehash
-      session2 = session_of_address(addr) if addr and (not session1)
-      if session1 or session2
-        session = session1
-        session ||= session2
-        session.send_state = (session.send_state | send_state_add)
-        session.dialog = nil if (session.dialog and session.dialog.destroyed?)
-        session.dialog = dialog if dialog
-        if session.dialog and (not session.dialog.destroyed?) and session.dialog.online_button \
-        and ((session.socket and (not session.socket.closed?)) or session.donor)
-          session.dialog.online_button.safe_set_active(true)
-          session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
+      sessions = sessions_of_personkeybase(person, key, base_id)
+      sessions << sessions_of_node(nodehash) if nodehash
+      sessions << sessions_of_address(addr) if addr
+      sessions.flatten!
+      sessions.uniq!
+      sessions.compact!
+      if (sessions.is_a? Array) and (sessions.size>0)
+        sessions.each_with_index do |session, i|
+          session.send_state = (session.send_state | send_state_add)
+          session.dialog = nil if (session.dialog and session.dialog.destroyed?)
+          session.dialog = dialog if dialog and (i==0)
+          if session.dialog and (not session.dialog.destroyed?) \
+          and session.dialog.online_button \
+          and ((session.socket and (not session.socket.closed?)) or session.donor)
+            session.dialog.online_button.safe_set_active(true)
+            session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
+          end
         end
         res = true
       elsif (addr or nodehash)
@@ -4820,7 +4845,8 @@ module PandoraNet
             proto = 'tcp'
             if (host and (host != '')) or (addr and (addr != ''))
               session = Session.new(nil, host, addr, port, proto, \
-                CS_Connecting, node_id, dialog, send_state_add, tokey, nodehash)
+                CS_Connecting, node_id, dialog, send_state_add, nodehash, \
+                person, key, base_id)
               res = true
             end
           end
@@ -4832,37 +4858,31 @@ module PandoraNet
     # Stop session with a node
     # RU: Останавливает соединение с заданным узлом
     def stop_session(node=nil, nodehash=nil, disconnect=true)  #, wait_disconnect=true)
+      res = false
       p 'stop_session1 nodehash='+nodehash.inspect
-      session1 = nil
-      session2 = nil
-      session1 = session_of_node(nodehash) if nodehash
-      session2 = session_of_address(node) if node and (not session1)
-      if session1 or session2
-        #p 'stop_session2 session1,session2='+[session1,session2].inspect
-        session = session1
-        session ||= session2
-        if session and (session.conn_state != CS_Disconnected)
-          #p 'stop_session3 session='+session.inspect
-          session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
-          if disconnect
-            session.conn_state = CS_StopRead
+      sessions = sessions_of_node(nodehash) if nodehash
+      sessions << sessions_of_address(node) if node
+      sessions.flatten!
+      sessions.uniq!
+      sessions.compact!
+      if (sessions.is_a? Array) and (sessions.size>0)
+        sessions.each do |session|
+          if session and (session.conn_state != CS_Disconnected)
+            session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
+            if disconnect
+              session.conn_state = CS_StopRead
+            end
           end
-
-          #while wait_disconnect and session and (session.conn_state != CS_Disconnected)
-          #  sleep 0.05
-          #  #Thread.pass
-          #  #Gtk.main_iteration
-          #  session = session_of_address(node)
-          #end
-          #session = session_of_address(node)
         end
+        res = true
       end
-      res = (session and (session.conn_state != CS_Disconnected)) #and wait_disconnect
+      #res = (session and (session.conn_state != CS_Disconnected)) #and wait_disconnect
+      res
     end
 
     # Form node marker
     # RU: Формирует маркер узла
-    def encode_node(host, port, proto)
+    def encode_addr(host, port, proto)
       host ||= ''
       port ||= ''
       proto ||= ''
@@ -4985,16 +5005,17 @@ module PandoraNet
   # RU: Режимы чтения из сокета
   RM_Comm      = 0   # Базовая команда
   RM_CommExt   = 1   # Расширение команды для нескольких сегментов
-  RM_SegLenN   = 2   # Длина второго (и следующих) сегмента в серии
+  RM_SegLenN   = 2   # Длина второго и следующих сегмента в серии
   RM_SegmentS  = 3   # Чтение одиночного сегмента
   RM_Segment1  = 4   # Чтение первого сегмента среди нескольких
-  RM_SegmentN  = 5   # Чтение второго (и следующих) сегмента в серии
+  RM_SegmentN  = 5   # Чтение второго и следующих сегмента в серии
 
   # Connection mode
   # RU: Режим соединения
   CM_Hunter       = 1
   CM_KeepHere     = 2
   CM_KeepThere    = 4
+  CM_Double       = 8
 
   # Connection state
   # RU: Состояние соединения
@@ -5064,12 +5085,16 @@ module PandoraNet
 
     include PandoraUtils
 
-    attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
-      :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, :fisher_lure, :fish_lure, \
-      :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, :params, \
-      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, \
-      :media_send, :node_id, :node_panhash, :base_id, :entered_captcha, :captcha_sw, \
-      :hooks
+    attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, \
+      :stage, :dialog, \
+      :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, \
+      :fisher_lure, :fish_lure, \
+      :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, \
+      :params, \
+      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
+      :r_encode, \
+      :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
+      :entered_captcha, :captcha_sw, :hooks, :fishes, :fishers
 
     # Set socket options
     # RU: Установить опции сокета
@@ -5096,10 +5121,10 @@ module PandoraNet
     # RU: Тип сессии
     def get_type
       res = nil
-      if donor
+      if @donor
         res = ST_Fisher
       else
-        if ((conn_mode & CM_Hunter)>0)
+        if ((@conn_mode & CM_Hunter)>0)
           res = ST_Hunter
         else
           res = ST_Listener
@@ -5684,7 +5709,6 @@ module PandoraNet
         panhash = node_model.panhash(values)
         values[:panhash] = panhash
         @node_panhash = panhash
-        @base_id = abase_id
 
         res = node_model.update(values, nil, filter)
       end
@@ -5694,7 +5718,7 @@ module PandoraNet
       def process_media_segment(cannel, mediabuf)
         if not dialog
           @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
-          #node = PandoraNet.encode_node(host_ip, port, proto)
+          #node = PandoraNet.encode_addr(host_ip, port, proto)
           panhash = @skey[PandoraCrypto::KV_Creator]
           @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
           dialog.update_state(true)
@@ -6041,37 +6065,45 @@ module PandoraNet
                       @send_state = (@send_state | CSF_Message)
                     end
                     trust = @skey[PandoraCrypto::KV_Trust]
-                    update_node(@skey[PandoraCrypto::KV_Panhash], sbase_id, trust)
-                    if ((conn_mode & CM_Hunter) == 0)
-                      trust = 0 if (not trust) and $trust_for_captchaed
-                    elsif $trust_for_listener and (not (trust.is_a? Float))
-                      trust = 0.01
-                      @skey[PandoraCrypto::KV_Trust] = trust
-                    end
-                    p log_mes+'----trust='+trust.inspect
-                    if ($captcha_length>0) and (trust.is_a? Integer) \
-                    and ((conn_mode & CM_Hunter) == 0)
-                      @skey[PandoraCrypto::KV_Trust] = 0
-                      send_captcha
-                    elsif trust.is_a? Float
-                      if trust>=$low_conn_trust
-                        if (conn_mode & CM_Hunter) == 0
-                          @stage = ES_Greeting
-                          add_send_segment(EC_Auth, true, params['srckey'])
-                          set_max_pack_size(ES_Sign)
+
+                    init_and_check_node(@skey[PandoraCrypto::KV_Creator], \
+                      @skey[PandoraCrypto::KV_Panhash], sbase_id)
+
+                    if ((conn_mode & CM_Double) == 0)
+                      update_node(to_key, sbase_id, trust)
+                      if ((conn_mode & CM_Hunter) == 0)
+                        trust = 0 if (not trust) and $trust_for_captchaed
+                      elsif $trust_for_listener and (not (trust.is_a? Float))
+                        trust = 0.01
+                        @skey[PandoraCrypto::KV_Trust] = trust
+                      end
+                      p log_mes+'----trust='+trust.inspect
+                      if ($captcha_length>0) and (trust.is_a? Integer) \
+                      and ((conn_mode & CM_Hunter) == 0)
+                        @skey[PandoraCrypto::KV_Trust] = 0
+                        send_captcha
+                      elsif trust.is_a? Float
+                        if trust>=$low_conn_trust
+                          if (conn_mode & CM_Hunter) == 0
+                            @stage = ES_Greeting
+                            add_send_segment(EC_Auth, true, params['srckey'])
+                            set_max_pack_size(ES_Sign)
+                          else
+                            @stage = ES_Exchange
+                            set_max_pack_size(ES_Exchange)
+                            #PandoraUtils.play_mp3('online')
+                          end
+                          @scmd = EC_Data
+                          @scode = 0
+                          @sbuf = nil
                         else
-                          @stage = ES_Exchange
-                          set_max_pack_size(ES_Exchange)
-                          #PandoraUtils.play_mp3('online')
+                          err_scmd('Key has low trust')
                         end
-                        @scmd = EC_Data
-                        @scode = 0
-                        @sbuf = nil
                       else
-                        err_scmd('Key has low trust')
+                        err_scmd('Key is under consideration')
                       end
                     else
-                      err_scmd('Key is under consideration')
+                      err_scmd('Double connection is not allowed')
                     end
                   else
                     err_scmd('Wrong sign')
@@ -6309,7 +6341,8 @@ module PandoraNet
           if @stage>=ES_Exchange
             case rcmd
               when EC_Message, EC_Channel
-                if (not dialog) or dialog.destroyed?
+                p log_mes+'EC_Message  dialog='+@dialog.inspect
+                if (not @dialog) or @dialog.destroyed?
                   @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
                   panhash = @skey[PandoraCrypto::KV_Creator]
                   @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
@@ -6460,7 +6493,7 @@ module PandoraNet
                       session = pool.session_of_key(fish_key)
                       if session
                         p log_mes+' fish session='+session.inspect
-                        line << session.base_id
+                        line << session.to_base_id
                         fisher_lure = registrate_keybase(session, *line)
                         fish_lure = session.registrate_keybase(self, *line)
                         line_raw = PandoraUtils.rubyobj_to_pson(line)
@@ -6534,19 +6567,18 @@ module PandoraNet
                       # данные корректны
                       p log_mes+'--ECC_News_Hook line='+line.inspect
 
-                      if (fish_key == mykeyhash) and (fish_baseid == pool.base_id)
+                      if (fish_key == mykeyhash) and (fish_baseid == pool.to_base_id)
                         # это узел-рыбка, нужно найти/создать рыбацкую сессию
                         session = pool.session_of_keybase(fisher_key, fisher_baseid)
                         #pool.init_session(node, tokey, nil, nil, node_id)
                         session ||= Session.new(self, nil, hook, nil, nil, \
                           CS_Connected, nil, nil, nil, nil)
-                      elsif (fisher_key == mykeyhash) and (fisher_baseid == pool.base_id)
+                      elsif (fisher_key == mykeyhash) and (fisher_baseid == pool.to_base_id)
                         # это узел-рыбак, нужно найти и разбудить рыб. сессию
                         session = pool.session_of_keybase(fish_key, fish_baseid)
                         session ||= Session.new(self, hook, nil, nil, nil, \
                           CS_Connected, nil, nil, nil, nil)
                       end
-
 
                       session = pool.session_of_key(fish_key)
                       sthread = nil
@@ -6618,6 +6650,19 @@ module PandoraNet
       recieved
     end
 
+    def init_and_check_node(a_to_person, a_to_key, a_to_base_id)
+      @to_person = a_to_person if a_to_person
+      @to_key = a_to_key if a_to_key
+      @to_base_id = a_to_base_id if a_to_base_id
+      if to_person and to_key and to_base_id
+        key = PandoraCrypto.current_user_or_key(false)
+        sessions = pool.sessions_of_personkeybase(to_person, to_key, to_base_id)
+        if (sessions.is_a? Array) and (sessions.size>1) and (key != to_key)
+          @conn_mode = (@conn_mode | CM_Double)
+        end
+      end
+    end
+
     # Number of messages per cicle
     # RU: Число сообщений за цикл
     $mes_block_count = 5
@@ -6627,13 +6672,15 @@ module PandoraNet
     # Number of requests per cicle
     # RU: Число запросов за цикл
     $inquire_block_count = 1
-
+    # Reconnection period is sec
+    # RU: Период переподключения в сек
     $conn_period       = 5
 
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
     def initialize(asocket, ahost_name, ahost_ip, aport, aproto, \
-    aconn_state, anode_id, a_dialog, send_state_add, tokey=nil)
+    aconn_state, anode_id, a_dialog, send_state_add, nodehash=nil, to_person=nil, \
+    to_key=nil, to_base_id=nil)
       super()
       @conn_state  = CS_Connecting
       @socket      = nil
@@ -6647,7 +6694,8 @@ module PandoraNet
       @send_models    = {}
       @recv_models    = {}
       @rkey = PandoraCrypto.current_key(false, false)
-      pool.add_session(self)
+
+      init_and_check_node(to_person, to_key, to_base_id)
 
       # Main thread of session
       # RU: Главный поток сессии
@@ -6735,9 +6783,9 @@ module PandoraNet
 
             if not @socket
               # Add fish order and wait donor
-              pool.add_fish_order(self, mykeyhash, pool.base_id, tokey)
+              pool.add_fish_order(self, mykeyhash, pool.to_base_id, to_key)
               while (not @donor) and (not @socket)
-                p 'Thread.stop tokey='+tokey.inspect
+                p 'Thread.stop to_key='+to_key.inspect
                 Thread.stop
               end
             end
@@ -6745,7 +6793,6 @@ module PandoraNet
           end
 
           work_time = Time.now
-
 
           sss = [@socket, @donor].inspect
           sss += '|1:'+[@socket.closed?].inspect if @socket
@@ -6756,6 +6803,7 @@ module PandoraNet
 
 
           if @socket
+            pool.add_session(self)
             if ((conn_mode & CM_Hunter) == 0)
               PandoraUtils.log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
             else
@@ -6765,7 +6813,7 @@ module PandoraNet
             @host_ip      = ahost_ip
             @port         = aport
             @proto        = aproto
-            @node         = pool.encode_node(@host_ip, @port, @proto)
+            @node         = pool.encode_addr(@host_ip, @port, @proto)
             @node_id      = anode_id
           end
 
@@ -6782,7 +6830,7 @@ module PandoraNet
             @params         = {}
             @media_send     = false
             @node_panhash   = nil
-            @base_id        = nil
+            #@base_id        = nil
             if @socket
               set_keepalive(@socket)
             end
@@ -6806,7 +6854,7 @@ module PandoraNet
             if (conn_mode & CM_Hunter)>0
               @log_mes = 'HUN: '
               @max_pack_size = MPS_Captcha
-              add_send_segment(EC_Auth, true, tokey)
+              add_send_segment(EC_Auth, true, to_key)
             end
 
             # Read from socket cicle
@@ -7095,7 +7143,8 @@ module PandoraNet
               # выполнить несколько заданий почемучки по его шагам
               processed = 0
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
-              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$inquire_block_count) \
+              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
+              and (processed<$inquire_block_count) \
               and (questioner_step<QS_Finished)
                 case questioner_step
                   when QS_ResetMessage
@@ -7263,7 +7312,7 @@ module PandoraNet
               fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self.object_id)
               if fish_order
                 p 'New fish order: '+fish_order.inspect
-                to_key = @skey[PandoraCrypto::KV_Panhash]
+                #to_key = @skey[PandoraCrypto::KV_Panhash]
                 if fish_order == to_key
                   PandoraUtils.log_message(LM_Trace, _('Fishing to')+': '+PandoraUtils.bytes_to_hex(to_key))
                   add_send_segment(EC_Query, true, to_key, ECC_Query_Fish)
@@ -7323,7 +7372,7 @@ module PandoraNet
                 donor.free_fish_of_in_lure(fish_lure)
               end
             end
-            fishes.each_index do |i|
+            @fishes.each_index do |i|
               free_fish_of_in_lure(i)
             end
             fishers.each do |val|
@@ -7391,6 +7440,8 @@ module PandoraNet
 
   $tcp_listen_thread = nil
   $udp_listen_thread = nil
+
+  UdpHello = 'pandora:hello:'
 
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
@@ -7513,7 +7564,7 @@ module PandoraNet
               person_hash, key_hash = res
               hparams = {:version=>0, :iam=>person_hash, :mykey=>key_hash, :base=>$base_id}
               hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
-              hello = PandoraUtils.hash_to_namepson(hparams)
+              hello = UdpHello + PandoraUtils.hash_to_namepson(hparams)
               udp_server.send(hello, 0, '<broadcast>', $udp_port)
             end
             false
@@ -7522,24 +7573,30 @@ module PandoraNet
           # Catch UDP datagrams
           while Thread.current[:need_to_listen] and udp_server and (not udp_server.closed?)
             data, addr = udp_server.recvfrom(1024)
-            far_ip = addr[3]
-            far_port = addr[1]
-            hash = PandoraUtils.namepson_to_hash(data)
-            if hash.is_a? Hash
-              res = PandoraCrypto.current_user_and_key(false, false)
-              if res.is_a? Array
-                person_hash, key_hash = res
-                far_version = hash['version']
-                far_person_hash = hash['iam']
-                far_key_hash = hash['mykey']
-                far_base_id = hash['base']
-                if ((far_person_hash != nil) or (far_key_hash != nil) or \
-                  (far_base_id != nil)) and \
-                  ((far_person_hash != person_hash) or (far_key_hash != key_hash) or \
-                  (far_base_id != $base_id))
-                then
-                  node = $window.pool.encode_node(far_ip, far_port, 'tcp')
-                  $window.pool.init_session(node, far_key_hash, nil, nil, nil)
+            p 'Received UDP-pack ['+data+']'
+            if (data.is_a? String) and (data.bytesize > UdpHello.bytesize) \
+            and (data[0, UdpHello.bytesize] == UdpHello)
+              data = data[UdpHello.bytesize..-1]
+              far_ip = addr[3]
+              far_port = addr[1]
+              hash = PandoraUtils.namepson_to_hash(data)
+              if hash.is_a? Hash
+                res = PandoraCrypto.current_user_and_key(false, false)
+                if res.is_a? Array
+                  person_hash, key_hash = res
+                  far_version = hash['version']
+                  far_person_hash = hash['iam']
+                  far_key_hash = hash['mykey']
+                  far_base_id = hash['base']
+                  if ((far_person_hash != nil) or (far_key_hash != nil) or \
+                    (far_base_id != nil)) and \
+                    ((far_person_hash != person_hash) or (far_key_hash != key_hash) or \
+                    (far_base_id != $base_id) or true)
+                  then
+                    addr = $window.pool.encode_addr(far_ip, far_port, 'tcp')
+                    $window.pool.init_session(addr, nil, 0, nil, nil, far_person_hash, \
+                      far_key_hash, far_base_id)
+                  end
                 end
               end
             end
@@ -7593,7 +7650,7 @@ module PandoraNet
       if user
         node_model = PandoraModel::Node.new
         filter = 'addr<>"" OR domain<>""'
-        flds = 'id, addr, domain, tport, key_hash'
+        flds = 'id, addr, domain, tport, key_hash, base_id'
         sel = node_model.select(filter, false, flds)
         if sel and sel.size>0
           $hunter_thread = Thread.new(node_model, filter, flds, sel) \
@@ -7610,11 +7667,14 @@ module PandoraNet
                     tport = row[3].to_i
                   rescue
                   end
-                  tokey = row[4]
+                  person = nil
+                  key_hash = row[4]
+                  base_id = row[5]
                   tport = $port if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
-                  node = $window.pool.encode_node(domain, tport, 'tcp')
-                  $window.pool.init_session(node, tokey, nil, nil, node_id)
+                  addr = $window.pool.encode_addr(domain, tport, 'tcp')
+                  $window.pool.init_session(addr, nil, 0, nil, node_id, person, \
+                    key_hash, base_id)
                 end
                 round_count -= 1
                 if round_count>0
@@ -9665,12 +9725,12 @@ module PandoraGtk
       online_button.safe_signal_clicked do |widget|
         if widget.active?
           widget.safe_set_active(false)
-          targets[CSI_Nodes].each do |keybase|
-            $window.pool.init_session(nil, keybase, 0, self)
+          targets[CSI_Nodes].each do |node_hash|
+            $window.pool.init_session(nil, node_hash, 0, self)
           end
         else
-          targets[CSI_Nodes].each do |keybase|
-            $window.pool.stop_session(nil, keybase, false)
+          targets[CSI_Nodes].each do |node_hash|
+            $window.pool.stop_session(nil, node_hash, false)
           end
         end
       end
@@ -12674,6 +12734,7 @@ module PandoraGtk
       room_id = construct_room_id(persons)
       if known_node
         creator = PandoraCrypto.current_user_or_key(true)
+        p 'known_node persons='+persons.inspect
         if (persons.size==1) and (persons[0]==creator)
           room_id[-1] = (room_id[-1].ord ^ 1).chr
         end
