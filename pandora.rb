@@ -2491,7 +2491,7 @@ module PandoraUtils
       @queue = Array.new
       @write_ind = -1
       if poly_read
-        @read_ind = Array.new  # will be array of read pointers
+        @read_ind = Hash.new  # will be array of read pointers
       else
         @read_ind = -1
       end
@@ -2691,27 +2691,31 @@ module PandoraUtils
   end
 
   $mp3_player = 'mpg123'
-  if PandoraUtils.os_family=='windows'
-    if is_64bit_os?
-      $mp3_player = 'mpg123x64.exe'
+
+  def self.detect_mp3_player
+    if PandoraUtils.os_family=='windows'
+      if is_64bit_os?
+        $mp3_player = 'mpg123x64.exe'
+      else
+        $mp3_player = 'cmdmp3.exe'
+      end
+      $mp3_player = File.join($pandora_util_dir, $mp3_player)
+      if File.exist?($mp3_player)
+        $mp3_player = '"'+$mp3_player+'"'
+      else
+        $mp3_player = 'mplay32 /play /close'
+      end
     else
-      $mp3_player = 'cmdmp3.exe'
-    end
-    $mp3_player = File.join($pandora_util_dir, $mp3_player)
-    if File.exist?($mp3_player)
-      $mp3_player = '"'+$mp3_player+'"'
-    else
-      $mp3_player = 'mplay32 /play /close'
-    end
-  else
-    res = `which #{$mp3_player}`
-    unless (res.is_a? String) and (res.size>0)
-      $mp3_player = 'mplayer'
       res = `which #{$mp3_player}`
       unless (res.is_a? String) and (res.size>0)
-        $mp3_player = 'ffplay -autoexit -nodisp'
+        $mp3_player = 'mplayer'
+        res = `which #{$mp3_player}`
+        unless (res.is_a? String) and (res.size>0)
+          $mp3_player = 'ffplay -autoexit -nodisp'
+        end
       end
     end
+    $mp3_player
   end
 
   $waCreateProcess = nil
@@ -4662,6 +4666,7 @@ module PandoraNet
     attr_accessor :window, :sessions, :white_list, :fish_orders
 
     MaxWhiteSize = 500
+    FishQueueSize = 100
 
     def initialize(main_window)
       super()
@@ -4783,13 +4788,11 @@ module PandoraNet
       res
     end
 
-    FishQueueSize = 100
-
     # Add order to fishing
     # RU: Добавить заявку на рыбалку
     def add_fish_order(session, fisher_key, fisher_baseid, fish_key)
       line = [session, fisher_key, fisher_baseid, fish_key]
-      if not @fish_orders.get_block_from_queue(FishQueueSize, nil, false)
+      if not @fish_orders.get_block_from_queue(FishQueueSize, session.object_id, false)
         @fish_orders.add_block_to_queue(line, FishQueueSize)
       end
     end
@@ -6783,10 +6786,15 @@ module PandoraNet
 
             if not @socket
               # Add fish order and wait donor
-              pool.add_fish_order(self, mykeyhash, pool.to_base_id, to_key)
-              while (not @donor) and (not @socket)
-                p 'Thread.stop to_key='+to_key.inspect
-                Thread.stop
+              if to_key
+                mykeyhash = PandoraCrypto.current_user_or_key(false)
+                pool.add_fish_order(self, mykeyhash, pool.base_id, to_key)
+                while (not @donor) and (not @socket)
+                  p 'Thread.stop to_key='+to_key.inspect
+                  Thread.stop
+                end
+              else
+                @socket = false
               end
             end
 
@@ -7490,6 +7498,8 @@ module PandoraNet
           p "ipv6 all"
         end
         p Socket.ip_address_list
+        #p loc_hst = Socket.gethostname
+        #p Socket.gethostbyname(loc_hst)[3]
 
         # TCP Listener
         $tcp_port ||= PandoraUtils.get_param('tcp_port')
@@ -7543,8 +7553,14 @@ module PandoraNet
             BasicSocket.do_not_reverse_lookup = true
             # Create socket and bind to address
             udp_server = UDPSocket.new
-            udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, true)
-            #udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)
+            udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, true)  #Allow broadcast
+            #udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)  #Many ports
+            #hton = IPAddr.new('127.0.0.1').hton
+            #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_MULTICAST_IF, hton) #interface
+            #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_MULTICAST_TTL, 5) #depth (default 1)
+            #hton2 = IPAddr.new('0.0.0.1').hton
+            #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_ADD_MEMBERSHIP, hton+hton2) #listen multicast
+            #udp_server.setsockopt(Socket::SOL_IP, Socket::IP_MULTICAST_LOOP, true) #come back (def on)
             udp_server.bind(host, $udp_port)
 
             #addr_str = server.addr.to_s
@@ -14349,6 +14365,7 @@ Thread.abort_on_exception = true
 # == RU: Запуск Пандоры!
 PandoraUtils.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
+PandoraUtils.detect_mp3_player
 PandoraGtk::MainWindow.new(MAIN_WINDOW_TITLE)
 
 # Free unix-socket on exit
