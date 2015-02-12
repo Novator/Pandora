@@ -4794,6 +4794,7 @@ module PandoraNet
       line = [session, fisher_key, fisher_baseid, fish_key]
       if not @fish_orders.get_block_from_queue(FishQueueSize, session.object_id, false)
         @fish_orders.add_block_to_queue(line, FishQueueSize)
+        set_status_field(SF_Fisher, @fish_orders.queue.size)
       end
     end
 
@@ -6698,6 +6699,13 @@ module PandoraNet
       @recv_models    = {}
       @rkey = PandoraCrypto.current_key(false, false)
 
+    p 'Session.new [asocket, ahost_name, ahost_ip, aport, aproto, \
+    aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
+    to_key, to_base_id]'+[asocket, ahost_name, ahost_ip, aport, aproto, \
+    aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
+    to_key, to_base_id].inspect
+
+
       init_and_check_node(to_person, to_key, to_base_id)
 
       # Main thread of session
@@ -6795,6 +6803,7 @@ module PandoraNet
                 end
               else
                 @socket = false
+                p 'Break session bz of NO TOKEY'
               end
             end
 
@@ -7607,7 +7616,7 @@ module PandoraNet
                   if ((far_person_hash != nil) or (far_key_hash != nil) or \
                     (far_base_id != nil)) and \
                     ((far_person_hash != person_hash) or (far_key_hash != key_hash) or \
-                    (far_base_id != $base_id) or true)
+                    (far_base_id != $base_id)) # or true)
                   then
                     addr = $window.pool.encode_addr(far_ip, far_port, 'tcp')
                     $window.pool.init_session(addr, nil, 0, nil, nil, far_person_hash, \
@@ -7753,6 +7762,7 @@ module PandoraGtk
   SF_Listen = 2
   SF_Hunt   = 3
   SF_Conn   = 4
+  SF_Fisher = 5
 
   # Advanced dialog window
   # RU: Продвинутое окно диалога
@@ -13947,6 +13957,9 @@ module PandoraGtk
       end
       add_status_field(SF_Conn, '0/0/0') do
         do_menu_act('Session')
+      end
+      add_status_field(SF_Fisher, '0') do
+        do_menu_act('Fisher')
       end
 
       vbox = Gtk::VBox.new
