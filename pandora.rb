@@ -4794,19 +4794,19 @@ module PandoraNet
       line = [session, fisher_key, fisher_baseid, fish_key]
       if not @fish_orders.get_block_from_queue(FishQueueSize, session.object_id, false)
         @fish_orders.add_block_to_queue(line, FishQueueSize)
-        set_status_field(SF_Fisher, @fish_orders.queue.size)
+        $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.queue.size)
       end
     end
 
     # Find or create session with necessary node
     # RU: Находит или создает соединение с нужным узлом
     def init_session(addr=nil, nodehash=nil, send_state_add=nil, dialog=nil, \
-    node_id=nil, person=nil, key=nil, base_id=nil)
+    node_id=nil, person=nil, key_hash=nil, base_id=nil)
       p '-------init_session: '+[addr, nodehash, send_state_add, dialog, node_id, \
-        person, key, base_id].inspect
+        person, key_hash, base_id].inspect
       res = nil
       send_state_add ||= 0
-      sessions = sessions_of_personkeybase(person, key, base_id)
+      sessions = sessions_of_personkeybase(person, key_hash, base_id)
       sessions << sessions_of_node(nodehash) if nodehash
       sessions << sessions_of_address(addr) if addr
       sessions.flatten!
@@ -4825,34 +4825,41 @@ module PandoraNet
           end
         end
         res = true
-      elsif (addr or nodehash)
+      elsif (addr or nodehash or person)
         p 'NEED connect: '+[addr, nodehash].inspect
+        sel = nil
         if addr
           host, port, proto = decode_node(addr)
+          addr = host
           sel = [[host, port]]
-        else
-          node_model = PandoraUtils.get_model('Node')
-          if node_id
-            filter = {:id=>node_id}
-          else
-            filter = {:panhash=>nodehash}
-          end
-          sel = node_model.select(filter, false, 'addr, tport, domain')
+        end
+        node_model = PandoraUtils.get_model('Node')
+        filter = nil
+        if node_id
+          filter = {:id=>node_id}
+        elsif nodehash
+          filter = {:panhash=>nodehash}
+        end
+        if filter
+          sel = node_model.select(filter, false, 'addr, tport, domain, key_hash, id')
         end
         if sel and (sel.size>0)
           sel.each do |row|
-            host = row[2]
-            host.strip! if host
             addr = row[0]
             addr.strip! if addr
             port = row[1]
             proto = 'tcp'
-            if (host and (host != '')) or (addr and (addr != ''))
-              session = Session.new(nil, host, addr, port, proto, \
-                CS_Connecting, node_id, dialog, send_state_add, nodehash, \
-                person, key, base_id)
-              res = true
-            end
+            host = row[2]
+            host.strip! if host
+            key_hash_i = row[3]
+            key_hash_i.strip! if key_hash_i
+            key_hash_i ||= key_hash
+            node_id_i = row[4]
+            node_id_i ||= node_id
+            session = Session.new(nil, host, addr, port, proto, \
+              CS_Connecting, node_id_i, dialog, send_state_add, nodehash, \
+              person, key_hash_i, base_id)
+            res = true
           end
         end
       end
@@ -9751,8 +9758,9 @@ module PandoraGtk
       online_button.safe_signal_clicked do |widget|
         if widget.active?
           widget.safe_set_active(false)
-          targets[CSI_Nodes].each do |node_hash|
-            $window.pool.init_session(nil, node_hash, 0, self)
+          targets[CSI_Nodes].each_with_index do |node_hash, i|
+            $window.pool.init_session(nil, node_hash, 0, self, nil, \
+              targets[CSI_Persons][i], targets[CSI_Keys][i])
           end
         else
           targets[CSI_Nodes].each do |node_hash|
