@@ -14186,7 +14186,7 @@ end
 $poly_launch = true
 $host = nil
 $port = nil
-$lang = 'ru'
+$lang = 'en'
 $pandora_parameters = []
 
 # Paths and files
@@ -14369,33 +14369,51 @@ if PandoraUtils.os_family=='windows'
   $stderr = $stdout
 end
 
-$reg_init = false
+HKEY_LOCAL_MACHINE = 0x80000002
+STANDARD_RIGHTS_READ = 0x00020000
+KEY_QUERY_VALUE = 0x0001
+KEY_ENUMERATE_SUB_KEYS = 0x0008
+KEY_NOTIFY = 0x0010
+KEY_READ = STANDARD_RIGHTS_READ | KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_NOTIFY
 
 # Read Windows HKLM registry value by path and key
 # RU: Читает значение HKLM реестра винды по пути и ключу
 def read_win_hklm_reg(path, key)
   res = nil
-  if $reg_init.nil?
-    begin
-      require 'win32/registry'
-      $reg_init = true
-    rescue Exception
-      $reg_init = false
-      puts 'Cannot init win32/registry'
-    end
-  end
-  if $reg_init
-    reg_type = Win32::Registry::KEY_READ | 0x100
-    Win32::Registry::HKEY_LOCAL_MACHINE.open(path, reg_type) do |reg|
-      begin
-        res = reg[key]
-      rescue
-        res = nil
+  if init_win32api
+    $waRegOpenKeyEx ||= Win32API.new('advapi32', 'RegOpenKeyEx', 'LPLLP', 'L')
+    $waRegQueryValueEx ||= Win32API.new('advapi32', 'RegQueryValueEx', 'LPLPPP', 'L')
+    $waRegCloseKey ||= Win32API.new('advapi32', 'RegCloseKey', 'L', 'L')
+    if $waRegOpenKeyEx and $waRegQueryValueEx and $waRegCloseKey
+      root = HKEY_LOCAL_MACHINE
+      reg_type = KEY_READ | 0x100
+      phkey = [0].pack('L')
+      ret =  $waRegOpenKeyEx.call(root, path, 0, reg_type, phkey)
+      if (ret == 0)
+        hkey = phkey.unpack('L')[0]
+        buf  = 0.chr * 1024
+        size = [buf.length].pack('L')
+        ret =  $waRegQueryValueEx.call(hkey, key, 0, 0, buf, size)
+        if (ret == 0)
+          $waRegCloseKey.call(hkey)
+          begin
+            res = buf[0, 4]
+            res = res.to_i(16) if res
+          rescue Exception
+            res = nil
+          end
+        end
+      else
+        puts 'RegOpenKeyEx call error'
       end
+    else
+      puts 'Init error: [RegOpenKeyEx, RegQueryValueEx, RegCloseKey]=' + \
+        [$waRegOpenKeyEx, $waRegQueryValueEx, $waRegCloseKey].inspect
     end
   end
   res
 end
+
 
 # Get language from environment parameters
 # RU: Взять язык из переменных окружения
@@ -14533,7 +14551,6 @@ elsif PandoraUtils.os_family=='windows'
     $lang = lang[0, 2].downcase if (lang.is_a? String) and (lang.size>1)
   end
 end
-#$lang = 'en'
 
 # Some settings
 # RU: Некоторые настройки
