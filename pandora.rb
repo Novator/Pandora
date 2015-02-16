@@ -14414,7 +14414,6 @@ def read_win_hklm_reg(path, key)
   res
 end
 
-
 # Get language from environment parameters
 # RU: Взять язык из переменных окружения
 lang = ENV['LANG']
