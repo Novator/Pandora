@@ -29,10 +29,10 @@
     </Person>
 
     <Community parent="Created" name="Community|Communities" table="communities" kind="11">
-      <name name="Name" type="String" size="128" hash="1:hash(4)" />
-      <origin_place name="Origin place" type="Panhash(City)" hash="4:coord(4)" />
-      <creator hash="3:panhash(4)" />
-      <created hash="4:integer(4)" />
+      <name name="Name" type="String" size="128" hash="1:hash(6)" />
+      <origin_place name="Origin place" type="Panhash(City)" hash="2:coord(4)" />
+      <creator hash="3:phash(7)" />
+      <created hash="4:date(3)" />
       <RELATIONS name="Состав" kind="Person" default="3" />
     </Community>
 
@@ -212,7 +212,7 @@
     <Delegation parent="Created" kind="159">
       <delegate name="Delegate" type="Panhash(Person)" hash="2:panhash(5)" />
       <target name="Target" type="Panhash" hash="3:panhash(5)" />
-      <creator hash="1:panhash(5)" />
+      <creator hash="1:phash(5)" />
       <created hash="2:integer(4)" />
       <expire name="Expire" type="Time" />
     </Delegation>

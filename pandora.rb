@@ -12044,6 +12044,16 @@ module PandoraGtk
             end
           end
 
+          if (not edit) and val.nil? and (panobject.is_a? PandoraModel::Created)
+            case fid
+              when 'created'
+                val = Time.now.to_i
+              when 'creator'
+                creator = PandoraCrypto.current_user_or_key(true, false)
+                val = creator if creator
+            end
+          end
+
           val, color = PandoraUtils.val_to_view(val, type, view, true)
           field[FI_Value] = val
           field[FI_Color] = color
@@ -12173,12 +12183,15 @@ module PandoraGtk
 
           time_now = Time.now.to_i
           if (panobject.is_a? PandoraModel::Created)
-            flds_hash['created'] = created0 if created0
-            if not edit
-              flds_hash['created'] = time_now
-              creator = PandoraCrypto.current_user_or_key(true)
-              flds_hash['creator'] = creator
+            if created0 and flds_hash['created'] \
+            and ((flds_hash['created'].to_i-created0.to_i).abs<=1)
+              flds_hash['created'] = created0
             end
+            #if not edit
+              #flds_hash['created'] = time_now
+              #creator = PandoraCrypto.current_user_or_key(true)
+              #flds_hash['creator'] = creator
+            #end
           end
           flds_hash['modified'] = time_now
           panstate = 0
