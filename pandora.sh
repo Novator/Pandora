@@ -11,7 +11,7 @@
 #export LANG="pl_PL.UTF-8"
 #export LANG="ru_RU.UTF-8"
 #export LANG="tr_TR.UTF-8"
-#export LANG="en_US.UTF-8"
+export LANG="en_US.UTF-8"
 #export LANG="en_AU.UTF-8"
 #export LANG="ua_UA.UTF-8"
 

@@ -4794,7 +4794,7 @@ module PandoraNet
       line = [session, fisher_key, fisher_baseid, fish_key]
       if not @fish_orders.get_block_from_queue(FishQueueSize, session.object_id, false)
         @fish_orders.add_block_to_queue(line, FishQueueSize)
-        $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.queue.size)
+        $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.queue.size.to_s)
       end
     end
 
@@ -14183,7 +14183,7 @@ end
 
 # Default values of variables
 # RU: Значения переменных по умолчанию
-$poly_launch = true
+$poly_launch = false
 $host = nil
 $port = nil
 $lang = 'en'
@@ -14249,9 +14249,6 @@ while (ARGV.length>0) or next_arg
   val = nil
 end
 
-# Check second launch
-# RU: Проверить второй запуск
-
 PANDORA_USOCK = '/tmp/pandora_unix_socket'
 $pserver = nil
 
@@ -14293,6 +14290,7 @@ if not $poly_launch
     if psocket
       psocket.send('Activate', 0)
       psocket.close
+      puts 'Another copy of Pandora is already runned'
       Kernel.exit
     else
       begin
