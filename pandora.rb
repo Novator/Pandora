@@ -4740,7 +4740,7 @@ module PandoraNet
     # Get a session by the key panhash
     # RU: Возвращает сессию по панхэшу ключа
     def sessions_of_key(key)
-      res = sessions.select { |s| (s.skey[PandoraCrypto::KV_Panhash] == key) }
+      res = sessions.select { |s| (s.skey and (s.skey[PandoraCrypto::KV_Panhash] == key)) }
       res
     end
 
@@ -4792,7 +4792,8 @@ module PandoraNet
     # RU: Добавить заявку на рыбалку
     def add_fish_order(session, fisher_key, fisher_baseid, fish_key)
       line = [session, fisher_key, fisher_baseid, fish_key]
-      if not @fish_orders.get_block_from_queue(FishQueueSize, session.object_id, false)
+      #if not @fish_orders.get_block_from_queue(FishQueueSize, session.object_id, false)
+      if true #must check fish history to prevent double order
         @fish_orders.add_block_to_queue(line, FishQueueSize)
         $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.queue.size.to_s)
       end
@@ -6500,21 +6501,27 @@ module PandoraNet
                     line, len = PandoraUtils.pson_to_rubyobj(rdata)
                     fisher_key, fisher_baseid, fish_key = line
                     p '--ECC_Query_Fish line='+line.inspect
-                    if fish_keybase
-                      session = pool.session_of_key(fish_key)
-                      if session
-                        p log_mes+' fish session='+session.inspect
-                        line << session.to_base_id
-                        fisher_lure = registrate_keybase(session, *line)
-                        fish_lure = session.registrate_keybase(self, *line)
-                        line_raw = PandoraUtils.rubyobj_to_pson(line)
-                        session.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
-                          ECC_News_Hook)
-                        @scmd = EC_News
-                        @scode = ECC_News_Hook
-                        @sbuf = fisher_lure.chr + line_raw
+                    if fisher_key and fisher_baseid and fish_key
+                      if (fisher_key != mykeyhash) or (fisher_baseid != pool.base_id)
+                        sessions = pool.sessions_of_key(fish_key)
+                        if sessions and (sessions.size>0)
+                          sessions.each do |session|
+                            p log_mes+'FOUND fish session='+session.inspect
+                            fish_baseid = session.to_base_id
+                            line << fish_baseid
+                            fisher_lure = registrate_line_hook(session, *line)
+                            fish_lure = session.registrate_line_hook(self, *line)
+                            line_raw = PandoraUtils.rubyobj_to_pson(line)
+                            session.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
+                              ECC_News_Hook)
+                            add_send_segment(EC_News, true, fisher_lure.chr + line_raw, \
+                              ECC_News_Hook)
+                          end
+                        else
+                          pool.add_fish_order(self, *line)
+                        end
                       else
-                        pool.add_fish_order(self, *line)
+                        PandoraUtils.log_message(LM_Warning, _('Somebody do with your data'))
                       end
                     end
                   else #запрос сорта (1-254) или всех сортов (255)
@@ -6589,6 +6596,8 @@ module PandoraNet
                         session = pool.session_of_keybase(fish_key, fish_baseid)
                         session ||= Session.new(self, hook, nil, nil, nil, \
                           CS_Connected, nil, nil, nil, nil)
+                      else
+                        # это узел-посредник, нужно пробросить по истории заявок
                       end
 
                       session = pool.session_of_key(fish_key)
@@ -6694,9 +6703,13 @@ module PandoraNet
     to_key=nil, to_base_id=nil)
       super()
       @conn_state  = CS_Connecting
+      @stage       = ES_Begin
       @socket      = nil
       @donor       = nil
       @conn_mode   = 0
+      @read_state  = 0
+      send_state_add  ||= 0
+      @send_state     = send_state_add
       @fishes         = Array.new
       @fishers        = Array.new
       @read_queue     = PandoraUtils::RoundQueue.new
@@ -6706,14 +6719,19 @@ module PandoraNet
       @recv_models    = {}
       @rkey = PandoraCrypto.current_key(false, false)
 
-    p 'Session.new [asocket, ahost_name, ahost_ip, aport, aproto, \
-    aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
-    to_key, to_base_id]'+[asocket, ahost_name, ahost_ip, aport, aproto, \
-    aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
-    to_key, to_base_id].inspect
+      @host_name    = ahost_name
+      @host_ip      = ahost_ip
+      @port         = aport
+      @proto        = aproto
 
+      p 'Session.new [asocket, ahost_name, ahost_ip, aport, aproto, \
+      aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
+      to_key, to_base_id]'+[asocket, ahost_name, ahost_ip, aport, aproto, \
+      aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
+      to_key, to_base_id].inspect
 
       init_and_check_node(to_person, to_key, to_base_id)
+      pool.add_session(self)
 
       # Main thread of session
       # RU: Главный поток сессии
@@ -6827,7 +6845,6 @@ module PandoraNet
 
 
           if @socket
-            pool.add_session(self)
             if ((conn_mode & CM_Hunter) == 0)
               PandoraUtils.log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
             else
@@ -6848,7 +6865,6 @@ module PandoraNet
             #@conn_state     = aconn_state
             @conn_state     = CS_Connected
             @read_state     = 0
-            send_state_add  ||= 0
             @send_state     = send_state_add
             @sindex         = 0
             @params         = {}
@@ -7334,13 +7350,13 @@ module PandoraNet
 
               # проверка новых заявок на рыбалку
               fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self.object_id)
-              if fish_order
-                p 'New fish order: '+fish_order.inspect
-                #to_key = @skey[PandoraCrypto::KV_Panhash]
-                if fish_order == to_key
-                  PandoraUtils.log_message(LM_Trace, _('Fishing to')+': '+PandoraUtils.bytes_to_hex(to_key))
-                  add_send_segment(EC_Query, true, to_key, ECC_Query_Fish)
-                end
+              if fish_order and (fish_order[0] != self) and to_key and (fish_order[3] != to_key)
+                p log_mes+'New fish order: '+fish_order[1,3].inspect
+                #mykeyhash = PandoraCrypto.current_user_or_key(false)
+                PandoraUtils.log_message(LM_Trace, _('Fishing to')+': ' \
+                  +PandoraUtils.bytes_to_hex(fish_order[3])+' '+_('via')+' '+@host_ip+':'+@port.to_s)
+                line = PandoraUtils.rubyobj_to_pson(fish_order[1,3])
+                add_send_segment(EC_Query, true, line, ECC_Query_Fish)
               end
 
               #p '---@conn_state='+@conn_state.inspect
@@ -7360,7 +7376,6 @@ module PandoraNet
             p log_mes+"Цикл ОТПРАВКИ конец!!!   @conn_state="+@conn_state.inspect
 
             #Thread.critical = true
-            pool.del_session(self)
             #Thread.critical = false
             #p log_mes+'check close'
             if socket and (not socket.closed?)
@@ -7422,6 +7437,7 @@ module PandoraNet
 
           attempt += 1
         end
+        pool.del_session(self)
         if dialog and (not dialog.destroyed?) #and (not dialog.online_button.destroyed?)
           dialog.set_session(self, false)
           #dialog.online_button.active = false
