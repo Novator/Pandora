@@ -6692,6 +6692,9 @@ module PandoraNet
     # Number of requests per cicle
     # RU: Число запросов за цикл
     $inquire_block_count = 1
+    # Number of fish orders per cicle
+    # RU: Число запросов на рабылку за цикл
+    $fish_block_count = 2
     # Reconnection period is sec
     # RU: Период переподключения в сек
     $conn_period       = 5
@@ -7349,14 +7352,21 @@ module PandoraNet
               end
 
               # проверка новых заявок на рыбалку
-              fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self.object_id)
-              if fish_order and (fish_order[0] != self) and to_key and (fish_order[3] != to_key)
-                p log_mes+'New fish order: '+fish_order[1,3].inspect
-                #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                PandoraUtils.log_message(LM_Trace, _('Fishing to')+': ' \
-                  +PandoraUtils.bytes_to_hex(fish_order[3])+' '+_('via')+' '+@host_ip+':'+@port.to_s)
-                line = PandoraUtils.rubyobj_to_pson(fish_order[1,3])
-                add_send_segment(EC_Query, true, line, ECC_Query_Fish)
+              processed = 0
+              while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
+              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
+              and (processed<$fish_block_count)
+                fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, \
+                  self.object_id)
+                if fish_order and (fish_order[0] != self) and to_key and (fish_order[3] != to_key)
+                  p log_mes+'New fish order: '+fish_order[1,3].inspect
+                  #mykeyhash = PandoraCrypto.current_user_or_key(false)
+                  PandoraUtils.log_message(LM_Trace, _('Fishing to')+': ' \
+                    +PandoraUtils.bytes_to_hex(fish_order[3])+' '+_('via')+' '+@host_ip+':'+@port.to_s)
+                  line = PandoraUtils.rubyobj_to_pson(fish_order[1,3])
+                  add_send_segment(EC_Query, true, line, ECC_Query_Fish)
+                end
+                processed += 1
               end
 
               #p '---@conn_state='+@conn_state.inspect
