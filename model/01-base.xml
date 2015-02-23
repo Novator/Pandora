@@ -111,8 +111,9 @@
     </Service>
 
     <Currency name="Currency|Currency" kind="88">
-      <name name="Name" size="128" />
-      <code name="Code" size="3" />
+      <name name="Name" type="String" size="128" />
+      <code name="Code" type="String" size="3" hash="1:raw(3)" />
+      <kind name="Kind" type="Byte" />
     </Currency>
 
     <Contract parent="Blob" kind="87">
@@ -314,12 +315,13 @@
       <message name="Message" type="Text" />
     </Task>
 
-    <Fishhook name="Fishhook|Fishhooks" parent="Created" kind="228">
-      <creator name="Fisher" />
-      <catch name="Catch" type="String" size="32" />
-      <expire name="Expire" type="Time" />
+    <Request name="Request" parent="Created" kind="228">
+      <creator_key name="Creator Key" type="Panhash" />
+      <creator_baseid name="Creator BaseID" type="Panhash" />
+      <kind name="Kind" type="Word" />
+      <body name="Body" type="Blob" />
       <state name="State" type="Word" />
-    </Fishhook>
+    </Request>
 
   </Pandora>
 

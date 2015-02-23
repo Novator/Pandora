@@ -3042,6 +3042,8 @@ module PandoraModel
     trust
   end
 
+  # Pandora record kind
+  # RU: Тип записи Пандоры
   PK_Person  = 1
   PK_Key     = 221
   PK_Sign    = 222
@@ -4660,6 +4662,140 @@ module PandoraNet
 
   include PandoraUtils
 
+  # Network exchange comands
+  # RU: Команды сетевого обмена
+  EC_Media     = 0     # Медиа данные
+  EC_Auth      = 1     # Инициализация диалога (версия протокола, сжатие, авторизация, шифрование)
+  EC_Message   = 2     # Мгновенное текстовое сообщение
+  EC_Channel   = 3     # Запрос открытия медиа-канала
+  EC_Query     = 4     # Запрос пачки сортов или пачки панхэшей
+  EC_News      = 5     # Пачка сортов или пачка панхэшей измененных записей
+  EC_Request   = 6     # Запрос записи/патча/миниатюры
+  EC_Record    = 7     # Выдача записи
+  EC_Lure      = 8     # Запрос рыбака (наживка)
+  EC_Bite      = 9     # Ответ рыбки (поклевка)
+  EC_Sync      = 10    # Последняя команда в серии, или индикация "живости"
+  EC_Wait      = 254   # Временно недоступен
+  EC_Bye       = 255   # Рассоединение
+  # signs only
+  EC_Data      = 256   # Ждем данные
+
+  CommSize = 7
+  CommExtSize = 10
+  SegNAttrSize = 8
+
+  ECC_Auth_Hello       = 0
+  ECC_Auth_Puzzle      = 1
+  ECC_Auth_Phrase      = 2
+  ECC_Auth_Sign        = 3
+  ECC_Auth_Captcha     = 4
+  ECC_Auth_Simple      = 5
+  ECC_Auth_Answer      = 6
+
+  ECC_Query_Rel        = 0
+  ECC_Query_Record     = 1
+  ECC_Query_Fish       = 2
+
+  ECC_News_Panhash      = 0
+  ECC_News_Record       = 1
+  ECC_News_Hook         = 2
+
+  ECC_Channel0_Open     = 0
+  ECC_Channel1_Opened   = 1
+  ECC_Channel2_Close    = 2
+  ECC_Channel3_Closed   = 3
+  ECC_Channel4_Fail     = 4
+
+  ECC_Sync1_NoRecord    = 1
+  ECC_Sync2_Encode      = 2
+  ECC_Sync3_Confirm     = 3
+
+  EC_Wait1_NoFish       = 1
+  EC_Wait2_NoFisher     = 2
+  EC_Wait3_EmptySegment = 3
+
+  ECC_Bye_Exit          = 200
+  ECC_Bye_Unknown       = 201
+  ECC_Bye_BadComm       = 202
+  ECC_Bye_BadCommCRC    = 203
+  ECC_Bye_BadCommLen    = 204
+  ECC_Bye_BadSegCRC     = 205
+  ECC_Bye_BadDataCRC    = 206
+  ECC_Bye_DataTooShort  = 207
+  ECC_Bye_DataTooLong   = 208
+  ECC_Wait_NoHandlerYet = 209
+  ECC_Bye_NoAnswer      = 210
+  ECC_Bye_Silent        = 211
+
+  # Read modes of socket
+  # RU: Режимы чтения из сокета
+  RM_Comm      = 0   # Базовая команда
+  RM_CommExt   = 1   # Расширение команды для нескольких сегментов
+  RM_SegLenN   = 2   # Длина второго и следующих сегмента в серии
+  RM_SegmentS  = 3   # Чтение одиночного сегмента
+  RM_Segment1  = 4   # Чтение первого сегмента среди нескольких
+  RM_SegmentN  = 5   # Чтение второго и следующих сегмента в серии
+
+  # Connection mode
+  # RU: Режим соединения
+  CM_Hunter       = 1
+  CM_KeepHere     = 2
+  CM_KeepThere    = 4
+  CM_Double       = 8
+
+  # Connection state
+  # RU: Состояние соединения
+  CS_Connecting    = 0
+  CS_Connected     = 1
+  CS_Stoping       = 2
+  CS_StopRead      = 3
+  CS_Disconnected  = 4
+
+  # Stage of exchange
+  # RU: Стадия обмена
+  ES_Begin        = 0
+  ES_IpCheck      = 1
+  ES_Protocol     = 3
+  ES_Puzzle       = 4
+  ES_KeyRequest   = 5
+  ES_Sign         = 6
+  ES_Captcha      = 7
+  ES_Greeting     = 8
+  ES_Exchange     = 9
+
+  # Max recv pack size for stadies
+  # RU: Максимально допустимые порции для стадий
+  MPS_Proto     = 150
+  MPS_Puzzle    = 300
+  MPS_Sign      = 500
+  MPS_Captcha   = 3000
+  MPS_Exchange  = 4000
+  # Max send segment size
+  MaxSegSize  = 1200
+
+  # Connection state flags
+  # RU: Флаги состояния соединения
+  CSF_Message     = 1
+  CSF_Messaging   = 2
+
+  # Address types
+  # RU: Типы адресов
+  AT_Ip4        = 0
+  AT_Ip6        = 1
+  AT_Hyperboria = 2
+  AT_Netsukuku  = 3
+
+  # Questioner steps
+  # RU: Шаги почемучки
+  QS_ResetMessage  = 0
+  QS_CreatorCheck  = 1
+  QS_NewsQuery     = 2
+  QS_Finished      = 255
+
+  # Request kind
+  # RU: Тип запроса
+  RQK_Fishing    = 1      # рыбалка
+
   # Pool
   # RU: Пул
   class Pool
@@ -4673,7 +4809,7 @@ module PandoraNet
       @window = main_window
       @sessions = Array.new
       @white_list = Array.new
-      @fish_orders = PandoraUtils::RoundQueue.new(true)
+      @fish_orders = Array.new #PandoraUtils::RoundQueue.new(true)
     end
 
     def base_id
@@ -4790,13 +4926,56 @@ module PandoraNet
 
     # Add order to fishing
     # RU: Добавить заявку на рыбалку
-    def add_fish_order(session, fisher_key, fisher_baseid, fish_key)
-      line = [session, fisher_key, fisher_baseid, fish_key]
-      #if not @fish_orders.get_block_from_queue(FishQueueSize, session.object_id, false)
-      if true #must check fish history to prevent double order
-        @fish_orders.add_block_to_queue(line, FishQueueSize)
-        $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.queue.size.to_s)
+    def add_fish_order(session, fisher, fisher_key, fisher_baseid, fish, fish_key, models=nil)
+
+      @fish_orders.add()
+
+      res = nil
+
+      from_time = Time.now.to_i - 10*60
+
+      model = PandoraUtils.get_model('Request', models)
+      filter = [['creator=', fisher], ['kind=', PandoraNet::RQK_Fishing]]
+      filter << ['creator_key =', fisher_key] if fisher_key
+      filter << ['creator_baseid =', fisher_baseid] if fisher_baseid
+      filter << ['created >=', from_time] if from_time
+
+      sel = model.select(filter, false, 'id, body')
+      if sel and (sel.size>0)
+        sel.each do |row|
+
+          #PandoraUtils.namepson_to_hash(rdata)
+          #PandoraUtils.hash_to_namepson(hparams)
+          #PandoraUtils.rubyobj_to_pson(param)
+          #PandoraUtils.pson_to_rubyobj(panhashes)
+        end
       end
+
+      if not res
+        time = Time.now.to_i
+        line = [fisher_key, fisher_baseid, fish_key]
+        values = {:kind=>PandoraNet::RQK_Fishing, :body=>body,
+          :state=>0, :creator=>fisher, :created=>time, :modified=>time }
+        panhash = model.panhash(values)
+        values['panhash'] = panhash
+        res = model.update(values, nil, nil)
+        if res and (id.is_a? Integer)
+          while (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) do
+            sleep(0.02)
+          end
+          @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
+            +[id].pack('N'))
+        end
+      end
+
+      #line = [session, fisher_key, fisher_baseid, fish_key]
+      #if not @fish_orders.get_block_from_queue(FishQueueSize, session.object_id, false)
+      #if true #must check fish history to prevent double order
+      #  @fish_orders.add_block_to_queue(line, FishQueueSize)
+      #  $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.queue.size.to_s)
+      #end
+
+      res
     end
 
     # Find or create session with necessary node
@@ -4948,136 +5127,6 @@ module PandoraNet
     end
   end
 
-  # Network exchange comands
-  # RU: Команды сетевого обмена
-  EC_Media     = 0     # Медиа данные
-  EC_Auth      = 1     # Инициализация диалога (версия протокола, сжатие, авторизация, шифрование)
-  EC_Message   = 2     # Мгновенное текстовое сообщение
-  EC_Channel   = 3     # Запрос открытия медиа-канала
-  EC_Query     = 4     # Запрос пачки сортов или пачки панхэшей
-  EC_News      = 5     # Пачка сортов или пачка панхэшей измененных записей
-  EC_Request   = 6     # Запрос записи/патча/миниатюры
-  EC_Record    = 7     # Выдача записи
-  EC_Lure      = 8     # Запрос рыбака (наживка)
-  EC_Bite      = 9     # Ответ рыбки (поклевка)
-  EC_Sync      = 10    # Последняя команда в серии, или индикация "живости"
-  EC_Wait      = 254   # Временно недоступен
-  EC_Bye       = 255   # Рассоединение
-  # signs only
-  EC_Data      = 256   # Ждем данные
-
-  CommSize = 7
-  CommExtSize = 10
-  SegNAttrSize = 8
-
-  ECC_Auth_Hello       = 0
-  ECC_Auth_Puzzle      = 1
-  ECC_Auth_Phrase      = 2
-  ECC_Auth_Sign        = 3
-  ECC_Auth_Captcha     = 4
-  ECC_Auth_Simple      = 5
-  ECC_Auth_Answer      = 6
-
-  ECC_Query_Rel        = 0
-  ECC_Query_Record     = 1
-  ECC_Query_Fish       = 2
-
-  ECC_News_Panhash      = 0
-  ECC_News_Record       = 1
-  ECC_News_Hook         = 2
-
-  ECC_Channel0_Open     = 0
-  ECC_Channel1_Opened   = 1
-  ECC_Channel2_Close    = 2
-  ECC_Channel3_Closed   = 3
-  ECC_Channel4_Fail     = 4
-
-  ECC_Sync1_NoRecord    = 1
-  ECC_Sync2_Encode      = 2
-  ECC_Sync3_Confirm     = 3
-
-  EC_Wait1_NoFish       = 1
-  EC_Wait2_NoFisher     = 2
-  EC_Wait3_EmptySegment = 3
-
-  ECC_Bye_Exit          = 200
-  ECC_Bye_Unknown       = 201
-  ECC_Bye_BadComm       = 202
-  ECC_Bye_BadCommCRC    = 203
-  ECC_Bye_BadCommLen    = 204
-  ECC_Bye_BadSegCRC     = 205
-  ECC_Bye_BadDataCRC    = 206
-  ECC_Bye_DataTooShort  = 207
-  ECC_Bye_DataTooLong   = 208
-  ECC_Wait_NoHandlerYet = 209
-  ECC_Bye_NoAnswer      = 210
-  ECC_Bye_Silent        = 211
-
-  # Read modes of socket
-  # RU: Режимы чтения из сокета
-  RM_Comm      = 0   # Базовая команда
-  RM_CommExt   = 1   # Расширение команды для нескольких сегментов
-  RM_SegLenN   = 2   # Длина второго и следующих сегмента в серии
-  RM_SegmentS  = 3   # Чтение одиночного сегмента
-  RM_Segment1  = 4   # Чтение первого сегмента среди нескольких
-  RM_SegmentN  = 5   # Чтение второго и следующих сегмента в серии
-
-  # Connection mode
-  # RU: Режим соединения
-  CM_Hunter       = 1
-  CM_KeepHere     = 2
-  CM_KeepThere    = 4
-  CM_Double       = 8
-
-  # Connection state
-  # RU: Состояние соединения
-  CS_Connecting    = 0
-  CS_Connected     = 1
-  CS_Stoping       = 2
-  CS_StopRead      = 3
-  CS_Disconnected  = 4
-
-  # Stage of exchange
-  # RU: Стадия обмена
-  ES_Begin        = 0
-  ES_IpCheck      = 1
-  ES_Protocol     = 3
-  ES_Puzzle       = 4
-  ES_KeyRequest   = 5
-  ES_Sign         = 6
-  ES_Captcha      = 7
-  ES_Greeting     = 8
-  ES_Exchange     = 9
-
-  # Max recv pack size for stadies
-  # RU: Максимально допустимые порции для стадий
-  MPS_Proto     = 150
-  MPS_Puzzle    = 300
-  MPS_Sign      = 500
-  MPS_Captcha   = 3000
-  MPS_Exchange  = 4000
-  # Max send segment size
-  MaxSegSize  = 1200
-
-  # Connection state flags
-  # RU: Флаги состояния соединения
-  CSF_Message     = 1
-  CSF_Messaging   = 2
-
-  # Address types
-  # RU: Типы адресов
-  AT_Ip4        = 0
-  AT_Ip6        = 1
-  AT_Hyperboria = 2
-  AT_Netsukuku  = 3
-
-  # Questioner steps
-  # RU: Шаги почемучки
-  QS_ResetMessage  = 0
-  QS_CreatorCheck  = 1
-  QS_NewsQuery     = 2
-  QS_Finished      = 255
-
   $callback_addr = nil
   $puzzle_bit_length = 0  #8..24  (recommended 14)
   $puzzle_sec_delay = 2   #0..255 (recommended 2)
@@ -5091,7 +5140,6 @@ module PandoraNet
   $keep_idle  = 5  #(after, sec)
   $keep_intvl = 1  #(every, sec)
   $keep_cnt   = 4  #(count)
-
 
   class Session
 
@@ -6518,7 +6566,7 @@ module PandoraNet
                               ECC_News_Hook)
                           end
                         else
-                          pool.add_fish_order(self, *line)
+                          pool.add_fish_order(self, *line, @recv_models)
                         end
                       else
                         PandoraUtils.log_message(LM_Warning, _('Somebody do with your data'))
@@ -6619,7 +6667,7 @@ module PandoraNet
                           session.fish_lure = session.registrate_fish(fish)
                           sthread = session.send_thread
                         else
-                          pool.add_fish_order(self, *line)
+                          pool.add_fish_order(self, *line, @recv_models)
                         end
                       end
                       if sthread and sthread.alive? and sthread.stop?
@@ -6824,7 +6872,7 @@ module PandoraNet
               # Add fish order and wait donor
               if to_key
                 mykeyhash = PandoraCrypto.current_user_or_key(false)
-                pool.add_fish_order(self, mykeyhash, pool.base_id, to_key)
+                pool.add_fish_order(self, mykeyhash, pool.base_id, to_key, @recv_models)
                 while (not @donor) and (not @socket)
                   p 'Thread.stop to_key='+to_key.inspect
                   Thread.stop
@@ -7499,28 +7547,28 @@ module PandoraNet
     PandoraNet.get_exchange_params
     if $tcp_listen_thread or $udp_listen_thread
       if $tcp_listen_thread
-        #server = $tcp_listen_thread[:listen_server_socket]
+        #server = $tcp_listen_thread[:tcp_server]
         #server.close if server and (not server.closed?)
-        if $tcp_listen_thread[:need_to_listen]
+        if $tcp_listen_thread[:listen_tcp]
           GLib::Timeout.add(2000) do
             $tcp_listen_thread.exit if $tcp_listen_thread and $tcp_listen_thread.alive?
             $tcp_listen_thread = nil
             false
           end
         end
-        $tcp_listen_thread[:need_to_listen] = false
+        $tcp_listen_thread[:listen_tcp] = false
       end
       if $udp_listen_thread
-        server = $udp_listen_thread[:listen_server_socket]
+        server = $udp_listen_thread[:udp_server]
         server.close if server and (not server.closed?)
-        if $udp_listen_thread[:need_to_listen]
+        if $udp_listen_thread[:listen_udp]
           GLib::Timeout.add(2000) do
             $udp_listen_thread.exit if $udp_listen_thread and $udp_listen_thread.alive?
             $udp_listen_thread = nil
             false
           end
         end
-        $udp_listen_thread[:need_to_listen] = false
+        $udp_listen_thread[:listen_udp] = false
       end
       $window.correct_lis_btn_state
     else
@@ -7555,18 +7603,18 @@ module PandoraNet
             server = nil
             PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' TCP '+host.to_s+':'+$tcp_port.to_s)
           end
-          Thread.current[:listen_server_socket] = server
-          Thread.current[:need_to_listen] = (server != nil)
-          while Thread.current[:need_to_listen] and server and (not server.closed?)
+          Thread.current[:tcp_server] = server
+          Thread.current[:listen_tcp] = (server != nil)
+          while Thread.current[:listen_tcp] and server and (not server.closed?)
             socket = get_listener_client_or_nil(server)
-            while Thread.current[:need_to_listen] and not server.closed? and not socket
+            while Thread.current[:listen_tcp] and not server.closed? and not socket
               sleep 0.05
               #Thread.pass
               #Gtk.main_iteration
               socket = get_listener_client_or_nil(server)
             end
 
-            if Thread.current[:need_to_listen] and (not server.closed?) and socket
+            if Thread.current[:listen_tcp] and (not server.closed?) and socket
               host_ip = socket.peeraddr[2]
               unless $window.pool.is_black?(host_ip)
                 host_name = socket.peeraddr[3]
@@ -7612,24 +7660,29 @@ module PandoraNet
             udp_server = nil
             PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' UDP '+host.to_s+':'+$udp_port.to_s)
           end
-          Thread.current[:listen_server_socket] = udp_server
-          Thread.current[:need_to_listen] = (udp_server != nil)
+          Thread.current[:udp_server] = udp_server
+          Thread.current[:listen_udp] = (udp_server != nil)
 
-          # Send UDP broadcast hello
-          GLib::Timeout.add(2000) do
-            res = PandoraCrypto.current_user_and_key(false, false)
-            if res.is_a? Array
-              person_hash, key_hash = res
-              hparams = {:version=>0, :iam=>person_hash, :mykey=>key_hash, :base=>$base_id}
-              hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
-              hello = UdpHello + PandoraUtils.hash_to_namepson(hparams)
-              udp_server.send(hello, 0, '<broadcast>', $udp_port)
+          if udp_server
+            # Send UDP broadcast hello
+            GLib::Timeout.add(2000) do
+              res = PandoraCrypto.current_user_and_key(false, false)
+              if res.is_a? Array
+                person_hash, key_hash = res
+                hparams = {:version=>0, :iam=>person_hash, :mykey=>key_hash, :base=>$base_id}
+                hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
+                hello = UdpHello + PandoraUtils.hash_to_namepson(hparams)
+                udp_server = Thread.current[:udp_server]
+                if udp_server and (not udp_server.closed?)
+                  udp_server.send(hello, 0, '<broadcast>', $udp_port)
+                end
+              end
+              false
             end
-            false
           end
 
           # Catch UDP datagrams
-          while Thread.current[:need_to_listen] and udp_server and (not udp_server.closed?)
+          while Thread.current[:listen_udp] and udp_server and (not udp_server.closed?)
             data, addr = udp_server.recvfrom(1024)
             p 'Received UDP-pack ['+data+']'
             if (data.is_a? String) and (data.bytesize > UdpHello.bytesize) \
@@ -7728,7 +7781,7 @@ module PandoraNet
                   person = nil
                   key_hash = row[4]
                   base_id = row[5]
-                  tport = $port if (not tport) or (tport==0) or (tport=='')
+                  tport = 5577 if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
                   addr = $window.pool.encode_addr(domain, tport, 'tcp')
                   $window.pool.init_session(addr, nil, 0, nil, node_id, person, \
@@ -12225,6 +12278,8 @@ module PandoraGtk
           flds_hash['panstate'] = panstate
           if (panobject.is_a? PandoraModel::Key)
             lang = flds_hash['rights'].to_i
+          elsif (panobject.is_a? PandoraModel::Currency)
+            lang = 0
           end
 
           panhash = panobject.panhash(flds_hash, lang)
@@ -13375,13 +13430,13 @@ module PandoraGtk
     # Update status of connections
     # RU: Обновить состояние подключений
     def update_conn_status(conn, session_type, diff_count)
-      if session_type==0
-        @hunter_count += diff_count
-      elsif session_type==1
-        @listener_count += diff_count
-      else
-        @fisher_count += diff_count
-      end
+      #if session_type==0
+      @hunter_count += diff_count
+      #elsif session_type==1
+      #  @listener_count += diff_count
+      #else
+      #  @fisher_count += diff_count
+      #end
       set_status_field(SF_Conn, hunter_count.to_s+'/'+listener_count.to_s+'/'+fisher_count.to_s)
       online = ((@hunter_count>0) or (@listener_count>0) or (@fisher_count>0))
       $statusicon.set_online(online)
@@ -13776,7 +13831,7 @@ module PandoraGtk
       ['Sign', nil, 'Signs'],
       ['Node', Gtk::Stock::NETWORK, 'Nodes'],
       ['Event', nil, 'Events'],
-      ['Fishhook', nil, 'Fishhooks'],
+      ['Request', Gtk::Stock::SELECT_COLOR, 'Requests'],
       ['Session', Gtk::Stock::JUSTIFY_FILL, 'Sessions', '<control>S'],
       ['-', nil, '-'],
       ['Authorize', nil, 'Authorize', '<control>U'],
@@ -14224,7 +14279,6 @@ end
 # RU: Значения переменных по умолчанию
 $poly_launch = false
 $host = nil
-$port = nil
 $lang = 'en'
 $pandora_parameters = []
 
@@ -14264,8 +14318,10 @@ while (ARGV.length>0) or next_arg
     when '-h','--host'
       $host = val if val
     when '-p','--port'
-      $port = val.to_i if val
-      p 'port='+$port.inspect
+      if val
+        $tcp_port = val.to_i
+        $udp_port = $tcp_port
+      end
     when '-b', '--base'
       $pandora_sqlite_db = val if val
       p 'base='+$pandora_sqlite_db.inspect
