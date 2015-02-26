@@ -4924,6 +4924,14 @@ module PandoraNet
       res
     end
 
+    FO_Session         = 0
+    FO_Fisher          = 1
+    FO_Fisher_key      = 2
+    FO_Fisher_baseid   = 3
+    FO_Fish            = 4
+    FO_Fish_key        = 5
+    FO_Time            = 6
+
     # Add order to fishing
     # RU: Добавить заявку на рыбалку
     def add_fish_order(session, fisher, fisher_key, fisher_baseid, fish, fish_key, models=nil)
@@ -4976,7 +4984,18 @@ module PandoraNet
       res
     end
 
-    def find_fish_order(??)
+    def find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
+      res = @fish_orders.select do |fo|
+        ((fo[FO_Fisher] == fisher) and \
+        (fo[FO_Fisher_key] == fisher) and \
+        (fo[FO_Fisher_baseid] == fisher) and \
+        (fo[FO_Fish] == fisher) and \
+        (fo[FO_Fish_key] == fisher))
+      end
+      #FO_Session
+      #res.uniq!
+      #res.compact!
+      res
     end
 
     # Find or create session with necessary node
@@ -6647,7 +6666,14 @@ module PandoraNet
                           CS_Connected, nil, nil, nil, nil)
                       else
                         # это узел-посредник, нужно пробросить по истории заявок
-                        pool.find_fish_order(??)
+                        fish_orders = pool.find_fish_order(*line)
+                        fish_orders.each do |fo|
+                          sess = fo[FO_Session]
+                          if sess and (not sess.destroyed?)
+                            sess.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
+                              ECC_News_Hook)
+                          end
+                        end
                       end
 
                       session = pool.session_of_key(fish_key)

@@ -282,7 +282,6 @@
       <creator_baseid name.ru="BaseID создателя" />
       <kind name.ru="Тип" />
       <body name.ru="Тело" />
-      <expire name.ru="Истекает" />
       <state name.ru="Статус" />
     </Request>
 
