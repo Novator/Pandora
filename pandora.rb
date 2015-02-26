@@ -4927,46 +4927,44 @@ module PandoraNet
     # Add order to fishing
     # RU: Добавить заявку на рыбалку
     def add_fish_order(session, fisher, fisher_key, fisher_baseid, fish, fish_key, models=nil)
-
-      @fish_orders.add()
-
       res = nil
+      time = Time.now.to_i
+      @fish_orders.add([session, fisher, fisher_key, fisher_baseid, fish, fish_key, time])
+      res = true
 
-      from_time = Time.now.to_i - 10*60
+      #model = PandoraUtils.get_model('Request', models)
+      #filter = [['creator=', fisher], ['kind=', PandoraNet::RQK_Fishing]]
+      #filter << ['creator_key =', fisher_key] if fisher_key
+      #filter << ['creator_baseid =', fisher_baseid] if fisher_baseid
+      #filter << ['created >=', from_time] if from_time
 
-      model = PandoraUtils.get_model('Request', models)
-      filter = [['creator=', fisher], ['kind=', PandoraNet::RQK_Fishing]]
-      filter << ['creator_key =', fisher_key] if fisher_key
-      filter << ['creator_baseid =', fisher_baseid] if fisher_baseid
-      filter << ['created >=', from_time] if from_time
-
-      sel = model.select(filter, false, 'id, body')
-      if sel and (sel.size>0)
-        sel.each do |row|
+      #sel = model.select(filter, false, 'id, body')
+      #if sel and (sel.size>0)
+      #  sel.each do |row|
 
           #PandoraUtils.namepson_to_hash(rdata)
           #PandoraUtils.hash_to_namepson(hparams)
           #PandoraUtils.rubyobj_to_pson(param)
           #PandoraUtils.pson_to_rubyobj(panhashes)
-        end
-      end
+      #  end
+      #end
 
-      if not res
-        time = Time.now.to_i
-        line = [fisher_key, fisher_baseid, fish_key]
-        values = {:kind=>PandoraNet::RQK_Fishing, :body=>body,
-          :state=>0, :creator=>fisher, :created=>time, :modified=>time }
-        panhash = model.panhash(values)
-        values['panhash'] = panhash
-        res = model.update(values, nil, nil)
-        if res and (id.is_a? Integer)
-          while (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) do
-            sleep(0.02)
-          end
-          @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
-            +[id].pack('N'))
-        end
-      end
+      #if not res
+      #  time = Time.now.to_i
+      #  line = [fisher_key, fisher_baseid, fish_key]
+      #  values = {:kind=>PandoraNet::RQK_Fishing, :body=>body,
+      #    :state=>0, :creator=>fisher, :created=>time, :modified=>time }
+      #  panhash = model.panhash(values)
+      #  values['panhash'] = panhash
+      #  res = model.update(values, nil, nil)
+      #  if res and (id.is_a? Integer)
+      #    while (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) do
+      #      sleep(0.02)
+      #    end
+      #    @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
+      #      +[id].pack('N'))
+      #  end
+      #end
 
       #line = [session, fisher_key, fisher_baseid, fish_key]
       #if not @fish_orders.get_block_from_queue(FishQueueSize, session.object_id, false)
@@ -4976,6 +4974,9 @@ module PandoraNet
       #end
 
       res
+    end
+
+    def find_fish_order(??)
     end
 
     # Find or create session with necessary node
@@ -6646,6 +6647,7 @@ module PandoraNet
                           CS_Connected, nil, nil, nil, nil)
                       else
                         # это узел-посредник, нужно пробросить по истории заявок
+                        pool.find_fish_order(??)
                       end
 
                       session = pool.session_of_key(fish_key)
