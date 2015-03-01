@@ -3019,23 +3019,23 @@ module PandoraModel
     res
   end
 
-  # Normalize and convert trust
-  # RU: Нормализовать и преобразовать доверие
-  def self.trust_to_int255(trust, to_int=nil)
+  # Normalize and convert trust if need
+  # RU: Нормализовать и преобразовать доверие если нужно
+  def self.transform_trust(trust, to_int=nil)
     if trust.is_a? Integer
       if trust<(-127)
         trust = -127
       elsif trust>127
         trust = 127
       end
-      trust = (trust/127.0) if to_int == false
+      trust = (trust/127.0) if to_int != true
     elsif trust.is_a? Float
       if trust<(-1.0)
         trust = -1.0
       elsif trust>1.0
         trust = 1.0
       end
-      trust = (trust * 127).round if to_int == true
+      trust = (trust * 127).round if to_int != false
     else
       trust = nil
     end
@@ -3240,7 +3240,7 @@ module PandoraModel
       if sign_model
         filter = [['creator=', signer]]
         filter << ['modified >=', from_time.to_i] if from_time
-        filter << ['trust=', trust_to_int255(trust)] if trust
+        filter << ['trust=', transform_trust(trust)] if trust
         filter << ['key=', key] if key
         pankinds = PandoraUtils.str_to_bytes(pankinds)
         if ((pankinds.is_a? Array) and (pankinds.size==1))
@@ -4348,7 +4348,7 @@ module PandoraCrypto
           time_now = Time.now.to_i
           key_hash = key[KV_Panhash]
           creator = key[KV_Creator]
-          trust = PandoraModel.trust_to_int255(trust, true)
+          trust = PandoraModel.transform_trust(trust, true)
 
           values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, \
             :pack=>PT_Pson1, :trust=>trust, :creator=>creator, :created=>time_now, \
@@ -4406,7 +4406,7 @@ module PandoraCrypto
             if created>last_date
               #p 'sign2: [creator, created, trust]='+[creator, created, trust].inspect
               last_date = created
-              res = PandoraModel.trust_to_int255(trust, false)
+              res = PandoraModel.transform_trust(trust, false)
             end
           end
         else
@@ -4457,7 +4457,7 @@ module PandoraCrypto
               if (creator != prev_creator) or (i==last_i)
                 p 'sign3: [creator, created, last_trust]='+[creator, created, last_trust].inspect
                 person_trust = 1.0 #trust_of_person(creator, my_key_hash)
-                rate += PandoraModel.trust_to_int255(last_trust, false) * person_trust
+                rate += PandoraModel.transform_trust(last_trust, false) * person_trust
                 prev_creator = creator
                 last_date = created
                 last_trust = trust
@@ -4796,10 +4796,21 @@ module PandoraNet
   # RU: Тип запроса
   RQK_Fishing    = 1      # рыбалка
 
+  # Fish order array indexes
+  # RU: Индексы массива заявок на рыбалку
+  FO_Index           = 0
+  FO_Session         = 1
+  FO_Fisher          = 2
+  FO_Fisher_key      = 3
+  FO_Fisher_baseid   = 4
+  FO_Fish            = 5
+  FO_Fish_key        = 6
+  FO_Time            = 7
+
   # Pool
   # RU: Пул
   class Pool
-    attr_accessor :window, :sessions, :white_list, :fish_orders
+    attr_accessor :window, :sessions, :white_list, :fish_orders, :fish_ind
 
     MaxWhiteSize = 500
     FishQueueSize = 100
@@ -4809,6 +4820,7 @@ module PandoraNet
       @window = main_window
       @sessions = Array.new
       @white_list = Array.new
+      @fish_ind = -1
       @fish_orders = Array.new #PandoraUtils::RoundQueue.new(true)
     end
 
@@ -4924,20 +4936,13 @@ module PandoraNet
       res
     end
 
-    FO_Session         = 0
-    FO_Fisher          = 1
-    FO_Fisher_key      = 2
-    FO_Fisher_baseid   = 3
-    FO_Fish            = 4
-    FO_Fish_key        = 5
-    FO_Time            = 6
-
     # Add order to fishing
     # RU: Добавить заявку на рыбалку
     def add_fish_order(session, fisher, fisher_key, fisher_baseid, fish, fish_key, models=nil)
       res = nil
       time = Time.now.to_i
-      @fish_orders.add([session, fisher, fisher_key, fisher_baseid, fish, fish_key, time])
+      @fish_ind += 1
+      @fish_orders << [@fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
       res = true
 
       #model = PandoraUtils.get_model('Request', models)
@@ -4980,17 +4985,18 @@ module PandoraNet
       #  @fish_orders.add_block_to_queue(line, FishQueueSize)
       #  $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.queue.size.to_s)
       #end
+      $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.size.to_s)
 
       res
     end
 
     def find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
       res = @fish_orders.select do |fo|
-        ((fo[FO_Fisher] == fisher) and \
-        (fo[FO_Fisher_key] == fisher) and \
-        (fo[FO_Fisher_baseid] == fisher) and \
-        (fo[FO_Fish] == fisher) and \
-        (fo[FO_Fish_key] == fisher))
+        ((fisher.nil? or (fo[FO_Fisher] == fisher)) and \
+        (fisher_key.nil? or (fo[FO_Fisher_key] == fisher_key)) and \
+        (fisher_baseid.nil? or (fo[FO_Fisher_baseid] == fisher_baseid)) and \
+        (fish.nil? or (fo[FO_Fish] == fish)) and \
+        (fish_key.nil? or (fo[FO_Fish_key] == fish_key)))
       end
       #FO_Session
       #res.uniq!
@@ -5174,7 +5180,7 @@ module PandoraNet
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
-      :entered_captcha, :captcha_sw, :hooks, :fishes, :fishers
+      :entered_captcha, :captcha_sw, :hooks, :fishes, :fishers, :fish_ind
 
     # Set socket options
     # RU: Установить опции сокета
@@ -5486,6 +5492,14 @@ module PandoraNet
       res
     end
 
+    def mypersonhash
+      @rkey[PandoraCrypto::KV_Creator]
+    end
+
+    def mykeyhash
+      @rkey[PandoraCrypto::KV_Panhash]
+    end
+
     # Compose command of request of record/records
     # RU: Компонует команду запроса записи/записей
     def set_request(panhashes, send_now=false)
@@ -5649,10 +5663,6 @@ module PandoraNet
         else
           err_scmd('Captcha attempts is exhausted')
         end
-      end
-
-      def mykeyhash
-        @rkey[PandoraCrypto::KV_Panhash]
       end
 
       # Update record about node
@@ -6567,9 +6577,9 @@ module PandoraNet
                     # пришла заявка на рыбалку
                     line_raw = rdata
                     line, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    fisher_key, fisher_baseid, fish_key = line
+                    fisher, fisher_key, fisher_baseid, fish, fish_key = line
                     p '--ECC_Query_Fish line='+line.inspect
-                    if fisher_key and fisher_baseid and fish_key
+                    if fisher_key and fisher_baseid and (fish or fish_key)
                       if (fisher_key != mykeyhash) or (fisher_baseid != pool.base_id)
                         sessions = pool.sessions_of_key(fish_key)
                         if sessions and (sessions.size>0)
@@ -6789,6 +6799,7 @@ module PandoraNet
       @read_state  = 0
       send_state_add  ||= 0
       @send_state     = send_state_add
+      @fish_ind       = -1
       @fishes         = Array.new
       @fishers        = Array.new
       @read_queue     = PandoraUtils::RoundQueue.new
@@ -6900,7 +6911,8 @@ module PandoraNet
               # Add fish order and wait donor
               if to_key
                 mykeyhash = PandoraCrypto.current_user_or_key(false)
-                pool.add_fish_order(self, mykeyhash, pool.base_id, to_key, @recv_models)
+                pool.add_fish_order(self, mypersonhash, mykeyhash, pool.base_id, \
+                  to_person, to_key, @recv_models)
                 while (not @donor) and (not @socket)
                   p 'Thread.stop to_key='+to_key.inspect
                   Thread.stop
@@ -7431,15 +7443,20 @@ module PandoraNet
               processed = 0
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
-              and (processed<$fish_block_count)
-                fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, \
-                  self.object_id)
-                if fish_order and (fish_order[0] != self) and to_key and (fish_order[3] != to_key)
-                  p log_mes+'New fish order: '+fish_order[1,3].inspect
+              and (processed<$fish_block_count) \
+              and (@fish_ind<pool.fish_ind)
+                @fish_ind += 1
+                fish_order = pool.fish_orders[@fish_ind]
+                p log_mes+'fish_order='+fish_order[FO_Fisher..FO_Fish_key].inspect
+                p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
+                if fish_order and (fish_order[FO_Session] != self) \
+                and ((@to_person and (fish_order[FO_Fish] != @to_person)) \
+                or (@to_key and (fish_order[FO_Fish_key] != @to_key)))
+                  p log_mes+'New fish order: '+fish_order[FO_Fisher..FO_Fish_key].inspect
                   #mykeyhash = PandoraCrypto.current_user_or_key(false)
                   PandoraUtils.log_message(LM_Trace, _('Fishing to')+': ' \
-                    +PandoraUtils.bytes_to_hex(fish_order[3])+' '+_('via')+' '+@host_ip+':'+@port.to_s)
-                  line = PandoraUtils.rubyobj_to_pson(fish_order[1,3])
+                    +PandoraUtils.bytes_to_hex(fish_order[FO_Fish])+' '+_('via')+' '+@host_ip+':'+@port.to_s)
+                  line = PandoraUtils.rubyobj_to_pson(fish_order[FO_Fisher..FO_Fish_key])
                   add_send_segment(EC_Query, true, line, ECC_Query_Fish)
                 end
                 processed += 1
@@ -7872,11 +7889,12 @@ module PandoraGtk
   # Statusbar fields
   # RU: Поля в статусбаре
   SF_Update = 0
-  SF_Auth   = 1
-  SF_Listen = 2
-  SF_Hunt   = 3
-  SF_Conn   = 4
-  SF_Fisher = 5
+  SF_Lang   = 1
+  SF_Auth   = 2
+  SF_Listen = 3
+  SF_Hunt   = 4
+  SF_Conn   = 5
+  SF_Fisher = 6
 
   # Advanced dialog window
   # RU: Продвинутое окно диалога
@@ -7888,9 +7906,7 @@ module PandoraGtk
     # Create method
     # RU: Метод создания
     def initialize(*args)
-      p '0----------'
       super(*args)
-      p '1----------'
       @response = 0
       @window = self
       @enter_like_tab = false
@@ -7964,8 +7980,6 @@ module PandoraGtk
       #      dialog.destroy
       #  end
       #end
-
-      p '2----------'
 
       window.signal_connect('delete-event') { |*args|
         @response=1
@@ -12174,8 +12188,8 @@ module PandoraGtk
         if edit
           count, rate, querist_rate = PandoraCrypto.rate_of_panobj(panhash0)
           trust = nil
-          p PandoraUtils.bytes_to_hex(panhash0)
-          p 'trust or num'
+          #p PandoraUtils.bytes_to_hex(panhash0)
+          #p 'trust or num'
           trust_or_num = PandoraCrypto.trust_in_panobj(panhash0)
           trust = trust_or_num if (trust_or_num.is_a? Float)
           dialog.vouch_btn.active = (trust_or_num != nil)
@@ -12194,8 +12208,7 @@ module PandoraGtk
           dialog.public_scale.value = (pub_level-RK_MinPublic-10)/10.0 if pub_level
           dialog.public_scale.sensitive = pub_level
 
-          p 'follow'
-          p follow = PandoraModel.act_relation(nil, panhash0, RK_Follow, :check)
+          follow = PandoraModel.act_relation(nil, panhash0, RK_Follow, :check)
           dialog.follow_btn.active = follow
           dialog.follow_btn.inconsistent = (follow == nil)
 
@@ -14075,6 +14088,9 @@ module PandoraGtk
 
       add_status_field(SF_Update, _('Version') + ': ' + _('Not checked')) do
         PandoraGtk.start_updating(true)
+      end
+      add_status_field(SF_Lang, $lang) do
+        do_menu_act('Blob')
       end
       add_status_field(SF_Auth, _('Not logged')) do
         do_menu_act('Authorize')
