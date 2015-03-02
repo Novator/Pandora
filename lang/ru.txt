@@ -321,3 +321,4 @@ Was not unziped with method=>Не было распаковано методом
 Proxy is used=>Прокси используется
 Double connection is not allowed=>Двойное подключение недопустимо
 Requests=>Запросы
+Fishers=>Рыбаки
