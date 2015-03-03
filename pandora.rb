@@ -587,27 +587,32 @@ module PandoraUtils
   # Time to human view
   # RU: Время в человеческий вид
   def self.time_to_str(val, time_now=nil)
-    time_now ||= Time.now
-    min_ago = (time_now.to_i - val.to_i) / 60
-    if min_ago < 0
-      val = val.strftime('%d.%m.%Y')
-    elsif min_ago == 0
-      val = _('just now')
-    elsif min_ago == 1
-      val = _('a min. ago')
-    else
-      midnight = calc_midnight(time_now)
-      if (min_ago <= 90) and ((val >= midnight) or (min_ago <= 10))
-        val = min_ago.to_s + ' ' + _('min. ago')
-      elsif val >= midnight
-        val = _('today')+' '+val.strftime('%R')
-      elsif val.to_i >= (midnight.to_i-24*3600)  #last midnight
-        val = _('yester')+' '+val.strftime('%R')
+    res = ''
+    if (val.is_a? Integer) or (val.is_a? Time)
+      time_now ||= Time.now
+      time_now = time_now.to_i
+      val = val.to_i
+      min_ago = (time_now - val) / 60
+      if min_ago < 0
+        res = Time.at(val).strftime('%d.%m.%Y')
+      elsif min_ago == 0
+        res = _('just now')
+      elsif min_ago == 1
+        res = _('a min. ago')
       else
-        val = val.strftime('%d.%m.%y %R')
+        midnight = calc_midnight(time_now).to_i
+        if (min_ago <= 90) and ((val >= midnight) or (min_ago <= 10))
+          res = min_ago.to_s + ' ' + _('min. ago')
+        elsif val >= midnight
+          res = _('today')+' '+Time.at(val).strftime('%R')
+        elsif val >= (midnight-24*3600)  #last midnight
+          res = _('yester')+' '+Time.at(val).strftime('%R')
+        else
+          res = Time.at(val).strftime('%d.%m.%y %R')
+        end
       end
     end
-    val
+    res
   end
 
   # Convert time to string for dialog
@@ -3028,14 +3033,14 @@ module PandoraModel
       elsif trust>127
         trust = 127
       end
-      trust = (trust/127.0) if to_int != true
+      trust = (trust/127.0) if to_int == false
     elsif trust.is_a? Float
       if trust<(-1.0)
         trust = -1.0
       elsif trust>1.0
         trust = 1.0
       end
-      trust = (trust * 127).round if to_int != false
+      trust = (trust * 127).round if to_int == true
     else
       trust = nil
     end
@@ -3043,7 +3048,7 @@ module PandoraModel
   end
 
   # Pandora record kind
-  # RU: Тип записи Пандоры
+  # RU: Тип записей Пандоры
   PK_Person  = 1
   PK_Key     = 221
   PK_Sign    = 222
@@ -11679,15 +11684,15 @@ module PandoraGtk
     end
   end
 
-  # List of session
-  # RU: Список сеансов
+  # List of fishers
+  # RU: Список рыбаков
   class FisherScrollWin < Gtk::ScrolledWindow
     attr_accessor :update_btn
 
     include PandoraGtk
 
-    # Show session window
-    # RU: Показать окно сессий
+    # Show fishers window
+    # RU: Показать окно рыбаков
     def initialize(session=nil)
       super(nil, nil)
 
@@ -11763,7 +11768,7 @@ module PandoraGtk
       #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new('Index', renderer, 'text' => 0)
+      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 0)
       column.set_sort_column_id(0)
       list_tree.append_column(column)
 
