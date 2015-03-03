@@ -8814,13 +8814,22 @@ module PandoraGtk
 
     # Set buffers
     # RU: Задать буферы
-    def set_buffers(init=false)
-      child = notebook.get_nth_page(notebook.page)
-      if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::TextView)
-        tv = child.children[0]
-        if init or not @raw_buffer
-          @raw_buffer = tv.buffer
+    def set_buffers(tv=nil)
+      if not tv
+        p '!!!!!!!!!!!!!'
+        p notebook.page
+        child = notebook.get_nth_page(notebook.page)
+        if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::Viewport) \
+        and child.children[0].child
+          #and (child.children[0].child.is_a? Gtk::TextView)
+          p 'child  ch[0]='+[child, child.children[0], child.children[0].child].inspect
+          p 'child  ch[0]='+[child.children[0].child.children].inspect
+          p tv = child.children[0].child
         end
+      end
+      if tv
+        @raw_buffer ||= tv.buffer
+
         if @view_mode
           tv.buffer = @view_buffer if tv.buffer != @view_buffer
         elsif tv.buffer != @raw_buffer
@@ -8828,9 +8837,9 @@ module PandoraGtk
         end
 
         if @view_mode
-          set_view_buffer(format, @view_buffer, @raw_buffer)
+          set_view_buffer(@format, @view_buffer, @raw_buffer)
         else
-          set_raw_buffer(format, @raw_buffer, @view_buffer)
+          set_raw_buffer(@format, @raw_buffer, @view_buffer)
         end
       end
     end
@@ -8840,8 +8849,9 @@ module PandoraGtk
     def set_tag(tag)
       if tag
         child = notebook.get_nth_page(notebook.page)
-        if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::TextView)
-          tv = child.children[0]
+        if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::Viewport) \
+        and (child.children[0].child.is_a? Gtk::TextView)
+          tv = child.children[0].child
           buffer = tv.buffer
 
           if @view_buffer==buffer
@@ -8850,15 +8860,32 @@ module PandoraGtk
           else
             bounds = buffer.selection_bounds
             ltext = rtext = ''
-            case tag
-              when 'bold'
-                ltext = rtext = '*'
-              when 'italic'
-                ltext = rtext = '/'
-              when 'strike'
-                ltext = rtext = '-'
-              when 'undline'
-                ltext = rtext = '_'
+            case @format
+              when 'bbcode'
+                t = ''
+                case tag
+                  when 'bold'
+                    t = 'b'
+                  when 'italic'
+                    t = 'i'
+                  when 'strike'
+                    t = 's'
+                  when 'undline'
+                    t = 'u'
+                end
+                ltext = '['+t+']'
+                rtext = '[/'+t+']'
+              when 'orgmode'
+                case tag
+                  when 'bold'
+                    ltext = rtext = '*'
+                  when 'italic'
+                    ltext = rtext = '/'
+                  when 'strike'
+                    ltext = rtext = '-'
+                  when 'undline'
+                    ltext = rtext = '_'
+                end
             end
             lpos = bounds[0].offset
             rpos = bounds[1].offset
@@ -8943,6 +8970,7 @@ module PandoraGtk
 
       @raw_buffer = nil
       @view_mode = true
+      @format = nil
       @view_buffer = Gtk::TextBuffer.new
       @view_buffer.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
       @view_buffer.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
@@ -8956,9 +8984,12 @@ module PandoraGtk
       @view_buffer.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
       @view_buffer.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
 
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::DND, 'Type', true) do |btn|
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Type', true) do |btn|
         @view_mode = btn.active?
         set_buffers
+      end
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::INDEX, 'Color', true) do |btn|
+        p 'Color'
       end
 
       btn = Gtk::MenuToolButton.new(nil, 'auto')
@@ -8966,13 +8997,14 @@ module PandoraGtk
       btn.menu = menu
       add_menu_item(btn, menu, 'auto')
       add_menu_item(btn, menu, 'plain')
-      add_menu_item(btn, menu, 'org-mode')
+      add_menu_item(btn, menu, 'orgmode')
       add_menu_item(btn, menu, 'bbcode')
       add_menu_item(btn, menu, 'wiki')
       add_menu_item(btn, menu, 'html')
       add_menu_item(btn, menu, 'ruby')
       add_menu_item(btn, menu, 'python')
       add_menu_item(btn, menu, 'xml')
+
       menu.show_all
       toolbar.add(btn)
 
@@ -9006,6 +9038,9 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_FILL, 'Fill') do |*args|
         set_tag('fill')
       end
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SELECT_COLOR, 'Color') do |*args|
+        set_tag('color')
+      end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE, 'Save')
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OPEN, 'Open')
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link') do |*args|
@@ -9037,27 +9072,36 @@ module PandoraGtk
         else
           child = notebook.get_nth_page(page_num)
           if (child.is_a? BodyScrolledWindow)
+            p '---BodyScrolledWindow'
             toolbar2.hide
             hbox.hide
             textsw = child
             field = textsw.field
             if field
-              link_name = nil
               link_name = field[FI_Widget].text
               link_name.chomp! if link_name
-              if (not field[FI_Widget2]) or (link_name != textsw.link_name)
-                toolbar.show
+              bodywid = field[FI_Widget2]
+              if (not bodywid) or (link_name != textsw.link_name)
                 @last_sw = child
-                bodywid = nil
+                if bodywid
+                  bodywid.destroy if (not bodywid.destroyed?)
+                  bodywid = nil
+                  field[FI_Widget2] = nil
+                end
                 if link_name and (link_name != '')
                   if File.exist?(link_name)
                     ext = File.extname(link_name)
                     if ext and (['.jpg','.gif','.png'].include? ext.downcase)
                       image = start_image_loading(link_name)
                       bodywid = image
-                      link_name = link_name
+                      textsw.link_name = link_name
+                    elsif ext and (['.txt','.rb','.xml','.py','.csv','.sh'].include? ext.downcase)
+                      p 'Read file: '+link_name
+                      File.open(link_name, 'r') do |file|
+                        field[FI_Value] = file.read
+                      end
                     else
-                      link_name = nil
+                      field[FI_Value] = '@'+link_name
                     end
                   else
                     err_text = _('File does not exist')+":\n"+link_name
@@ -9068,7 +9112,7 @@ module PandoraGtk
                   link_name = nil
                 end
 
-                if not link_name
+                if not bodywid
                   textview = Gtk::TextView.new
                   #textview = child.children[0]
                   textview.wrap_mode = Gtk::TextTag::WRAP_WORD
@@ -9079,21 +9123,23 @@ module PandoraGtk
                       true
                     end
                   end
-                  textview.buffer.text = field[FI_Value].to_s
                   bodywid = textview
                 end
 
-                field[FI_Widget2] = bodywid
-                if bodywid.is_a? Gtk::TextView
-                  textsw.add(bodywid)
-                  set_buffers(true)
-                elsif bodywid
+                if not field[FI_Widget2]
+                  field[FI_Widget2] = bodywid
                   textsw.add_with_viewport(bodywid)
+                end
+                if bodywid.is_a? Gtk::TextView
+                  bodywid.buffer.text = field[FI_Value].to_s
+                  set_buffers(bodywid)
+                  toolbar.show
                 end
                 textsw.show_all
               end
             end
           else
+            p '---NOT BodyScrolledWindow'
             toolbar.hide
             hbox.hide
             toolbar2.show
@@ -9325,7 +9371,7 @@ module PandoraGtk
 
           #field[FI_Widget] = textview
 
-          field << page
+          #field << page
           @text_fields << field
           textsw.field = field
 
@@ -12429,12 +12475,15 @@ module PandoraGtk
             flds_hash[field[FI_Id]] = val
           end
           dialog.text_fields.each do |field|
-            textview = field[FI_Widget2]
-            if (not textview.destroyed?) and (textview.is_a? Gtk::TextView)
-              text = textview.buffer.text
-              if text and (text.size>0)
-                field[FI_Value] = text
-                flds_hash[field[FI_Id]] = field[FI_Value]
+            entry = field[FI_Widget]
+            if entry.text == ''
+              textview = field[FI_Widget2]
+              if (not textview.destroyed?) and (textview.is_a? Gtk::TextView)
+                text = textview.buffer.text
+                if text and (text.size>0)
+                  field[FI_Value] = text
+                  flds_hash[field[FI_Id]] = field[FI_Value]
+                end
               end
             end
           end
