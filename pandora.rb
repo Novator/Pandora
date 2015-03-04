@@ -5547,6 +5547,8 @@ module PandoraNet
       end
     end
 
+    FH_Session    = 0
+
     # Accept received segment
     # RU: Принять полученный сегмент
     def accept_segment
@@ -5879,6 +5881,24 @@ module PandoraNet
           end
         end
         hole
+      end
+
+      # Get hook for line
+      # RU: Взять крючок для лески
+      def get_line_hook(session, line)
+        hook = @fishers.index(line)
+        #fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid
+        if not hook
+          i = 0
+          while (i<@fishers.size)
+            break if (not @fishers[i].is_a? Array) or (@fishers[i][FH_Session].nil?) \
+              or (@fishers[i][FH_Session].destroyed?)
+            i += 1
+          end
+          hook = i if i<=255
+          @fishers[hook] = [session] + line if hook
+        end
+        hook
       end
 
       # Take out lure by input lure for the fisher
@@ -6592,8 +6612,8 @@ module PandoraNet
                             p log_mes+'FOUND fish session='+session.inspect
                             fish_baseid = session.to_base_id
                             line << fish_baseid
-                            fisher_hook = registrate_line_hook(session, *line)
-                            fish_hook = session.registrate_line_hook(self, *line)
+                            fisher_hook = get_line_hook(session, line)
+                            fish_hook = session.get_line_hook(self, line)
                             line_raw = PandoraUtils.rubyobj_to_pson(line)
                             session.add_send_segment(EC_News, true, fish_hook.chr + line_raw, \
                               ECC_News_Hook)
@@ -6805,7 +6825,7 @@ module PandoraNet
       send_state_add  ||= 0
       @send_state     = send_state_add
       @fish_ind       = -1
-      @fishes         = Array.new
+      #@fishes         = Array.new
       @fishers        = Array.new
       @read_queue     = PandoraUtils::RoundQueue.new
       @send_queue     = PandoraUtils::RoundQueue.new
