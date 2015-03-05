@@ -5898,6 +5898,7 @@ module PandoraNet
           hook = i if i<=255
           @fishers[hook] = [session] + line if hook
         end
+        p log_mes+'=======get_line_hook  [session, line, hook]='+[session, line, hook].inspect
         hook
       end
 
@@ -7619,26 +7620,39 @@ module PandoraNet
       if $tcp_listen_thread
         #server = $tcp_listen_thread[:tcp_server]
         #server.close if server and (not server.closed?)
-        if $tcp_listen_thread[:listen_tcp]
+        $tcp_listen_thread[:listen_tcp] = false
+        sleep 0.08
+        if $tcp_listen_thread
+          tcp_lis_th0 = $tcp_listen_thread
           GLib::Timeout.add(2000) do
-            $tcp_listen_thread.exit if $tcp_listen_thread and $tcp_listen_thread.alive?
-            $tcp_listen_thread = nil
+            if tcp_lis_th0 == $tcp_listen_thread
+              $tcp_listen_thread.exit if $tcp_listen_thread and $tcp_listen_thread.alive?
+              $tcp_listen_thread = nil
+              $window.correct_lis_btn_state
+            end
             false
           end
         end
-        $tcp_listen_thread[:listen_tcp] = false
       end
       if $udp_listen_thread
+        $udp_listen_thread[:listen_udp] = false
         server = $udp_listen_thread[:udp_server]
-        server.close if server and (not server.closed?)
-        if $udp_listen_thread[:listen_udp]
+        if server
+          server.close_read
+          server.close_write
+        end
+        sleep 0.03
+        if $udp_listen_thread
+          udp_lis_th0 = $udp_listen_thread
           GLib::Timeout.add(2000) do
-            $udp_listen_thread.exit if $udp_listen_thread and $udp_listen_thread.alive?
-            $udp_listen_thread = nil
+            if udp_lis_th0 == $udp_listen_thread
+              $udp_listen_thread.exit if $udp_listen_thread and $udp_listen_thread.alive?
+              $udp_listen_thread = nil
+              $window.correct_lis_btn_state
+            end
             false
           end
         end
-        $udp_listen_thread[:listen_udp] = false
       end
       $window.correct_lis_btn_state
     else
@@ -7702,6 +7716,7 @@ module PandoraNet
           PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
           $window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
           $tcp_listen_thread = nil
+          $window.correct_lis_btn_state
         end
 
         # UDP Listener
@@ -7742,9 +7757,11 @@ module PandoraNet
                 hparams = {:version=>0, :iam=>person_hash, :mykey=>key_hash, :base=>$base_id}
                 hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
                 hello = UdpHello + PandoraUtils.hash_to_namepson(hparams)
-                udp_server = Thread.current[:udp_server]
-                if udp_server and (not udp_server.closed?)
-                  udp_server.send(hello, 0, '<broadcast>', $udp_port)
+                if $udp_listen_thread
+                  udp_server = $udp_listen_thread[:udp_server]
+                  if udp_server and (not udp_server.closed?)
+                    udp_server.send(hello, 0, '<broadcast>', $udp_port)
+                  end
                 end
               end
               false
@@ -7753,8 +7770,13 @@ module PandoraNet
 
           # Catch UDP datagrams
           while Thread.current[:listen_udp] and udp_server and (not udp_server.closed?)
-            data, addr = udp_server.recvfrom(1024)
-            p 'Received UDP-pack ['+data+']'
+            begin
+              data, addr = udp_server.recvfrom(2000)
+            rescue
+              data = addr = nil
+            end
+            #data, addr = udp_server.recvfrom_nonblock(2000)
+            p 'Received UDP-pack ['+data.inspect+'] addr='+addr.inspect
             if (data.is_a? String) and (data.bytesize > UdpHello.bytesize) \
             and (data[0, UdpHello.bytesize] == UdpHello)
               data = data[UdpHello.bytesize..-1]
@@ -7781,39 +7803,15 @@ module PandoraNet
                 end
               end
             end
-            #p hash
-            #sleep 5
-            #udp_server.send('Test!', 0, far_ip, far_port)
-          #  socket = get_listener_client_or_nil(server)
-          #  while Thread.current[:need_to_listen] and not server.closed? and not socket
-          #    sleep 0.05
-          #    #Thread.pass
-          #    #Gtk.main_iteration
-          #    socket = get_listener_client_or_nil(server)
-          #  end
-          #
-          #  if Thread.current[:need_to_listen] and (not server.closed?) and socket
-          #    host_ip = socket.peeraddr[2]
-          #    unless $window.pool.is_black?(host_ip)
-          #      host_name = socket.peeraddr[3]
-          #      port = socket.peeraddr[1]
-          #      proto = 'tcp'
-          #      p 'LISTEN: '+[host_name, host_ip, port, proto].inspect
-          #      session = Session.new(socket, host_name, host_ip, port, proto, \
-          #        CS_Connected, nil, nil, nil, nil)
-          #    else
-          #      PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
-          #    end
-          #  end
           end
-          udp_server.close if udp_server and (not udp_server.closed?)
+          #udp_server.close if udp_server and (not udp_server.closed?)
           PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+udp_addr_str) if udp_server
           #$window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
           $udp_listen_thread = nil
+          $window.correct_lis_btn_state
         end
-      else
-        $window.correct_lis_btn_state
       end
+      $window.correct_lis_btn_state
     end
   end
 
@@ -7918,8 +7916,9 @@ module PandoraGtk
   SF_Auth   = 2
   SF_Listen = 3
   SF_Hunt   = 4
-  SF_Conn   = 5
-  SF_Fisher = 6
+  SF_Broad  = 5
+  SF_Conn   = 6
+  SF_Fisher = 7
 
   # Advanced dialog window
   # RU: Продвинутое окно диалога
@@ -14338,6 +14337,9 @@ module PandoraGtk
       end
       add_status_field(SF_Hunt, _('No hunt')) do
         do_menu_act('Hunt')
+      end
+      add_status_field(SF_Broad, _('Broad')+' 0.0') do
+        do_menu_act('Broad')
       end
       add_status_field(SF_Conn, '0/0/0') do
         do_menu_act('Session')
