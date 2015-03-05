@@ -5029,10 +5029,11 @@ module PandoraNet
           session.dialog = nil if (session.dialog and session.dialog.destroyed?)
           session.dialog = dialog if dialog and (i==0)
           if session.dialog and (not session.dialog.destroyed?) \
-          and session.dialog.online_button \
-          and ((session.socket and (not session.socket.closed?)) or session.donor)
-            session.dialog.online_button.safe_set_active(true)
+          and session.dialog.online_button
             session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
+            if ((session.socket and (not session.socket.closed?)) or session.donor)
+              session.dialog.online_button.safe_set_active(true)
+            end
           end
         end
         res = true
@@ -7593,6 +7594,17 @@ module PandoraNet
     client
   end
 
+  # Get broadcast parameters
+  # RU: Взять параметры широковещалки
+  def self.get_broad_params
+    $broad_level         = PandoraUtils.get_param('broad_level')
+    $broad_depth         = PandoraUtils.get_param('broad_depth')
+    $max_broad_depth     = PandoraUtils.get_param('max_broad_depth')
+    $broad_level        ||= 12
+    $broad_depth        ||= 4
+    $max_broad_depth    ||= 6
+  end
+
   # Get exchange params
   # RU: Взять параметры обмена
   def self.get_exchange_params
@@ -7601,10 +7613,11 @@ module PandoraNet
     $puzzle_sec_delay    = PandoraUtils.get_param('puzzle_sec_delay')
     $captcha_length      = PandoraUtils.get_param('captcha_length')
     $captcha_attempts    = PandoraUtils.get_param('captcha_attempts')
-    $trust_for_captchaed = PandoraUtils.get_param('trust_for_captchaed')
-    $trust_for_listener  = PandoraUtils.get_param('trust_for_listener')
+    $trust_captchaed     = PandoraUtils.get_param('trust_captchaed')
+    $trust_listener      = PandoraUtils.get_param('trust_listener')
     $low_conn_trust      = PandoraUtils.get_param('low_conn_trust')
-    $low_conn_trust ||= 0.0
+    $low_conn_trust     ||= 0.0
+    get_broad_params
   end
 
   $tcp_listen_thread = nil
@@ -7617,6 +7630,7 @@ module PandoraNet
   def self.start_or_stop_listen
     PandoraNet.get_exchange_params
     if $tcp_listen_thread or $udp_listen_thread
+      # Need to stop
       if $tcp_listen_thread
         #server = $tcp_listen_thread[:tcp_server]
         #server.close if server and (not server.closed?)
@@ -7656,6 +7670,8 @@ module PandoraNet
       end
       $window.correct_lis_btn_state
     else
+      # Need to start
+      $window.show_broad(false)
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
@@ -7918,7 +7934,8 @@ module PandoraGtk
   SF_Hunt   = 4
   SF_Broad  = 5
   SF_Conn   = 6
-  SF_Fisher = 7
+  SF_Fish   = 7
+  SF_Fisher = 8
 
   # Advanced dialog window
   # RU: Продвинутое окно диалога
@@ -11749,6 +11766,153 @@ module PandoraGtk
     end
   end
 
+  # List of fishes
+  # RU: Список рыб
+  class FishScrollWin < Gtk::ScrolledWindow
+    attr_accessor :update_btn
+
+    include PandoraGtk
+
+    # Show fishes window
+    # RU: Показать окно рыб
+    def initialize(session=nil)
+      super(nil, nil)
+
+      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      border_width = 0
+
+      vbox = Gtk::VBox.new
+      hbox = Gtk::HBox.new
+
+      title = _('Update')
+      @update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
+      update_btn.tooltip_text = title
+      update_btn.label = title
+
+      declared_btn = SafeCheckButton.new(_('declared'), true)
+      declared_btn.safe_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      declared_btn.safe_set_active(true)
+
+      lined_btn = SafeCheckButton.new(_('lined'), true)
+      lined_btn.safe_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      lined_btn.safe_set_active(true)
+
+      linked_btn = SafeCheckButton.new(_('linked'), true)
+      linked_btn.safe_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      linked_btn.safe_set_active(true)
+
+      failed_btn = SafeCheckButton.new(_('failed'), true)
+      failed_btn.safe_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      #failed_btn.safe_set_active(true)
+
+      title = _('Delete')
+      delete_btn = Gtk::ToolButton.new(Gtk::Stock::DELETE, title)
+      delete_btn.tooltip_text = title
+      delete_btn.label = title
+
+      hbox.pack_start(declared_btn, false, true, 0)
+      hbox.pack_start(lined_btn, false, true, 0)
+      hbox.pack_start(linked_btn, false, true, 0)
+      hbox.pack_start(failed_btn, false, true, 0)
+      hbox.pack_start(update_btn, false, true, 0)
+      hbox.pack_start(delete_btn, false, true, 0)
+
+      list_sw = Gtk::ScrolledWindow.new(nil, nil)
+      list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+      list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+
+      #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+
+      list_store = Gtk::ListStore.new(Integer, Integer, String, String, String, String, \
+        String, String)
+
+      update_btn.signal_connect('clicked') do |*args|
+        list_store.clear
+        $window.pool.fish_orders.each do |fo|
+          sess_iter = list_store.append
+          sess_iter[0] = fo[0]
+          sess_iter[1] = fo[1].object_id
+          sess_iter[2] = PandoraUtils.bytes_to_hex(fo[2])
+          sess_iter[3] = PandoraUtils.bytes_to_hex(fo[3])
+          sess_iter[4] = PandoraUtils.bytes_to_hex(fo[4])
+          sess_iter[5] = PandoraUtils.bytes_to_hex(fo[5])
+          sess_iter[6] = PandoraUtils.bytes_to_hex(fo[6])
+          sess_iter[7] = PandoraUtils.time_to_str(fo[7])
+        end
+      end
+
+      # create tree view
+      list_tree = Gtk::TreeView.new(list_store)
+      #list_tree.rules_hint = true
+      #list_tree.search_column = CL_Name
+
+      #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 0)
+      column.set_sort_column_id(0)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 1)
+      column.set_sort_column_id(1)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Fisher'), renderer, 'text' => 2)
+      column.set_sort_column_id(2)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Fisher key'), renderer, 'text' => 3)
+      column.set_sort_column_id(3)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Fisher BaseID'), renderer, 'text' => 4)
+      column.set_sort_column_id(4)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Fish'), renderer, 'text' => 5)
+      column.set_sort_column_id(5)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Fish key'), renderer, 'text' => 6)
+      column.set_sort_column_id(6)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 7)
+      column.set_sort_column_id(7)
+      list_tree.append_column(column)
+
+      list_tree.signal_connect('row_activated') do |tree_view, path, column|
+        # download and go to record
+      end
+
+      list_sw.add(list_tree)
+
+      vbox.pack_start(hbox, false, true, 0)
+      vbox.pack_start(list_sw, true, true, 0)
+      list_sw.show_all
+
+      self.add_with_viewport(vbox)
+      update_btn.clicked
+
+      list_tree.grab_focus
+    end
+  end
+
   # List of fishers
   # RU: Список рыбаков
   class FisherScrollWin < Gtk::ScrolledWindow
@@ -11772,32 +11936,11 @@ module PandoraGtk
       update_btn.tooltip_text = title
       update_btn.label = title
 
-      #hunted_btn = SafeCheckButton.new(_('hunted'), true)
-      #hunted_btn.safe_signal_clicked do |widget|
-      #  update_btn.clicked
-      #end
-      #hunted_btn.safe_set_active(true)
-
-      #hunters_btn = SafeCheckButton.new(_('hunters'), true)
-      #hunters_btn.safe_signal_clicked do |widget|
-      #  update_btn.clicked
-      #end
-      #hunters_btn.safe_set_active(true)
-
-      #fishers_btn = SafeCheckButton.new(_('fishers'), true)
-      #fishers_btn.safe_signal_clicked do |widget|
-      #  update_btn.clicked
-      #end
-      #fishers_btn.safe_set_active(true)
-
       title = _('Delete')
       delete_btn = Gtk::ToolButton.new(Gtk::Stock::DELETE, title)
       delete_btn.tooltip_text = title
       delete_btn.label = title
 
-      #hbox.pack_start(hunted_btn, false, true, 0)
-      #hbox.pack_start(hunters_btn, false, true, 0)
-      #hbox.pack_start(fishers_btn, false, true, 0)
       hbox.pack_start(update_btn, false, true, 0)
       hbox.pack_start(delete_btn, false, true, 0)
 
@@ -13287,8 +13430,30 @@ module PandoraGtk
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
-  # Show session list
-  # RU: Показать список сеансов
+  # Show fish list
+  # RU: Показать список рыб
+  def self.show_fish_panel(session=nil)
+    $window.notebook.children.each do |child|
+      if (child.is_a? FishScrollWin)
+        $window.notebook.page = $window.notebook.children.index(child)
+        child.update_btn.clicked
+        return
+      end
+    end
+    sw = FishScrollWin.new(session)
+
+    image = Gtk::Image.new(Gtk::Stock::JUSTIFY_LEFT, Gtk::IconSize::MENU)
+    image.set_padding(2, 0)
+    label_box = TabLabelBox.new(image, _('Fishes'), sw, false, 0) do
+      #sw.destroy
+    end
+    page = $window.notebook.append_page(sw, label_box)
+    sw.show_all
+    $window.notebook.page = $window.notebook.n_pages-1
+  end
+
+  # Show fisher list
+  # RU: Показать список рыбаков
   def self.show_fisher_panel(session=nil)
     $window.notebook.children.each do |child|
       if (child.is_a? FisherScrollWin)
@@ -13299,7 +13464,7 @@ module PandoraGtk
     end
     sw = FisherScrollWin.new(session)
 
-    image = Gtk::Image.new(Gtk::Stock::JUSTIFY_LEFT, Gtk::IconSize::MENU)
+    image = Gtk::Image.new(Gtk::Stock::JUSTIFY_RIGHT, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
     label_box = TabLabelBox.new(image, _('Fishers'), sw, false, 0) do
       #sw.destroy
@@ -13737,6 +13902,19 @@ module PandoraGtk
       tool_btn.safe_set_active($hunter_thread != nil) if tool_btn
     end
 
+    # Show broadcast status
+    # RU: Показать широковещалку в статусе
+    def show_broad(change=nil)
+      if change
+        PandoraGtk.show_panobject_list(PandoraModel::Parameter, nil, nil, true)
+      end
+      PandoraNet.get_broad_params
+      broad = PandoraModel.transform_trust($broad_level, false)
+      broad = ((broad*10.0).round/10.0).to_s
+      broad += '/'+$broad_depth.to_s
+      set_status_field(PandoraGtk::SF_Broad, broad, nil, false)
+    end
+
     $statusbar = nil
     $status_fields = []
 
@@ -13953,6 +14131,8 @@ module PandoraGtk
           PandoraNet.start_or_stop_listen
         when 'Hunt'
           PandoraNet.hunt_nodes
+        when 'Broad'
+          $window.show_broad(true)
         when 'Authorize'
           key = PandoraCrypto.current_key(false, false)
           if key and $listen_thread
@@ -14035,6 +14215,8 @@ module PandoraGtk
           PandoraGtk.show_search_panel
         when 'Session'
           PandoraGtk.show_session_panel
+        when 'Fish'
+          PandoraGtk.show_fish_panel
         when 'Fisher'
           PandoraGtk.show_fisher_panel
         else
@@ -14338,11 +14520,14 @@ module PandoraGtk
       add_status_field(SF_Hunt, _('No hunt')) do
         do_menu_act('Hunt')
       end
-      add_status_field(SF_Broad, _('Broad')+' 0.0') do
+      add_status_field(SF_Broad, '-') do
         do_menu_act('Broad')
       end
       add_status_field(SF_Conn, '0/0/0') do
         do_menu_act('Session')
+      end
+      add_status_field(SF_Fish, '0') do
+        do_menu_act('Fish')
       end
       add_status_field(SF_Fisher, '0') do
         do_menu_act('Fisher')
@@ -14463,6 +14648,8 @@ module PandoraGtk
         end
       end
 
+      PandoraGtk.get_main_params
+
       #$window.signal_connect('focus-out-event') do |window, event|
       #  p 'focus-out-event: ' + $window.has_toplevel_focus?.inspect
       #  false
@@ -14545,7 +14732,6 @@ module PandoraGtk
           PandoraGtk.start_updating(false)
         end
       end
-      PandoraGtk.get_main_params
 
       Gtk.main
     end
