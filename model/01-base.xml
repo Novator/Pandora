@@ -365,9 +365,10 @@
     <captcha_attempts desc="Captcha attempts count" type="Byte" section="net" setting="2" />
     <trust_captchaed desc="Trust captchaed" type="Boolean" section="net" setting="true" />
     <trust_listener desc="Trust listener" type="Boolean" section="net" setting="true" />
-    <broad_level desc="Broadcast trust" type="Byte" section="net" setting="12" />
-    <broad_depth desc="Broadcast depth" type="Byte" section="net" setting="4" />
-    <max_broad_depth desc="Max broadcast depth" type="Byte" section="net" setting="6" />
+    <get_notice desc="Get notice" type="Boolean" section="net" setting="true" />
+    <notice_level desc="Notice send trust" type="Byte" section="net" setting="0" />
+    <notice_depth desc="Notice send depth" type="Byte" section="net" setting="1" />
+    <max_notice_depth desc="Max broadcast depth" type="Byte" section="net" setting="2" />
     <low_conn_trust desc="Low allowed trust to connection for key" type="Real" section="net" setting="0.0" />
     <ask_kinds_m10 desc="Ask kinds from -1.0" type="String" section="net" setting="" />
     <ask_kinds_p01 desc="Ask kinds from +0.1" type="String" section="net" setting="2" />

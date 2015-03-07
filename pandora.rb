@@ -3379,6 +3379,7 @@ module PandoraModel
   RK_Follow   = 6
   RK_Ignore   = 7
   RK_CameFrom = 8
+  RK_Avatar   = 9
   RK_MinPublic = 235
   RK_MaxPublic = 255
 
@@ -4704,6 +4705,7 @@ module PandoraNet
   ECC_News_Panhash      = 0
   ECC_News_Record       = 1
   ECC_News_Hook         = 2
+  ECC_News_Notice       = 3
 
   ECC_Channel0_Open     = 0
   ECC_Channel1_Opened   = 1
@@ -4731,6 +4733,12 @@ module PandoraNet
   ECC_Wait_NoHandlerYet = 209
   ECC_Bye_NoAnswer      = 210
   ECC_Bye_Silent        = 211
+
+  # Session modes
+  # RU: Режимы соединения
+  SM_GetNotice   = 1
+  SM_CiperBF     = 2
+  SM_CiperAES    = 4
 
   # Read modes of socket
   # RU: Режимы чтения из сокета
@@ -4801,6 +4809,16 @@ module PandoraNet
   # RU: Тип запроса
   RQK_Fishing    = 1      # рыбалка
 
+  # Notice order array indexes
+  # RU: Индексы массива заявок на уведомления
+  NO_Person          = 0
+  NO_Key             = 1
+  NO_Baseid          = 2
+  NO_Notice_level    = 3
+  NO_Notice_depth    = 4
+  NO_Time            = 5
+  NO_Session         = 6
+
   # Fish order array indexes
   # RU: Индексы массива заявок на рыбалку
   FO_Index           = 0
@@ -4815,7 +4833,8 @@ module PandoraNet
   # Pool
   # RU: Пул
   class Pool
-    attr_accessor :window, :sessions, :white_list, :fish_orders, :fish_ind
+    attr_accessor :window, :sessions, :white_list, :fish_orders, :fish_ind, \
+      :notice_list, :notice_ind
 
     MaxWhiteSize = 500
     FishQueueSize = 100
@@ -4826,7 +4845,9 @@ module PandoraNet
       @sessions = Array.new
       @white_list = Array.new
       @fish_ind = -1
+      @notice_ind = -1
       @fish_orders = Array.new #PandoraUtils::RoundQueue.new(true)
+      @notice_list = Array.new
     end
 
     def base_id
@@ -4941,11 +4962,46 @@ module PandoraNet
       res
     end
 
+    # Add order to notice
+    # RU: Добавить заявку на уведомление
+    def add_notice_order(session, person, key, baseid, notice_level, notice_depth)
+      res = nil
+      time = Time.now.to_i
+      res = find_notice_order(person, key, baseid, time)
+      if ((not (res.is_a? Array)) or (res.size == 0))
+        @notice_ind += 1
+        res = [@notice_ind, person, key, baseid, notice_level, notice_depth, time, session]
+        @notice_list << res
+      end
+      res
+    end
+
+    $not_live_per  = 30*60
+
+    def clear_list(list, time_ind, live_per, time=nil)
+      time ||= Time.now.to_i
+      list.delete_if {|e| (e.is_a? Array) and (e[time_ind] < time-live_per) }
+    end
+
+    def find_notice_order(person, key, baseid, time=nil)
+      time ||= Time.now.to_i
+      clear_list(@notice_list, NO_Time, $not_live_per, time)
+      res = @notice_list.select do |no|
+        ((person.nil? or (no[NO_Person] == person)) and \
+        (key.nil? or (no[NO_Key] == key)) and \
+        (baseid.nil? or (no[NO_Baseid] == baseid)))
+      end
+      res
+    end
+
+    $fish_live_per = 10*60
+
     # Add order to fishing
     # RU: Добавить заявку на рыбалку
     def add_fish_order(session, fisher, fisher_key, fisher_baseid, fish, fish_key, models=nil)
       res = nil
       time = Time.now.to_i
+      clear_list(@fish_orders, FO_Time, $fish_live_per, time)
       @fish_ind += 1
       @fish_orders << [@fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
       res = true
@@ -5186,7 +5242,7 @@ module PandoraNet
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
-      :entered_captcha, :captcha_sw, :hooks, :fishes, :fishers, :fish_ind
+      :entered_captcha, :captcha_sw, :hooks, :fishes, :fishers, :fish_ind, :notice_ind
 
     # Set socket options
     # RU: Установить опции сокета
@@ -5461,7 +5517,10 @@ module PandoraNet
             ascode = ECC_Auth_Hello
             params['mykey'] = key_hash
             params['tokey'] = param
-            hparams = {:version=>0, :mode=>0, :mykey=>key_hash, :tokey=>param}
+            mode = 0
+            mode |= SM_GetNotice if $get_notice
+            hparams = {:version=>0, :mode=>mode, :mykey=>key_hash, :tokey=>param, \
+              :notice=>(($notice_depth << 8) | $notice_level)}
             hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
             asbuf = PandoraUtils.hash_to_namepson(hparams)
           else
@@ -5567,6 +5626,7 @@ module PandoraNet
           params['addr']     = hash['addr']
           params['srckey']   = hash['mykey']
           params['dstkey']   = hash['tokey']
+          params['notice']   = hash['notice']
         end
         p log_mes+'RECOGNIZE_params: '+hash.inspect
       end
@@ -6093,6 +6153,8 @@ module PandoraNet
                     # need to change an ip checking
                     pool.check_callback_addr(addr, host_ip) if addr
                     mode = params['mode']
+                    notice = params['notice']
+                    pool.add_notice_order((notice & 0xFF), (notice >> 8))
                     init_skey_or_error(true)
                   else
                     err_scmd('Protocol is not supported ('+vers.to_s+')')
@@ -6746,6 +6808,8 @@ module PandoraNet
                         end
                       end
                     end
+                  when ECC_News_Notice
+                    p 'ECC_News_Notice'
                   else
                     p "news more!!!!"
                     pkind = rcode
@@ -6805,6 +6869,9 @@ module PandoraNet
     # Number of requests per cicle
     # RU: Число запросов за цикл
     $inquire_block_count = 1
+    # Number of notice orders per cicle
+    # RU: Число запросов уведомлений за цикл
+    $notice_block_count = 2
     # Number of fish orders per cicle
     # RU: Число запросов на рабылку за цикл
     $fish_block_count = 2
@@ -6827,6 +6894,7 @@ module PandoraNet
       send_state_add  ||= 0
       @send_state     = send_state_add
       @fish_ind       = -1
+      @notice_ind     = -1
       #@fishes         = Array.new
       @fishers        = Array.new
       @read_queue     = PandoraUtils::RoundQueue.new
@@ -7466,6 +7534,31 @@ module PandoraNet
                 end
               end
 
+              if (@mode & SM_GetNotice)>0
+                # проверка новых уведомлений
+                processed = 0
+                while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
+                and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
+                and (processed<$notice_block_count) \
+                and (@notice_ind<pool.notice_ind)
+                  @notice_ind += 1
+                  notice_order = pool.notice_list[@notice_ind]
+                  p log_mes+'notice_order='+fish_order111[FO_Fisher..FO_Fish_key].inspect
+                  p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
+                  if fish_order and (fish_order[FO_Session] != self) \
+                  and ((@to_person and (fish_order[FO_Fish] != @to_person)) \
+                  or (@to_key and (fish_order[FO_Fish_key] != @to_key)))
+                    p log_mes+'New fish order: '+fish_order[FO_Fisher..FO_Fish_key].inspect
+                    #mykeyhash = PandoraCrypto.current_user_or_key(false)
+                    PandoraUtils.log_message(LM_Trace, _('Fishing to')+': ' \
+                      +PandoraUtils.bytes_to_hex(fish_order[FO_Fish])+' '+_('via')+' '+@host_ip+':'+@port.to_s)
+                    line = PandoraUtils.rubyobj_to_pson(fish_order[FO_Fisher..FO_Fish_key])
+                    add_send_segment(EC_News, true, line, ECC_News_Notice)
+                  end
+                  processed += 1
+                end
+              end
+
               # проверка новых заявок на рыбалку
               processed = 0
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
@@ -7594,15 +7687,16 @@ module PandoraNet
     client
   end
 
-  # Get broadcast parameters
-  # RU: Взять параметры широковещалки
-  def self.get_broad_params
-    $broad_level         = PandoraUtils.get_param('broad_level')
-    $broad_depth         = PandoraUtils.get_param('broad_depth')
-    $max_broad_depth     = PandoraUtils.get_param('max_broad_depth')
-    $broad_level        ||= 12
-    $broad_depth        ||= 4
-    $max_broad_depth    ||= 6
+  # Get notice parameters
+  # RU: Взять параметры уведомления
+  def self.get_notice_params
+    $get_notice           = PandoraUtils.get_param('get_notice')
+    $notice_level         = PandoraUtils.get_param('notice_level')
+    $notice_depth         = PandoraUtils.get_param('notice_depth')
+    $max_notice_depth     = PandoraUtils.get_param('max_notice_depth')
+    $notice_level        ||= 12
+    $notice_depth        ||= 4
+    $max_notice_depth    ||= 6
   end
 
   # Get exchange params
@@ -7617,7 +7711,7 @@ module PandoraNet
     $trust_listener      = PandoraUtils.get_param('trust_listener')
     $low_conn_trust      = PandoraUtils.get_param('low_conn_trust')
     $low_conn_trust     ||= 0.0
-    get_broad_params
+    get_notice_params
   end
 
   $tcp_listen_thread = nil
@@ -7671,7 +7765,7 @@ module PandoraNet
       $window.correct_lis_btn_state
     else
       # Need to start
-      $window.show_broad(false)
+      $window.show_notice(false)
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
@@ -7932,7 +8026,7 @@ module PandoraGtk
   SF_Auth   = 2
   SF_Listen = 3
   SF_Hunt   = 4
-  SF_Broad  = 5
+  SF_Notice  = 5
   SF_Conn   = 6
   SF_Fish   = 7
   SF_Fisher = 8
@@ -10227,6 +10321,7 @@ module PandoraGtk
       end
 
       page = $window.notebook.append_page(self, label_box)
+      $window.notebook.set_tab_reorderable(self, true)
 
       self.signal_connect('delete-event') do |*args|
         #init_video_sender(false)
@@ -11622,7 +11717,7 @@ module PandoraGtk
 
     # Show session window
     # RU: Показать окно сессий
-    def initialize(session=nil)
+    def initialize
       super(nil, nil)
 
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
@@ -11775,7 +11870,7 @@ module PandoraGtk
 
     # Show fishes window
     # RU: Показать окно рыб
-    def initialize(session=nil)
+    def initialize
       super(nil, nil)
 
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
@@ -11818,11 +11913,11 @@ module PandoraGtk
       delete_btn.tooltip_text = title
       delete_btn.label = title
 
+      hbox.pack_start(update_btn, false, true, 0)
       hbox.pack_start(declared_btn, false, true, 0)
       hbox.pack_start(lined_btn, false, true, 0)
       hbox.pack_start(linked_btn, false, true, 0)
       hbox.pack_start(failed_btn, false, true, 0)
-      hbox.pack_start(update_btn, false, true, 0)
       hbox.pack_start(delete_btn, false, true, 0)
 
       list_sw = Gtk::ScrolledWindow.new(nil, nil)
@@ -11836,16 +11931,18 @@ module PandoraGtk
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
-        $window.pool.fish_orders.each do |fo|
-          sess_iter = list_store.append
-          sess_iter[0] = fo[0]
-          sess_iter[1] = fo[1].object_id
-          sess_iter[2] = PandoraUtils.bytes_to_hex(fo[2])
-          sess_iter[3] = PandoraUtils.bytes_to_hex(fo[3])
-          sess_iter[4] = PandoraUtils.bytes_to_hex(fo[4])
-          sess_iter[5] = PandoraUtils.bytes_to_hex(fo[5])
-          sess_iter[6] = PandoraUtils.bytes_to_hex(fo[6])
-          sess_iter[7] = PandoraUtils.time_to_str(fo[7])
+        if $window.pool
+          $window.pool.fish_orders.each do |fo|
+            sess_iter = list_store.append
+            sess_iter[0] = fo[0]
+            sess_iter[1] = fo[1].object_id
+            sess_iter[2] = PandoraUtils.bytes_to_hex(fo[2])
+            sess_iter[3] = PandoraUtils.bytes_to_hex(fo[3])
+            sess_iter[4] = PandoraUtils.bytes_to_hex(fo[4])
+            sess_iter[5] = PandoraUtils.bytes_to_hex(fo[5])
+            sess_iter[6] = PandoraUtils.bytes_to_hex(fo[6])
+            sess_iter[7] = PandoraUtils.time_to_str(fo[7])
+          end
         end
       end
 
@@ -11922,7 +12019,7 @@ module PandoraGtk
 
     # Show fishers window
     # RU: Показать окно рыбаков
-    def initialize(session=nil)
+    def initialize
       super(nil, nil)
 
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
@@ -12904,6 +13001,7 @@ module PandoraGtk
       end
 
       page = notebook.append_page(sw, label_box)
+      notebook.set_tab_reorderable(sw, true)
       sw.show_all
       notebook.page = notebook.n_pages-1
 
@@ -13314,6 +13412,7 @@ module PandoraGtk
     end
 
     page = $window.notebook.append_page(sw, label_box)
+    $window.notebook.set_tab_reorderable(sw, true)
     sw.show_all
     $window.notebook.page = $window.notebook.n_pages-1
   end
@@ -13404,13 +13503,14 @@ module PandoraGtk
     end
 
     page = $window.notebook.append_page(sw, label_box)
+    $window.notebook.set_tab_reorderable(sw, true)
     sw.show_all
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
   # Show session list
   # RU: Показать список сеансов
-  def self.show_session_panel(session=nil)
+  def self.show_session_panel
     $window.notebook.children.each do |child|
       if (child.is_a? SessionScrollWin)
         $window.notebook.page = $window.notebook.children.index(child)
@@ -13418,7 +13518,7 @@ module PandoraGtk
         return
       end
     end
-    sw = SessionScrollWin.new(session)
+    sw = SessionScrollWin.new
 
     image = Gtk::Image.new(Gtk::Stock::JUSTIFY_FILL, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
@@ -13426,35 +13526,45 @@ module PandoraGtk
       #sw.destroy
     end
     page = $window.notebook.append_page(sw, label_box)
+    $window.notebook.set_tab_reorderable(sw, true)
     sw.show_all
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
   # Show fish list
   # RU: Показать список рыб
-  def self.show_fish_panel(session=nil)
-    $window.notebook.children.each do |child|
-      if (child.is_a? FishScrollWin)
-        $window.notebook.page = $window.notebook.children.index(child)
-        child.update_btn.clicked
-        return
-      end
+  def self.show_fish_panel
+    hpaned = $window.fish_hpaned
+    list_sw = hpaned.children[0]
+    if hpaned.position <= 1
+      list_sw.width_request = 150 if list_sw.width_request <= 1
+      hpaned.position = list_sw.width_request
+    else
+      list_sw.width_request = list_sw.allocation.width
+      hpaned.position = 0
     end
-    sw = FishScrollWin.new(session)
+    #$window.notebook.children.each do |child|
+    #  if (child.is_a? FishScrollWin)
+    #    $window.notebook.page = $window.notebook.children.index(child)
+    #    child.update_btn.clicked
+    #    return
+    #  end
+    #end
+    #sw = FishScrollWin.new
 
-    image = Gtk::Image.new(Gtk::Stock::JUSTIFY_LEFT, Gtk::IconSize::MENU)
-    image.set_padding(2, 0)
-    label_box = TabLabelBox.new(image, _('Fishes'), sw, false, 0) do
-      #sw.destroy
-    end
-    page = $window.notebook.append_page(sw, label_box)
-    sw.show_all
-    $window.notebook.page = $window.notebook.n_pages-1
+    #image = Gtk::Image.new(Gtk::Stock::JUSTIFY_LEFT, Gtk::IconSize::MENU)
+    #image.set_padding(2, 0)
+    #label_box = TabLabelBox.new(image, _('Fishes'), sw, false, 0) do
+    #  #sw.destroy
+    #end
+    #page = $window.notebook.append_page(sw, label_box)
+    #sw.show_all
+    #$window.notebook.page = $window.notebook.n_pages-1
   end
 
   # Show fisher list
   # RU: Показать список рыбаков
-  def self.show_fisher_panel(session=nil)
+  def self.show_fisher_panel
     $window.notebook.children.each do |child|
       if (child.is_a? FisherScrollWin)
         $window.notebook.page = $window.notebook.children.index(child)
@@ -13462,7 +13572,7 @@ module PandoraGtk
         return
       end
     end
-    sw = FisherScrollWin.new(session)
+    sw = FisherScrollWin.new
 
     image = Gtk::Image.new(Gtk::Stock::JUSTIFY_RIGHT, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
@@ -13470,6 +13580,7 @@ module PandoraGtk
       #sw.destroy
     end
     page = $window.notebook.append_page(sw, label_box)
+    $window.notebook.set_tab_reorderable(sw, true)
     sw.show_all
     $window.notebook.page = $window.notebook.n_pages-1
   end
@@ -13864,7 +13975,7 @@ module PandoraGtk
   # RU: Главное окно
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
-      :cvpaned, :pool, :focus_timer, :title_view, :do_on_show
+      :cvpaned, :pool, :focus_timer, :title_view, :do_on_show, :fish_hpaned
 
     include PandoraUtils
 
@@ -13902,17 +14013,17 @@ module PandoraGtk
       tool_btn.safe_set_active($hunter_thread != nil) if tool_btn
     end
 
-    # Show broadcast status
-    # RU: Показать широковещалку в статусе
-    def show_broad(change=nil)
+    # Show notice status
+    # RU: Показать уведомления в статусе
+    def show_notice(change=nil)
       if change
         PandoraGtk.show_panobject_list(PandoraModel::Parameter, nil, nil, true)
       end
-      PandoraNet.get_broad_params
-      broad = PandoraModel.transform_trust($broad_level, false)
-      broad = ((broad*10.0).round/10.0).to_s
-      broad += '/'+$broad_depth.to_s
-      set_status_field(PandoraGtk::SF_Broad, broad, nil, false)
+      PandoraNet.get_notice_params
+      notice = PandoraModel.transform_trust($notice_level, false)
+      notice = ((notice*10.0).round/10.0).to_s
+      notice += '/'+$notice_depth.to_s
+      set_status_field(PandoraGtk::SF_Notice, notice, nil, false)
     end
 
     $statusbar = nil
@@ -14131,8 +14242,8 @@ module PandoraGtk
           PandoraNet.start_or_stop_listen
         when 'Hunt'
           PandoraNet.hunt_nodes
-        when 'Broad'
-          $window.show_broad(true)
+        when 'Notice'
+          $window.show_notice(true)
         when 'Authorize'
           key = PandoraCrypto.current_key(false, false)
           if key and $listen_thread
@@ -14467,8 +14578,16 @@ module PandoraGtk
       toolbar.toolbar_style = Gtk::Toolbar::Style::ICONS
       fill_toolbar(toolbar)
 
+      #frame = Gtk::Frame.new
+      #frame.shadow_type = Gtk::SHADOW_IN
+      #align = Gtk::Alignment.new(0.5, 0.5, 0, 0)
+      #align.add(frame)
+      #image = Gtk::Image.new
+      #frame.add(image)
+
       @notebook = Gtk::Notebook.new
       @notebook.scrollable = true
+      #@notebook.set_tab_reorderable(frame, true)
       notebook.signal_connect('switch-page') do |widget, page, page_num|
         cur_page = notebook.get_nth_page(page_num)
         if $last_page and (cur_page != $last_page) and ($last_page.is_a? PandoraGtk::DialogScrollWin)
@@ -14494,9 +14613,17 @@ module PandoraGtk
       sw.border_width = 1;
       sw.set_size_request(-1, 40)
 
+      fish_sw = FishScrollWin.new
+
+      @fish_hpaned = Gtk::HPaned.new
+      @fish_hpaned.pack1(fish_sw, true, true)
+      @fish_hpaned.pack2(notebook, true, true)
+      @fish_hpaned.position = 1
+      @fish_hpaned.position = 0
+
       vpaned = Gtk::VPaned.new
       vpaned.border_width = 2
-      vpaned.pack1(notebook, true, true)
+      vpaned.pack1(fish_hpaned, true, true)
       vpaned.pack2(sw, false, true)
 
       @cvpaned = CaptchaHPaned.new(vpaned)
@@ -14520,8 +14647,8 @@ module PandoraGtk
       add_status_field(SF_Hunt, _('No hunt')) do
         do_menu_act('Hunt')
       end
-      add_status_field(SF_Broad, '-') do
-        do_menu_act('Broad')
+      add_status_field(SF_Notice, '-') do
+        do_menu_act('Notice')
       end
       add_status_field(SF_Conn, '0/0/0') do
         do_menu_act('Session')
