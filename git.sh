@@ -80,8 +80,8 @@ git push -u github develop
 #git checkout -b 'testing'
 
 ##Merge branch, see conflits, add corrects, and delete unused branch
-#git checkout master
-#git merge testing
+git checkout master
+git merge develop
 #git status
 #git add pandora.rb
 #git commit
