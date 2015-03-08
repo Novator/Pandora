@@ -33,7 +33,7 @@
 
 ## Push files from local to repository
 #git add --all
-git commit -a -m "version 0.3 alpha"
+git commit -a -m "version 0.4 alpha"
 git push -u bitbuc master
 git push -u gitorious master
 git push -u github master
@@ -81,7 +81,7 @@ git push -u github master
 
 ##Merge branch, see conflits, add corrects, and delete unused branch
 #git checkout master
-#git merge testing
+#git merge develop
 #git status
 #git add pandora.rb
 #git commit

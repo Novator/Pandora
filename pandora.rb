@@ -57,25 +57,6 @@ module PandoraUtils
     end
   end
 
-  # Default values of variables
-  # RU: Значения переменных по умолчанию
-  $poly_launch = true
-  $host = nil
-  $port = nil
-  $lang = 'en'
-  $pandora_parameters = []
-
-  # Paths and files
-  # RU: Пути и файлы
-  $pandora_root_dir = Dir.pwd                                     # Current directory
-  $pandora_base_dir = File.join($pandora_root_dir, 'base')        # Database directory
-  $pandora_view_dir = File.join($pandora_root_dir, 'view')        # Media files directory
-  $pandora_model_dir = File.join($pandora_root_dir, 'model')      # Model directory
-  $pandora_lang_dir = File.join($pandora_root_dir, 'lang')        # Languages directory
-  $pandora_util_dir = File.join($pandora_root_dir, 'util')        # Utilites directory
-  $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
-  $pandora_files_dir = File.join($pandora_root_dir, 'files')      # Files directory
-
   # Log level constants
   # RU: Константы уровня логирования
   LM_Error    = 0
@@ -606,27 +587,32 @@ module PandoraUtils
   # Time to human view
   # RU: Время в человеческий вид
   def self.time_to_str(val, time_now=nil)
-    time_now ||= Time.now
-    min_ago = (time_now.to_i - val.to_i) / 60
-    if min_ago < 0
-      val = val.strftime('%d.%m.%Y')
-    elsif min_ago == 0
-      val = _('just now')
-    elsif min_ago == 1
-      val = _('a min. ago')
-    else
-      midnight = calc_midnight(time_now)
-      if (min_ago <= 90) and ((val >= midnight) or (min_ago <= 10))
-        val = min_ago.to_s + ' ' + _('min. ago')
-      elsif val >= midnight
-        val = _('today')+' '+val.strftime('%R')
-      elsif val.to_i >= (midnight.to_i-24*3600)  #last midnight
-        val = _('yester')+' '+val.strftime('%R')
+    res = ''
+    if (val.is_a? Integer) or (val.is_a? Time)
+      time_now ||= Time.now
+      time_now = time_now.to_i
+      val = val.to_i
+      min_ago = (time_now - val) / 60
+      if min_ago < 0
+        res = Time.at(val).strftime('%d.%m.%Y')
+      elsif min_ago == 0
+        res = _('just now')
+      elsif min_ago == 1
+        res = _('a min. ago')
       else
-        val = val.strftime('%d.%m.%y %R')
+        midnight = calc_midnight(time_now).to_i
+        if (min_ago <= 90) and ((val >= midnight) or (min_ago <= 10))
+          res = min_ago.to_s + ' ' + _('min. ago')
+        elsif val >= midnight
+          res = _('today')+' '+Time.at(val).strftime('%R')
+        elsif val >= (midnight-24*3600)  #last midnight
+          res = _('yester')+' '+Time.at(val).strftime('%R')
+        else
+          res = Time.at(val).strftime('%d.%m.%y %R')
+        end
       end
     end
-    val
+    res
   end
 
   # Convert time to string for dialog
@@ -952,9 +938,9 @@ module PandoraUtils
     [basetype, count, negative]
   end
 
-  # Convert ruby object to PSON (Pandora Simple Object Notation)
-  # RU: Конвертирует объект руби в PSON ("простая нотация объектов в Пандоре")
-  def self.rubyobj_to_pson_elem(rubyobj)
+  # Convert ruby object to PSON (Pandora simple object notation)
+  # RU: Конвертирует объект руби в PSON
+  def self.rubyobj_to_pson(rubyobj)
     type = PT_Unknown
     count = 0
     data = AsciiString.new
@@ -990,14 +976,14 @@ module PandoraUtils
         type, count = encode_pson_type(PT_Real, elem_size)
       when Array
         rubyobj.each do |a|
-          data << rubyobj_to_pson_elem(a)
+          data << rubyobj_to_pson(a)
         end
         elem_size = rubyobj.size
         type, count = encode_pson_type(PT_Array, elem_size)
       when Hash
         rubyobj = rubyobj.sort_by {|k,v| k.to_s}
         rubyobj.each do |a|
-          data << rubyobj_to_pson_elem(a[0]) << rubyobj_to_pson_elem(a[1])
+          data << rubyobj_to_pson(a[0]) << rubyobj_to_pson(a[1])
         end
         elem_size = rubyobj.bytesize
         type, count = encode_pson_type(PT_Hash, elem_size)
@@ -1018,7 +1004,7 @@ module PandoraUtils
 
   # Convert PSON to ruby object
   # RU: Конвертирует PSON в объект руби
-  def self.pson_elem_to_rubyobj(data)
+  def self.pson_to_rubyobj(data)
     data = AsciiString.new(data)
     val = nil
     len = 0
@@ -1057,7 +1043,7 @@ module PandoraUtils
             int *= 2 if basetype == PT_Hash
             while (data.bytesize-1-vlen>0) and (int>0)
               int -= 1
-              aval, alen = pson_elem_to_rubyobj(data[len+vlen..-1])
+              aval, alen = pson_to_rubyobj(data[len+vlen..-1])
               val << aval
               vlen += alen
             end
@@ -1082,7 +1068,7 @@ module PandoraUtils
 
   # Pack PanObject fields to PSON binary format
   # RU: Пакует поля панобъекта в бинарный формат PSON
-  def self.namehash_to_pson(fldvalues, pack_empty=false)
+  def self.hash_to_namepson(fldvalues, pack_empty=false)
     #bytes = ''
     #bytes.force_encoding('ASCII-8BIT')
     bytes = AsciiString.new
@@ -1093,7 +1079,7 @@ module PandoraUtils
         nsize = nam.bytesize
         nsize = 255 if nsize>255
         bytes << [nsize].pack('C') + nam[0, nsize]
-        pson_elem = rubyobj_to_pson_elem(val)
+        pson_elem = rubyobj_to_pson(val)
         bytes << pson_elem
       end
     }
@@ -1102,7 +1088,7 @@ module PandoraUtils
 
   # Convert PSON block to PanObject fields
   # RU: Преобразует PSON блок в поля панобъекта
-  def self.pson_to_namehash(pson)
+  def self.namepson_to_hash(pson)
     hash = {}
     while pson and (pson.bytesize>1)
       flen = pson[0].ord
@@ -1111,7 +1097,7 @@ module PandoraUtils
         val = nil
         if pson.bytesize-flen>1
           pson = pson[1+flen..-1]  # drop getted name
-          val, len = pson_elem_to_rubyobj(pson)
+          val, len = pson_to_rubyobj(pson)
           pson = pson[len..-1]     # drop getted value
         else
           pson = nil
@@ -2510,7 +2496,7 @@ module PandoraUtils
       @queue = Array.new
       @write_ind = -1
       if poly_read
-        @read_ind = Array.new  # will be array of read pointers
+        @read_ind = Hash.new  # will be array of read pointers
       else
         @read_ind = -1
       end
@@ -2536,17 +2522,19 @@ module PandoraUtils
       res
     end
 
-    QS_Empty     = 0
-    QS_NotEmpty  = 1
-    QS_Full      = 2
+    # Queue state with single reader
+    # RU: Состояние очереди с одним читальщиком
+    SQS_Empty     = 0
+    SQS_NotEmpty  = 1
+    SQS_Full      = 2
 
     # State of single queue
     # RU: Состояние одиночной очереди
     def single_read_state(max=MaxQueue)
-      res = QS_NotEmpty
+      res = SQS_NotEmpty
       if @read_ind.is_a? Integer
         if (@read_ind == write_ind)
-          res = QS_Empty
+          res = SQS_Empty
         else
           wind = write_ind
           if wind<max
@@ -2554,7 +2542,7 @@ module PandoraUtils
           else
             wind = 0
           end
-          res = QS_Full if (@read_ind == wind)
+          res = SQS_Full if (@read_ind == wind)
         end
       end
       res
@@ -2562,7 +2550,7 @@ module PandoraUtils
 
     # Get block from queue (set "reader" like 0,1,2..)
     # RU: Взять блок из очереди (задавай "reader" как 0,1,2..)
-    def get_block_from_queue(max=MaxQueue, reader=nil)
+    def get_block_from_queue(max=MaxQueue, reader=nil, move_ptr=true)
       block = nil
       pointers = nil
       synchronize do
@@ -2580,10 +2568,12 @@ module PandoraUtils
             ind = 0
           end
           block = queue[ind]
-          if reader
-            pointers[reader] = ind
-          else
-            @read_ind = ind
+          if move_ptr
+            if reader
+              pointers[reader] = ind
+            else
+              @read_ind = ind
+            end
           end
         end
       end
@@ -2706,27 +2696,31 @@ module PandoraUtils
   end
 
   $mp3_player = 'mpg123'
-  if PandoraUtils.os_family=='windows'
-    if is_64bit_os?
-      $mp3_player = 'mpg123x64.exe'
+
+  def self.detect_mp3_player
+    if PandoraUtils.os_family=='windows'
+      if is_64bit_os?
+        $mp3_player = 'mpg123x64.exe'
+      else
+        $mp3_player = 'cmdmp3.exe'
+      end
+      $mp3_player = File.join($pandora_util_dir, $mp3_player)
+      if File.exist?($mp3_player)
+        $mp3_player = '"'+$mp3_player+'"'
+      else
+        $mp3_player = 'mplay32 /play /close'
+      end
     else
-      $mp3_player = 'cmdmp3.exe'
-    end
-    $mp3_player = File.join($pandora_util_dir, $mp3_player)
-    if File.exist?($mp3_player)
-      $mp3_player = '"'+$mp3_player+'"'
-    else
-      $mp3_player = 'mplay32 /play /close'
-    end
-  else
-    res = `which #{$mp3_player}`
-    unless (res.is_a? String) and (res.size>0)
-      $mp3_player = 'mplayer'
       res = `which #{$mp3_player}`
       unless (res.is_a? String) and (res.size>0)
-        $mp3_player = 'ffplay -autoexit -nodisp'
+        $mp3_player = 'mplayer'
+        res = `which #{$mp3_player}`
+        unless (res.is_a? String) and (res.size>0)
+          $mp3_player = 'ffplay -autoexit -nodisp'
+        end
       end
     end
+    $mp3_player
   end
 
   $waCreateProcess = nil
@@ -3030,9 +3024,9 @@ module PandoraModel
     res
   end
 
-  # Normalize and convert trust
-  # RU: Нормализовать и преобразовать доверие
-  def self.trust_to_int255(trust, to_int=nil)
+  # Normalize and convert trust if need
+  # RU: Нормализовать и преобразовать доверие если нужно
+  def self.transform_trust(trust, to_int=nil)
     if trust.is_a? Integer
       if trust<(-127)
         trust = -127
@@ -3053,6 +3047,8 @@ module PandoraModel
     trust
   end
 
+  # Pandora record kind
+  # RU: Тип записей Пандоры
   PK_Person  = 1
   PK_Key     = 221
   PK_Sign    = 222
@@ -3087,7 +3083,7 @@ module PandoraModel
             res << [kind].pack('C') if pson_with_kind
             res << [lang].pack('C')
             p 'get_record_by_panhash|||  fields='+fields.inspect
-            res << PandoraUtils.namehash_to_pson(fields)
+            res << PandoraUtils.hash_to_namepson(fields)
           else
             res = sel
           end
@@ -3160,7 +3156,7 @@ module PandoraModel
       records.each do |record|
         kind = record[0].ord
         lang = record[1].ord
-        values = PandoraUtils.pson_to_namehash(record[2..-1])
+        values = PandoraUtils.namepson_to_hash(record[2..-1])
         if not PandoraModel.save_record(kind, lang, values, models)
           PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 2')
         end
@@ -3249,7 +3245,7 @@ module PandoraModel
       if sign_model
         filter = [['creator=', signer]]
         filter << ['modified >=', from_time.to_i] if from_time
-        filter << ['trust=', trust_to_int255(trust)] if trust
+        filter << ['trust=', transform_trust(trust)] if trust
         filter << ['key=', key] if key
         pankinds = PandoraUtils.str_to_bytes(pankinds)
         if ((pankinds.is_a? Array) and (pankinds.size==1))
@@ -3383,6 +3379,7 @@ module PandoraModel
   RK_Follow   = 6
   RK_Ignore   = 7
   RK_CameFrom = 8
+  RK_Avatar   = 9
   RK_MinPublic = 235
   RK_MaxPublic = 255
 
@@ -3466,10 +3463,10 @@ module PandoraModel
 
   # Panobject state flags
   # RU: Флаги состояния объекта/записи
-  PSF_Support   = 1         # "поддерживаю", т.е. должна храниться
-  PSF_Hurvest   = 2         # собирается/загружается по частям
-  PSF_Trashed   = 0xFF00    # помечена к удалению
-  PSF_Hidden    = 0xFF01    # скрыто от показа в таблице
+  PSF_Support    = 1      # must keep on this node (else will be deleted by GC)
+  PSF_Harvest    = 2      # download by pieces in progress
+  PSF_Deleted    = 4      # marked to delete
+  PSF_Verified   = 8      # signature was verified
 
 end
 
@@ -3654,11 +3651,11 @@ module PandoraCrypto
           if encode
             data = recrypt(key_vec, data, encode)
             if data
-              key_and_data = PandoraUtils.rubyobj_to_pson_elem([key_vec[KV_Panhash], data])
+              key_and_data = PandoraUtils.rubyobj_to_pson([key_vec[KV_Panhash], data])
               data = key_and_data
             end
           else
-            key_and_data, len = PandoraUtils.pson_elem_to_rubyobj(data)
+            key_and_data, len = PandoraUtils.pson_to_rubyobj(data)
             if key_and_data.is_a? Array
               keyhash, data = key_and_data
               if (keyhash == key_vec[KV_Panhash])
@@ -3690,7 +3687,7 @@ module PandoraCrypto
           if encode
             iv = key.random_iv
           else
-            data, len = PandoraUtils.pson_elem_to_rubyobj(data)   # pson to array
+            data, len = PandoraUtils.pson_to_rubyobj(data)   # pson to array
             if data.is_a? Array
               iv = AsciiString.new(data[1])
               data = AsciiString.new(data[0])  # data from array
@@ -3700,7 +3697,7 @@ module PandoraCrypto
           end
           cipher_vec[KV_Pub] = iv
           data = recrypt(cipher_vec, data, encode) if data
-          data = PandoraUtils.rubyobj_to_pson_elem([data, iv]) if encode and data
+          data = PandoraUtils.rubyobj_to_pson([data, iv]) if encode and data
         end
       end
     end
@@ -3964,7 +3961,7 @@ module PandoraCrypto
 
   # Return current key or allow to choose and activate a key
   # RU: Возвращает текущий ключ или позволяет выбрать и активировать ключ
-  def self.current_key(switch_key=false, need_init=true)
+  def self.current_key(switch_init=false, need_init=true)
 
     # Read a key from database
     # RU: Считывает ключ из базы
@@ -4050,7 +4047,7 @@ module PandoraCrypto
     # body of current_key
 
     key_vec = self.the_current_key
-    if key_vec and switch_key
+    if key_vec and switch_init
       key_vec = reset_current_key
     elsif (not key_vec) and need_init
       getting = true
@@ -4327,6 +4324,17 @@ module PandoraCrypto
     panhash
   end
 
+  # Get panhash of current user and key
+  # RU: Возвращает панхэш текущего пользователя и ключа
+  def self.current_user_and_key(user=true, init=true)
+    res = nil
+    key = current_key(false, init)
+    if key and key[KV_Obj]
+      res = [key[KV_Panhash], key[KV_Creator]]
+    end
+    res
+  end
+
   PT_Pson1   = 1
 
   # Sign PSON of PanObject and save a sign as record
@@ -4341,12 +4349,12 @@ module PandoraCrypto
       obj_hash = namesvalues['panhash']
       if not PandoraUtils.panhash_nil?(obj_hash)
         #p 'sign: matter_fields='+matter_fields.inspect
-        sign = make_sign(key, PandoraUtils.namehash_to_pson(matter_fields))
+        sign = make_sign(key, PandoraUtils.hash_to_namepson(matter_fields))
         if sign
           time_now = Time.now.to_i
           key_hash = key[KV_Panhash]
           creator = key[KV_Creator]
-          trust = PandoraModel.trust_to_int255(trust, true)
+          trust = PandoraModel.transform_trust(trust, true)
 
           values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, \
             :pack=>PT_Pson1, :trust=>trust, :creator=>creator, :created=>time_now, \
@@ -4404,7 +4412,7 @@ module PandoraCrypto
             if created>last_date
               #p 'sign2: [creator, created, trust]='+[creator, created, trust].inspect
               last_date = created
-              res = PandoraModel.trust_to_int255(trust, false)
+              res = PandoraModel.transform_trust(trust, false)
             end
           end
         else
@@ -4455,7 +4463,7 @@ module PandoraCrypto
               if (creator != prev_creator) or (i==last_i)
                 p 'sign3: [creator, created, last_trust]='+[creator, created, last_trust].inspect
                 person_trust = 1.0 #trust_of_person(creator, my_key_hash)
-                rate += PandoraModel.trust_to_int255(last_trust, false) * person_trust
+                rate += PandoraModel.transform_trust(last_trust, false) * person_trust
                 prev_creator = creator
                 last_date = created
                 last_trust = trust
@@ -4660,19 +4668,191 @@ module PandoraNet
 
   include PandoraUtils
 
+  # Network exchange comands
+  # RU: Команды сетевого обмена
+  EC_Media     = 0     # Медиа данные
+  EC_Auth      = 1     # Инициализация диалога (версия протокола, сжатие, авторизация, шифрование)
+  EC_Message   = 2     # Мгновенное текстовое сообщение
+  EC_Channel   = 3     # Запрос открытия медиа-канала
+  EC_Query     = 4     # Запрос пачки сортов или пачки панхэшей
+  EC_News      = 5     # Пачка сортов или пачка панхэшей измененных записей
+  EC_Request   = 6     # Запрос записи/патча/миниатюры
+  EC_Record    = 7     # Выдача записи
+  EC_Lure      = 8     # Запрос рыбака (наживка)
+  EC_Bite      = 9     # Ответ рыбки (поклевка)
+  EC_Sync      = 10    # Последняя команда в серии, или индикация "живости"
+  EC_Wait      = 254   # Временно недоступен
+  EC_Bye       = 255   # Рассоединение
+  # signs only
+  EC_Data      = 256   # Ждем данные
+
+  CommSize = 7
+  CommExtSize = 10
+  SegNAttrSize = 8
+
+  ECC_Auth_Hello       = 0
+  ECC_Auth_Puzzle      = 1
+  ECC_Auth_Phrase      = 2
+  ECC_Auth_Sign        = 3
+  ECC_Auth_Captcha     = 4
+  ECC_Auth_Simple      = 5
+  ECC_Auth_Answer      = 6
+
+  ECC_Query_Rel        = 0
+  ECC_Query_Record     = 1
+  ECC_Query_Fish       = 2
+
+  ECC_News_Panhash      = 0
+  ECC_News_Record       = 1
+  ECC_News_Hook         = 2
+  ECC_News_Notice       = 3
+
+  ECC_Channel0_Open     = 0
+  ECC_Channel1_Opened   = 1
+  ECC_Channel2_Close    = 2
+  ECC_Channel3_Closed   = 3
+  ECC_Channel4_Fail     = 4
+
+  ECC_Sync1_NoRecord    = 1
+  ECC_Sync2_Encode      = 2
+  ECC_Sync3_Confirm     = 3
+
+  EC_Wait1_NoFish       = 1
+  EC_Wait2_NoFisher     = 2
+  EC_Wait3_EmptySegment = 3
+
+  ECC_Bye_Exit          = 200
+  ECC_Bye_Unknown       = 201
+  ECC_Bye_BadComm       = 202
+  ECC_Bye_BadCommCRC    = 203
+  ECC_Bye_BadCommLen    = 204
+  ECC_Bye_BadSegCRC     = 205
+  ECC_Bye_BadDataCRC    = 206
+  ECC_Bye_DataTooShort  = 207
+  ECC_Bye_DataTooLong   = 208
+  ECC_Wait_NoHandlerYet = 209
+  ECC_Bye_NoAnswer      = 210
+  ECC_Bye_Silent        = 211
+
+  # Session modes
+  # RU: Режимы соединения
+  SM_GetNotice   = 1
+  SM_CiperBF     = 2
+  SM_CiperAES    = 4
+
+  # Read modes of socket
+  # RU: Режимы чтения из сокета
+  RM_Comm      = 0   # Базовая команда
+  RM_CommExt   = 1   # Расширение команды для нескольких сегментов
+  RM_SegLenN   = 2   # Длина второго и следующих сегмента в серии
+  RM_SegmentS  = 3   # Чтение одиночного сегмента
+  RM_Segment1  = 4   # Чтение первого сегмента среди нескольких
+  RM_SegmentN  = 5   # Чтение второго и следующих сегмента в серии
+
+  # Connection mode
+  # RU: Режим соединения
+  CM_Hunter       = 1
+  CM_KeepHere     = 2
+  CM_KeepThere    = 4
+  CM_Double       = 8
+
+  # Connection state
+  # RU: Состояние соединения
+  CS_Connecting    = 0
+  CS_Connected     = 1
+  CS_Stoping       = 2
+  CS_StopRead      = 3
+  CS_Disconnected  = 4
+
+  # Stage of exchange
+  # RU: Стадия обмена
+  ES_Begin        = 0
+  ES_IpCheck      = 1
+  ES_Protocol     = 3
+  ES_Puzzle       = 4
+  ES_KeyRequest   = 5
+  ES_Sign         = 6
+  ES_Captcha      = 7
+  ES_Greeting     = 8
+  ES_Exchange     = 9
+
+  # Max recv pack size for stadies
+  # RU: Максимально допустимые порции для стадий
+  MPS_Proto     = 150
+  MPS_Puzzle    = 300
+  MPS_Sign      = 500
+  MPS_Captcha   = 3000
+  MPS_Exchange  = 4000
+  # Max send segment size
+  MaxSegSize  = 1200
+
+  # Connection state flags
+  # RU: Флаги состояния соединения
+  CSF_Message     = 1
+  CSF_Messaging   = 2
+
+  # Address types
+  # RU: Типы адресов
+  AT_Ip4        = 0
+  AT_Ip6        = 1
+  AT_Hyperboria = 2
+  AT_Netsukuku  = 3
+
+  # Questioner steps
+  # RU: Шаги почемучки
+  QS_ResetMessage  = 0
+  QS_CreatorCheck  = 1
+  QS_NewsQuery     = 2
+  QS_Finished      = 255
+
+  # Request kind
+  # RU: Тип запроса
+  RQK_Fishing    = 1      # рыбалка
+
+  # Notice order array indexes
+  # RU: Индексы массива заявок на уведомления
+  NO_Index           = 0
+  NO_Person          = 1
+  NO_Key             = 2
+  NO_Baseid          = 3
+  NO_Notice_trust    = 4
+  NO_Notice_depth    = 5
+  NO_Time            = 6
+  NO_Session         = 7
+
+  # Fish order array indexes
+  # RU: Индексы массива заявок на рыбалку
+  FO_Index           = 0
+  FO_Session         = 1
+  FO_Fisher          = 2
+  FO_Fisher_key      = 3
+  FO_Fisher_baseid   = 4
+  FO_Fish            = 5
+  FO_Fish_key        = 6
+  FO_Time            = 7
+
   # Pool
   # RU: Пул
   class Pool
-    attr_accessor :window, :sessions, :white_list, :fish_orders
+    attr_accessor :window, :sessions, :white_list, :fish_orders, :fish_ind, \
+      :notice_list, :notice_ind
 
     MaxWhiteSize = 500
+    FishQueueSize = 100
 
     def initialize(main_window)
       super()
       @window = main_window
       @sessions = Array.new
       @white_list = Array.new
-      @fish_orders = PandoraUtils::RoundQueue.new(true)
+      @fish_ind = -1
+      @notice_ind = -1
+      @fish_orders = Array.new #PandoraUtils::RoundQueue.new(true)
+      @notice_list = Array.new
+    end
+
+    def base_id
+      $base_id
     end
 
     # Add ip to white list
@@ -4715,103 +4895,245 @@ module PandoraNet
       end
     end
 
-    # Get a session for the node
-    # RU: Возвращает сессию для узла
-    def session_of_node(node)
+    # Get a session by address (ip, port, protocol)
+    # RU: Возвращает сессию для адреса
+    def sessions_of_address(node)
       host, port, proto = decode_node(node)
-      res = sessions.find do |e|
-        ((e.host_ip == host) or (e.host_name == host)) and (e.port == port) and (e.proto == proto)
+      res = sessions.select do |s|
+        ((s.host_ip == host) or (s.host_name == host)) and (s.port == port) and (s.proto == proto)
       end
       res
     end
 
-    # Get a session by the key and base id
-    # RU: Возвращает сессию по ключу и идентификатору базы
-    def session_of_keybase(keybase)
-      res = sessions.find { |e| (e.node_panhash == keybase) }
+    # Get a session by the node panhash
+    # RU: Возвращает сессию по панхэшу узла
+    def sessions_of_node(panhash)
+      res = sessions.select { |s| (s.node_panhash == panhash) }
       res
     end
 
     # Get a session by the key panhash
     # RU: Возвращает сессию по панхэшу ключа
-    def session_of_key(key)
-      res = sessions.find { |e| (e.skey[PandoraCrypto::KV_Panhash] == key) }
+    def sessions_of_key(key)
+      res = sessions.select { |s| (s.skey and (s.skey[PandoraCrypto::KV_Panhash] == key)) }
       res
     end
 
-    # Get a session by the person panhash
+    # Get a session by key and base id
+    # RU: Возвращает сессию по ключу и идентификатору базы
+    def sessions_of_keybase(key, base_id)
+      res = sessions.select { |s| (s.to_base_id == base_id) and \
+        (s.skey[PandoraCrypto::KV_Panhash] == key) }
+      res
+    end
+
+    # Get a session by person, key and base id
+    # RU: Возвращает сессию по человеку, ключу и идентификатору базы
+    def sessions_of_personkeybase(person, key, base_id)
+      res = nil
+      if (person or key) and base_id
+        res = sessions.select do |s|
+          sperson, skey = nil
+          if s.skey
+            sperson = s.skey[PandoraCrypto::KV_Creator]
+            skey = s.skey[PandoraCrypto::KV_Panhash]
+          end
+          ((person.nil? or (sperson == person)) and \
+          (key.nil? or (skey == key)) and \
+          (base_id.nil? or (s.to_base_id == base_id)))
+        end
+      end
+      res ||= []
+      res
+    end
+
+    # Get a session by person panhash
     # RU: Возвращает сессию по панхэшу человека
-    def session_of_person(person)
-      res = sessions.find { |e| (e.skey[PandoraCrypto::KV_Creator] == person) }
+    def sessions_of_person(person)
+      res = sessions.select { |s| (s.skey[PandoraCrypto::KV_Creator] == person) }
       res
     end
 
     # Get a session by the dialog
     # RU: Возвращает сессию по диалогу
     def sessions_on_dialog(dialog)
-      res = sessions.select { |e| (e.dialog == dialog) }
+      res = sessions.select { |s| (s.dialog == dialog) }
       res.uniq!
       res.compact!
       res
     end
 
-    FishQueueSize = 100
+    # Add order to notice
+    # RU: Добавить заявку на уведомление
+    def add_notice_order(session, person, key, baseid, notice_trust, notice_depth)
+      res = nil
+      if notice_depth>0
+        time = Time.now.to_i
+        res = find_notice_order(person, key, baseid, time)
+        if ((not (res.is_a? Array)) or (res.size == 0))
+          notice_depth -= 1
+          p '=====NOTICE ADD [person, key, baseid, notice_trust, notice_depth]='+[person, key, baseid, notice_trust, notice_depth].inspect
+          res = [@notice_ind+1, person, key, baseid, notice_trust, notice_depth, time, session]
+          @notice_list << res
+          @notice_ind += 1
+        end
+        $window.set_status_field(PandoraGtk::SF_Fish, @notice_list.size.to_s)
+      end
+      res
+    end
+
+    $not_live_per  = 30*60
+
+    def clear_list(list, time_ind, live_per, time=nil)
+      time ||= Time.now.to_i
+      list.delete_if {|e| (e.is_a? Array) and (e[time_ind] < time-live_per) }
+    end
+
+    def find_notice_order(person, key, baseid, time=nil)
+      time ||= Time.now.to_i
+      clear_list(@notice_list, NO_Time, $not_live_per, time)
+      res = @notice_list.select do |no|
+        ((person.nil? or (no[PandoraNet::NO_Person] == person)) and \
+        (key.nil? or (no[PandoraNet::NO_Key] == key)) and \
+        (baseid.nil? or (no[PandoraNet::NO_Baseid] == baseid)))
+      end
+      res
+    end
+
+    $fish_live_per = 10*60
 
     # Add order to fishing
     # RU: Добавить заявку на рыбалку
-    def add_fish_order(fish_key)
-      @fish_orders.add_block_to_queue(fish_key, FishQueueSize) if not @fish_orders.queue.include?(fish_key)
+    def add_fish_order(session, fisher, fisher_key, fisher_baseid, fish, fish_key, models=nil)
+      res = nil
+      time = Time.now.to_i
+      clear_list(@fish_orders, FO_Time, $fish_live_per, time)
+      @fish_orders << [@fish_ind+1, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+      @fish_ind += 1
+      res = true
+
+      #model = PandoraUtils.get_model('Request', models)
+      #filter = [['creator=', fisher], ['kind=', PandoraNet::RQK_Fishing]]
+      #filter << ['creator_key =', fisher_key] if fisher_key
+      #filter << ['creator_baseid =', fisher_baseid] if fisher_baseid
+      #filter << ['created >=', from_time] if from_time
+
+      #sel = model.select(filter, false, 'id, body')
+      #if sel and (sel.size>0)
+      #  sel.each do |row|
+
+          #PandoraUtils.namepson_to_hash(rdata)
+          #PandoraUtils.hash_to_namepson(hparams)
+          #PandoraUtils.rubyobj_to_pson(param)
+          #PandoraUtils.pson_to_rubyobj(panhashes)
+      #  end
+      #end
+
+      #if not res
+      #  time = Time.now.to_i
+      #  line = [fisher_key, fisher_baseid, fish_key]
+      #  values = {:kind=>PandoraNet::RQK_Fishing, :body=>body,
+      #    :state=>0, :creator=>fisher, :created=>time, :modified=>time }
+      #  panhash = model.panhash(values)
+      #  values['panhash'] = panhash
+      #  res = model.update(values, nil, nil)
+      #  if res and (id.is_a? Integer)
+      #    while (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) do
+      #      sleep(0.02)
+      #    end
+      #    @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
+      #      +[id].pack('N'))
+      #  end
+      #end
+
+      #line = [session, fisher_key, fisher_baseid, fish_key]
+      #if not @fish_orders.get_block_from_queue(FishQueueSize, session.object_id, false)
+      #if true #must check fish history to prevent double order
+      #  @fish_orders.add_block_to_queue(line, FishQueueSize)
+      #  $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.queue.size.to_s)
+      #end
+      $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.size.to_s)
+
+      res
+    end
+
+    def find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
+      res = @fish_orders.select do |fo|
+        ((fisher.nil? or (fo[PandoraNet::FO_Fisher] == fisher)) and \
+        (fisher_key.nil? or (fo[PandoraNet::FO_Fisher_key] == fisher_key)) and \
+        (fisher_baseid.nil? or (fo[PandoraNet::FO_Fisher_baseid] == fisher_baseid)) and \
+        (fish.nil? or (fo[PandoraNet::FO_Fish] == fish)) and \
+        (fish_key.nil? or (fo[PandoraNet::FO_Fish_key] == fish_key)))
+      end
+      #FO_Session
+      #res.uniq!
+      #res.compact!
+      res
     end
 
     # Find or create session with necessary node
     # RU: Находит или создает соединение с нужным узлом
-    def init_session(node=nil, keybase=nil, send_state_add=nil, dialog=nil, node_id=nil)
-      p 'init_session: '+[node, keybase, send_state_add, dialog, node_id].inspect
+    def init_session(addr=nil, nodehash=nil, send_state_add=nil, dialog=nil, \
+    node_id=nil, person=nil, key_hash=nil, base_id=nil)
+      p '-------init_session: '+[addr, nodehash, send_state_add, dialog, node_id, \
+        person, key_hash, base_id].inspect
       res = nil
       send_state_add ||= 0
-      session1 = nil
-      session2 = nil
-      session1 = session_of_keybase(keybase) if keybase
-      session2 = session_of_node(node) if node and (not session1)
-      if session1 or session2
-        session = session1
-        session ||= session2
-        session.send_state = (session.send_state | send_state_add)
-        session.dialog = nil if (session.dialog and session.dialog.destroyed?)
-        session.dialog = dialog if dialog
-        if session.dialog and (not session.dialog.destroyed?) and session.dialog.online_button \
-        and ((session.socket and (not session.socket.closed?)) or session.donor)
-          session.dialog.online_button.safe_set_active(true)
-          session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
+      sessions = sessions_of_personkeybase(person, key_hash, base_id)
+      sessions << sessions_of_node(nodehash) if nodehash
+      sessions << sessions_of_address(addr) if addr
+      sessions.flatten!
+      sessions.uniq!
+      sessions.compact!
+      if (sessions.is_a? Array) and (sessions.size>0)
+        sessions.each_with_index do |session, i|
+          session.send_state = (session.send_state | send_state_add)
+          session.dialog = nil if (session.dialog and session.dialog.destroyed?)
+          session.dialog = dialog if dialog and (i==0)
+          if session.dialog and (not session.dialog.destroyed?) \
+          and session.dialog.online_button
+            session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
+            if ((session.socket and (not session.socket.closed?)) or session.donor)
+              session.dialog.online_button.safe_set_active(true)
+            end
+          end
         end
         res = true
-      elsif (node or keybase)
-        p 'NEED connect: '+[node, keybase].inspect
-        if node
-          host, port, proto = decode_node(node)
+      elsif (addr or nodehash or person)
+        p 'NEED connect: '+[addr, nodehash].inspect
+        sel = nil
+        if addr
+          host, port, proto = decode_node(addr)
+          addr = host
           sel = [[host, port]]
-        else
-          node_model = PandoraUtils.get_model('Node')
-          if node_id
-            filter = {:id=>node_id}
-          else
-            filter = {:panhash=>keybase}
-          end
-          sel = node_model.select(filter, false, 'addr, tport, domain')
+        end
+        node_model = PandoraUtils.get_model('Node')
+        filter = nil
+        if node_id
+          filter = {:id=>node_id}
+        elsif nodehash
+          filter = {:panhash=>nodehash}
+        end
+        if filter
+          sel = node_model.select(filter, false, 'addr, tport, domain, key_hash, id')
         end
         if sel and (sel.size>0)
           sel.each do |row|
-            host = row[2]
-            host.strip! if host
             addr = row[0]
             addr.strip! if addr
             port = row[1]
             proto = 'tcp'
-            if (host and (host != '')) or (addr and (addr != ''))
-              session = Session.new(nil, host, addr, port, proto, \
-                CS_Connecting, node_id, dialog, keybase, send_state_add)
-              res = true
-            end
+            host = row[2]
+            host.strip! if host
+            key_hash_i = row[3]
+            key_hash_i.strip! if key_hash_i
+            key_hash_i ||= key_hash
+            node_id_i = row[4]
+            node_id_i ||= node_id
+            session = Session.new(nil, host, addr, port, proto, \
+              CS_Connecting, node_id_i, dialog, send_state_add, nodehash, \
+              person, key_hash_i, base_id)
+            res = true
           end
         end
       end
@@ -4820,38 +5142,32 @@ module PandoraNet
 
     # Stop session with a node
     # RU: Останавливает соединение с заданным узлом
-    def stop_session(node=nil, keybase=nil, disconnect=true)  #, wait_disconnect=true)
-      p 'stop_session1 keybase='+keybase.inspect
-      session1 = nil
-      session2 = nil
-      session1 = session_of_keybase(keybase) if keybase
-      session2 = session_of_node(node) if node and (not session1)
-      if session1 or session2
-        #p 'stop_session2 session1,session2='+[session1,session2].inspect
-        session = session1
-        session ||= session2
-        if session and (session.conn_state != CS_Disconnected)
-          #p 'stop_session3 session='+session.inspect
-          session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
-          if disconnect
-            session.conn_state = CS_StopRead
+    def stop_session(node=nil, nodehash=nil, disconnect=true)  #, wait_disconnect=true)
+      res = false
+      p 'stop_session1 nodehash='+nodehash.inspect
+      sessions = sessions_of_node(nodehash) if nodehash
+      sessions << sessions_of_address(node) if node
+      sessions.flatten!
+      sessions.uniq!
+      sessions.compact!
+      if (sessions.is_a? Array) and (sessions.size>0)
+        sessions.each do |session|
+          if session and (session.conn_state != CS_Disconnected)
+            session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
+            if disconnect
+              session.conn_state = CS_StopRead
+            end
           end
-
-          #while wait_disconnect and session and (session.conn_state != CS_Disconnected)
-          #  sleep 0.05
-          #  #Thread.pass
-          #  #Gtk.main_iteration
-          #  session = session_of_node(node)
-          #end
-          #session = session_of_node(node)
         end
+        res = true
       end
-      res = (session and (session.conn_state != CS_Disconnected)) #and wait_disconnect
+      #res = (session and (session.conn_state != CS_Disconnected)) #and wait_disconnect
+      res
     end
 
     # Form node marker
     # RU: Формирует маркер узла
-    def encode_node(host, port, proto)
+    def encode_addr(host, port, proto)
       host ||= ''
       port ||= ''
       proto ||= ''
@@ -4905,135 +5221,6 @@ module PandoraNet
     end
   end
 
-  # Network exchange comands
-  # RU: Команды сетевого обмена
-  EC_Media     = 0     # Медиа данные
-  EC_Auth      = 1     # Инициализация диалога (версия протокола, сжатие, авторизация, шифрование)
-  EC_Message   = 2     # Мгновенное текстовое сообщение
-  EC_Channel   = 3     # Запрос открытия медиа-канала
-  EC_Query     = 4     # Запрос пачки сортов или пачки панхэшей
-  EC_News      = 5     # Пачка сортов или пачка панхэшей измененных записей
-  EC_Request   = 6     # Запрос записи/патча/миниатюры
-  EC_Record    = 7     # Выдача записи
-  EC_Lure      = 8     # Запрос рыбака (наживка)
-  EC_Bite      = 9     # Ответ рыбки (поклевка)
-  EC_Sync      = 10    # Последняя команда в серии, или индикация "живости"
-  EC_Wait      = 254   # Временно недоступен
-  EC_Bye       = 255   # Рассоединение
-  # signs only
-  EC_Data      = 256   # Ждем данные
-
-  CommSize = 7
-  CommExtSize = 10
-  SegNAttrSize = 8
-
-  ECC_Auth_Hello       = 0
-  ECC_Auth_Puzzle      = 1
-  ECC_Auth_Phrase      = 2
-  ECC_Auth_Sign        = 3
-  ECC_Auth_Captcha     = 4
-  ECC_Auth_Simple      = 5
-  ECC_Auth_Answer      = 6
-
-  ECC_Query_Rel        = 0
-  ECC_Query_Record     = 1
-  ECC_Query_Fish       = 2
-
-  ECC_News_Panhash      = 0
-  ECC_News_Record       = 1
-  ECC_News_Fish         = 2
-
-  ECC_Channel0_Open     = 0
-  ECC_Channel1_Opened   = 1
-  ECC_Channel2_Close    = 2
-  ECC_Channel3_Closed   = 3
-  ECC_Channel4_Fail     = 4
-
-  ECC_Sync1_NoRecord    = 1
-  ECC_Sync2_Encode      = 2
-  ECC_Sync3_Confirm     = 3
-
-  EC_Wait1_NoFish       = 1
-  EC_Wait2_NoFisher     = 2
-  EC_Wait3_EmptySegment = 3
-
-  ECC_Bye_Exit          = 200
-  ECC_Bye_Unknown       = 201
-  ECC_Bye_BadComm       = 202
-  ECC_Bye_BadCommCRC    = 203
-  ECC_Bye_BadCommLen    = 204
-  ECC_Bye_BadSegCRC     = 205
-  ECC_Bye_BadDataCRC    = 206
-  ECC_Bye_DataTooShort  = 207
-  ECC_Bye_DataTooLong   = 208
-  ECC_Wait_NoHandlerYet = 209
-  ECC_Bye_NoAnswer      = 210
-  ECC_Bye_Silent        = 211
-
-  # Read modes of socket
-  # RU: Режимы чтения из сокета
-  RM_Comm      = 0   # Базовая команда
-  RM_CommExt   = 1   # Расширение команды для нескольких сегментов
-  RM_SegLenN   = 2   # Длина второго (и следующих) сегмента в серии
-  RM_SegmentS  = 3   # Чтение одиночного сегмента
-  RM_Segment1  = 4   # Чтение первого сегмента среди нескольких
-  RM_SegmentN  = 5   # Чтение второго (и следующих) сегмента в серии
-
-  # Connection mode
-  # RU: Режим соединения
-  CM_Hunter       = 1
-  CM_KeepHere     = 2
-  CM_KeepThere    = 4
-
-  # Connection state
-  # RU: Состояние соединения
-  CS_Connecting    = 0
-  CS_Connected     = 1
-  CS_Stoping       = 2
-  CS_StopRead      = 3
-  CS_Disconnected  = 4
-
-  # Stage of exchange
-  # RU: Стадия обмена
-  ES_Begin        = 0
-  ES_IpCheck      = 1
-  ES_Protocol     = 3
-  ES_Puzzle       = 4
-  ES_KeyRequest   = 5
-  ES_Sign         = 6
-  ES_Captcha      = 7
-  ES_Greeting     = 8
-  ES_Exchange     = 9
-
-  # Max recv pack size for stadies
-  # RU: Максимально допустимые порции для стадий
-  MPS_Proto     = 150
-  MPS_Puzzle    = 300
-  MPS_Sign      = 500
-  MPS_Captcha   = 3000
-  MPS_Exchange  = 4000
-  # Max send segment size
-  MaxSegSize  = 1200
-
-  # Connection state flags
-  # RU: Флаги состояния соединения
-  CSF_Message     = 1
-  CSF_Messaging   = 2
-
-  # Address types
-  # RU: Типы адресов
-  AT_Ip4        = 0
-  AT_Ip6        = 1
-  AT_Hyperboria = 2
-  AT_Netsukuku  = 3
-
-  # Inquirer steps
-  # RU: Шаги почемучки
-  IS_ResetMessage  = 0
-  IS_CreatorCheck  = 1
-  IS_NewsQuery     = 2
-  IS_Finished      = 255
-
   $callback_addr = nil
   $puzzle_bit_length = 0  #8..24  (recommended 14)
   $puzzle_sec_delay = 2   #0..255 (recommended 2)
@@ -5048,16 +5235,21 @@ module PandoraNet
   $keep_intvl = 1  #(every, sec)
   $keep_cnt   = 4  #(count)
 
-
   class Session
 
     include PandoraUtils
 
-    attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, :stage, :dialog, \
-      :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, :fisher_lure, :fish_lure, \
-      :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, :params, \
-      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, \
-      :media_send, :node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes, :fishers
+    attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, \
+      :stage, :dialog, \
+      :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, \
+      :fisher_lure, :fish_lure, \
+      :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, \
+      :params, \
+      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
+      :r_encode, \
+      :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
+      :entered_captcha, :captcha_sw, :hooks, :fishes, :fishers, :fish_ind, :notice_ind, \
+      :sess_trust, :sess_mode, :notice
 
     # Set socket options
     # RU: Установить опции сокета
@@ -5084,10 +5276,10 @@ module PandoraNet
     # RU: Тип сессии
     def get_type
       res = nil
-      if donor
+      if @donor
         res = ST_Fisher
       else
-        if ((conn_mode & CM_Hunter)>0)
+        if ((@conn_mode & CM_Hunter)>0)
           res = ST_Hunter
         else
           res = ST_Listener
@@ -5325,7 +5517,6 @@ module PandoraNet
       asbuf = nil
       case ex_comm
         when EC_Auth
-          @rkey = PandoraCrypto.current_key(false, false)
           #p log_mes+'first key='+key.inspect
           if @rkey and @rkey[PandoraCrypto::KV_Obj]
             key_hash = @rkey[PandoraCrypto::KV_Panhash]
@@ -5333,9 +5524,12 @@ module PandoraNet
             ascode = ECC_Auth_Hello
             params['mykey'] = key_hash
             params['tokey'] = param
-            hparams = {:version=>0, :mode=>0, :mykey=>key_hash, :tokey=>param}
-            hparams[:addr] = $callback_addr if $callback_addr and (not ($callback_addr != ''))
-            asbuf = PandoraUtils.namehash_to_pson(hparams)
+            mode = 0
+            mode |= SM_GetNotice if $get_notice
+            hparams = {:version=>0, :mode=>mode, :mykey=>key_hash, :tokey=>param, \
+              :notice=>(($notice_depth << 8) | $notice_trust)}
+            hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
+            asbuf = PandoraUtils.hash_to_namepson(hparams)
           else
             ascmd = EC_Bye
             ascode = ECC_Bye_Exit
@@ -5347,7 +5541,7 @@ module PandoraNet
           #      kind = PandoraUtils.kind_from_panhash(panhash)
           #      record = PandoraModel.get_record_by_panhash(kind, panhash, true, @recv_models)
           #      p log_mes+'EC_Request panhashes='+PandoraUtils.bytes_to_hex(panhash).inspect
-          asbuf = PandoraUtils.rubyobj_to_pson_elem(param)
+          asbuf = PandoraUtils.rubyobj_to_pson(param)
         when EC_Bye
           ascmd = EC_Bye
           ascode = ECC_Bye_Exit
@@ -5355,7 +5549,7 @@ module PandoraNet
         else
           asbuf = param
       end
-      if (@send_queue.single_read_state != PandoraUtils::RoundQueue::QS_Full)
+      if (@send_queue.single_read_state != PandoraUtils::RoundQueue::SQS_Full)
         res = @send_queue.add_block_to_queue([ascmd, ascode, asbuf])
       end
       if ascmd != EC_Media
@@ -5370,6 +5564,14 @@ module PandoraNet
       res
     end
 
+    def mypersonhash
+      @rkey[PandoraCrypto::KV_Creator]
+    end
+
+    def mykeyhash
+      @rkey[PandoraCrypto::KV_Panhash]
+    end
+
     # Compose command of request of record/records
     # RU: Компонует команду запроса записи/записей
     def set_request(panhashes, send_now=false)
@@ -5378,7 +5580,7 @@ module PandoraNet
       asbuf = nil
       if panhashes.is_a? Array
         # any panhashes
-        asbuf = PandoraUtils.rubyobj_to_pson_elem(panhashes)
+        asbuf = PandoraUtils.rubyobj_to_pson(panhashes)
       else
         # one panhash
         ascode = PandoraUtils.kind_from_panhash(panhashes)
@@ -5412,6 +5614,8 @@ module PandoraNet
       end
     end
 
+    FH_Session    = 0
+
     # Accept received segment
     # RU: Принять полученный сегмент
     def accept_segment
@@ -5419,7 +5623,7 @@ module PandoraNet
       # Recognize hello data
       # RU: Распознает данные приветствия
       def recognize_params
-        hash = PandoraUtils.pson_to_namehash(rdata)
+        hash = PandoraUtils.namepson_to_hash(rdata)
         if not hash
           err_scmd('Hello data is wrong')
         end
@@ -5429,6 +5633,7 @@ module PandoraNet
           params['addr']     = hash['addr']
           params['srckey']   = hash['mykey']
           params['dstkey']   = hash['tokey']
+          params['notice']   = hash['notice']
         end
         p log_mes+'RECOGNIZE_params: '+hash.inspect
       end
@@ -5678,7 +5883,7 @@ module PandoraNet
       def process_media_segment(cannel, mediabuf)
         if not dialog
           @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
-          #node = PandoraNet.encode_node(host_ip, port, proto)
+          #node = PandoraNet.encode_addr(host_ip, port, proto)
           panhash = @skey[PandoraCrypto::KV_Creator]
           @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
           dialog.update_state(true)
@@ -5726,6 +5931,45 @@ module PandoraNet
         password
       end
 
+      def add_hole_for_fisher(fisher)
+        hole = get_hole_of_fisher(fisher)
+        if not hole
+          size = fishers.size
+          if size>0
+            i = 0
+            while (i<size) and (hole==nil)
+              hole = i if fishers[i]==nil
+              i += 1
+            end
+            hole = size if (hole==nil) and (size<256)
+            list_set(fishers, hole, fisher) if hole != nil
+          else
+            hole = 0
+            list_set(fishers, hole, fisher)
+          end
+        end
+        hole
+      end
+
+      # Get hook for line
+      # RU: Взять крючок для лески
+      def get_line_hook(session, line)
+        hook = @fishers.index(line)
+        #fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid
+        if not hook
+          i = 0
+          while (i<@fishers.size)
+            break if (not @fishers[i].is_a? Array) or (@fishers[i][FH_Session].nil?) \
+              or (@fishers[i][FH_Session].destroyed?)
+            i += 1
+          end
+          hook = i if i<=255
+          @fishers[hook] = [session] + line if hook
+        end
+        p log_mes+'=======get_line_hook  [session, line, hook]='+[session, line, hook].inspect
+        hook
+      end
+
       # Take out lure by input lure for the fisher
       # RU: Взять исходящую наживку по входящей наживке для заданного рыбака
       def take_out_lure_for_fisher(fisher, in_lure)
@@ -5748,12 +5992,12 @@ module PandoraNet
 
       # Check out lure by input lure and the fisher
       # RU: Проверить исходящую наживку по входящей наживке и рыбаку
-      def get_out_lure_for_fisher(fisher, in_lure)
-        val = [fisher, in_lure]
-        out_lure = @fishers.index(val)
-        p '----get_out_lure_for_fisher  in_lure, out_lure='+[in_lure, out_lure].inspect
-        out_lure
-      end
+      #def get_out_lure_for_fisher(fisher, in_lure)
+      #  val = [fisher, in_lure]
+      #  out_lure = @fishers.index(val)
+      #  p '----get_out_lure_for_fisher  in_lure, out_lure='+[in_lure, out_lure].inspect
+      #  out_lure
+      #end
 
       # Get fisher for out lure
       # RU: Определить рыбака по исходящей наживке
@@ -5915,7 +6159,8 @@ module PandoraNet
                     p log_mes+'addr='+addr.inspect
                     # need to change an ip checking
                     pool.check_callback_addr(addr, host_ip) if addr
-                    mode = params['mode']
+                    @sess_mode = params['mode']
+                    @notice = params['notice']
                     init_skey_or_error(true)
                   else
                     err_scmd('Protocol is not supported ('+vers.to_s+')')
@@ -6005,37 +6250,54 @@ module PandoraNet
                       @send_state = (@send_state | CSF_Message)
                     end
                     trust = @skey[PandoraCrypto::KV_Trust]
-                    update_node(@skey[PandoraCrypto::KV_Panhash], sbase_id, trust)
-                    if ((conn_mode & CM_Hunter) == 0)
-                      trust = 0 if (not trust) and $trust_for_captchaed
-                    elsif $trust_for_listener and (not (trust.is_a? Float))
-                      trust = 0.01
-                      @skey[PandoraCrypto::KV_Trust] = trust
-                    end
-                    p log_mes+'----trust='+trust.inspect
-                    if ($captcha_length>0) and (trust.is_a? Integer) \
-                    and ((conn_mode & CM_Hunter) == 0)
-                      @skey[PandoraCrypto::KV_Trust] = 0
-                      send_captcha
-                    elsif trust.is_a? Float
-                      if trust>=$low_conn_trust
-                        if (conn_mode & CM_Hunter) == 0
-                          @stage = ES_Greeting
-                          add_send_segment(EC_Auth, true, params['srckey'])
-                          set_max_pack_size(ES_Sign)
+
+                    init_and_check_node(@skey[PandoraCrypto::KV_Creator], \
+                      @skey[PandoraCrypto::KV_Panhash], sbase_id)
+
+                    if ((conn_mode & CM_Double) == 0)
+                      if ((conn_mode & CM_Hunter) == 0)
+                        trust = 0 if (not trust) and $trust_for_captchaed
+                      elsif $trust_for_listener and (not (trust.is_a? Float))
+                        trust = 0.01
+                        @skey[PandoraCrypto::KV_Trust] = trust
+                      end
+                      p log_mes+'----trust='+trust.inspect
+                      if ($captcha_length>0) and (trust.is_a? Integer) \
+                      and ((conn_mode & CM_Hunter) == 0)
+                        @skey[PandoraCrypto::KV_Trust] = 0
+                        send_captcha
+                      elsif trust.is_a? Float
+                        if trust>=$low_conn_trust
+                          @sess_trust = trust
+                          update_node(to_key, sbase_id, trust)
+                          if (@notice.is_a? Integer)
+                            not_trust = (@notice & 0xFF)
+                            not_dep = (@notice >> 8)
+                            if not_dep >= 0
+                              pool.add_notice_order(self, @to_person, @to_key, \
+                                @to_base_id, not_trust, not_dep)
+                            end
+                          end
+                          if (conn_mode & CM_Hunter) == 0
+                            @stage = ES_Greeting
+                            add_send_segment(EC_Auth, true, params['srckey'])
+                            set_max_pack_size(ES_Sign)
+                          else
+                            @stage = ES_Exchange
+                            set_max_pack_size(ES_Exchange)
+                            #PandoraUtils.play_mp3('online')
+                          end
+                          @scmd = EC_Data
+                          @scode = 0
+                          @sbuf = nil
                         else
-                          @stage = ES_Exchange
-                          set_max_pack_size(ES_Exchange)
-                          #PandoraUtils.play_mp3('online')
+                          err_scmd('Key has low trust')
                         end
-                        @scmd = EC_Data
-                        @scode = 0
-                        @sbuf = nil
                       else
-                        err_scmd('Key has low trust')
+                        err_scmd('Key is under consideration')
                       end
                     else
-                      err_scmd('Key is under consideration')
+                      err_scmd('Double connection is not allowed')
                     end
                   else
                     err_scmd('Wrong sign')
@@ -6129,7 +6391,7 @@ module PandoraNet
           if (@stage==ES_Exchange) or (@stage==ES_Greeting) or panhash
             panhashes = nil
             if kind==0
-              panhashes, len = PandoraUtils.pson_elem_to_rubyobj(panhashes)
+              panhashes, len = PandoraUtils.pson_to_rubyobj(panhashes)
             else
               panhash = [kind].pack('C')+rdata if (not panhash) and rdata
               panhashes = [panhash]
@@ -6144,7 +6406,7 @@ module PandoraNet
                 @scode = kind
                 @sbuf = pson
                 lang = @sbuf[0].ord
-                values = PandoraUtils.pson_to_namehash(@sbuf[1..-1])
+                values = PandoraUtils.namepson_to_hash(@sbuf[1..-1])
                 p log_mes+'SEND RECORD !!! [pson, values]='+[pson, values].inspect
               else
                 p log_mes+'NO RECORD panhash='+panhash.inspect
@@ -6161,7 +6423,7 @@ module PandoraNet
                 rec_array << record if record
               end
               if rec_array.size>0
-                records = PandoraGtk.rubyobj_to_pson_elem(rec_array)
+                records = PandoraGtk.rubyobj_to_pson(rec_array)
                 @scmd = EC_Record
                 @scode = 0
                 @sbuf = records
@@ -6184,7 +6446,7 @@ module PandoraNet
             kind = rcode
             if (@stage==ES_Exchange) or ((kind==PandoraModel::PK_Key) and (@stage==ES_KeyRequest))
               lang = rdata[0].ord
-              values = PandoraUtils.pson_to_namehash(rdata[1..-1])
+              values = PandoraUtils.namepson_to_hash(rdata[1..-1])
               panhash = nil
               if @stage==ES_KeyRequest
                 panhash = params['srckey']
@@ -6204,7 +6466,7 @@ module PandoraNet
               err_scmd('Record ('+kind.to_s+') came on wrong stage')
             end
           elsif (@stage==ES_Exchange)
-            records, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+            records, len = PandoraUtils.pson_to_rubyobj(rdata)
             p log_mes+"!record2! recs="+records.inspect
             PandoraModel.save_records(records, @recv_models)
           else
@@ -6273,7 +6535,8 @@ module PandoraNet
           if @stage>=ES_Exchange
             case rcmd
               when EC_Message, EC_Channel
-                if (not dialog) or dialog.destroyed?
+                p log_mes+'EC_Message  dialog='+@dialog.inspect
+                if (not @dialog) or @dialog.destroyed?
                   @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
                   panhash = @skey[PandoraCrypto::KV_Creator]
                   @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
@@ -6283,7 +6546,7 @@ module PandoraNet
                 if rcmd==EC_Message
                   row = @rdata
                   if row.is_a? String
-                    row, len = PandoraUtils.pson_elem_to_rubyobj(row)
+                    row, len = PandoraUtils.pson_to_rubyobj(row)
                     t = Time.now
                     id = nil
                     time_now = t.to_i
@@ -6307,7 +6570,7 @@ module PandoraNet
                     values['panhash'] = panhash
                     res = model.update(values, nil, nil)
                     if res and (id.is_a? Integer)
-                      while (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) do
+                      while (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) do
                         sleep(0.02)
                       end
                       @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
@@ -6359,26 +6622,26 @@ module PandoraNet
                     pankinds = PandoraCrypto.allowed_kinds(trust, pankinds)
                     p log_mes+'pankinds='+pankinds.inspect
 
-                    whyer = @rkey[PandoraCrypto::KV_Creator]
+                    questioner = @rkey[PandoraCrypto::KV_Creator]
                     answerer = @skey[PandoraCrypto::KV_Creator]
                     key=nil
                     #ph_list = []
-                    #ph_list << PandoraModel.signed_records(whyer, from_time, pankinds, \
+                    #ph_list << PandoraModel.signed_records(questioner, from_time, pankinds, \
                     #  trust, key, models)
-                    ph_list = PandoraModel.public_records(whyer, trust, from_time, \
+                    ph_list = PandoraModel.public_records(questioner, trust, from_time, \
                       pankinds, @send_models)
 
                     #panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
-                    #panhash_list = PandoraModel.get_panhashes_by_whyer(whyer, trust, from_time)
+                    #panhash_list = PandoraModel.get_panhashes_by_questioner(questioner, trust, from_time)
 
                     p log_mes+'ph_list='+ph_list.inspect
-                    ph_list = PandoraUtils.rubyobj_to_pson_elem(ph_list) if ph_list
+                    ph_list = PandoraUtils.rubyobj_to_pson(ph_list) if ph_list
                     @scmd = EC_News
                     @scode = ECC_News_Panhash
                     @sbuf = ph_list
                   when ECC_Query_Record  #EC_Request
                     p log_mes+'==ECC_Query_Record'
-                    two_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    two_list, len = PandoraUtils.pson_to_rubyobj(rdata)
                     need_ph_list, foll_list = two_list
                     p log_mes+'need_ph_list, foll_list='+[need_ph_list, foll_list].inspect
                     created_list = []
@@ -6413,19 +6676,34 @@ module PandoraNet
                     end
                     @scmd = EC_News
                     @scode = ECC_News_Record
-                    @sbuf = PandoraUtils.rubyobj_to_pson_elem([pson_records, created_list])
+                    @sbuf = PandoraUtils.rubyobj_to_pson([pson_records, created_list])
                   when ECC_Query_Fish
-                    to_key = rdata
-                    p '--ECC_Query_Fish to_key='+to_key.inspect
-                    if to_key
-                      session = pool.session_of_key(to_key)
-                      if session
-                        p log_mes+' session='+session.inspect
-                        @scmd = EC_News
-                        @scode = ECC_News_Fish
-                        @sbuf = to_key
+                    # пришла заявка на рыбалку
+                    line_raw = rdata
+                    line, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    fisher, fisher_key, fisher_baseid, fish, fish_key = line
+                    p '--ECC_Query_Fish line='+line.inspect
+                    if fisher_key and fisher_baseid and (fish or fish_key)
+                      if (fisher_key != mykeyhash) or (fisher_baseid != pool.base_id)
+                        sessions = pool.sessions_of_key(fish_key)
+                        if sessions and (sessions.size>0)
+                          sessions.each do |session|
+                            p log_mes+'FOUND fish session='+session.inspect
+                            fish_baseid = session.to_base_id
+                            line << fish_baseid
+                            fisher_hook = get_line_hook(session, line)
+                            fish_hook = session.get_line_hook(self, line)
+                            line_raw = PandoraUtils.rubyobj_to_pson(line)
+                            session.add_send_segment(EC_News, true, fish_hook.chr + line_raw, \
+                              ECC_News_Hook)
+                            add_send_segment(EC_News, true, fisher_hook.chr + line_raw, \
+                              ECC_News_Hook)
+                          end
+                        else
+                          pool.add_fish_order(self, *line, @recv_models)
+                        end
                       else
-                        pool.add_fish_order(to_key)
+                        PandoraUtils.log_message(LM_Warning, _('Somebody do with your data'))
                       end
                     end
                   else #запрос сорта (1-254) или всех сортов (255)
@@ -6445,7 +6723,7 @@ module PandoraNet
                 case rcode
                   when ECC_News_Panhash
                     p log_mes+'==ECC_News_Panhash'
-                    ph_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    ph_list, len = PandoraUtils.pson_to_rubyobj(rdata)
                     p log_mes+'ph_list, len='+[ph_list, len].inspect
                     # Check non-existing records
                     need_ph_list = PandoraModel.needed_records(ph_list, @send_models)
@@ -6453,22 +6731,22 @@ module PandoraNet
 
                     two_list = [need_ph_list]
 
-                    whyer = @rkey[PandoraCrypto::KV_Creator] #me
+                    questioner = @rkey[PandoraCrypto::KV_Creator] #me
                     answerer = @skey[PandoraCrypto::KV_Creator]
-                    p '[whyer, answerer]='+[whyer, answerer].inspect
+                    p '[questioner, answerer]='+[questioner, answerer].inspect
                     follower = nil
                     from_time = Time.now.to_i - 10*24*3600
                     pankinds = nil
                     foll_list = PandoraModel.follow_records(follower, from_time, \
                       pankinds, @send_models)
                     two_list << foll_list
-                    two_list = PandoraUtils.rubyobj_to_pson_elem(two_list)
+                    two_list = PandoraUtils.rubyobj_to_pson(two_list)
                     @scmd = EC_Query
                     @scode = ECC_Query_Record
                     @sbuf = two_list
                   when ECC_News_Record
                     p log_mes+'==ECC_News_Record'
-                    two_list, len = PandoraUtils.pson_elem_to_rubyobj(rdata)
+                    two_list, len = PandoraUtils.pson_to_rubyobj(rdata)
                     pson_records, created_list = two_list
                     p log_mes+'pson_records, created_list='+[pson_records, created_list].inspect
                     PandoraModel.save_records(pson_records, @recv_models)
@@ -6477,25 +6755,78 @@ module PandoraNet
                       @scmd = EC_Query
                       @scode = ECC_Query_Record
                       foll_list = nil
-                      @sbuf = PandoraUtils.rubyobj_to_pson_elem([need_ph_list, foll_list])
+                      @sbuf = PandoraUtils.rubyobj_to_pson([need_ph_list, foll_list])
                     end
-                  when ECC_News_Fish
-                    fish = rdata
-                    if fish
-                      p log_mes+'--ECC_News_Fish fish='+fish.inspect
-                      session = pool.session_waiting_fish(fish)
+                  when ECC_News_Hook
+                    # по заявке найдена рыбка, ей присвоен номер
+                    hook = rdata[0].ord
+                    line_raw = rdata[1..-1]
+                    line, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    fisher_key, fisher_baseid, fish_key, fish_baseid = line
+                    if len>0
+                      # данные корректны
+                      p log_mes+'--ECC_News_Hook line='+line.inspect
+
+                      if (fish_key == mykeyhash) and (fish_baseid == pool.to_base_id)
+                        # это узел-рыбка, нужно найти/создать рыбацкую сессию
+                        session = pool.session_of_keybase(fisher_key, fisher_baseid)
+                        #pool.init_session(node, tokey, nil, nil, node_id)
+                        session ||= Session.new(self, nil, hook, nil, nil, \
+                          CS_Connected, nil, nil, nil, nil)
+                      elsif (fisher_key == mykeyhash) and (fisher_baseid == pool.to_base_id)
+                        # это узел-рыбак, нужно найти и разбудить рыб. сессию
+                        session = pool.session_of_keybase(fish_key, fish_baseid)
+                        session ||= Session.new(self, hook, nil, nil, nil, \
+                          CS_Connected, nil, nil, nil, nil)
+                      else
+                        # это узел-посредник, нужно пробросить по истории заявок
+                        fish_orders = pool.find_fish_order(*line)
+                        fish_orders.each do |fo|
+                          sess = fo[PandoraNet::FO_Session]
+                          if sess and (not sess.destroyed?)
+                            sess.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
+                              ECC_News_Hook)
+                          end
+                        end
+                      end
+
+                      session = pool.session_of_key(fish_key)
+                      sthread = nil
                       if session
-                        p log_mes+' session='+session.inspect
+                        # найдена сессия с рыбкой
+                        p log_mes+' fish session='+session.inspect
                         #out_lure = take_out_lure_for_fisher(session, to_key)
                         #send_segment_to_fisher(out_lure)
                         session.donor = self
                         session.fish_lure = session.registrate_fish(fish)
                         sthread = session.send_thread
-                        if sthread and sthread.alive? and sthread.stop?
-                          sthread.run
+                      else
+                        session = pool.session_of_keybase(fisher_keybase)
+                        if session
+                          # найдена сессия с рыбаком
+                          p log_mes+' fisher session='+session.inspect
+                          session.donor = self
+                          session.fish_lure = session.registrate_fish(fish)
+                          sthread = session.send_thread
+                        else
+                          pool.add_fish_order(self, *line, @recv_models)
+                        end
+                      end
+                      if sthread and sthread.alive? and sthread.stop?
+                        sthread.run
+                      else
+                        sessions = pool.find_by_order(line)
+                        if sessions
+                          sessions.each do |session|
+                            session.add_send_segment(EC_News, true, rdata, ECC_News_Hook)
+                          end
                         end
                       end
                     end
+                  when ECC_News_Notice
+                    p log_mes+'ECC_News_Notice'
+                    notic, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    pool.add_notice_order(self, *notic)
                   else
                     p "news more!!!!"
                     pkind = rcode
@@ -6533,6 +6864,19 @@ module PandoraNet
       recieved
     end
 
+    def init_and_check_node(a_to_person, a_to_key, a_to_base_id)
+      @to_person = a_to_person if a_to_person
+      @to_key = a_to_key if a_to_key
+      @to_base_id = a_to_base_id if a_to_base_id
+      if to_person and to_key and to_base_id
+        key = PandoraCrypto.current_user_or_key(false)
+        sessions = pool.sessions_of_personkeybase(to_person, to_key, to_base_id)
+        if (sessions.is_a? Array) and (sessions.size>1) and (key != to_key)
+          @conn_mode = (@conn_mode | CM_Double)
+        end
+      end
+    end
+
     # Number of messages per cicle
     # RU: Число сообщений за цикл
     $mes_block_count = 5
@@ -6542,25 +6886,54 @@ module PandoraNet
     # Number of requests per cicle
     # RU: Число запросов за цикл
     $inquire_block_count = 1
-
+    # Number of notice orders per cicle
+    # RU: Число запросов уведомлений за цикл
+    $notice_block_count = 2
+    # Number of fish orders per cicle
+    # RU: Число запросов на рабылку за цикл
+    $fish_block_count = 2
+    # Reconnection period is sec
+    # RU: Период переподключения в сек
     $conn_period       = 5
 
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
     def initialize(asocket, ahost_name, ahost_ip, aport, aproto, \
-    aconn_state, anode_id, a_dialog, tokey, send_state_add)
+    aconn_state, anode_id, a_dialog, send_state_add, nodehash=nil, to_person=nil, \
+    to_key=nil, to_base_id=nil)
       super()
       @conn_state  = CS_Connecting
+      @stage       = ES_Begin
       @socket      = nil
       @donor       = nil
       @conn_mode   = 0
-      @fishes         = Array.new
+      @read_state  = 0
+      send_state_add  ||= 0
+      @send_state     = send_state_add
+      @fish_ind       = -1
+      @notice_ind     = -1
+      #@fishes         = Array.new
       @fishers        = Array.new
       @read_queue     = PandoraUtils::RoundQueue.new
       @send_queue     = PandoraUtils::RoundQueue.new
       @confirm_queue  = PandoraUtils::RoundQueue.new
       @send_models    = {}
       @recv_models    = {}
+      @rkey = PandoraCrypto.current_key(false, false)
+
+      @host_name    = ahost_name
+      @host_ip      = ahost_ip
+      @port         = aport
+      @proto        = aproto
+
+      p 'Session.new [asocket, ahost_name, ahost_ip, aport, aproto, \
+      aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
+      to_key, to_base_id]'+[asocket, ahost_name, ahost_ip, aport, aproto, \
+      aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
+      to_key, to_base_id].inspect
+
+      init_and_check_node(to_person, to_key, to_base_id)
+      pool.add_session(self)
 
       # Main thread of session
       # RU: Главный поток сессии
@@ -6602,10 +6975,6 @@ module PandoraNet
             # значит, нужно подключаться самому
             host = ahost_name
             host = ahost_ip if ((not host) or (host == ''))
-
-            if (not host) or (host=='')
-              host, port = pool.hunt_address(tokey)
-            end
 
             port = aport
             port ||= 5577
@@ -6652,17 +7021,23 @@ module PandoraNet
 
             if not @socket
               # Add fish order and wait donor
-              pool.add_fish_order(tokey)
-              while (not @donor) and (not @socket)
-                p 'Thread.stop tokey='+tokey.inspect
-                Thread.stop
+              if to_key
+                mykeyhash = PandoraCrypto.current_user_or_key(false)
+                pool.add_fish_order(self, mypersonhash, mykeyhash, pool.base_id, \
+                  to_person, to_key, @recv_models)
+                while (not @donor) and (not @socket)
+                  p 'Thread.stop to_key='+to_key.inspect
+                  Thread.stop
+                end
+              else
+                @socket = false
+                p 'Break session bz of NO TOKEY'
               end
             end
 
           end
 
           work_time = Time.now
-
 
           sss = [@socket, @donor].inspect
           sss += '|1:'+[@socket.closed?].inspect if @socket
@@ -6682,7 +7057,7 @@ module PandoraNet
             @host_ip      = ahost_ip
             @port         = aport
             @proto        = aproto
-            @node         = pool.encode_node(@host_ip, @port, @proto)
+            @node         = pool.encode_addr(@host_ip, @port, @proto)
             @node_id      = anode_id
           end
 
@@ -6693,13 +7068,12 @@ module PandoraNet
             #@conn_state     = aconn_state
             @conn_state     = CS_Connected
             @read_state     = 0
-            send_state_add  ||= 0
             @send_state     = send_state_add
             @sindex         = 0
             @params         = {}
             @media_send     = false
             @node_panhash   = nil
-            pool.add_session(self)
+            #@base_id        = nil
             if @socket
               set_keepalive(@socket)
             end
@@ -6723,7 +7097,7 @@ module PandoraNet
             if (conn_mode & CM_Hunter)>0
               @log_mes = 'HUN: '
               @max_pack_size = MPS_Captcha
-              add_send_segment(EC_Auth, true, tokey)
+              add_send_segment(EC_Auth, true, to_key)
             end
 
             # Read from socket cicle
@@ -6862,7 +7236,7 @@ module PandoraNet
                       if rkcmd==EC_Media
                         process_media_segment(rkcode, rkdata)
                       else
-                        while (@read_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) \
+                        while (@read_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) \
                         and (@conn_state == CS_Connected)
                           sleep(0.03)
                           Thread.pass
@@ -6916,7 +7290,7 @@ module PandoraNet
                   #p log_mes+'--**** after accept: [scmd, scode, sbuf]='+[@scmd, @scode, len].inspect
 
                   if @scmd != EC_Data
-                    while (@send_queue.single_read_state == PandoraUtils::RoundQueue::QS_Full) \
+                    while (@send_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) \
                     and (@conn_state == CS_Connected)
                       sleep(0.03)
                       Thread.pass
@@ -6946,7 +7320,7 @@ module PandoraNet
 
             # Send cicle
             # RU: Цикл отправки
-            inquirer_step = IS_ResetMessage
+            questioner_step = QS_ResetMessage
             message_model = PandoraUtils.get_model('Message', @send_models)
             p log_mes+'ЦИКЛ ОТПРАВКИ начало: @conn_state='+@conn_state.inspect
 
@@ -7012,10 +7386,11 @@ module PandoraNet
               # выполнить несколько заданий почемучки по его шагам
               processed = 0
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
-              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$inquire_block_count) \
-              and (inquirer_step<IS_Finished)
-                case inquirer_step
-                  when IS_ResetMessage
+              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
+              and (processed<$inquire_block_count) \
+              and (questioner_step<QS_Finished)
+                case questioner_step
+                  when QS_ResetMessage
                     # если что-то отправлено, но не получено, то повторить
                     mypanhash = PandoraCrypto.current_user_or_key(true)
                     receiver = @skey[PandoraCrypto::KV_Creator]
@@ -7024,8 +7399,8 @@ module PandoraNet
                       filter = {'destination'=>receiver, 'state'=>1}
                       message_model.update({:state=>0}, nil, filter)
                     end
-                    inquirer_step += 1
-                  when IS_CreatorCheck
+                    questioner_step += 1
+                  when QS_CreatorCheck
                     # если собеседник неизвестен, запросить анкету
                     creator = @skey[PandoraCrypto::KV_Creator]
                     kind = PandoraUtils.kind_from_panhash(creator)
@@ -7035,25 +7410,25 @@ module PandoraNet
                       p log_mes+'Whyer: CreatorCheck  Request!'
                       set_request(creator, true)
                     end
-                    inquirer_step += 1
-                  when IS_NewsQuery
+                    questioner_step += 1
+                  when QS_NewsQuery
                     # запросить список новых панхэшей
                     pankinds = 1.chr + 11.chr
                     from_time = Time.now.to_i - 10*24*3600
-                    #whyer = @rkey[PandoraCrypto::KV_Creator]
+                    #questioner = @rkey[PandoraCrypto::KV_Creator]
                     #answerer = @skey[PandoraCrypto::KV_Creator]
                     #trust=nil
                     #key=nil
                     #models=nil
                     #ph_list = []
-                    #ph_list << PandoraModel.signed_records(whyer, from_time, pankinds, \
+                    #ph_list << PandoraModel.signed_records(questioner, from_time, pankinds, \
                     #  trust, key, models)
-                    #ph_list << PandoraModel.public_records(whyer, trust, from_time, \
+                    #ph_list << PandoraModel.public_records(questioner, trust, from_time, \
                     #  pankinds, models)
                     set_relations_query(pankinds, from_time, true)
-                    inquirer_step += 1
+                    questioner_step += 1
                   else
-                    inquirer_step = IS_Finished
+                    questioner_step = QS_Finished
                 end
                 processed += 1
               end
@@ -7064,9 +7439,10 @@ module PandoraNet
               processed = 0
               cannel = 0
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
-              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) and (processed<$media_block_count) \
+              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
+              and (processed<$media_block_count) \
               and dialog and (not dialog.destroyed?) and (cannel<dialog.recv_media_queue.size) \
-              and (inquirer_step>IS_ResetMessage)
+              and (questioner_step>QS_ResetMessage)
                 if dialog.recv_media_pipeline[cannel] and dialog.appsrcs[cannel]
                 #and (dialog.recv_media_pipeline[cannel].get_state == Gst::STATE_PLAYING)
                   processed += 1
@@ -7108,7 +7484,7 @@ module PandoraNet
                     i = 0
                     while sel and (i<sel.size) and (processed<$mes_block_count) \
                     and (@conn_state == CS_Connected) \
-                    and (@send_queue.single_read_state != PandoraUtils::RoundQueue::QS_Full)
+                    and (@send_queue.single_read_state != PandoraUtils::RoundQueue::SQS_Full)
                       processed += 1
                       row = sel[i]
                       if add_send_segment(EC_Message, true, row)
@@ -7175,22 +7551,59 @@ module PandoraNet
                 end
               end
 
+              if (@sess_mode.is_a? Integer) and ((@sess_mode & SM_GetNotice)>0)
+                # проверка новых уведомлений
+                processed = 0
+                while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
+                and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
+                and (processed<$notice_block_count) \
+                and (@notice_ind<pool.notice_ind)
+                  @notice_ind += 1
+                  notice_order = pool.notice_list[@notice_ind]
+                  p log_mes+'======notice_order='+notice_order[NO_Person..NO_Notice_depth].inspect
+                  p log_mes+'======[to_person, to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session], self]='+[@to_person, @to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session].object_id, self.object_id].inspect
+                  if notice_order and (notice_order[NO_Session] != self) \
+                  and @sess_trust and (@sess_trust >= PandoraModel.transform_trust(notice_order[NO_Notice_trust], false)) \
+                  and ((@to_key and (notice_order[NO_Key] != @to_key)) \
+                  or (@to_person and (notice_order[NO_Person] != @to_person)) \
+                  or (@to_base_id and (notice_order[NO_Baseid] != @to_base_id)))
+                    p log_mes+'=====New notice order: '+notice_order[NO_Person..NO_Notice_depth].inspect
+                    #mykeyhash = PandoraCrypto.current_user_or_key(false)
+                    notic = PandoraUtils.rubyobj_to_pson(notice_order[NO_Person..NO_Notice_depth])
+                    add_send_segment(EC_News, true, notic, ECC_News_Notice)
+                  end
+                  processed += 1
+                end
+              end
+
               # проверка новых заявок на рыбалку
-              #fish_order = pool.fish_orders.get_block_from_queue(PandoraNet::Pool::FishQueueSize, self)
-              #if fish_order
-              #  p 'New fish order: '+fish_order.inspect
-              #  tokey = @skey[PandoraCrypto::KV_Panhash]
-              #  if fish_order == tokey
-              #    PandoraUtils.log_message(LM_Trace, _('Fishing to')+': '+PandoraUtils.bytes_to_hex(tokey))
-              #      add_send_segment(EC_Query, true, tokey, ECC_Query_Fish)
-              #  end
-              #end
+              processed = 0
+              while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
+              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
+              and (processed<$fish_block_count) \
+              and (@fish_ind<pool.fish_ind)
+                @fish_ind += 1
+                fish_order = pool.fish_orders[@fish_ind]
+                p log_mes+'fish_order='+fish_order[FO_Fisher..FO_Fish_key].inspect
+                p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
+                if fish_order and (fish_order[FO_Session] != self) \
+                and ((@to_person and (fish_order[FO_Fish] != @to_person)) \
+                or (@to_key and (fish_order[FO_Fish_key] != @to_key)))
+                  p log_mes+'New fish order: '+fish_order[FO_Fisher..FO_Fish_key].inspect
+                  #mykeyhash = PandoraCrypto.current_user_or_key(false)
+                  PandoraUtils.log_message(LM_Trace, _('Fishing to')+': ' \
+                    +PandoraUtils.bytes_to_hex(fish_order[FO_Fish])+' '+_('via')+' '+@host_ip+':'+@port.to_s)
+                  line = PandoraUtils.rubyobj_to_pson(fish_order[FO_Fisher..FO_Fish_key])
+                  add_send_segment(EC_Query, true, line, ECC_Query_Fish)
+                end
+                processed += 1
+              end
 
               #p '---@conn_state='+@conn_state.inspect
               #sleep 0.5
 
               if (socket and socket.closed?) or (@conn_state == CS_StopRead) \
-              and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::QS_Empty)
+              and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Empty)
                 @conn_state = CS_Disconnected
               elsif (not fast_data)
                 sleep(0.02)
@@ -7203,7 +7616,6 @@ module PandoraNet
             p log_mes+"Цикл ОТПРАВКИ конец!!!   @conn_state="+@conn_state.inspect
 
             #Thread.critical = true
-            pool.del_session(self)
             #Thread.critical = false
             #p log_mes+'check close'
             if socket and (not socket.closed?)
@@ -7239,9 +7651,9 @@ module PandoraNet
                 donor.free_fish_of_in_lure(fish_lure)
               end
             end
-            fishes.each_index do |i|
-              free_fish_of_in_lure(i)
-            end
+            #@fishes.each_index do |i|
+            #  free_fish_of_in_lure(i)
+            #end
             fishers.each do |val|
               fisher = nil
               in_lure = nil
@@ -7265,6 +7677,7 @@ module PandoraNet
 
           attempt += 1
         end
+        pool.del_session(self)
         if dialog and (not dialog.destroyed?) #and (not dialog.online_button.destroyed?)
           dialog.set_session(self, false)
           #dialog.online_button.active = false
@@ -7291,6 +7704,18 @@ module PandoraNet
     client
   end
 
+  # Get notice parameters
+  # RU: Взять параметры уведомления
+  def self.get_notice_params
+    $get_notice           = PandoraUtils.get_param('get_notice')
+    $notice_trust         = PandoraUtils.get_param('notice_trust')
+    $notice_depth         = PandoraUtils.get_param('notice_depth')
+    $max_notice_depth     = PandoraUtils.get_param('max_notice_depth')
+    $notice_trust        ||= 12
+    $notice_depth        ||= 2
+    $max_notice_depth    ||= 5
+  end
+
   # Get exchange params
   # RU: Взять параметры обмена
   def self.get_exchange_params
@@ -7299,66 +7724,108 @@ module PandoraNet
     $puzzle_sec_delay    = PandoraUtils.get_param('puzzle_sec_delay')
     $captcha_length      = PandoraUtils.get_param('captcha_length')
     $captcha_attempts    = PandoraUtils.get_param('captcha_attempts')
-    $trust_for_captchaed = PandoraUtils.get_param('trust_for_captchaed')
-    $trust_for_listener  = PandoraUtils.get_param('trust_for_listener')
+    $trust_captchaed     = PandoraUtils.get_param('trust_captchaed')
+    $trust_listener      = PandoraUtils.get_param('trust_listener')
     $low_conn_trust      = PandoraUtils.get_param('low_conn_trust')
-    $low_conn_trust ||= 0.0
+    $low_conn_trust     ||= 0.0
+    get_notice_params
   end
 
-  $listen_thread = nil
+  $tcp_listen_thread = nil
+  $udp_listen_thread = nil
+
+  UdpHello = 'pandora:hello:'
 
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen
     PandoraNet.get_exchange_params
-    if $listen_thread
-      server = $listen_thread[:listen_server_socket]
-      $listen_thread[:need_to_listen] = false
-      #server.close if not server.closed?
-      #$listen_thread.join(2) if $listen_thread
-      #$listen_thread.exit if $listen_thread
+    if $tcp_listen_thread or $udp_listen_thread
+      # Need to stop
+      if $tcp_listen_thread
+        #server = $tcp_listen_thread[:tcp_server]
+        #server.close if server and (not server.closed?)
+        $tcp_listen_thread[:listen_tcp] = false
+        sleep 0.08
+        if $tcp_listen_thread
+          tcp_lis_th0 = $tcp_listen_thread
+          GLib::Timeout.add(2000) do
+            if tcp_lis_th0 == $tcp_listen_thread
+              $tcp_listen_thread.exit if $tcp_listen_thread and $tcp_listen_thread.alive?
+              $tcp_listen_thread = nil
+              $window.correct_lis_btn_state
+            end
+            false
+          end
+        end
+      end
+      if $udp_listen_thread
+        $udp_listen_thread[:listen_udp] = false
+        server = $udp_listen_thread[:udp_server]
+        if server
+          server.close_read
+          server.close_write
+        end
+        sleep 0.03
+        if $udp_listen_thread
+          udp_lis_th0 = $udp_listen_thread
+          GLib::Timeout.add(2000) do
+            if udp_lis_th0 == $udp_listen_thread
+              $udp_listen_thread.exit if $udp_listen_thread and $udp_listen_thread.alive?
+              $udp_listen_thread = nil
+              $window.correct_lis_btn_state
+            end
+            false
+          end
+        end
+      end
       $window.correct_lis_btn_state
     else
+      # Need to start
+      $window.show_notice(false)
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
         $host ||= PandoraUtils.get_param('listen_host')
-        $port ||= PandoraUtils.get_param('tcp_port')
         $host ||= 'any'
-        $port ||= 5577
-        $listen_thread = Thread.new do
-          p Socket.ip_address_list
+        host = $host
+        if (not host)
+          host = ''
+        elsif ((host=='any') or (host=='all'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
+          host = Socket::INADDR_ANY
+          p "ipv4 all"
+        elsif ((host=='any6') or (host=='all6'))
+          host = '::'
+          p "ipv6 all"
+        end
+        p Socket.ip_address_list
+        #p loc_hst = Socket.gethostname
+        #p Socket.gethostbyname(loc_hst)[3]
+
+        # TCP Listener
+        $tcp_port ||= PandoraUtils.get_param('tcp_port')
+        $tcp_port ||= 5577
+        $tcp_listen_thread = Thread.new do
           begin
-            host = $host
-            if (not host)
-              host = ''
-            elsif ((host=='any') or (host=='all'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
-              host = Socket::INADDR_ANY
-              p "ipv4 all"
-            elsif ((host=='any6') or (host=='all6'))
-              host = '::'
-              p "ipv6 all"
-            end
-            server = TCPServer.open(host, $port)
-            #addr_str = server.addr.to_s
+            server = TCPServer.open(host, $tcp_port)
             addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
             PandoraUtils.log_message(LM_Info, _('Listening address')+': '+addr_str)
           rescue
             server = nil
-            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' '+host.to_s+':'+$port.to_s)
+            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' TCP '+host.to_s+':'+$tcp_port.to_s)
           end
-          Thread.current[:listen_server_socket] = server
-          Thread.current[:need_to_listen] = (server != nil)
-          while Thread.current[:need_to_listen] and server and (not server.closed?)
+          Thread.current[:tcp_server] = server
+          Thread.current[:listen_tcp] = (server != nil)
+          while Thread.current[:listen_tcp] and server and (not server.closed?)
             socket = get_listener_client_or_nil(server)
-            while Thread.current[:need_to_listen] and not server.closed? and not socket
+            while Thread.current[:listen_tcp] and not server.closed? and not socket
               sleep 0.05
               #Thread.pass
               #Gtk.main_iteration
               socket = get_listener_client_or_nil(server)
             end
 
-            if Thread.current[:need_to_listen] and (not server.closed?) and socket
+            if Thread.current[:listen_tcp] and (not server.closed?) and socket
               host_ip = socket.peeraddr[2]
               unless $window.pool.is_black?(host_ip)
                 host_name = socket.peeraddr[3]
@@ -7375,11 +7842,103 @@ module PandoraNet
           server.close if server and (not server.closed?)
           PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
           $window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
-          $listen_thread = nil
+          $tcp_listen_thread = nil
+          $window.correct_lis_btn_state
         end
-      else
-        $window.correct_lis_btn_state
+
+        # UDP Listener
+        $udp_port ||= PandoraUtils.get_param('udp_port')
+        $udp_port ||= 5577
+        $udp_listen_thread = Thread.new do
+          # Init UDP listener
+          begin
+            BasicSocket.do_not_reverse_lookup = true
+            # Create socket and bind to address
+            udp_server = UDPSocket.new
+            udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, true)  #Allow broadcast
+            #udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)  #Many ports
+            #hton = IPAddr.new('127.0.0.1').hton
+            #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_MULTICAST_IF, hton) #interface
+            #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_MULTICAST_TTL, 5) #depth (default 1)
+            #hton2 = IPAddr.new('0.0.0.1').hton
+            #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_ADD_MEMBERSHIP, hton+hton2) #listen multicast
+            #udp_server.setsockopt(Socket::SOL_IP, Socket::IP_MULTICAST_LOOP, true) #come back (def on)
+            udp_server.bind(host, $udp_port)
+
+            #addr_str = server.addr.to_s
+            udp_addr_str = udp_server.addr[3].to_s+(' udp')+udp_server.addr[1].to_s
+            PandoraUtils.log_message(LM_Info, _('Listening address')+': '+udp_addr_str)
+          rescue
+            udp_server = nil
+            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' UDP '+host.to_s+':'+$udp_port.to_s)
+          end
+          Thread.current[:udp_server] = udp_server
+          Thread.current[:listen_udp] = (udp_server != nil)
+
+          if udp_server
+            # Send UDP broadcast hello
+            GLib::Timeout.add(2000) do
+              res = PandoraCrypto.current_user_and_key(false, false)
+              if res.is_a? Array
+                person_hash, key_hash = res
+                hparams = {:version=>0, :iam=>person_hash, :mykey=>key_hash, :base=>$base_id}
+                hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
+                hello = UdpHello + PandoraUtils.hash_to_namepson(hparams)
+                if $udp_listen_thread
+                  udp_server = $udp_listen_thread[:udp_server]
+                  if udp_server and (not udp_server.closed?)
+                    udp_server.send(hello, 0, '<broadcast>', $udp_port)
+                  end
+                end
+              end
+              false
+            end
+          end
+
+          # Catch UDP datagrams
+          while Thread.current[:listen_udp] and udp_server and (not udp_server.closed?)
+            begin
+              data, addr = udp_server.recvfrom(2000)
+            rescue
+              data = addr = nil
+            end
+            #data, addr = udp_server.recvfrom_nonblock(2000)
+            p 'Received UDP-pack ['+data.inspect+'] addr='+addr.inspect
+            if (data.is_a? String) and (data.bytesize > UdpHello.bytesize) \
+            and (data[0, UdpHello.bytesize] == UdpHello)
+              data = data[UdpHello.bytesize..-1]
+              far_ip = addr[3]
+              far_port = addr[1]
+              hash = PandoraUtils.namepson_to_hash(data)
+              if hash.is_a? Hash
+                res = PandoraCrypto.current_user_and_key(false, false)
+                if res.is_a? Array
+                  person_hash, key_hash = res
+                  far_version = hash['version']
+                  far_person_hash = hash['iam']
+                  far_key_hash = hash['mykey']
+                  far_base_id = hash['base']
+                  if ((far_person_hash != nil) or (far_key_hash != nil) or \
+                    (far_base_id != nil)) and \
+                    ((far_person_hash != person_hash) or (far_key_hash != key_hash) or \
+                    (far_base_id != $base_id)) # or true)
+                  then
+                    addr = $window.pool.encode_addr(far_ip, far_port, 'tcp')
+                    $window.pool.init_session(addr, nil, 0, nil, nil, far_person_hash, \
+                      far_key_hash, far_base_id)
+                  end
+                end
+              end
+            end
+          end
+          #udp_server.close if udp_server and (not udp_server.closed?)
+          PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+udp_addr_str) if udp_server
+          #$window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
+          $udp_listen_thread = nil
+          $window.correct_lis_btn_state
+        end
       end
+      $window.correct_lis_btn_state
     end
   end
 
@@ -7397,7 +7956,7 @@ module PandoraNet
       if user
         node_model = PandoraModel::Node.new
         filter = 'addr<>"" OR domain<>""'
-        flds = 'id, addr, domain, tport, key_hash'
+        flds = 'id, addr, domain, tport, key_hash, base_id'
         sel = node_model.select(filter, false, flds)
         if sel and sel.size>0
           $hunter_thread = Thread.new(node_model, filter, flds, sel) \
@@ -7414,11 +7973,14 @@ module PandoraNet
                     tport = row[3].to_i
                   rescue
                   end
-                  tokey = row[4]
-                  tport = $port if (not tport) or (tport==0) or (tport=='')
+                  person = nil
+                  key_hash = row[4]
+                  base_id = row[5]
+                  tport = 5577 if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
-                  node = $window.pool.encode_node(domain, tport, 'tcp')
-                  $window.pool.init_session(node, tokey, nil, nil, node_id)
+                  addr = $window.pool.encode_addr(domain, tport, 'tcp')
+                  $window.pool.init_session(addr, nil, 0, nil, node_id, person, \
+                    key_hash, base_id)
                 end
                 round_count -= 1
                 if round_count>0
@@ -7474,11 +8036,17 @@ module PandoraGtk
   include PandoraUtils
   include PandoraModel
 
+  # Statusbar fields
+  # RU: Поля в статусбаре
   SF_Update = 0
-  SF_Auth   = 1
-  SF_Listen = 2
-  SF_Hunt   = 3
-  SF_Conn   = 4
+  SF_Lang   = 1
+  SF_Auth   = 2
+  SF_Listen = 3
+  SF_Hunt   = 4
+  SF_Notice = 5
+  SF_Conn   = 6
+  SF_Fish   = 7
+  SF_Fisher = 8
 
   # Advanced dialog window
   # RU: Продвинутое окно диалога
@@ -7490,9 +8058,7 @@ module PandoraGtk
     # Create method
     # RU: Метод создания
     def initialize(*args)
-      p '0----------'
       super(*args)
-      p '1----------'
       @response = 0
       @window = self
       @enter_like_tab = false
@@ -7566,8 +8132,6 @@ module PandoraGtk
       #      dialog.destroy
       #  end
       #end
-
-      p '2----------'
 
       window.signal_connect('delete-event') { |*args|
         @response=1
@@ -8397,13 +8961,22 @@ module PandoraGtk
 
     # Set buffers
     # RU: Задать буферы
-    def set_buffers(init=false)
-      child = notebook.get_nth_page(notebook.page)
-      if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::TextView)
-        tv = child.children[0]
-        if init or not @raw_buffer
-          @raw_buffer = tv.buffer
+    def set_buffers(tv=nil)
+      if not tv
+        p '!!!!!!!!!!!!!'
+        p notebook.page
+        child = notebook.get_nth_page(notebook.page)
+        if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::Viewport) \
+        and child.children[0].child
+          #and (child.children[0].child.is_a? Gtk::TextView)
+          p 'child  ch[0]='+[child, child.children[0], child.children[0].child].inspect
+          p 'child  ch[0]='+[child.children[0].child.children].inspect
+          p tv = child.children[0].child
         end
+      end
+      if tv
+        @raw_buffer ||= tv.buffer
+
         if @view_mode
           tv.buffer = @view_buffer if tv.buffer != @view_buffer
         elsif tv.buffer != @raw_buffer
@@ -8411,9 +8984,9 @@ module PandoraGtk
         end
 
         if @view_mode
-          set_view_buffer(format, @view_buffer, @raw_buffer)
+          set_view_buffer(@format, @view_buffer, @raw_buffer)
         else
-          set_raw_buffer(format, @raw_buffer, @view_buffer)
+          set_raw_buffer(@format, @raw_buffer, @view_buffer)
         end
       end
     end
@@ -8423,8 +8996,9 @@ module PandoraGtk
     def set_tag(tag)
       if tag
         child = notebook.get_nth_page(notebook.page)
-        if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::TextView)
-          tv = child.children[0]
+        if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::Viewport) \
+        and (child.children[0].child.is_a? Gtk::TextView)
+          tv = child.children[0].child
           buffer = tv.buffer
 
           if @view_buffer==buffer
@@ -8433,15 +9007,32 @@ module PandoraGtk
           else
             bounds = buffer.selection_bounds
             ltext = rtext = ''
-            case tag
-              when 'bold'
-                ltext = rtext = '*'
-              when 'italic'
-                ltext = rtext = '/'
-              when 'strike'
-                ltext = rtext = '-'
-              when 'undline'
-                ltext = rtext = '_'
+            case @format
+              when 'bbcode'
+                t = ''
+                case tag
+                  when 'bold'
+                    t = 'b'
+                  when 'italic'
+                    t = 'i'
+                  when 'strike'
+                    t = 's'
+                  when 'undline'
+                    t = 'u'
+                end
+                ltext = '['+t+']'
+                rtext = '[/'+t+']'
+              when 'orgmode'
+                case tag
+                  when 'bold'
+                    ltext = rtext = '*'
+                  when 'italic'
+                    ltext = rtext = '/'
+                  when 'strike'
+                    ltext = rtext = '-'
+                  when 'undline'
+                    ltext = rtext = '_'
+                end
             end
             lpos = bounds[0].offset
             rpos = bounds[1].offset
@@ -8526,6 +9117,7 @@ module PandoraGtk
 
       @raw_buffer = nil
       @view_mode = true
+      @format = nil
       @view_buffer = Gtk::TextBuffer.new
       @view_buffer.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
       @view_buffer.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
@@ -8539,9 +9131,12 @@ module PandoraGtk
       @view_buffer.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
       @view_buffer.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
 
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::DND, 'Type', true) do |btn|
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Type', true) do |btn|
         @view_mode = btn.active?
         set_buffers
+      end
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::INDEX, 'Color', true) do |btn|
+        p 'Color'
       end
 
       btn = Gtk::MenuToolButton.new(nil, 'auto')
@@ -8549,13 +9144,14 @@ module PandoraGtk
       btn.menu = menu
       add_menu_item(btn, menu, 'auto')
       add_menu_item(btn, menu, 'plain')
-      add_menu_item(btn, menu, 'org-mode')
+      add_menu_item(btn, menu, 'orgmode')
       add_menu_item(btn, menu, 'bbcode')
       add_menu_item(btn, menu, 'wiki')
       add_menu_item(btn, menu, 'html')
       add_menu_item(btn, menu, 'ruby')
       add_menu_item(btn, menu, 'python')
       add_menu_item(btn, menu, 'xml')
+
       menu.show_all
       toolbar.add(btn)
 
@@ -8589,6 +9185,9 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_FILL, 'Fill') do |*args|
         set_tag('fill')
       end
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SELECT_COLOR, 'Color') do |*args|
+        set_tag('color')
+      end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE, 'Save')
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OPEN, 'Open')
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link') do |*args|
@@ -8620,27 +9219,36 @@ module PandoraGtk
         else
           child = notebook.get_nth_page(page_num)
           if (child.is_a? BodyScrolledWindow)
+            p '---BodyScrolledWindow'
             toolbar2.hide
             hbox.hide
             textsw = child
             field = textsw.field
             if field
-              link_name = nil
               link_name = field[FI_Widget].text
               link_name.chomp! if link_name
-              if (not field[FI_Widget2]) or (link_name != textsw.link_name)
-                toolbar.show
+              bodywid = field[FI_Widget2]
+              if (not bodywid) or (link_name != textsw.link_name)
                 @last_sw = child
-                bodywid = nil
+                if bodywid
+                  bodywid.destroy if (not bodywid.destroyed?)
+                  bodywid = nil
+                  field[FI_Widget2] = nil
+                end
                 if link_name and (link_name != '')
                   if File.exist?(link_name)
                     ext = File.extname(link_name)
                     if ext and (['.jpg','.gif','.png'].include? ext.downcase)
                       image = start_image_loading(link_name)
                       bodywid = image
-                      link_name = link_name
+                      textsw.link_name = link_name
+                    elsif ext and (['.txt','.rb','.xml','.py','.csv','.sh'].include? ext.downcase)
+                      p 'Read file: '+link_name
+                      File.open(link_name, 'r') do |file|
+                        field[FI_Value] = file.read
+                      end
                     else
-                      link_name = nil
+                      field[FI_Value] = '@'+link_name
                     end
                   else
                     err_text = _('File does not exist')+":\n"+link_name
@@ -8651,7 +9259,7 @@ module PandoraGtk
                   link_name = nil
                 end
 
-                if not link_name
+                if not bodywid
                   textview = Gtk::TextView.new
                   #textview = child.children[0]
                   textview.wrap_mode = Gtk::TextTag::WRAP_WORD
@@ -8662,21 +9270,23 @@ module PandoraGtk
                       true
                     end
                   end
-                  textview.buffer.text = field[FI_Value].to_s
                   bodywid = textview
                 end
 
-                field[FI_Widget2] = bodywid
-                if bodywid.is_a? Gtk::TextView
-                  textsw.add(bodywid)
-                  set_buffers(true)
-                elsif bodywid
+                if not field[FI_Widget2]
+                  field[FI_Widget2] = bodywid
                   textsw.add_with_viewport(bodywid)
+                end
+                if bodywid.is_a? Gtk::TextView
+                  bodywid.buffer.text = field[FI_Value].to_s
+                  set_buffers(bodywid)
+                  toolbar.show
                 end
                 textsw.show_all
               end
             end
           else
+            p '---NOT BodyScrolledWindow'
             toolbar.hide
             hbox.hide
             toolbar2.show
@@ -8754,8 +9364,13 @@ module PandoraGtk
       #@scale_button.set_icons(['gtk-goto-bottom', 'gtk-goto-top', 'gtk-execute'])
       #@scale_button.signal_connect('value-changed') { |widget, value| puts "value changed: #{value}" }
 
-      tips = [_('evil'), _('destructive'), _('dirty'), _('harmful'), _('bad'), _('vain'), \
-        _('good'), _('useful'), _('constructive'), _('creative'), _('genial')]
+      tips = nil
+      j = nil
+      if @panobject.ider=='Person'
+        tips = [_('very destructive'), _('harmful'), _('critic'), _('neutral'), \
+          _('constructive'), _('useful'), _('very creative')]
+        j = (tips.size-1)/2
+      end
 
       #@trust ||= (127*0.4).round
       #val = trust/127.0
@@ -8765,7 +9380,6 @@ module PandoraGtk
       trust_scale.update_policy = Gtk::UPDATE_DELAYED
       trust_scale.digits = 1
       trust_scale.draw_value = true
-      step = 254.fdiv(tips.size-1)
       trust_scale.signal_connect('value-changed') do |widget|
         #val = (widget.value*20).round/20.0
         val = widget.value
@@ -8789,8 +9403,17 @@ module PandoraGtk
         color = Gdk::Color.new(r, g, b)
         widget.modify_fg(Gtk::STATE_NORMAL, color)
         @vouch_btn.modify_bg(Gtk::STATE_ACTIVE, color)
-        i = ((trust+127)/step).round
-        tip = tips[i]
+        if tips
+          i = ((trust+127)/127.0*j).round
+          if (i == j) and (trust != 0)
+            if trust>0
+              i += 1
+            else
+              i -= 1
+            end
+          end
+          tip = tips[i]
+        end
         widget.tooltip_text = tip
       end
       #scale.signal_connect('change-value') do |widget|
@@ -8844,7 +9467,6 @@ module PandoraGtk
       public_scale.update_policy = Gtk::UPDATE_DELAYED
       public_scale.digits = 1
       public_scale.draw_value = true
-      step = 19.fdiv(tips.size-1)
       public_scale.signal_connect('value-changed') do |widget|
         val = widget.value
         trust = (val*10).round
@@ -8861,13 +9483,10 @@ module PandoraGtk
             r = -mul+20000
           end
         end
-        tip = val.to_s
         color = Gdk::Color.new(r, g, b)
         widget.modify_fg(Gtk::STATE_NORMAL, color)
         @vouch_btn.modify_bg(Gtk::STATE_ACTIVE, color)
-        i = ((trust+127)/step).round
-        tip = tips[i]
-        widget.tooltip_text = tip
+        widget.tooltip_text = val.to_s
       end
       public_box.pack_start(public_scale, false, false, 0)
 
@@ -8899,7 +9518,7 @@ module PandoraGtk
 
           #field[FI_Widget] = textview
 
-          field << page
+          #field << page
           @text_fields << field
           textsw.field = field
 
@@ -9458,12 +10077,13 @@ module PandoraGtk
       online_button.safe_signal_clicked do |widget|
         if widget.active?
           widget.safe_set_active(false)
-          targets[CSI_Nodes].each do |keybase|
-            $window.pool.init_session(nil, keybase, 0, self)
+          targets[CSI_Nodes].each_with_index do |node_hash, i|
+            $window.pool.init_session(nil, node_hash, 0, self, nil, \
+              targets[CSI_Persons][i], targets[CSI_Keys][i])
           end
         else
-          targets[CSI_Nodes].each do |keybase|
-            $window.pool.stop_session(nil, keybase, false)
+          targets[CSI_Nodes].each do |node_hash|
+            $window.pool.stop_session(nil, node_hash, false)
           end
         end
       end
@@ -9718,6 +10338,7 @@ module PandoraGtk
       end
 
       page = $window.notebook.append_page(self, label_box)
+      $window.notebook.set_tab_reorderable(self, true)
 
       self.signal_connect('delete-event') do |*args|
         #init_video_sender(false)
@@ -11113,7 +11734,7 @@ module PandoraGtk
 
     # Show session window
     # RU: Показать окно сессий
-    def initialize(session=nil)
+    def initialize
       super(nil, nil)
 
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
@@ -11238,6 +11859,274 @@ module PandoraGtk
       renderer = Gtk::CellRendererText.new
       column = Gtk::TreeViewColumn.new(_('send_state'), renderer, 'text' => 8)
       column.set_sort_column_id(8)
+      list_tree.append_column(column)
+
+      list_tree.signal_connect('row_activated') do |tree_view, path, column|
+        # download and go to record
+      end
+
+      list_sw.add(list_tree)
+
+      vbox.pack_start(hbox, false, true, 0)
+      vbox.pack_start(list_sw, true, true, 0)
+      list_sw.show_all
+
+      self.add_with_viewport(vbox)
+      update_btn.clicked
+
+      list_tree.grab_focus
+    end
+  end
+
+  # List of fishes
+  # RU: Список рыб
+  class FishScrollWin < Gtk::ScrolledWindow
+    attr_accessor :update_btn
+
+    include PandoraGtk
+
+    # Show fishes window
+    # RU: Показать окно рыб
+    def initialize
+      super(nil, nil)
+
+      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      border_width = 0
+
+      vbox = Gtk::VBox.new
+      hbox = Gtk::HBox.new
+
+      title = _('Update')
+      @update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
+      update_btn.tooltip_text = title
+      update_btn.label = title
+
+      declared_btn = SafeCheckButton.new(_('declared'), true)
+      declared_btn.safe_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      declared_btn.safe_set_active(true)
+
+      lined_btn = SafeCheckButton.new(_('lined'), true)
+      lined_btn.safe_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      lined_btn.safe_set_active(true)
+
+      linked_btn = SafeCheckButton.new(_('linked'), true)
+      linked_btn.safe_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      linked_btn.safe_set_active(true)
+
+      failed_btn = SafeCheckButton.new(_('failed'), true)
+      failed_btn.safe_signal_clicked do |widget|
+        update_btn.clicked
+      end
+      #failed_btn.safe_set_active(true)
+
+      title = _('Delete')
+      delete_btn = Gtk::ToolButton.new(Gtk::Stock::DELETE, title)
+      delete_btn.tooltip_text = title
+      delete_btn.label = title
+
+      hbox.pack_start(update_btn, false, true, 0)
+      hbox.pack_start(declared_btn, false, true, 0)
+      hbox.pack_start(lined_btn, false, true, 0)
+      hbox.pack_start(linked_btn, false, true, 0)
+      hbox.pack_start(failed_btn, false, true, 0)
+      hbox.pack_start(delete_btn, false, true, 0)
+
+      list_sw = Gtk::ScrolledWindow.new(nil, nil)
+      list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+      list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+
+      #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+
+      list_store = Gtk::ListStore.new(Integer, String, String, String, Integer, Integer, \
+        Integer, String)
+
+      update_btn.signal_connect('clicked') do |*args|
+        list_store.clear
+        if $window.pool
+          $window.pool.notice_list.each do |no|
+            sess_iter = list_store.append
+            sess_iter[0] = no[PandoraNet::NO_Index]
+            sess_iter[1] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Person])
+            sess_iter[2] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Key])
+            sess_iter[3] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Baseid])
+            sess_iter[4] = no[PandoraNet::NO_Notice_trust]
+            sess_iter[5] = no[PandoraNet::NO_Notice_depth]
+            sess_iter[6] = no[PandoraNet::NO_Session].object_id
+            sess_iter[7] = PandoraUtils.time_to_str(no[PandoraNet::NO_Time])
+          end
+        end
+      end
+
+      # create tree view
+      list_tree = Gtk::TreeView.new(list_store)
+      #list_tree.rules_hint = true
+      #list_tree.search_column = CL_Name
+
+      #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 0)
+      column.set_sort_column_id(0)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Person'), renderer, 'text' => 1)
+      column.set_sort_column_id(1)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Key'), renderer, 'text' => 2)
+      column.set_sort_column_id(2)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('BaseID'), renderer, 'text' => 3)
+      column.set_sort_column_id(3)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Trust'), renderer, 'text' => 4)
+      column.set_sort_column_id(4)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Depth'), renderer, 'text' => 5)
+      column.set_sort_column_id(5)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 6)
+      column.set_sort_column_id(6)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 7)
+      column.set_sort_column_id(7)
+      list_tree.append_column(column)
+
+      list_tree.signal_connect('row_activated') do |tree_view, path, column|
+        # download and go to record
+      end
+
+      list_sw.add(list_tree)
+
+      vbox.pack_start(hbox, false, true, 0)
+      vbox.pack_start(list_sw, true, true, 0)
+      list_sw.show_all
+
+      self.add_with_viewport(vbox)
+      update_btn.clicked
+
+      list_tree.grab_focus
+    end
+  end
+
+  # List of fishers
+  # RU: Список рыбаков
+  class FisherScrollWin < Gtk::ScrolledWindow
+    attr_accessor :update_btn
+
+    include PandoraGtk
+
+    # Show fishers window
+    # RU: Показать окно рыбаков
+    def initialize
+      super(nil, nil)
+
+      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      border_width = 0
+
+      vbox = Gtk::VBox.new
+      hbox = Gtk::HBox.new
+
+      title = _('Update')
+      @update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
+      update_btn.tooltip_text = title
+      update_btn.label = title
+
+      title = _('Delete')
+      delete_btn = Gtk::ToolButton.new(Gtk::Stock::DELETE, title)
+      delete_btn.tooltip_text = title
+      delete_btn.label = title
+
+      hbox.pack_start(update_btn, false, true, 0)
+      hbox.pack_start(delete_btn, false, true, 0)
+
+      list_sw = Gtk::ScrolledWindow.new(nil, nil)
+      list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+      list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+
+      #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+
+      list_store = Gtk::ListStore.new(Integer, Integer, String, String, String, String, \
+        String, String)
+
+      update_btn.signal_connect('clicked') do |*args|
+        list_store.clear
+        $window.pool.fish_orders.each do |fo|
+          sess_iter = list_store.append
+          sess_iter[0] = fo[PandoraNet::FO_Index]
+          sess_iter[1] = fo[PandoraNet::FO_Session].object_id
+          sess_iter[2] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fisher])
+          sess_iter[3] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fisher_key])
+          sess_iter[4] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fisher_baseid])
+          sess_iter[5] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fish])
+          sess_iter[6] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fish_key])
+          sess_iter[7] = PandoraUtils.time_to_str(fo[PandoraNet::FO_Time])
+        end
+      end
+
+      # create tree view
+      list_tree = Gtk::TreeView.new(list_store)
+      #list_tree.rules_hint = true
+      #list_tree.search_column = CL_Name
+
+      #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 0)
+      column.set_sort_column_id(0)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 1)
+      column.set_sort_column_id(1)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Fisher'), renderer, 'text' => 2)
+      column.set_sort_column_id(2)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Fisher key'), renderer, 'text' => 3)
+      column.set_sort_column_id(3)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Fisher BaseID'), renderer, 'text' => 4)
+      column.set_sort_column_id(4)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Fish'), renderer, 'text' => 5)
+      column.set_sort_column_id(5)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Fish key'), renderer, 'text' => 6)
+      column.set_sort_column_id(6)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 7)
+      column.set_sort_column_id(7)
       list_tree.append_column(column)
 
       list_tree.signal_connect('row_activated') do |tree_view, path, column|
@@ -11743,6 +12632,16 @@ module PandoraGtk
             end
           end
 
+          if (not edit) and val.nil? and (panobject.is_a? PandoraModel::Created)
+            case fid
+              when 'created'
+                val = Time.now.to_i
+              when 'creator'
+                creator = PandoraCrypto.current_user_or_key(true, false)
+                val = creator if creator
+            end
+          end
+
           val, color = PandoraUtils.val_to_view(val, type, view, true)
           field[FI_Value] = val
           field[FI_Color] = color
@@ -11756,8 +12655,8 @@ module PandoraGtk
         if edit
           count, rate, querist_rate = PandoraCrypto.rate_of_panobj(panhash0)
           trust = nil
-          p PandoraUtils.bytes_to_hex(panhash0)
-          p 'trust or num'
+          #p PandoraUtils.bytes_to_hex(panhash0)
+          #p 'trust or num'
           trust_or_num = PandoraCrypto.trust_in_panobj(panhash0)
           trust = trust_or_num if (trust_or_num.is_a? Float)
           dialog.vouch_btn.active = (trust_or_num != nil)
@@ -11776,8 +12675,7 @@ module PandoraGtk
           dialog.public_scale.value = (pub_level-RK_MinPublic-10)/10.0 if pub_level
           dialog.public_scale.sensitive = pub_level
 
-          p 'follow'
-          p follow = PandoraModel.act_relation(nil, panhash0, RK_Follow, :check)
+          follow = PandoraModel.act_relation(nil, panhash0, RK_Follow, :check)
           dialog.follow_btn.active = follow
           dialog.follow_btn.inconsistent = (follow == nil)
 
@@ -11853,12 +12751,15 @@ module PandoraGtk
             flds_hash[field[FI_Id]] = val
           end
           dialog.text_fields.each do |field|
-            textview = field[FI_Widget2]
-            if (not textview.destroyed?) and (textview.is_a? Gtk::TextView)
-              text = textview.buffer.text
-              if text and (text.size>0)
-                field[FI_Value] = text
-                flds_hash[field[FI_Id]] = field[FI_Value]
+            entry = field[FI_Widget]
+            if entry.text == ''
+              textview = field[FI_Widget2]
+              if (not textview.destroyed?) and (textview.is_a? Gtk::TextView)
+                text = textview.buffer.text
+                if text and (text.size>0)
+                  field[FI_Value] = text
+                  flds_hash[field[FI_Id]] = field[FI_Value]
+                end
               end
             end
           end
@@ -11872,12 +12773,15 @@ module PandoraGtk
 
           time_now = Time.now.to_i
           if (panobject.is_a? PandoraModel::Created)
-            flds_hash['created'] = created0 if created0
-            if not edit
-              flds_hash['created'] = time_now
-              creator = PandoraCrypto.current_user_or_key(true)
-              flds_hash['creator'] = creator
+            if created0 and flds_hash['created'] \
+            and ((flds_hash['created'].to_i-created0.to_i).abs<=1)
+              flds_hash['created'] = created0
             end
+            #if not edit
+              #flds_hash['created'] = time_now
+              #creator = PandoraCrypto.current_user_or_key(true)
+              #flds_hash['creator'] = creator
+            #end
           end
           flds_hash['modified'] = time_now
           panstate = 0
@@ -11885,6 +12789,8 @@ module PandoraGtk
           flds_hash['panstate'] = panstate
           if (panobject.is_a? PandoraModel::Key)
             lang = flds_hash['rights'].to_i
+          elsif (panobject.is_a? PandoraModel::Currency)
+            lang = 0
           end
 
           panhash = panobject.panhash(flds_hash, lang)
@@ -12112,6 +13018,7 @@ module PandoraGtk
       end
 
       page = notebook.append_page(sw, label_box)
+      notebook.set_tab_reorderable(sw, true)
       sw.show_all
       notebook.page = notebook.n_pages-1
 
@@ -12463,10 +13370,11 @@ module PandoraGtk
     nodes.compact!
     p 'targets='+targets.inspect
 
-    if (persons.size>0) and (nodes.size>0)
+    if (persons.size>0) or (nodes.size>0) or (keys.size>0)
       room_id = construct_room_id(persons)
       if known_node
         creator = PandoraCrypto.current_user_or_key(true)
+        p 'known_node persons='+persons.inspect
         if (persons.size==1) and (persons[0]==creator)
           room_id[-1] = (room_id[-1].ord ^ 1).chr
         end
@@ -12485,8 +13393,12 @@ module PandoraGtk
         sw = DialogScrollWin.new(known_node, room_id, targets)
       end
     elsif (not known_node)
+      mes = ''
       mes = _('node') if nodes.size == 0
-      mes = _('person') if persons.size == 0
+      if persons.size == 0
+        mes << ', ' if mes.size>0
+        mes << _('person')
+      end
       dialog = Gtk::MessageDialog.new($window, \
         Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
         Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
@@ -12517,6 +13429,7 @@ module PandoraGtk
     end
 
     page = $window.notebook.append_page(sw, label_box)
+    $window.notebook.set_tab_reorderable(sw, true)
     sw.show_all
     $window.notebook.page = $window.notebook.n_pages-1
   end
@@ -12607,13 +13520,14 @@ module PandoraGtk
     end
 
     page = $window.notebook.append_page(sw, label_box)
+    $window.notebook.set_tab_reorderable(sw, true)
     sw.show_all
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
   # Show session list
   # RU: Показать список сеансов
-  def self.show_session_panel(session=nil)
+  def self.show_session_panel
     $window.notebook.children.each do |child|
       if (child.is_a? SessionScrollWin)
         $window.notebook.page = $window.notebook.children.index(child)
@@ -12621,7 +13535,7 @@ module PandoraGtk
         return
       end
     end
-    sw = SessionScrollWin.new(session)
+    sw = SessionScrollWin.new
 
     image = Gtk::Image.new(Gtk::Stock::JUSTIFY_FILL, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
@@ -12629,6 +13543,62 @@ module PandoraGtk
       #sw.destroy
     end
     page = $window.notebook.append_page(sw, label_box)
+    $window.notebook.set_tab_reorderable(sw, true)
+    sw.show_all
+    $window.notebook.page = $window.notebook.n_pages-1
+  end
+
+  # Show fish list
+  # RU: Показать список рыб
+  def self.show_fish_panel
+    hpaned = $window.fish_hpaned
+    list_sw = hpaned.children[0]
+    if hpaned.position <= 10
+      list_sw.width_request = 250 if list_sw.width_request <= 1
+      hpaned.position = list_sw.width_request
+      list_sw.update_btn.clicked
+    else
+      list_sw.width_request = list_sw.allocation.width
+      hpaned.position = 0
+    end
+    #$window.notebook.children.each do |child|
+    #  if (child.is_a? FishScrollWin)
+    #    $window.notebook.page = $window.notebook.children.index(child)
+    #    child.update_btn.clicked
+    #    return
+    #  end
+    #end
+    #sw = FishScrollWin.new
+
+    #image = Gtk::Image.new(Gtk::Stock::JUSTIFY_LEFT, Gtk::IconSize::MENU)
+    #image.set_padding(2, 0)
+    #label_box = TabLabelBox.new(image, _('Fishes'), sw, false, 0) do
+    #  #sw.destroy
+    #end
+    #page = $window.notebook.append_page(sw, label_box)
+    #sw.show_all
+    #$window.notebook.page = $window.notebook.n_pages-1
+  end
+
+  # Show fisher list
+  # RU: Показать список рыбаков
+  def self.show_fisher_panel
+    $window.notebook.children.each do |child|
+      if (child.is_a? FisherScrollWin)
+        $window.notebook.page = $window.notebook.children.index(child)
+        child.update_btn.clicked
+        return
+      end
+    end
+    sw = FisherScrollWin.new
+
+    image = Gtk::Image.new(Gtk::Stock::JUSTIFY_RIGHT, Gtk::IconSize::MENU)
+    image.set_padding(2, 0)
+    label_box = TabLabelBox.new(image, _('Fishers'), sw, false, 0) do
+      #sw.destroy
+    end
+    page = $window.notebook.append_page(sw, label_box)
+    $window.notebook.set_tab_reorderable(sw, true)
     sw.show_all
     $window.notebook.page = $window.notebook.n_pages-1
   end
@@ -13023,20 +13993,20 @@ module PandoraGtk
   # RU: Главное окно
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
-      :cvpaned, :pool, :focus_timer, :title_view, :do_on_show
+      :cvpaned, :pool, :focus_timer, :title_view, :do_on_show, :fish_hpaned
 
     include PandoraUtils
 
     # Update status of connections
     # RU: Обновить состояние подключений
     def update_conn_status(conn, session_type, diff_count)
-      if session_type==0
-        @hunter_count += diff_count
-      elsif session_type==1
-        @listener_count += diff_count
-      else
-        @fisher_count += diff_count
-      end
+      #if session_type==0
+      @hunter_count += diff_count
+      #elsif session_type==1
+      #  @listener_count += diff_count
+      #else
+      #  @fisher_count += diff_count
+      #end
       set_status_field(SF_Conn, hunter_count.to_s+'/'+listener_count.to_s+'/'+fisher_count.to_s)
       online = ((@hunter_count>0) or (@listener_count>0) or (@fisher_count>0))
       $statusicon.set_online(online)
@@ -13048,7 +14018,10 @@ module PandoraGtk
     # RU: Изменить состояние кнопки слушателя
     def correct_lis_btn_state
       tool_btn = $toggle_buttons[PandoraGtk::SF_Listen]
-      tool_btn.safe_set_active($listen_thread != nil) if tool_btn
+      if tool_btn
+        lis_act = ($tcp_listen_thread != nil) or ($udp_listen_thread != nil)
+        tool_btn.safe_set_active(lis_act)
+      end
     end
 
     # Change hunter button state
@@ -13056,6 +14029,19 @@ module PandoraGtk
     def correct_hunt_btn_state
       tool_btn = $toggle_buttons[SF_Hunt]
       tool_btn.safe_set_active($hunter_thread != nil) if tool_btn
+    end
+
+    # Show notice status
+    # RU: Показать уведомления в статусе
+    def show_notice(change=nil)
+      if change
+        PandoraGtk.show_panobject_list(PandoraModel::Parameter, nil, nil, true)
+      end
+      PandoraNet.get_notice_params
+      notice = PandoraModel.transform_trust($notice_trust, false)
+      notice = ((notice*10.0).round/10.0).to_s
+      notice += '/'+$notice_depth.to_s
+      set_status_field(PandoraGtk::SF_Notice, notice, nil, false)
     end
 
     $statusbar = nil
@@ -13274,6 +14260,8 @@ module PandoraGtk
           PandoraNet.start_or_stop_listen
         when 'Hunt'
           PandoraNet.hunt_nodes
+        when 'Notice'
+          $window.show_notice(true)
         when 'Authorize'
           key = PandoraCrypto.current_key(false, false)
           if key and $listen_thread
@@ -13346,8 +14334,8 @@ module PandoraGtk
           #typ, count = encode_pson_type(PT_Str, 0x1FF)
           #p decode_pson_type(typ)
 
-          #p pson = namehash_to_pson({:first_name=>'Ivan', :last_name=>'Inavov', 'ddd'=>555})
-          #p hash = pson_to_namehash(pson)
+          #p pson = hash_to_namepson({:first_name=>'Ivan', :last_name=>'Inavov', 'ddd'=>555})
+          #p hash = namepson_to_hash(pson)
 
           #p PandoraUtils.get_param('base_id')
         when 'Profile'
@@ -13356,6 +14344,10 @@ module PandoraGtk
           PandoraGtk.show_search_panel
         when 'Session'
           PandoraGtk.show_session_panel
+        when 'Fish'
+          PandoraGtk.show_fish_panel
+        when 'Fisher'
+          PandoraGtk.show_fisher_panel
         else
           panobj_id = command
           if PandoraModel.const_defined? panobj_id
@@ -13428,7 +14420,7 @@ module PandoraGtk
       ['Sign', nil, 'Signs'],
       ['Node', Gtk::Stock::NETWORK, 'Nodes'],
       ['Event', nil, 'Events'],
-      ['Fishhook', nil, 'Fishhooks'],
+      ['Request', Gtk::Stock::SELECT_COLOR, 'Requests'],
       ['Session', Gtk::Stock::JUSTIFY_FILL, 'Sessions', '<control>S'],
       ['-', nil, '-'],
       ['Authorize', nil, 'Authorize', '<control>U'],
@@ -13604,8 +14596,16 @@ module PandoraGtk
       toolbar.toolbar_style = Gtk::Toolbar::Style::ICONS
       fill_toolbar(toolbar)
 
+      #frame = Gtk::Frame.new
+      #frame.shadow_type = Gtk::SHADOW_IN
+      #align = Gtk::Alignment.new(0.5, 0.5, 0, 0)
+      #align.add(frame)
+      #image = Gtk::Image.new
+      #frame.add(image)
+
       @notebook = Gtk::Notebook.new
       @notebook.scrollable = true
+      #@notebook.set_tab_reorderable(frame, true)
       notebook.signal_connect('switch-page') do |widget, page, page_num|
         cur_page = notebook.get_nth_page(page_num)
         if $last_page and (cur_page != $last_page) and ($last_page.is_a? PandoraGtk::DialogScrollWin)
@@ -13631,9 +14631,17 @@ module PandoraGtk
       sw.border_width = 1;
       sw.set_size_request(-1, 40)
 
+      fish_sw = FishScrollWin.new
+
+      @fish_hpaned = Gtk::HPaned.new
+      @fish_hpaned.pack1(fish_sw, true, true)
+      @fish_hpaned.pack2(notebook, true, true)
+      @fish_hpaned.position = 1
+      @fish_hpaned.position = 0
+
       vpaned = Gtk::VPaned.new
       vpaned.border_width = 2
-      vpaned.pack1(notebook, true, true)
+      vpaned.pack1(fish_hpaned, true, true)
       vpaned.pack2(sw, false, true)
 
       @cvpaned = CaptchaHPaned.new(vpaned)
@@ -13645,6 +14653,9 @@ module PandoraGtk
       add_status_field(SF_Update, _('Version') + ': ' + _('Not checked')) do
         PandoraGtk.start_updating(true)
       end
+      add_status_field(SF_Lang, $lang) do
+        do_menu_act('Blob')
+      end
       add_status_field(SF_Auth, _('Not logged')) do
         do_menu_act('Authorize')
       end
@@ -13654,8 +14665,17 @@ module PandoraGtk
       add_status_field(SF_Hunt, _('No hunt')) do
         do_menu_act('Hunt')
       end
+      add_status_field(SF_Notice, '-') do
+        do_menu_act('Notice')
+      end
       add_status_field(SF_Conn, '0/0/0') do
         do_menu_act('Session')
+      end
+      add_status_field(SF_Fish, '0') do
+        do_menu_act('Fish')
+      end
+      add_status_field(SF_Fisher, '0') do
+        do_menu_act('Fisher')
       end
 
       vbox = Gtk::VBox.new
@@ -13773,6 +14793,8 @@ module PandoraGtk
         end
       end
 
+      PandoraGtk.get_main_params
+
       #$window.signal_connect('focus-out-event') do |window, event|
       #  p 'focus-out-event: ' + $window.has_toplevel_focus?.inspect
       #  false
@@ -13855,7 +14877,6 @@ module PandoraGtk
           PandoraGtk.start_updating(false)
         end
       end
-      PandoraGtk.get_main_params
 
       Gtk.main
     end
@@ -13867,6 +14888,25 @@ end
 
 # ============================================================
 # MAIN
+
+
+# Default values of variables
+# RU: Значения переменных по умолчанию
+$poly_launch = false
+$host = nil
+$lang = 'en'
+$pandora_parameters = []
+
+# Paths and files
+# RU: Пути и файлы
+$pandora_root_dir = Dir.pwd                                     # Current directory
+$pandora_base_dir = File.join($pandora_root_dir, 'base')        # Database directory
+$pandora_view_dir = File.join($pandora_root_dir, 'view')        # Media files directory
+$pandora_model_dir = File.join($pandora_root_dir, 'model')      # Model directory
+$pandora_lang_dir = File.join($pandora_root_dir, 'lang')        # Languages directory
+$pandora_util_dir = File.join($pandora_root_dir, 'util')        # Utilites directory
+$pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
+$pandora_files_dir = File.join($pandora_root_dir, 'files')      # Files directory
 
 # Expand the arguments of command line
 # RU: Разобрать аргументы командной строки
@@ -13893,9 +14933,13 @@ while (ARGV.length>0) or next_arg
     when '-h','--host'
       $host = val if val
     when '-p','--port'
-      $port = val.to_i if val
+      if val
+        $tcp_port = val.to_i
+        $udp_port = $tcp_port
+      end
     when '-b', '--base'
       $pandora_sqlite_db = val if val
+      p 'base='+$pandora_sqlite_db.inspect
     when '-pl', '--poly', '--poly-launch'
       $poly_launch = true
     when '--shell', '--help', '/?', '-?'
@@ -13915,9 +14959,6 @@ while (ARGV.length>0) or next_arg
   val = nil
 end
 
-# Check second launch
-# RU: Проверить второй запуск
-
 PANDORA_USOCK = '/tmp/pandora_unix_socket'
 $pserver = nil
 
@@ -13927,12 +14968,12 @@ def delete_psocket
   File.delete(PANDORA_USOCK) if File.exist?(PANDORA_USOCK)
 end
 
-$win32api = false
+$win32api = nil
 
 # Initialize win32 unit
 # RU: Инициализирует модуль win32
 def init_win32api
-  if not $win32api
+  if $win32api.nil?
     begin
       require 'Win32API'
       $win32api = true
@@ -13959,6 +15000,7 @@ if not $poly_launch
     if psocket
       psocket.send('Activate', 0)
       psocket.close
+      puts 'Another copy of Pandora is already runned'
       Kernel.exit
     else
       begin
@@ -14226,6 +15268,7 @@ Thread.abort_on_exception = true
 # == RU: Запуск Пандоры!
 PandoraUtils.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
+PandoraUtils.detect_mp3_player
 PandoraGtk::MainWindow.new(MAIN_WINDOW_TITLE)
 
 # Free unix-socket on exit

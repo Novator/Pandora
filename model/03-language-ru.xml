@@ -107,6 +107,7 @@
     <Currency name.ru="Валюта|Валюты">
       <name name.ru="Название" />
       <code name.ru="Код" />
+      <kind name.ru="Тип" />
     </Currency>
 
     <Contract name.ru="Договор|Договоры">
@@ -276,12 +277,13 @@
       <message name.ru="Сообщение" />
     </Task>
 
-    <Fishhook name.ru="Рыбалка|Рыбалки">
-      <creator name.ru="Рыбак" />
-      <catch name.ru="Добыча" />
-      <expire name.ru="Истекает" />
+    <Request name.ru="Запрос">
+      <creator_key name.ru="Ключ создателя" />
+      <creator_baseid name.ru="BaseID создателя" />
+      <kind name.ru="Тип" />
+      <body name.ru="Тело" />
       <state name.ru="Статус" />
-    </Fishhook>
+    </Request>
 
   </Pandora>
 
