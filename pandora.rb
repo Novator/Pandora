@@ -4971,10 +4971,11 @@ module PandoraNet
         time = Time.now.to_i
         res = find_notice_order(person, key, baseid, time)
         if ((not (res.is_a? Array)) or (res.size == 0))
-          @notice_ind += 1
           notice_depth -= 1
-          res = [@notice_ind, person, key, baseid, notice_trust, notice_depth, time, session]
+          p '=====NOTICE ADD [person, key, baseid, notice_trust, notice_depth]='+[person, key, baseid, notice_trust, notice_depth].inspect
+          res = [@notice_ind+1, person, key, baseid, notice_trust, notice_depth, time, session]
           @notice_list << res
+          @notice_ind += 1
         end
         $window.set_status_field(PandoraGtk::SF_Fish, @notice_list.size.to_s)
       end
@@ -5007,8 +5008,8 @@ module PandoraNet
       res = nil
       time = Time.now.to_i
       clear_list(@fish_orders, FO_Time, $fish_live_per, time)
+      @fish_orders << [@fish_ind+1, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
       @fish_ind += 1
-      @fish_orders << [@fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
       res = true
 
       #model = PandoraUtils.get_model('Request', models)
@@ -6270,9 +6271,9 @@ module PandoraNet
                           @sess_trust = trust
                           update_node(to_key, sbase_id, trust)
                           if (@notice.is_a? Integer)
+                            not_trust = (@notice & 0xFF)
                             not_dep = (@notice >> 8)
-                            if not_dep>0
-                              not_trust = (@notice & 0xFF)
+                            if not_dep >= 0
                               pool.add_notice_order(self, @to_person, @to_key, \
                                 @to_base_id, not_trust, not_dep)
                             end
@@ -7424,7 +7425,7 @@ module PandoraNet
                     #  trust, key, models)
                     #ph_list << PandoraModel.public_records(questioner, trust, from_time, \
                     #  pankinds, models)
-                    set_relations_query(pankinds, from_time, true)
+                    #set_relations_query(pankinds, from_time, true)
                     questioner_step += 1
                   else
                     questioner_step = QS_Finished
@@ -7559,14 +7560,14 @@ module PandoraNet
                 and (@notice_ind<pool.notice_ind)
                   @notice_ind += 1
                   notice_order = pool.notice_list[@notice_ind]
-                  p log_mes+'notice_order='+notice_order[NO_Person..NO_Notice_depth].inspect
-                  p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
+                  p log_mes+'======notice_order='+notice_order[NO_Person..NO_Notice_depth].inspect
+                  p log_mes+'======[to_person, to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session], self]='+[@to_person, @to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session].object_id, self.object_id].inspect
                   if notice_order and (notice_order[NO_Session] != self) \
-                  and @sess_trust and (notice_order[NO_Notice_trust] >= @sess_trust) \
-                  and ((@to_key and (notice_order[FO_Fish_key] != @to_key)) \
+                  and @sess_trust and (@sess_trust >= PandoraModel.transform_trust(notice_order[NO_Notice_trust], false)) \
+                  and ((@to_key and (notice_order[NO_Key] != @to_key)) \
                   or (@to_person and (notice_order[NO_Person] != @to_person)) \
                   or (@to_base_id and (notice_order[NO_Baseid] != @to_base_id)))
-                    p log_mes+'New notice order: '+notice_order[NO_Person..NO_Notice_depth].inspect
+                    p log_mes+'=====New notice order: '+notice_order[NO_Person..NO_Notice_depth].inspect
                     #mykeyhash = PandoraCrypto.current_user_or_key(false)
                     notic = PandoraUtils.rubyobj_to_pson(notice_order[NO_Person..NO_Notice_depth])
                     add_send_segment(EC_News, true, notic, ECC_News_Notice)
@@ -13552,9 +13553,10 @@ module PandoraGtk
   def self.show_fish_panel
     hpaned = $window.fish_hpaned
     list_sw = hpaned.children[0]
-    if hpaned.position <= 1
-      list_sw.width_request = 150 if list_sw.width_request <= 1
+    if hpaned.position <= 10
+      list_sw.width_request = 250 if list_sw.width_request <= 1
       hpaned.position = list_sw.width_request
+      list_sw.update_btn.clicked
     else
       list_sw.width_request = list_sw.allocation.width
       hpaned.position = 0
