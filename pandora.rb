@@ -4811,13 +4811,14 @@ module PandoraNet
 
   # Notice order array indexes
   # RU: Индексы массива заявок на уведомления
-  NO_Person          = 0
-  NO_Key             = 1
-  NO_Baseid          = 2
-  NO_Notice_level    = 3
-  NO_Notice_depth    = 4
-  NO_Time            = 5
-  NO_Session         = 6
+  NO_Index           = 0
+  NO_Person          = 1
+  NO_Key             = 2
+  NO_Baseid          = 3
+  NO_Notice_trust    = 4
+  NO_Notice_depth    = 5
+  NO_Time            = 6
+  NO_Session         = 7
 
   # Fish order array indexes
   # RU: Индексы массива заявок на рыбалку
@@ -4964,14 +4965,18 @@ module PandoraNet
 
     # Add order to notice
     # RU: Добавить заявку на уведомление
-    def add_notice_order(session, person, key, baseid, notice_level, notice_depth)
+    def add_notice_order(session, person, key, baseid, notice_trust, notice_depth)
       res = nil
-      time = Time.now.to_i
-      res = find_notice_order(person, key, baseid, time)
-      if ((not (res.is_a? Array)) or (res.size == 0))
-        @notice_ind += 1
-        res = [@notice_ind, person, key, baseid, notice_level, notice_depth, time, session]
-        @notice_list << res
+      if notice_depth>0
+        time = Time.now.to_i
+        res = find_notice_order(person, key, baseid, time)
+        if ((not (res.is_a? Array)) or (res.size == 0))
+          @notice_ind += 1
+          notice_depth -= 1
+          res = [@notice_ind, person, key, baseid, notice_trust, notice_depth, time, session]
+          @notice_list << res
+        end
+        $window.set_status_field(PandoraGtk::SF_Fish, @notice_list.size.to_s)
       end
       res
     end
@@ -4987,9 +4992,9 @@ module PandoraNet
       time ||= Time.now.to_i
       clear_list(@notice_list, NO_Time, $not_live_per, time)
       res = @notice_list.select do |no|
-        ((person.nil? or (no[NO_Person] == person)) and \
-        (key.nil? or (no[NO_Key] == key)) and \
-        (baseid.nil? or (no[NO_Baseid] == baseid)))
+        ((person.nil? or (no[PandoraNet::NO_Person] == person)) and \
+        (key.nil? or (no[PandoraNet::NO_Key] == key)) and \
+        (baseid.nil? or (no[PandoraNet::NO_Baseid] == baseid)))
       end
       res
     end
@@ -5053,11 +5058,11 @@ module PandoraNet
 
     def find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
       res = @fish_orders.select do |fo|
-        ((fisher.nil? or (fo[FO_Fisher] == fisher)) and \
-        (fisher_key.nil? or (fo[FO_Fisher_key] == fisher_key)) and \
-        (fisher_baseid.nil? or (fo[FO_Fisher_baseid] == fisher_baseid)) and \
-        (fish.nil? or (fo[FO_Fish] == fish)) and \
-        (fish_key.nil? or (fo[FO_Fish_key] == fish_key)))
+        ((fisher.nil? or (fo[PandoraNet::FO_Fisher] == fisher)) and \
+        (fisher_key.nil? or (fo[PandoraNet::FO_Fisher_key] == fisher_key)) and \
+        (fisher_baseid.nil? or (fo[PandoraNet::FO_Fisher_baseid] == fisher_baseid)) and \
+        (fish.nil? or (fo[PandoraNet::FO_Fish] == fish)) and \
+        (fish_key.nil? or (fo[PandoraNet::FO_Fish_key] == fish_key)))
       end
       #FO_Session
       #res.uniq!
@@ -5242,7 +5247,8 @@ module PandoraNet
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
-      :entered_captcha, :captcha_sw, :hooks, :fishes, :fishers, :fish_ind, :notice_ind
+      :entered_captcha, :captcha_sw, :hooks, :fishes, :fishers, :fish_ind, :notice_ind, \
+      :sess_trust, :sess_mode, :notice
 
     # Set socket options
     # RU: Установить опции сокета
@@ -5520,7 +5526,7 @@ module PandoraNet
             mode = 0
             mode |= SM_GetNotice if $get_notice
             hparams = {:version=>0, :mode=>mode, :mykey=>key_hash, :tokey=>param, \
-              :notice=>(($notice_depth << 8) | $notice_level)}
+              :notice=>(($notice_depth << 8) | $notice_trust)}
             hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
             asbuf = PandoraUtils.hash_to_namepson(hparams)
           else
@@ -6152,9 +6158,8 @@ module PandoraNet
                     p log_mes+'addr='+addr.inspect
                     # need to change an ip checking
                     pool.check_callback_addr(addr, host_ip) if addr
-                    mode = params['mode']
-                    notice = params['notice']
-                    pool.add_notice_order((notice & 0xFF), (notice >> 8))
+                    @sess_mode = params['mode']
+                    @notice = params['notice']
                     init_skey_or_error(true)
                   else
                     err_scmd('Protocol is not supported ('+vers.to_s+')')
@@ -6249,7 +6254,6 @@ module PandoraNet
                       @skey[PandoraCrypto::KV_Panhash], sbase_id)
 
                     if ((conn_mode & CM_Double) == 0)
-                      update_node(to_key, sbase_id, trust)
                       if ((conn_mode & CM_Hunter) == 0)
                         trust = 0 if (not trust) and $trust_for_captchaed
                       elsif $trust_for_listener and (not (trust.is_a? Float))
@@ -6263,6 +6267,16 @@ module PandoraNet
                         send_captcha
                       elsif trust.is_a? Float
                         if trust>=$low_conn_trust
+                          @sess_trust = trust
+                          update_node(to_key, sbase_id, trust)
+                          if (@notice.is_a? Integer)
+                            not_dep = (@notice >> 8)
+                            if not_dep>0
+                              not_trust = (@notice & 0xFF)
+                              pool.add_notice_order(self, @to_person, @to_key, \
+                                @to_base_id, not_trust, not_dep)
+                            end
+                          end
                           if (conn_mode & CM_Hunter) == 0
                             @stage = ES_Greeting
                             add_send_segment(EC_Auth, true, params['srckey'])
@@ -6767,7 +6781,7 @@ module PandoraNet
                         # это узел-посредник, нужно пробросить по истории заявок
                         fish_orders = pool.find_fish_order(*line)
                         fish_orders.each do |fo|
-                          sess = fo[FO_Session]
+                          sess = fo[PandoraNet::FO_Session]
                           if sess and (not sess.destroyed?)
                             sess.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
                               ECC_News_Hook)
@@ -6809,7 +6823,9 @@ module PandoraNet
                       end
                     end
                   when ECC_News_Notice
-                    p 'ECC_News_Notice'
+                    p log_mes+'ECC_News_Notice'
+                    notic, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    pool.add_notice_order(self, *notic)
                   else
                     p "news more!!!!"
                     pkind = rcode
@@ -7534,7 +7550,7 @@ module PandoraNet
                 end
               end
 
-              if (@mode & SM_GetNotice)>0
+              if (@sess_mode.is_a? Integer) and ((@sess_mode & SM_GetNotice)>0)
                 # проверка новых уведомлений
                 processed = 0
                 while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
@@ -7543,17 +7559,17 @@ module PandoraNet
                 and (@notice_ind<pool.notice_ind)
                   @notice_ind += 1
                   notice_order = pool.notice_list[@notice_ind]
-                  p log_mes+'notice_order='+fish_order111[FO_Fisher..FO_Fish_key].inspect
+                  p log_mes+'notice_order='+notice_order[NO_Person..NO_Notice_depth].inspect
                   p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
-                  if fish_order and (fish_order[FO_Session] != self) \
-                  and ((@to_person and (fish_order[FO_Fish] != @to_person)) \
-                  or (@to_key and (fish_order[FO_Fish_key] != @to_key)))
-                    p log_mes+'New fish order: '+fish_order[FO_Fisher..FO_Fish_key].inspect
+                  if notice_order and (notice_order[NO_Session] != self) \
+                  and @sess_trust and (notice_order[NO_Notice_trust] >= @sess_trust) \
+                  and ((@to_key and (notice_order[FO_Fish_key] != @to_key)) \
+                  or (@to_person and (notice_order[NO_Person] != @to_person)) \
+                  or (@to_base_id and (notice_order[NO_Baseid] != @to_base_id)))
+                    p log_mes+'New notice order: '+notice_order[NO_Person..NO_Notice_depth].inspect
                     #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                    PandoraUtils.log_message(LM_Trace, _('Fishing to')+': ' \
-                      +PandoraUtils.bytes_to_hex(fish_order[FO_Fish])+' '+_('via')+' '+@host_ip+':'+@port.to_s)
-                    line = PandoraUtils.rubyobj_to_pson(fish_order[FO_Fisher..FO_Fish_key])
-                    add_send_segment(EC_News, true, line, ECC_News_Notice)
+                    notic = PandoraUtils.rubyobj_to_pson(notice_order[NO_Person..NO_Notice_depth])
+                    add_send_segment(EC_News, true, notic, ECC_News_Notice)
                   end
                   processed += 1
                 end
@@ -7634,9 +7650,9 @@ module PandoraNet
                 donor.free_fish_of_in_lure(fish_lure)
               end
             end
-            @fishes.each_index do |i|
-              free_fish_of_in_lure(i)
-            end
+            #@fishes.each_index do |i|
+            #  free_fish_of_in_lure(i)
+            #end
             fishers.each do |val|
               fisher = nil
               in_lure = nil
@@ -7691,12 +7707,12 @@ module PandoraNet
   # RU: Взять параметры уведомления
   def self.get_notice_params
     $get_notice           = PandoraUtils.get_param('get_notice')
-    $notice_level         = PandoraUtils.get_param('notice_level')
+    $notice_trust         = PandoraUtils.get_param('notice_trust')
     $notice_depth         = PandoraUtils.get_param('notice_depth')
     $max_notice_depth     = PandoraUtils.get_param('max_notice_depth')
-    $notice_level        ||= 12
-    $notice_depth        ||= 4
-    $max_notice_depth    ||= 6
+    $notice_trust        ||= 12
+    $notice_depth        ||= 2
+    $max_notice_depth    ||= 5
   end
 
   # Get exchange params
@@ -8026,7 +8042,7 @@ module PandoraGtk
   SF_Auth   = 2
   SF_Listen = 3
   SF_Hunt   = 4
-  SF_Notice  = 5
+  SF_Notice = 5
   SF_Conn   = 6
   SF_Fish   = 7
   SF_Fisher = 8
@@ -11926,22 +11942,22 @@ module PandoraGtk
 
       #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
-      list_store = Gtk::ListStore.new(Integer, Integer, String, String, String, String, \
-        String, String)
+      list_store = Gtk::ListStore.new(Integer, String, String, String, Integer, Integer, \
+        Integer, String)
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
         if $window.pool
-          $window.pool.fish_orders.each do |fo|
+          $window.pool.notice_list.each do |no|
             sess_iter = list_store.append
-            sess_iter[0] = fo[0]
-            sess_iter[1] = fo[1].object_id
-            sess_iter[2] = PandoraUtils.bytes_to_hex(fo[2])
-            sess_iter[3] = PandoraUtils.bytes_to_hex(fo[3])
-            sess_iter[4] = PandoraUtils.bytes_to_hex(fo[4])
-            sess_iter[5] = PandoraUtils.bytes_to_hex(fo[5])
-            sess_iter[6] = PandoraUtils.bytes_to_hex(fo[6])
-            sess_iter[7] = PandoraUtils.time_to_str(fo[7])
+            sess_iter[0] = no[PandoraNet::NO_Index]
+            sess_iter[1] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Person])
+            sess_iter[2] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Key])
+            sess_iter[3] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Baseid])
+            sess_iter[4] = no[PandoraNet::NO_Notice_trust]
+            sess_iter[5] = no[PandoraNet::NO_Notice_depth]
+            sess_iter[6] = no[PandoraNet::NO_Session].object_id
+            sess_iter[7] = PandoraUtils.time_to_str(no[PandoraNet::NO_Time])
           end
         end
       end
@@ -11959,32 +11975,32 @@ module PandoraGtk
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 1)
+      column = Gtk::TreeViewColumn.new(_('Person'), renderer, 'text' => 1)
       column.set_sort_column_id(1)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Fisher'), renderer, 'text' => 2)
+      column = Gtk::TreeViewColumn.new(_('Key'), renderer, 'text' => 2)
       column.set_sort_column_id(2)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Fisher key'), renderer, 'text' => 3)
+      column = Gtk::TreeViewColumn.new(_('BaseID'), renderer, 'text' => 3)
       column.set_sort_column_id(3)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Fisher BaseID'), renderer, 'text' => 4)
+      column = Gtk::TreeViewColumn.new(_('Trust'), renderer, 'text' => 4)
       column.set_sort_column_id(4)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Fish'), renderer, 'text' => 5)
+      column = Gtk::TreeViewColumn.new(_('Depth'), renderer, 'text' => 5)
       column.set_sort_column_id(5)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Fish key'), renderer, 'text' => 6)
+      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 6)
       column.set_sort_column_id(6)
       list_tree.append_column(column)
 
@@ -12054,14 +12070,14 @@ module PandoraGtk
         list_store.clear
         $window.pool.fish_orders.each do |fo|
           sess_iter = list_store.append
-          sess_iter[0] = fo[0]
-          sess_iter[1] = fo[1].object_id
-          sess_iter[2] = PandoraUtils.bytes_to_hex(fo[2])
-          sess_iter[3] = PandoraUtils.bytes_to_hex(fo[3])
-          sess_iter[4] = PandoraUtils.bytes_to_hex(fo[4])
-          sess_iter[5] = PandoraUtils.bytes_to_hex(fo[5])
-          sess_iter[6] = PandoraUtils.bytes_to_hex(fo[6])
-          sess_iter[7] = PandoraUtils.time_to_str(fo[7])
+          sess_iter[0] = fo[PandoraNet::FO_Index]
+          sess_iter[1] = fo[PandoraNet::FO_Session].object_id
+          sess_iter[2] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fisher])
+          sess_iter[3] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fisher_key])
+          sess_iter[4] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fisher_baseid])
+          sess_iter[5] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fish])
+          sess_iter[6] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fish_key])
+          sess_iter[7] = PandoraUtils.time_to_str(fo[PandoraNet::FO_Time])
         end
       end
 
@@ -14020,7 +14036,7 @@ module PandoraGtk
         PandoraGtk.show_panobject_list(PandoraModel::Parameter, nil, nil, true)
       end
       PandoraNet.get_notice_params
-      notice = PandoraModel.transform_trust($notice_level, false)
+      notice = PandoraModel.transform_trust($notice_trust, false)
       notice = ((notice*10.0).round/10.0).to_s
       notice += '/'+$notice_depth.to_s
       set_status_field(PandoraGtk::SF_Notice, notice, nil, false)
