@@ -7560,17 +7560,19 @@ module PandoraNet
                 and (@notice_ind<pool.notice_ind)
                   @notice_ind += 1
                   notice_order = pool.notice_list[@notice_ind]
-                  p log_mes+'======notice_order='+notice_order[NO_Person..NO_Notice_depth].inspect
-                  p log_mes+'======[to_person, to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session], self]='+[@to_person, @to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session].object_id, self.object_id].inspect
-                  if notice_order and (notice_order[NO_Session] != self) \
-                  and @sess_trust and (@sess_trust >= PandoraModel.transform_trust(notice_order[NO_Notice_trust], false)) \
-                  and ((@to_key and (notice_order[NO_Key] != @to_key)) \
-                  or (@to_person and (notice_order[NO_Person] != @to_person)) \
-                  or (@to_base_id and (notice_order[NO_Baseid] != @to_base_id)))
-                    p log_mes+'=====New notice order: '+notice_order[NO_Person..NO_Notice_depth].inspect
-                    #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                    notic = PandoraUtils.rubyobj_to_pson(notice_order[NO_Person..NO_Notice_depth])
-                    add_send_segment(EC_News, true, notic, ECC_News_Notice)
+                  if notice_order
+                    p log_mes+'======notice_order='+notice_order[NO_Person..NO_Notice_depth].inspect
+                    p log_mes+'======[to_person, to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session], self]='+[@to_person, @to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session].object_id, self.object_id].inspect
+                    if notice_order and (notice_order[NO_Session] != self) \
+                    and @sess_trust and (@sess_trust >= PandoraModel.transform_trust(notice_order[NO_Notice_trust], false)) \
+                    and ((@to_key and (notice_order[NO_Key] != @to_key)) \
+                    or (@to_person and (notice_order[NO_Person] != @to_person)) \
+                    or (@to_base_id and (notice_order[NO_Baseid] != @to_base_id)))
+                      p log_mes+'=====New notice order: '+notice_order[NO_Person..NO_Notice_depth].inspect
+                      #mykeyhash = PandoraCrypto.current_user_or_key(false)
+                      notic = PandoraUtils.rubyobj_to_pson(notice_order[NO_Person..NO_Notice_depth])
+                      add_send_segment(EC_News, true, notic, ECC_News_Notice)
+                    end
                   end
                   processed += 1
                 end
@@ -7887,7 +7889,11 @@ module PandoraNet
                 if $udp_listen_thread
                   udp_server = $udp_listen_thread[:udp_server]
                   if udp_server and (not udp_server.closed?)
-                    udp_server.send(hello, 0, '<broadcast>', $udp_port)
+                    begin
+                      udp_server.send(hello, 0, '<broadcast>', $udp_port)
+                    rescue => err
+                      p 'Cannot send UDP-broadcast: '+err.message
+                    end
                   end
                 end
               end
@@ -11944,7 +11950,7 @@ module PandoraGtk
       #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
       list_store = Gtk::ListStore.new(Integer, String, String, String, Integer, Integer, \
-        Integer, String)
+        Integer, Integer, String)
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
@@ -11957,8 +11963,9 @@ module PandoraGtk
             sess_iter[3] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Baseid])
             sess_iter[4] = no[PandoraNet::NO_Notice_trust]
             sess_iter[5] = no[PandoraNet::NO_Notice_depth]
-            sess_iter[6] = no[PandoraNet::NO_Session].object_id
-            sess_iter[7] = PandoraUtils.time_to_str(no[PandoraNet::NO_Time])
+            sess_iter[6] = 0 #distance
+            sess_iter[7] = no[PandoraNet::NO_Session].object_id
+            sess_iter[8] = PandoraUtils.time_to_str(no[PandoraNet::NO_Time])
           end
         end
       end
@@ -12001,13 +12008,18 @@ module PandoraGtk
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 6)
+      column = Gtk::TreeViewColumn.new(_('Distance'), renderer, 'text' => 6)
       column.set_sort_column_id(6)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 7)
+      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 7)
       column.set_sort_column_id(7)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 8)
+      column.set_sort_column_id(8)
       list_tree.append_column(column)
 
       list_tree.signal_connect('row_activated') do |tree_view, path, column|
