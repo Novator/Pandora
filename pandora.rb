@@ -6910,8 +6910,8 @@ module PandoraNet
       @read_state  = 0
       send_state_add  ||= 0
       @send_state     = send_state_add
-      @fish_ind       = -1
-      @notice_ind     = -1
+      @fish_ind       = 0
+      @notice_ind     = 0
       #@fishes         = Array.new
       @fishers        = Array.new
       @read_queue     = PandoraUtils::RoundQueue.new
@@ -7557,8 +7557,7 @@ module PandoraNet
                 while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
                 and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
                 and (processed<$notice_block_count) \
-                and (@notice_ind<pool.notice_ind)
-                  @notice_ind += 1
+                and (@notice_ind <= pool.notice_ind)
                   notice_order = pool.notice_list[@notice_ind]
                   if notice_order
                     p log_mes+'======notice_order='+notice_order[NO_Person..NO_Notice_depth].inspect
@@ -7573,8 +7572,9 @@ module PandoraNet
                       notic = PandoraUtils.rubyobj_to_pson(notice_order[NO_Person..NO_Notice_depth])
                       add_send_segment(EC_News, true, notic, ECC_News_Notice)
                     end
+                    processed += 1
                   end
-                  processed += 1
+                  @notice_ind += 1
                 end
               end
 
@@ -7583,22 +7583,24 @@ module PandoraNet
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
               and (processed<$fish_block_count) \
-              and (@fish_ind<pool.fish_ind)
-                @fish_ind += 1
+              and (@fish_ind <= pool.fish_ind)
                 fish_order = pool.fish_orders[@fish_ind]
-                p log_mes+'fish_order='+fish_order[FO_Fisher..FO_Fish_key].inspect
-                p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
-                if fish_order and (fish_order[FO_Session] != self) \
-                and ((@to_person and (fish_order[FO_Fish] != @to_person)) \
-                or (@to_key and (fish_order[FO_Fish_key] != @to_key)))
-                  p log_mes+'New fish order: '+fish_order[FO_Fisher..FO_Fish_key].inspect
-                  #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                  PandoraUtils.log_message(LM_Trace, _('Fishing to')+': ' \
-                    +PandoraUtils.bytes_to_hex(fish_order[FO_Fish])+' '+_('via')+' '+@host_ip+':'+@port.to_s)
-                  line = PandoraUtils.rubyobj_to_pson(fish_order[FO_Fisher..FO_Fish_key])
-                  add_send_segment(EC_Query, true, line, ECC_Query_Fish)
+                if fish_order
+                  p log_mes+'fish_order='+fish_order[FO_Fisher..FO_Fish_key].inspect
+                  p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
+                  if fish_order and (fish_order[FO_Session] != self) \
+                  and ((@to_person and (fish_order[FO_Fish] != @to_person)) \
+                  or (@to_key and (fish_order[FO_Fish_key] != @to_key)))
+                    p log_mes+'New fish order: '+fish_order[FO_Fisher..FO_Fish_key].inspect
+                    #mykeyhash = PandoraCrypto.current_user_or_key(false)
+                    PandoraUtils.log_message(LM_Trace, _('Fishing to')+': ' \
+                      +PandoraUtils.bytes_to_hex(fish_order[FO_Fish])+' '+_('via')+' '+@host_ip+':'+@port.to_s)
+                    line = PandoraUtils.rubyobj_to_pson(fish_order[FO_Fisher..FO_Fish_key])
+                    add_send_segment(EC_Query, true, line, ECC_Query_Fish)
+                  end
+                  processed += 1
                 end
-                processed += 1
+                @fish_ind += 1
               end
 
               #p '---@conn_state='+@conn_state.inspect
@@ -11949,23 +11951,23 @@ module PandoraGtk
 
       #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
-      list_store = Gtk::ListStore.new(Integer, String, String, String, Integer, Integer, \
-        Integer, Integer, String)
+      list_store = Gtk::ListStore.new(String, String, String, Integer, Integer, \
+        Integer, Integer, String, Integer)
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
         if $window.pool
           $window.pool.notice_list.each do |no|
             sess_iter = list_store.append
-            sess_iter[0] = no[PandoraNet::NO_Index]
-            sess_iter[1] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Person])
-            sess_iter[2] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Key])
-            sess_iter[3] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Baseid])
-            sess_iter[4] = no[PandoraNet::NO_Notice_trust]
-            sess_iter[5] = no[PandoraNet::NO_Notice_depth]
-            sess_iter[6] = 0 #distance
-            sess_iter[7] = no[PandoraNet::NO_Session].object_id
-            sess_iter[8] = PandoraUtils.time_to_str(no[PandoraNet::NO_Time])
+            sess_iter[0] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Person][2..-1])
+            sess_iter[1] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Key])
+            sess_iter[2] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Baseid])
+            sess_iter[3] = no[PandoraNet::NO_Notice_trust]
+            sess_iter[4] = no[PandoraNet::NO_Notice_depth]
+            sess_iter[5] = 0 #distance
+            sess_iter[6] = no[PandoraNet::NO_Session].object_id
+            sess_iter[7] = PandoraUtils.time_to_str(no[PandoraNet::NO_Time])
+            sess_iter[8] = no[PandoraNet::NO_Index]
           end
         end
       end
@@ -11978,47 +11980,47 @@ module PandoraGtk
       #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 0)
+      column = Gtk::TreeViewColumn.new(_('Person'), renderer, 'text' => 0)
       column.set_sort_column_id(0)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Person'), renderer, 'text' => 1)
+      column = Gtk::TreeViewColumn.new(_('Key'), renderer, 'text' => 1)
       column.set_sort_column_id(1)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Key'), renderer, 'text' => 2)
+      column = Gtk::TreeViewColumn.new(_('BaseID'), renderer, 'text' => 2)
       column.set_sort_column_id(2)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('BaseID'), renderer, 'text' => 3)
+      column = Gtk::TreeViewColumn.new(_('Trust'), renderer, 'text' => 3)
       column.set_sort_column_id(3)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Trust'), renderer, 'text' => 4)
+      column = Gtk::TreeViewColumn.new(_('Depth'), renderer, 'text' => 4)
       column.set_sort_column_id(4)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Depth'), renderer, 'text' => 5)
+      column = Gtk::TreeViewColumn.new(_('Distance'), renderer, 'text' => 5)
       column.set_sort_column_id(5)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Distance'), renderer, 'text' => 6)
+      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 6)
       column.set_sort_column_id(6)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 7)
+      column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 7)
       column.set_sort_column_id(7)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 8)
+      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 8)
       column.set_sort_column_id(8)
       list_tree.append_column(column)
 
@@ -12028,9 +12030,21 @@ module PandoraGtk
 
       list_sw.add(list_tree)
 
-      vbox.pack_start(hbox, false, true, 0)
+      lab_hbox = Gtk::HBox.new
+      image1 = Gtk::Image.new(Gtk::Stock::ORIENTATION_PORTRAIT, Gtk::IconSize::MENU)
+      image1.set_padding(2, 2)
+      image2 = Gtk::Image.new(Gtk::Stock::NETWORK, Gtk::IconSize::MENU)
+      image2.set_padding(2, 2)
+      align = Gtk::Alignment.new(0.0, 0.5, 0.0, 0.0)
+      label = Gtk::Label.new(_('Neighbors'))
+      align.add(label)
+      lab_hbox.pack_start(image1, false, false, 0)
+      lab_hbox.pack_start(image2, false, false, 0)
+      lab_hbox.pack_start(align, false, false, 0)
+      vbox.pack_start(lab_hbox, false, false, 0)
+      vbox.pack_start(hbox, false, false, 0)
       vbox.pack_start(list_sw, true, true, 0)
-      list_sw.show_all
+      vbox.show_all
 
       self.add_with_viewport(vbox)
       update_btn.clicked
@@ -13565,8 +13579,8 @@ module PandoraGtk
   def self.show_fish_panel
     hpaned = $window.fish_hpaned
     list_sw = hpaned.children[0]
-    if hpaned.position <= 10
-      list_sw.width_request = 250 if list_sw.width_request <= 1
+    if list_sw.allocation.width <= 24 #hpaned.position <= 20
+      list_sw.width_request = 250 if list_sw.width_request <= 24
       hpaned.position = list_sw.width_request
       list_sw.update_btn.clicked
     else

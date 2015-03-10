@@ -335,3 +335,4 @@ declared=>заявлены
 lined=>на связи
 linked=>связывался
 failed=>сбойные
+Neighbors=>Соседи
