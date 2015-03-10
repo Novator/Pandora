@@ -254,6 +254,8 @@ module PandoraUtils
             res[-1] = 'а'
           elsif ['а'].include? res[-1]
             res[-1] = 'ы'
+          elsif ['ая'].include? res[-2,2]
+            res[-2,2] = 'ые'
           elsif ['ь', 'я'].include? res[-1]
             res[-1] = 'и'
           elsif ['е'].include? res[-1]
