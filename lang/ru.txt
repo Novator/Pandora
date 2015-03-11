@@ -336,3 +336,4 @@ lined=>на связи
 linked=>связывался
 failed=>сбойные
 Neighbors=>Соседи
+Fish order is added=>Заявка на рыбалку добавлена
