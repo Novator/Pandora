@@ -13148,28 +13148,37 @@ module PandoraGtk
 
   # Get person panhash by any panhash
   # RU: Получить панхэш персоны по произвольному панхэшу
-  def self.extract_targets_from_panhash(targets, panhashes)
-    persons, keys, nodes = targets
+  def self.define_keys_and_nodes_by_panhashes(panhashes, keys=nil, nodes=nil)
+
+    # Add element to list
+    def add_elem(elems, ind, elem=nil)
+      elems[ind] = Array.new if elems[ind].nil?
+      elems[ind] << elem if (not elems[ind].include?(elem))
+    end
+
+    keys ||= Hash.new
+    nodes ||= Hash.new
+
+    #persons, keys, nodes = targets
     panhashes = [panhashes] if not panhashes.is_a? Array
     #p '--extract_targets_from_panhash  targets='+targets.inspect
+    # Sort out panhashes
     panhashes.each do |panhash|
       if (panhash.is_a? String) and (panhash.bytesize>0)
         kind = PandoraUtils.kind_from_panhash(panhash)
         panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
         if panobjectclass
           if panobjectclass <= PandoraModel::Person
-            persons << panhash
+            add_elem(keys, panhash)
           elsif panobjectclass <= PandoraModel::Node
-            nodes << panhash
-          else
-            if panobjectclass <= PandoraModel::Created
-              model = PandoraUtils.get_model(panobjectclass.ider)
-              filter = {:panhash=>panhash}
-              sel = model.select(filter, false, 'creator')
-              if sel and sel.size>0
-                sel.each do |row|
-                  persons << row[0]
-                end
+            add_elem(nodes, panhash)
+          elsif panobjectclass <= PandoraModel::Created
+            model = PandoraUtils.get_model(panobjectclass.ider)
+            filter = {:panhash => panhash}
+            sel = model.select(filter, false, 'creator')
+            if sel and sel.size>0
+              sel.each do |row|
+                add_elem(keys, row[0])
               end
             end
           end
