@@ -13368,13 +13368,15 @@ module PandoraGtk
   def self.show_talk_dialog(panhashes, known_node=nil)
     sw = nil
     p 'show_talk_dialog: [panhashes, known_node]='+[panhashes, known_node].inspect
-    targets = [[], [], []]
-    persons, keys, nodes = targets
+    persons = Array.new
+    keys = Array.new
+    nodes = Array.new
     if known_node and (panhashes.is_a? String)
       persons << panhashes
       nodes << known_node
     else
-      extract_targets_from_panhash(targets, panhashes)
+      #extract_targets_from_panhash(targets, panhashes)
+      keys, nodes = define_keys_and_nodes_by_panhashes(panhashes, keys, nodes)
     end
     if nodes.size==0
       extend_targets_by_relations(targets)
