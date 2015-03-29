@@ -383,6 +383,17 @@ module PandoraUtils
     res
   end
 
+  def self.simplify_single_array(array)
+    if array.is_a? Array
+      if array.size == 1
+        array = array[0]
+      elsif array.size == 0
+        array = nil
+      end
+    end
+    array
+  end
+
   # Kind from panhash
   # RU: Тип записи по панхэшу
   def self.kind_from_panhash(panhash)
@@ -4952,7 +4963,7 @@ module PandoraNet
     # Get a session by person panhash
     # RU: Возвращает сессию по панхэшу человека
     def sessions_of_person(person)
-      res = sessions.select { |s| (s.skey[PandoraCrypto::KV_Creator] == person) }
+      res = sessions.select { |s| (s.skey and (s.skey[PandoraCrypto::KV_Creator] == person)) }
       res
     end
 
@@ -5083,6 +5094,9 @@ module PandoraNet
     node_id=nil, person=nil, key_hash=nil, base_id=nil)
       p '-------init_session: '+[addr, nodehash, send_state_add, dialog, node_id, \
         person, key_hash, base_id].inspect
+      person = PandoraUtils.simplify_single_array(person)
+      key_hash = PandoraUtils.simplify_single_array(key_hash)
+      nodehash = PandoraUtils.simplify_single_array(nodehash)
       res = nil
       send_state_add ||= 0
       sessions = sessions_of_personkeybase(person, key_hash, base_id)
@@ -5101,6 +5115,7 @@ module PandoraNet
             session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
             if ((session.socket and (not session.socket.closed?)) or session.donor)
               session.dialog.online_button.safe_set_active(true)
+              session.dialog.online_button.widget.inconsistent = false
             end
           end
         end
@@ -5155,7 +5170,10 @@ module PandoraNet
     def stop_session(node=nil, person=nil, nodehash=nil, disconnect=nil)  #, wait_disconnect=true)
       res = false
       p 'stop_session1 nodehash='+nodehash.inspect
-      sessions = sessions_of_node(nodehash) if nodehash
+      person = PandoraUtils.simplify_single_array(person)
+      nodehash = PandoraUtils.simplify_single_array(nodehash)
+      sessions = Array.new
+      sessions << sessions_of_node(nodehash) if nodehash
       sessions << sessions_of_address(node) if node
       sessions << sessions_of_person(person) if person
       sessions.flatten!
@@ -6886,6 +6904,10 @@ module PandoraNet
       end
     end
 
+    def inited?
+      res = (@to_person != nil) and (@to_key != nil) and (@to_base_id != nil)
+    end
+
     # Number of messages per cicle
     # RU: Число сообщений за цикл
     $mes_block_count = 5
@@ -7034,9 +7056,11 @@ module PandoraNet
                 mykeyhash = PandoraCrypto.current_user_or_key(false)
                 pool.add_fish_order(self, mypersonhash, mykeyhash, pool.base_id, \
                   to_person, to_key, @recv_models)
-                while (not @donor) and (not @socket)
-                  p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
-                  Thread.stop
+                if inited?
+                  while (not @donor) and (not @socket)
+                    p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
+                    Thread.stop
+                  end
                 end
               else
                 @socket = false
@@ -7094,6 +7118,7 @@ module PandoraNet
               if self.dialog and (not self.dialog.destroyed?) and self.dialog.online_button \
               and ((self.socket and (not self.socket.closed?)) or self.donor)
                 self.dialog.online_button.safe_set_active(true)
+                self.dialog.online_button.widget.inconsistent = false
               end
             end
 
@@ -10017,10 +10042,15 @@ module PandoraGtk
     end
   end
 
+  CSI_Persons = 0
+  CSI_Keys    = 1
+  CSI_Nodes   = 2
+  CSI_PersonRecs = 3
+
   # Talk dialog
   # RU: Диалог разговора
   class DialogScrollWin < Gtk::ScrolledWindow
-    attr_accessor :room_id, :person, :online_button, :snd_button, :vid_button, :talkview, \
+    attr_accessor :room_id, :targets, :online_button, :snd_button, :vid_button, :talkview, \
       :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :has_unread, :person_name
 
@@ -10031,17 +10061,17 @@ module PandoraGtk
 
     # Show conversation dialog
     # RU: Показать диалог общения
-    def initialize(known_node, a_room_id, a_person)
+    def initialize(known_node, a_room_id, a_targets)
       super(nil, nil)
 
       @has_unread = false
       @room_id = a_room_id
-      @person = a_person
+      @targets = a_targets
       @recv_media_queue = Array.new
       @recv_media_pipeline = Array.new
       @appsrcs = Array.new
 
-      p 'TALK INIT [known_node, a_room_id, a_person]='+[known_node, a_room_id, a_person].inspect
+      p 'TALK INIT [known_node, a_room_id, a_targets]='+[known_node, a_room_id, a_targets].inspect
 
       model = PandoraUtils.get_model('Node')
 
@@ -10092,11 +10122,17 @@ module PandoraGtk
 
       @online_button = SafeCheckButton.new(_('Online'), true)
       online_button.safe_signal_clicked do |widget|
-        if widget.active?
+        if widget.active? and (not widget.inconsistent?)
           widget.safe_set_active(false)
-          $window.pool.init_session(nil, nil, 0, self, nil, @person)
+          widget.inconsistent = true
+          targets[CSI_Persons].each_with_index do |person, i|
+            $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
+              person, targets[CSI_Keys])
+          end
         else
-          $window.pool.stop_session(nil, @person, nil, false)
+          widget.safe_set_active(false)
+          widget.inconsistent = false
+          $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
         end
       end
       online_button.safe_set_active(known_node != nil)
@@ -10227,8 +10263,10 @@ module PandoraGtk
       #list_sw.visible = false
 
       list_store = Gtk::ListStore.new(TrueClass, String)
-      user_iter = list_store.append
-      user_iter[CL_Name] = PandoraUtils.bytes_to_hex(@person)
+      targets[CSI_Persons].each do |person|
+        user_iter = list_store.append
+        user_iter[CL_Name] = PandoraUtils.bytes_to_hex(person)
+      end
 
       # create tree view
       list_tree = Gtk::TreeView.new(list_store)
@@ -10342,7 +10380,7 @@ module PandoraGtk
         area_send.destroy if not area_send.destroyed?
         area_recv.destroy if not area_recv.destroyed?
 
-        $window.pool.stop_session(nil, @person, nil, false)
+        $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
       end
 
       page = $window.notebook.append_page(self, label_box)
@@ -10460,8 +10498,9 @@ module PandoraGtk
         mypanhash = PandoraCrypto.current_user_or_key(true)
         myname = PandoraCrypto.short_name_of_person(nil, mypanhash)
 
+        persons = targets[CSI_Persons]
         nil_create_time = false
-        if @person
+        persons.each do |person|
           model = PandoraUtils.get_model('Message')
           max_message2 = max_message
           max_message2 = max_message * 2 if (person == mypanhash)
@@ -10529,14 +10568,28 @@ module PandoraGtk
 
     # Get name and family
     # RU: Определить имя и фамилию
-    def get_name_and_family
+    # Get name and family
+    # RU: Определить имя и фамилию
+    def get_name_and_family(i)
+      person = nil
+      if i.is_a? String
+        person = i
+        i = targets[CSI_Persons].index(person)
+      else
+        person = targets[CSI_Persons][i]
+      end
       aname, afamily = '', ''
-      if @person
-        if @person_name
-          aname, afamily = person_name
+      if i and person
+        person_recs = targets[CSI_PersonRecs]
+        if not person_recs
+          person_recs = Array.new
+          targets[CSI_PersonRecs] = person_recs
+        end
+        if person_recs[i]
+          aname, afamily = person_recs[i]
         else
           aname, afamily = PandoraCrypto.name_and_family_of_person(nil, person)
-          @person_name = [aname, afamily]
+          person_recs[i] = [aname, afamily]
         end
       end
       [aname, afamily]
@@ -10573,8 +10626,7 @@ module PandoraGtk
         #Thread.pass
         time_now = Time.now.to_i
         state = 0
-        panhash = @person
-        if panhash
+        targets[CSI_Persons].each do |panhash|
           #p 'ADD_MESS panhash='+panhash.inspect
           values = {:destination=>panhash, :text=>text, :state=>state, \
             :creator=>creator, :created=>time_now, :modified=>time_now}
@@ -13138,47 +13190,33 @@ module PandoraGtk
     res.size
   end
 
-  CSI_Persons = 0
-  CSI_Keys    = 1
-  CSI_Nodes   = 2
-  CSI_PersonRecs = 3
-
   $key_watch_lim   = 5
   $sign_watch_lim  = 5
 
   # Get person panhash by any panhash
   # RU: Получить панхэш персоны по произвольному панхэшу
-  def self.define_keys_and_nodes_by_panhashes(panhashes, keys=nil, nodes=nil)
-
-    # Add element to list
-    def add_elem(elems, ind, elem=nil)
-      elems[ind] = Array.new if elems[ind].nil?
-      elems[ind] << elem if (not elems[ind].include?(elem))
-    end
-
-    keys ||= Hash.new
-    nodes ||= Hash.new
-
-    #persons, keys, nodes = targets
+  def self.extract_targets_from_panhash(targets, panhashes)
+    persons, keys, nodes = targets
     panhashes = [panhashes] if not panhashes.is_a? Array
     #p '--extract_targets_from_panhash  targets='+targets.inspect
-    # Sort out panhashes
     panhashes.each do |panhash|
       if (panhash.is_a? String) and (panhash.bytesize>0)
         kind = PandoraUtils.kind_from_panhash(panhash)
         panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
         if panobjectclass
           if panobjectclass <= PandoraModel::Person
-            add_elem(keys, panhash)
+            persons << panhash
           elsif panobjectclass <= PandoraModel::Node
-            add_elem(nodes, panhash)
-          elsif panobjectclass <= PandoraModel::Created
-            model = PandoraUtils.get_model(panobjectclass.ider)
-            filter = {:panhash => panhash}
-            sel = model.select(filter, false, 'creator')
-            if sel and sel.size>0
-              sel.each do |row|
-                add_elem(keys, row[0])
+            nodes << panhash
+          else
+            if panobjectclass <= PandoraModel::Created
+              model = PandoraUtils.get_model(panobjectclass.ider)
+              filter = {:panhash=>panhash}
+              sel = model.select(filter, false, 'creator')
+              if sel and sel.size>0
+                sel.each do |row|
+                  persons << row[0]
+                end
               end
             end
           end
@@ -13262,22 +13300,6 @@ module PandoraGtk
     nodes.size
   end
 
-  # Extend lists of persons, nodes and keys by relations
-  # RU: Расширить списки персон, узлов и ключей пройдясь по связям
-  def self.extend_targets_by_relations(targets)
-    added = 0
-    # need to copmose by relations
-    added
-  end
-
-  # Start a thread which is searching additional nodes and keys
-  # RU: Запуск потока, которые ищет дополнительные узлы и ключи
-  def self.start_extending_targets_by_hunt(targets)
-    started = true
-    # heen hunt with poll of nodes
-    started
-  end
-
   # Construct room id
   # RU: Создать идентификатор комнаты
   def self.construct_room_id(persons)
@@ -13335,7 +13357,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.3'
+    dlg.version = '0.4'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
@@ -13365,61 +13387,47 @@ module PandoraGtk
 
   # Show conversation dialog
   # RU: Показать диалог общения
-  def self.show_talk_dialog(panhashes, known_node=nil)
+  def self.show_talk_dialog(panhashes, nodehash=nil)
     sw = nil
-    p 'show_talk_dialog: [panhashes, known_node]='+[panhashes, known_node].inspect
-    persons = Array.new
-    keys = Array.new
-    nodes = Array.new
-    if known_node and (panhashes.is_a? String)
+    p 'show_talk_dialog: [panhashes, nodehash]='+[panhashes, nodehash].inspect
+    targets = [[], [], []]
+    persons, keys, nodes = targets
+    if nodehash and (panhashes.is_a? String)
       persons << panhashes
-      nodes << known_node
+      nodes << nodehash
     else
-      #extract_targets_from_panhash(targets, panhashes)
-      keys, nodes = define_keys_and_nodes_by_panhashes(panhashes, keys, nodes)
-    end
-    if nodes.size==0
-      extend_targets_by_relations(targets)
-    end
-    if nodes.size==0
-      start_extending_targets_by_hunt(targets)
+      extract_targets_from_panhash(targets, panhashes)
     end
     targets.each do |list|
       list.sort!
+      list.uniq!
+      list.compact!
     end
-    persons.uniq!
-    persons.compact!
-    keys.uniq!
-    keys.compact!
-    nodes.uniq!
-    nodes.compact!
     p 'targets='+targets.inspect
 
     if (persons.size>0) or (nodes.size>0) or (keys.size>0)
       room_id = construct_room_id(persons)
-      if known_node
+      if nodehash
         creator = PandoraCrypto.current_user_or_key(true)
         if (persons.size==1) and (persons[0]==creator)
           room_id[-1] = (room_id[-1].ord ^ 1).chr
         end
       end
-      if (persons.size>0)
-        person = persons[0]
-        p 'room_id='+room_id.inspect
-        $window.notebook.children.each do |child|
-          if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
-            child.person = person
-            child.online_button.safe_set_active(known_node != nil)
-            $window.notebook.page = $window.notebook.children.index(child) if (not known_node)
-            sw = child
-            break
-          end
-        end
-        if not sw
-          sw = DialogScrollWin.new(known_node, room_id, person)
+      p 'room_id='+room_id.inspect
+      $window.notebook.children.each do |child|
+        if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
+          child.targets = targets
+          child.online_button.safe_set_active(known_node != nil)
+          child.online_button.widget.inconsistent = false
+          $window.notebook.page = $window.notebook.children.index(child) if (not known_node)
+          sw = child
+          break
         end
       end
-    elsif (not known_node)
+      if not sw
+        sw = DialogScrollWin.new(nodehash, room_id, targets)
+      end
+    elsif (not nodehash)
       mes = ''
       mes = _('node') if nodes.size == 0
       if persons.size == 0
@@ -14123,11 +14131,11 @@ module PandoraGtk
     # RU: Задаёт осмысленный заголовок окна
     def construct_room_title(dialog, check_all=true)
       res = 'unknown'
-      person = dialog.person
-      if person
+      persons = dialog.targets[CSI_Persons]
+      if (persons.is_a? Array) and (persons.size>0)
         res = ''
-        if dialog.person
-          aname, afamily = dialog.get_name_and_family
+        persons.each_with_index do |person, i|
+          aname, afamily = dialog.get_name_and_family(i)
           addname = ''
           case @title_view
             when TV_Name, TV_NameN

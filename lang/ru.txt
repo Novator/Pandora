@@ -337,3 +337,4 @@ linked=>связывался
 failed=>сбойные
 Neighbors=>Соседи
 Fish order is added=>Заявка на рыбалку добавлена
+Somebody do with your data=>Некто действует под вашими данными
