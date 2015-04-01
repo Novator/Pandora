@@ -5115,7 +5115,7 @@ module PandoraNet
             session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
             if ((session.socket and (not session.socket.closed?)) or session.donor)
               session.dialog.online_button.safe_set_active(true)
-              session.dialog.online_button.widget.inconsistent = false
+              session.dialog.online_button.inconsistent = false
             end
           end
         end
@@ -5181,7 +5181,7 @@ module PandoraNet
       sessions.compact!
       if (sessions.is_a? Array) and (sessions.size>0)
         sessions.each do |session|
-          if session and (not session.destroyed?)
+          if (not session.nil?)
             session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
             session.conn_state = CS_StopRead if disconnect
           end
@@ -7118,7 +7118,7 @@ module PandoraNet
               if self.dialog and (not self.dialog.destroyed?) and self.dialog.online_button \
               and ((self.socket and (not self.socket.closed?)) or self.donor)
                 self.dialog.online_button.safe_set_active(true)
-                self.dialog.online_button.widget.inconsistent = false
+                self.dialog.online_button.inconsistent = false
               end
             end
 
@@ -13418,7 +13418,7 @@ module PandoraGtk
         if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
           child.targets = targets
           child.online_button.safe_set_active(known_node != nil)
-          child.online_button.widget.inconsistent = false
+          child.online_button.inconsistent = false
           $window.notebook.page = $window.notebook.children.index(child) if (not known_node)
           sw = child
           break
