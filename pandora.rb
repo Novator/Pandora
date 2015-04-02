@@ -6712,8 +6712,22 @@ module PandoraNet
                     p '--ECC_Query_Fish line='+line.inspect
                     if fisher_key and fisher_baseid and (fish or fish_key)
                       if (fisher_key != mykeyhash) or (fisher_baseid != pool.base_id)
-                        sessions = pool.sessions_of_key(fish_key)
-                        if sessions and (sessions.size>0)
+                        sessions = pool.sessions_of_person(fish)
+                        sessions << pool.sessions_of_key(fish_key)
+                        sessions.flatten!
+                        sessions.uniq!
+                        sessions.compact!
+                        if (fish == mypersonhash) or (mykeyhash == fish_key)
+                          p log_mes+'Fishing to me!='
+                          line << pool.base_id
+                          fisher_hook = get_line_hook(session, line)
+                          fish_hook = session.get_line_hook(self, line)
+                          line_raw = PandoraUtils.rubyobj_to_pson(line)
+                          session.add_send_segment(EC_News, true, fish_hook.chr + line_raw, \
+                            ECC_News_Hook)
+                          add_send_segment(EC_News, true, fisher_hook.chr + line_raw, \
+                            ECC_News_Hook)
+                        elsif sessions and (sessions.size>0)
                           sessions.each do |session|
                             p log_mes+'FOUND fish session='+session.inspect
                             fish_baseid = session.to_base_id
