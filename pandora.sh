@@ -45,14 +45,6 @@ if [ "$RUBY" = "" ]; then
   fi
 fi
 
-# OS dependent initialization
-case "$OSTYPE" in
-  darwin*)  #Macosx
-    DISPTH=`find /private/tmp -path /private/tmp/com.apple.launchd.*/org.macosforge.xquartz -print`
-    export DISPLAY=$DISPTH\:0
-    ;;
-esac
-
 # Make an action according to command line arguments
 case "$PARAMS" in
   help|h|--help|?|/?)
@@ -64,11 +56,6 @@ case "$PARAMS" in
     if [ -f "$RUBY" ]; then
       $RUBY ./pandora.rb --shell
     fi
-    ;;
-  init|install|--init|--install|-i)
-    echo "Installing Ruby and necessary packages with apt-get.."
-    sudo apt-get -y install ruby ruby-sqlite3 ruby-gtk2 ruby-gstreamer \
-      gstreamer0.10-ffmpeg gstreamer0.10-x openssl libopenssl-ruby
     ;;
   full|full-init|--full|--full-init|-fi)
     PANDORA_DIR="/opt/pandora"
@@ -99,6 +86,31 @@ case "$PARAMS" in
     # 13. Run Pandora
     $RUBY ./pandora.rb $@
     ;;
+  init|install|--init|--install|-i)
+    case "$OSTYPE" in
+      darwin*)  #Macosx
+        xcode-select --install
+        ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+        brew install gtk+
+        brew install sqlite3
+        brew install xquartz
+        brew install Caskroom/cask/xquartz
+        DISPTH=`find /private/tmp -path /private/tmp/com.apple.launchd.*/org.macosforge.xquartz -print`
+        export DISPLAY=$DISPTH\:0
+        sudo gem install sqlite3
+        sudo gem install gtk2
+        echo "It is recommended to reboot your computer."
+        ;;
+      linux*)
+        echo "Installing Ruby and necessary packages with apt-get.."
+        sudo apt-get -y install ruby ruby-sqlite3 ruby-gtk2 ruby-gstreamer \
+          gstreamer0.10-ffmpeg gstreamer0.10-x openssl libopenssl-ruby
+        ;;
+      *)
+        echo "You should install ruby, sqlite3 and gtk2 manually for: $OSTYPE"
+        ;;
+    esac
+    ;;
   gem-init|gem-install|--gem-init|--gem-install|-gi|--gem|gem)
     echo "Installing Ruby and necessary packages with apt-get and rubygem.."
     sudo apt-get -y install ruby gstreamer0.10-ffmpeg gstreamer0.10-x openssl rubygems
@@ -109,3 +121,4 @@ case "$PARAMS" in
     $RUBY ./pandora.rb $@
     ;;
 esac
+
