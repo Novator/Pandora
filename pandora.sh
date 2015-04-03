@@ -45,6 +45,13 @@ if [ "$RUBY" = "" ]; then
   fi
 fi
 
+# OS dependent initialization
+case "$OSTYPE" in
+  darwin*)  #Macosx
+    export DISPLAY=/private/tmp/com.apple.launchd.*/org.macosforge.xquartz\:0
+    ;;
+esac
+
 # Make an action according to command line arguments
 case "$PARAMS" in
   help|h|--help|?|/?)
