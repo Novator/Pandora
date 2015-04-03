@@ -5131,6 +5131,7 @@ module PandoraNet
           filter = {:panhash=>nodehash}
         end
         if filter
+          p 'filter='+filter.inspect
           sel = node_model.select(filter, false, 'addr, tport, domain, key_hash, id')
         end
         sel ||= Array.new
@@ -13431,9 +13432,9 @@ module PandoraGtk
       $window.notebook.children.each do |child|
         if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
           child.targets = targets
-          child.online_button.safe_set_active(known_node != nil)
+          child.online_button.safe_set_active(nodehash != nil)
           child.online_button.inconsistent = false
-          $window.notebook.page = $window.notebook.children.index(child) if (not known_node)
+          $window.notebook.page = $window.notebook.children.index(child) if (not nodehash)
           sw = child
           break
         end
