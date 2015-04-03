@@ -48,7 +48,8 @@ fi
 # OS dependent initialization
 case "$OSTYPE" in
   darwin*)  #Macosx
-    export DISPLAY=/private/tmp/com.apple.launchd.*/org.macosforge.xquartz\:0
+    DISPTH=`find /private/tmp -path /private/tmp/com.apple.launchd.*/org.macosforge.xquartz -print`
+    export DISPLAY=$DISPTH\:0
     ;;
 esac
 
