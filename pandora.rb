@@ -531,13 +531,13 @@ module PandoraUtils
   PT_Sym   = 6
   PT_Real  = 7
   # 8..14 - reserved for other types
-  PT_Unknown = 15
+  PT_Nil   = 15
   PT_Negative = 16
 
   # Convert string notation type to code of type
   # RU: Преобразует строковое представление типа в код типа
   def self.string_to_pantype(type)
-    res = PT_Unknown
+    res = PT_Nil
     case type
       when 'Integer', 'Word', 'Byte', 'Coord'
         res = PT_Int
@@ -931,7 +931,7 @@ module PandoraUtils
       neg = PT_Negative
       int = -int
     end
-    while (int>0xFF) and (count<8)
+    while (int>0) and (count<8)
       int = (int >> 8)
       count +=1
     end
@@ -954,7 +954,7 @@ module PandoraUtils
   # Convert ruby object to PSON (Pandora simple object notation)
   # RU: Конвертирует объект руби в PSON
   def self.rubyobj_to_pson(rubyobj)
-    type = PT_Unknown
+    type = PT_Nil
     count = 0
     data = AsciiString.new
     elem_size = nil
@@ -977,12 +977,8 @@ module PandoraUtils
         rubyobj = -rubyobj if neg
         data << PandoraUtils.bigint_to_bytes(rubyobj)
       when TrueClass, FalseClass
-        if rubyobj
-          data << [1].pack('C')
-        else
-          data << [0].pack('C')
-        end
         type = PT_Bool
+        type = type ^ PT_Negative if not rubyobj
       when Float
         data << [rubyobj].pack('D')
         elem_size = data.bytesize
@@ -995,22 +991,32 @@ module PandoraUtils
         type, count = encode_pson_type(PT_Array, elem_size)
       when Hash
         rubyobj = rubyobj.sort_by {|k,v| k.to_s}
+        elem_size = 0
         rubyobj.each do |a|
           data << rubyobj_to_pson(a[0]) << rubyobj_to_pson(a[1])
+          elem_size += 1
         end
-        elem_size = rubyobj.bytesize
         type, count = encode_pson_type(PT_Hash, elem_size)
+      when NilClass
+        type = PT_Nil
       else
-        puts 'Unknown elem type: ['+rubyobj.class.name+']'
+        puts 'rubyobj_to_pson: illegal ruby class ['+rubyobj.class.name+']'
     end
     res = AsciiString.new
     res << [type].pack('C')
-    data = AsciiString.new(data) if data.is_a? String
-    if elem_size
-      res << PandoraUtils.fill_zeros_from_left(PandoraUtils.bigint_to_bytes(elem_size), \
-        count+1) + data
-    else
-      res << PandoraUtils.fill_zeros_from_left(data, count+1)
+    if (data.is_a? String) and (count>0)
+      data = AsciiString.new(data)
+      if elem_size
+        if (elem_size == data.bytesize) or (rubyobj.is_a? Array) or (rubyobj.is_a? Hash)
+          res << PandoraUtils.fill_zeros_from_left( \
+            PandoraUtils.bigint_to_bytes(elem_size), count) + data
+        else
+          puts 'rubyobj_to_pson: elem_size<>data_size: '+elem_size.inspect+'<>'\
+            +data.bytesize.inspect + ' data='+data.inspect + ' rubyobj='+rubyobj.inspect
+        end
+      elsif data.bytesize>0
+        res << PandoraUtils.fill_zeros_from_left(data, count)
+      end
     end
     res = AsciiString.new(res)
   end
@@ -1024,45 +1030,51 @@ module PandoraUtils
     if data.bytesize>0
       type = data[0].ord
       len = 1
-      basetype, vlen, neg = decode_pson_type(type)
-      vlen += 1
-      if data.bytesize >= len+vlen
-        int = PandoraUtils.bytes_to_int(data[len, vlen])
+      basetype, count, neg = decode_pson_type(type)
+      if data.bytesize >= len+count
+        elem_size = 0
+        elem_size = PandoraUtils.bytes_to_int(data[len, count]) if count>0
         case basetype
           when PT_Int
-            val = int
+            val = elem_size
             val = -val if neg
-          when PT_Bool
-            val = (int != 0)
           when PT_Time
-            val = int
+            val = elem_size
             val = -val if neg
             val = Time.at(val)
+          when PT_Bool
+            if count>0
+              val = (elem_size != 0)
+            else
+              val = (not neg)
+            end
           when PT_Str, PT_Sym, PT_Real
-            pos = len+vlen
-            if pos+int>data.bytesize
-              int = data.bytesize-pos
+            pos = len+count
+            if pos+elem_size>data.bytesize
+              elem_size = data.bytesize-pos
             end
             val = ''
-            val << data[pos, int]
-            vlen += int
+            val << data[pos, elem_size]
+            count += elem_size
             if basetype == PT_Sym
-              val = data[pos, int].to_sym
+              val = data[pos, elem_size].to_sym
             elsif basetype == PT_Real
-              val = data[pos, int].unpack['D']
+              val = data[pos, elem_size].unpack['D']
             end
           when PT_Array, PT_Hash
             val = Array.new
-            int *= 2 if basetype == PT_Hash
-            while (data.bytesize-1-vlen>0) and (int>0)
-              int -= 1
-              aval, alen = pson_to_rubyobj(data[len+vlen..-1])
+            elem_size *= 2 if basetype == PT_Hash
+            while (data.bytesize-1-count>0) and (elem_size>0)
+              elem_size -= 1
+              aval, alen = pson_to_rubyobj(data[len+count..-1])
               val << aval
-              vlen += alen
+              count += alen
             end
             val = Hash[*val] if basetype == PT_Hash
+          else
+            puts 'pson_to_rubyobj: illegal pson type '+basetype.inspect
         end
-        len += vlen
+        len += count
       else
         len = data.bytesize
       end
@@ -5994,7 +6006,7 @@ module PandoraNet
           hook = i if i<=255
           @fishers[hook] = [session] + line if hook
         end
-        p log_mes+'=======get_line_hook  [session, line, hook]='+[session, line, hook].inspect
+        p log_mes+'=======get_line_hook  [session, line, hook]='+[session.to_key, line, hook].inspect
         hook
       end
 
@@ -6730,7 +6742,7 @@ module PandoraNet
                             ECC_News_Hook)
                         elsif sessions and (sessions.size>0)
                           sessions.each do |session|
-                            p log_mes+'FOUND fish session='+session.inspect
+                            p log_mes+'FOUND fish session='+session.to_key.inspect
                             fish_baseid = session.to_base_id
                             line << fish_baseid
                             fisher_hook = get_line_hook(session, line)
@@ -11941,6 +11953,36 @@ module PandoraGtk
     end
   end
 
+  # Creating menu item from its description
+  # RU: Создание пункта меню по его описанию
+  def self.create_menu_item(mi, treeview=nil)
+    menuitem = nil
+    if mi[0] == '-'
+      menuitem = Gtk::SeparatorMenuItem.new
+    else
+      text = _(mi[2])
+      #if (mi[4] == :check)
+      #  menuitem = Gtk::CheckMenuItem.new(mi[2])
+      #  label = menuitem.children[0]
+      #  #label.set_text(mi[2], true)
+      if mi[1]
+        menuitem = Gtk::ImageMenuItem.new(mi[1])
+        label = menuitem.children[0]
+        label.set_text(text, true)
+      else
+        menuitem = Gtk::MenuItem.new(text)
+      end
+      #if mi[3]
+      if (not treeview) and mi[3]
+        key, mod = Gtk::Accelerator.parse(mi[3])
+        menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE) if key
+      end
+      menuitem.name = mi[0]
+      menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget, treeview) }
+    end
+    menuitem
+  end
+
   # List of fishes
   # RU: Список рыб
   class FishScrollWin < Gtk::ScrolledWindow
@@ -12014,7 +12056,7 @@ module PandoraGtk
         if $window.pool
           $window.pool.notice_list.each do |no|
             sess_iter = list_store.append
-            sess_iter[0] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Person][2..-1])
+            sess_iter[0] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Person])
             sess_iter[1] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Key])
             sess_iter[2] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Baseid])
             sess_iter[3] = no[PandoraNet::NO_Notice_trust]
@@ -12081,6 +12123,61 @@ module PandoraGtk
 
       list_tree.signal_connect('row_activated') do |tree_view, path, column|
         # download and go to record
+      end
+
+      menu = Gtk::Menu.new
+      menu.append(PandoraGtk.create_menu_item(['Create', Gtk::Stock::NEW, _('Create'), 'Insert'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Edit', Gtk::Stock::EDIT, _('Edit'), 'Return'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['-', nil, nil], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Dialog', Gtk::Stock::MEDIA_PLAY, _('Dialog'), '<control>D'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Opinion', Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Relate', Gtk::Stock::INDEX, _('Relate'), '<control>R'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['-', nil, nil], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Convert', Gtk::Stock::CONVERT, _('Convert')], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Import', Gtk::Stock::OPEN, _('Import')], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Export', Gtk::Stock::SAVE, _('Export')], list_tree))
+      menu.show_all
+
+      list_tree.add_events(Gdk::Event::BUTTON_PRESS_MASK)
+      list_tree.signal_connect('button_press_event') do |widget, event|
+        if (event.button == 3)
+          menu.popup(nil, nil, event.button, event.time)
+        end
+      end
+
+      list_tree.signal_connect('key-press-event') do |widget, event|
+        res = true
+        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+          act_panobject(list_tree, 'Edit')
+        elsif (event.keyval==Gdk::Keyval::GDK_Insert)
+          if event.state.control_mask?
+            act_panobject(list_tree, 'Copy')
+          else
+            act_panobject(list_tree, 'Create')
+          end
+        elsif (event.keyval==Gdk::Keyval::GDK_Delete)
+          act_panobject(list_tree, 'Delete')
+        elsif event.state.control_mask?
+          if [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
+            #act_panobject(list_tree, 'Dialog')
+            path, column = list_tree.cursor
+            if path
+              iter = list_store.get_iter(path)
+              person = nil
+              person = iter[0] if iter
+              person = PandoraUtils.hex_to_bytes(person)
+              PandoraGtk.show_talk_dialog(person) if person
+            end
+          else
+            res = false
+          end
+        else
+          res = false
+        end
+        res
       end
 
       list_sw.add(list_tree)
@@ -12260,36 +12357,6 @@ module PandoraGtk
         widget_to_focus.grab_focus
       end
     end
-  end
-
-  # Creating menu item from its description
-  # RU: Создание пункта меню по его описанию
-  def self.create_menu_item(mi, treeview=nil)
-    menuitem = nil
-    if mi[0] == '-'
-      menuitem = Gtk::SeparatorMenuItem.new
-    else
-      text = _(mi[2])
-      #if (mi[4] == :check)
-      #  menuitem = Gtk::CheckMenuItem.new(mi[2])
-      #  label = menuitem.children[0]
-      #  #label.set_text(mi[2], true)
-      if mi[1]
-        menuitem = Gtk::ImageMenuItem.new(mi[1])
-        label = menuitem.children[0]
-        label.set_text(text, true)
-      else
-        menuitem = Gtk::MenuItem.new(text)
-      end
-      #if mi[3]
-      if (not treeview) and mi[3]
-        key, mod = Gtk::Accelerator.parse(mi[3])
-        menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE) if key
-      end
-      menuitem.name = mi[0]
-      menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget, treeview) }
-    end
-    menuitem
   end
 
   # Set statusbat text
