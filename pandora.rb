@@ -6731,20 +6731,26 @@ module PandoraNet
                         sessions.uniq!
                         sessions.compact!
                         if (fish == mypersonhash) or (mykeyhash == fish_key)
-                          p log_mes+'Fishing to me!='
+                          p log_mes+'Fishing to me!='+session.to_key.inspect
                           line << pool.base_id
-                          fisher_hook = get_line_hook(session, line)
-                          fish_hook = session.get_line_hook(self, line)
+                          p log_mes+' line='+line.inspect
                           line_raw = PandoraUtils.rubyobj_to_pson(line)
-                          session.add_send_segment(EC_News, true, fish_hook.chr + line_raw, \
-                            ECC_News_Hook)
                           add_send_segment(EC_News, true, fisher_hook.chr + line_raw, \
                             ECC_News_Hook)
+                          sessions.each do |session|
+                            fisher_hook = get_line_hook(session, line)
+                            fish_hook = session.get_line_hook(self, line)
+                            session.add_send_segment(EC_News, true, fish_hook.chr + line_raw, \
+                              ECC_News_Hook)
+                          end
                         elsif sessions and (sessions.size>0)
+                          # sessions are found by fish order (fish session)
+                          bi = line.size
                           sessions.each do |session|
                             p log_mes+'FOUND fish session='+session.to_key.inspect
                             fish_baseid = session.to_base_id
-                            line << fish_baseid
+                            line[bi] = fish_baseid
+                            p log_mes+' line='+line.inspect
                             fisher_hook = get_line_hook(session, line)
                             fish_hook = session.get_line_hook(self, line)
                             line_raw = PandoraUtils.rubyobj_to_pson(line)
@@ -6754,10 +6760,11 @@ module PandoraNet
                               ECC_News_Hook)
                           end
                         else
+                          p log_mes+'RESEND fish order: line='+line.inspect
                           pool.add_fish_order(self, *line, @recv_models)
                         end
                       else
-                        PandoraUtils.log_message(LM_Warning, _('Somebody do with your data'))
+                        PandoraUtils.log_message(LM_Warning, _('Somebody uses your ID'))
                       end
                     end
                   else #запрос сорта (1-254) или всех сортов (255)
@@ -6815,12 +6822,13 @@ module PandoraNet
                     # по заявке найдена рыбка, ей присвоен номер
                     hook = rdata[0].ord
                     line_raw = rdata[1..-1]
-                    line, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    fisher_key, fisher_baseid, fish_key, fish_baseid = line
+                    line, len = PandoraUtils.pson_to_rubyobj(line_raw)
+                    fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid = line
                     if len>0
                       # данные корректны
                       p log_mes+'--ECC_News_Hook line='+line.inspect
 
+                      #???????!!!  fish? fisher?
                       if (fish_key == mykeyhash) and (fish_baseid == pool.to_base_id)
                         # это узел-рыбка, нужно найти/создать рыбацкую сессию
                         session = pool.session_of_keybase(fisher_key, fisher_baseid)
