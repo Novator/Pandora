@@ -5100,6 +5100,24 @@ module PandoraNet
       res
     end
 
+    def connect_sessions_to_hook(sessions, donor, hook, fisher=false)
+      res = false
+      if (sessions.is_a? Array) and (sessions.size>0)
+        i = 0
+        while (i<sessions.size) and (not res)
+          session = sessions[i]
+          sthread = session.send_thread
+          if session.socket.nil? and sthread and sthread.alive?
+            session.donor = donor
+            sthread.run if sthread.stop?
+            res = true
+          end
+          i += 1
+        end
+      end
+      res
+    end
+
     # Find or create session with necessary node
     # RU: Находит или создает соединение с нужным узлом
     def init_session(addr=nil, nodehash=nil, send_state_add=nil, dialog=nil, \
@@ -6730,9 +6748,12 @@ module PandoraNet
                         sessions.flatten!
                         sessions.uniq!
                         sessions.compact!
-                        if (fish == mypersonhash) or (mykeyhash == fish_key)
+                        bi = line.size
+                        if (fish == mypersonhash) or (fish_key == mykeyhash)
                           p log_mes+'Fishing to me!='+session.to_key.inspect
-                          line << pool.base_id
+                          line[bi-2] ||= mypersonhash
+                          line[bi-1] ||= mykeyhash
+                          line[bi] = pool.base_id
                           p log_mes+' line='+line.inspect
                           line_raw = PandoraUtils.rubyobj_to_pson(line)
                           add_send_segment(EC_News, true, fisher_hook.chr + line_raw, \
@@ -6745,11 +6766,11 @@ module PandoraNet
                           end
                         elsif sessions and (sessions.size>0)
                           # sessions are found by fish order (fish session)
-                          bi = line.size
                           sessions.each do |session|
                             p log_mes+'FOUND fish session='+session.to_key.inspect
-                            fish_baseid = session.to_base_id
-                            line[bi] = fish_baseid
+                            line[bi-2] = session.to_person if (not fish)
+                            line[bi-1] = session.to_key if (not fish_key)
+                            line[bi] = session.to_base_id
                             p log_mes+' line='+line.inspect
                             fisher_hook = get_line_hook(session, line)
                             fish_hook = session.get_line_hook(self, line)
@@ -6827,22 +6848,29 @@ module PandoraNet
                     if len>0
                       # данные корректны
                       p log_mes+'--ECC_News_Hook line='+line.inspect
-
-                      #???????!!!  fish? fisher?
-                      if (fish_key == mykeyhash) and (fish_baseid == pool.to_base_id)
-                        # это узел-рыбка, нужно найти/создать рыбацкую сессию
-                        session = pool.session_of_keybase(fisher_key, fisher_baseid)
+                      if fish and (fish == mypersonhash) or \
+                        fish_key and (fish_key == mykeyhash) or
+                      fish_baseid and (fish_baseid == pool.base_id)
+                        p '!!это узел-рыбка, найти/создать сессию рыбака'
+                        sessions = pool.sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
                         #pool.init_session(node, tokey, nil, nil, node_id)
-                        session ||= Session.new(self, nil, hook, nil, nil, \
-                          CS_Connected, nil, nil, nil, nil)
-                      elsif (fisher_key == mykeyhash) and (fisher_baseid == pool.to_base_id)
-                        # это узел-рыбак, нужно найти и разбудить рыб. сессию
-                        session = pool.session_of_keybase(fish_key, fish_baseid)
-                        session ||= Session.new(self, hook, nil, nil, nil, \
-                          CS_Connected, nil, nil, nil, nil)
+                        #Tsaheylu
+                        if not pool.connect_sessions_to_hook(sessions, self, hook, true)
+                          session ||= Session.new(self, nil, hook, nil, nil, \
+                            CS_Connected, nil, nil, nil, nil)
+                        end
+                      elsif (fisher == mypersonhash) and \
+                        (fisher_key == mykeyhash) and \
+                      (fisher_baseid == pool.base_id)
+                        p '!!это узел-рыбак, найти/создать сессию рыбки'
+                        sessions = pool.sessions_of_personkeybase(fish, fish_key, fish_baseid)
+                        if not pool.connect_sessions_to_hook(sessions, self, hook, false)
+                          session ||= Session.new(self, hook, nil, nil, nil, \
+                            CS_Connected, nil, nil, nil, nil)
+                        end
                       else
-                        # это узел-посредник, нужно пробросить по истории заявок
-                        fish_orders = pool.find_fish_order(*line)
+                        p '!!это узел-посредник, пробросить по истории заявок'
+                        fish_orders = pool.find_fish_order(*line[0..4])
                         fish_orders.each do |fo|
                           sess = fo[PandoraNet::FO_Session]
                           if sess and (not sess.destroyed?)
@@ -7091,12 +7119,12 @@ module PandoraNet
                 mykeyhash = PandoraCrypto.current_user_or_key(false)
                 pool.add_fish_order(self, mypersonhash, mykeyhash, pool.base_id, \
                   to_person, to_key, @recv_models)
-                if inited?
+                #if inited?
                   while (not @donor) and (not @socket)
                     p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
                     Thread.stop
                   end
-                end
+                #end
               else
                 @socket = false
                 PandoraUtils.log_message(LM_Trace, _('Session breaks bz of no person and key panhashes'))
