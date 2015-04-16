@@ -6011,7 +6011,7 @@ module PandoraNet
 
       # Get hook for line
       # RU: Взять крючок для лески
-      def get_line_hook(session, line)
+      def get_line_hook(socket, session, line, fish_ind, sock_hook, my_hook, sess_hook)
         hook = @fishers.index(line)
         #fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid
         if not hook
