@@ -38,7 +38,7 @@ git commit -a -m "version 0.4 alpha"
 #git push -u gitorious master
 #git push -u github master
 git push -u bitbuc develop
-git push -u gitorious develop
+#git push -u gitorious develop
 git push -u github develop
 
 ##Cancel last commit without cancel code
