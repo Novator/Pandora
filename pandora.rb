@@ -213,7 +213,7 @@ module PandoraUtils
     end
 
     # RU: Есть конечный пробел или табуляция?
-    def self.there_are_end_space?(str)
+    def self.end_space_exist?(str)
       lastchar = str[str.size-1, 1]
       (lastchar==' ') or (lastchar=="\t")
     end
@@ -224,7 +224,7 @@ module PandoraUtils
       $lang_trans.each do |value|
         if (not value[0].index('"')) and (not value[1].index('"')) \
           and (not value[0].index("\n")) and (not value[1].index("\n")) \
-          and (not there_are_end_space?(value[0])) and (not there_are_end_space?(value[1]))
+          and (not end_space_exist?(value[0])) and (not end_space_exist?(value[1]))
         then
           str = value[0]+'=>'+value[1]
         else
@@ -5306,7 +5306,7 @@ module PandoraNet
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
-      :entered_captcha, :captcha_sw, :hooks, :fishes, :fishers, :fish_ind, :notice_ind, \
+      :entered_captcha, :captcha_sw, :hooks, :fish_ind, :notice_ind, \
       :sess_trust, :sess_mode, :notice
 
     # Set socket options
@@ -5672,7 +5672,10 @@ module PandoraNet
       end
     end
 
-    FH_Session    = 0
+    LHI_Line       = 0
+    LHI_Session    = 1
+    LHI_Far_Hook   = 2
+    LHI_Sess_Hook  = 3
 
     # Accept received segment
     # RU: Принять полученный сегмент
@@ -6011,21 +6014,45 @@ module PandoraNet
 
       # Get hook for line
       # RU: Взять крючок для лески
-      def get_line_hook(socket, session, line, fish_ind, sock_hook, my_hook, sess_hook)
-        hook = @fishers.index(line)
+      def init_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, socket=nil, fo_ind=nil)
+        rec = nil
+        # find existing rec
+        if (not hook) and far_hook
+          hook = @hooks.index {|rec| (rec[LHI_Far_Hook]==far_hook)}
+        elsif (not hook) and sess_hook
+          hook = @hooks.index {|rec| (rec[LHI_Sess_Hook]==sess_hook)}
+        elsif (not hook) and (line and session)
+          my_hook = @hooks.index {|rec| (rec[0]==line) and (rec[1]==session)}
+        end
         #fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid
+        # init empty rec
         if not hook
           i = 0
-          while (i<@fishers.size)
-            break if (not @fishers[i].is_a? Array) or (@fishers[i][FH_Session].nil?) \
-              or (@fishers[i][FH_Session].destroyed?)
+          while (i<@hooks.size) and (i<=255)
+            break if (not @hooks[i].is_a? Array) or (@hooks[i][LHI_Session].nil?) \
+              or (@hooks[i][LHI_Session].destroyed?)  #.closed?
             i += 1
           end
-          hook = i if i<=255
-          @fishers[hook] = [session] + line if hook
+          if i<=255
+            hook = i
+            rec = @hooks[hook]
+            rec.clear if rec
+          end
         end
-        p log_mes+'=======get_line_hook  [session, line, hook]='+[session.to_key, line, hook].inspect
-        hook
+        # fill rec
+        if hook
+          rec ||= @hooks[hook]
+          if not rec
+            rec = Array.new
+            @hooks[hook] = rec
+          end
+          rec[LHI_Line] ||= line if line
+          rec[LHI_Session] ||= session if session
+          rec[LHI_Far_Hook] ||= far_hook if far_hook
+          rec[LHI_Sess_Hook] ||= sess_hook if sess_hook
+        end
+        p log_mes+'=======get_line_rec  [session, line, hook]='+[session.to_key, hook, rec].inspect
+        [hook, rec]
       end
 
       # Take out lure by input lure for the fisher
@@ -6742,50 +6769,64 @@ module PandoraNet
                     fisher, fisher_key, fisher_baseid, fish, fish_key = line
                     p '--ECC_Query_Fish line='+line.inspect
                     if fisher_key and fisher_baseid and (fish or fish_key)
-                      if (fisher_key != mykeyhash) or (fisher_baseid != pool.base_id)
-                        sessions = pool.sessions_of_person(fish)
-                        sessions << pool.sessions_of_key(fish_key)
-                        sessions.flatten!
-                        sessions.uniq!
-                        sessions.compact!
+                      if (fisher_key == mykeyhash) and (fisher_baseid == pool.base_id)
+                        PandoraUtils.log_message(LM_Warning, _('Somebody uses your ID'))
+                      else
                         bi = line.size
-                        if (fish == mypersonhash) or (fish_key == mykeyhash)
+                        if false and ((fish == mypersonhash) or (fish_key == mykeyhash))
                           p log_mes+'Fishing to me!='+session.to_key.inspect
+                          # find existing (sleep) sessions
+                          sessions = sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
+                          if (not sessions.is_a? Array) or (sessions.size==0)
+                            sessions = Session.new
+                          end
                           line[bi-2] ||= mypersonhash
                           line[bi-1] ||= mykeyhash
                           line[bi] = pool.base_id
                           p log_mes+' line='+line.inspect
                           line_raw = PandoraUtils.rubyobj_to_pson(line)
-                          add_send_segment(EC_News, true, fisher_hook.chr + line_raw, \
-                            ECC_News_Hook)
-                          sessions.each do |session|
-                            fisher_hook = get_line_hook(session, line)
-                            fish_hook = session.get_line_hook(self, line)
-                            session.add_send_segment(EC_News, true, fish_hook.chr + line_raw, \
+                          session = connect_sessions_to_hook(self, hook)
+                          hook, rec = get_line_rec(line, session)
+                          if my_hook
+                            add_send_segment(EC_News, true, my_hook.chr + line_raw, \
                               ECC_News_Hook)
                           end
-                        elsif sessions and (sessions.size>0)
-                          # sessions are found by fish order (fish session)
+                          # sessions.each do |session|
+                          #    hook, rec = session.init_line(line, self, nil, nil, my_hook)
+                          #    session.add_send_segment(EC_News, true, hook.chr + line_raw, \
+                          #      ECC_News_Hook)
+                          #  end
+                          #end
+                        end
+                        sessions = pool.sessions_of_person(fish)
+                        sessions << pool.sessions_of_key(fish_key)
+                        sessions.flatten!
+                        sessions.uniq!
+                        sessions.compact!
+                        if sessions and (sessions.size>0)
                           sessions.each do |session|
                             p log_mes+'FOUND fish session='+session.to_key.inspect
                             line[bi-2] = session.to_person if (not fish)
                             line[bi-1] = session.to_key if (not fish_key)
                             line[bi] = session.to_base_id
                             p log_mes+' line='+line.inspect
-                            fisher_hook = get_line_hook(session, line)
-                            fish_hook = session.get_line_hook(self, line)
-                            line_raw = PandoraUtils.rubyobj_to_pson(line)
-                            session.add_send_segment(EC_News, true, fish_hook.chr + line_raw, \
-                              ECC_News_Hook)
-                            add_send_segment(EC_News, true, fisher_hook.chr + line_raw, \
-                              ECC_News_Hook)
+                            my_hook, rec = init_line(line, session)
+                            if my_hook
+                              sess_hook, rec = session.init_line(line, self, nil, nil, my_hook)
+                              if sess_hook
+                                init_line(line, session, nil, nil, my_hook, sess_hook)
+                                line_raw = PandoraUtils.rubyobj_to_pson(line)
+                                session.add_send_segment(EC_News, true, sess_hook.chr + line_raw, \
+                                  ECC_News_Hook)
+                                add_send_segment(EC_News, true, my_hook.chr + line_raw, \
+                                  ECC_News_Hook)
+                              end
+                            end
                           end
                         else
                           p log_mes+'RESEND fish order: line='+line.inspect
                           pool.add_fish_order(self, *line, @recv_models)
                         end
-                      else
-                        PandoraUtils.log_message(LM_Warning, _('Somebody uses your ID'))
                       end
                     end
                   else #запрос сорта (1-254) или всех сортов (255)
@@ -7007,7 +7048,7 @@ module PandoraNet
       @fish_ind       = 0
       @notice_ind     = 0
       #@fishes         = Array.new
-      @fishers        = Array.new
+      @hooks          = Array.new
       @read_queue     = PandoraUtils::RoundQueue.new
       @send_queue     = PandoraUtils::RoundQueue.new
       @confirm_queue  = PandoraUtils::RoundQueue.new
