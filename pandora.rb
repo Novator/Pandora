@@ -6786,7 +6786,7 @@ module PandoraNet
                           p log_mes+' line='+line.inspect
                           line_raw = PandoraUtils.rubyobj_to_pson(line)
                           session = connect_sessions_to_hook(self, hook)
-                          hook, rec = get_line_rec(line, session)
+                          hook, rec = init_line(line, session)
                           if my_hook
                             add_send_segment(EC_News, true, my_hook.chr + line_raw, \
                               ECC_News_Hook)
@@ -6833,14 +6833,14 @@ module PandoraNet
                     afrom_data = rdata
                     akind = rcode
                     if (akind == ECC_Query255_AllChanges)
-                      pkind=3 #отправка первого кайнда из серии
+                      pkind = 3 #отправка первого кайнда из серии
                     else
-                      pkind=akind  #отправка только запрашиваемого
+                      pkind = akind  #отправка только запрашиваемого
                     end
-                    @scmd=EC_News
-                    pnoticecount=3
-                    @scode=pkind
-                    @sbuf=[pnoticecount].pack('N')
+                    @scmd = EC_News
+                    pnoticecount = 3
+                    @scode = pkind
+                    @sbuf = [pnoticecount].pack('N')
                 end
               when EC_News
                 case rcode
@@ -6890,7 +6890,7 @@ module PandoraNet
                       # данные корректны
                       p log_mes+'--ECC_News_Hook line='+line.inspect
                       if fish and (fish == mypersonhash) or \
-                        fish_key and (fish_key == mykeyhash) or
+                      fish_key and (fish_key == mykeyhash) or
                       fish_baseid and (fish_baseid == pool.base_id)
                         p '!!это узел-рыбка, найти/создать сессию рыбака'
                         sessions = pool.sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
@@ -6901,7 +6901,7 @@ module PandoraNet
                             CS_Connected, nil, nil, nil, nil)
                         end
                       elsif (fisher == mypersonhash) and \
-                        (fisher_key == mykeyhash) and \
+                      (fisher_key == mykeyhash) and \
                       (fisher_baseid == pool.base_id)
                         p '!!это узел-рыбак, найти/создать сессию рыбки'
                         sessions = pool.sessions_of_personkeybase(fish, fish_key, fish_baseid)
@@ -9276,6 +9276,10 @@ module PandoraGtk
       @view_buffer.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
       @view_buffer.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
       @view_buffer.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
+
+      @view_buffer.signal_connect('changed') do |widget|
+        p 'changed'
+      end
 
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Type', true) do |btn|
         @view_mode = btn.active?
