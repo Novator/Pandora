@@ -332,6 +332,7 @@
     <section_net desc="Network" type="Word" section="0" setting="4" />
     <section_crypto desc="Crypto" type="Word" section="0" setting="5" />
     <section_media desc="Media" type="Word" section="0" setting="6" />
+    <section_editor desc="Editor" type="Word" section="0" setting="7" />
 
     <base_id desc="Base ID" type="String" section="common" setting="[create_base_id],hex" />
 
@@ -465,6 +466,21 @@
     <audio_phones_win desc="Audio Windows output" type="String" section="media" setting="autoaudiosink" />
     <audio_phones desc="Audio output" type="String" section="media" setting="audio_phones_auto" />
 
+    <mono_font desc="Mono font" type="String" section="editor" setting="Monospace|11" />
+    <default_style desc="Default style" type="String" section="editor" setting="#ffff33|#000000" />
+    <string_style desc="String style" type="String" section="editor" setting="#00f000" />
+    <symbol_style desc="Symbol style" type="String" section="editor" setting="#008020" />
+    <comment_style desc="Comment style" type="String" section="editor" setting="#8080e0" />
+    <keyword_style desc="Keyword style" type="String" section="editor" setting="#ffffff[b]" />
+    <function_style desc="Function style" type="String" section="editor" setting="#f12111" />
+    <number_style desc="Number style" type="String" section="editor" setting="#e050e0" />
+    <constant_style desc="Constant style" type="String" section="editor" setting="#60eedd" />
+    <big_constant_style desc="Big constant style" type="String" section="editor" setting="#d030d0" />
+    <identifer_style desc="Identifer style" type="String" section="editor" setting="#ffff33" />
+    <operator_style desc="Operator style" type="String" section="editor" setting="#ffffff" />
+    <class_style desc="Class style" type="String" section="editor" setting="#ff1100" />
+    <module_style desc="Module style" type="String" section="editor" setting="#1111ff" />
+    <regex_style desc="Regex style" type="String" section="editor" setting="#105090" />
   </Defaults>
 
 </pandora-model>

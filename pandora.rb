@@ -9241,6 +9241,52 @@ module PandoraGtk
       widget
     end
 
+    RESERVED_WORDS = %w(begin end module class def if then else while unless do case when require yield)
+    RESERVED_WORDS_PATTERN = Regexp.compile(/(^|\s+)(#{RESERVED_WORDS.collect do |pat| Regexp.quote(pat) end.join('|')})(\s+|$)/)
+
+    def tokenize(str, index = 0)
+      until str.empty?
+        tag = nil
+
+        case str
+          when /#.*$/
+            tag = :italic
+          when /".+?"/, /'.+?'/
+            tag = :undline
+          when RESERVED_WORDS_PATTERN
+            tag = :bold
+          when /[A-Z][A-Za-z0-9_]+/
+            tag = :strike
+        end
+
+        if tag
+          tokenize($~.pre_match, index) do |*args|
+            yield(*args)
+          end
+          yield(tag, index + $~.begin(0), index + $~.end(0))
+          index += (str.length - $~.post_match.length)
+          str = $~.post_match
+        else
+          index += str.length
+          str = ''
+        end
+      end
+    end
+
+    def set_tags(buf, iter1, iter2)
+      text = buf.get_text(iter1, iter2)
+      offset1 = iter1.offset
+      p 'changed '+offset1.inspect+'/'+iter2.offset.inspect+':'+text
+      buf.remove_all_tags(iter1, iter2)
+      #buf.apply_tag('bold', iter1, buf.get_iter_at_offset(iter2.offset-2))
+
+      tokenize(text) do |tag, start, last|
+        buf.apply_tag(tag.to_s,
+          buf.get_iter_at_offset(offset1+start),
+          buf.get_iter_at_offset(offset1+last))
+      end
+    end
+
     # Create fields dialog
     # RU: Создать форму с полями
     def initialize(apanobject, afields=[], *args)
@@ -9277,8 +9323,18 @@ module PandoraGtk
       @view_buffer.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
       @view_buffer.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
 
-      @view_buffer.signal_connect('changed') do |widget|
-        p 'changed'
+      @view_buffer.signal_connect('changed') do |buf|
+        mark = buf.get_mark('insert')
+        iter = buf.get_iter_at_mark(mark)
+        line1 = iter.line
+        iter1 = buf.get_iter_at_line(line1)
+        line2 = line1+1
+        if line2<buf.line_count
+          iter2 = buf.get_iter_at_offset(buf.get_iter_at_line(line2).offset-1)
+        else
+          iter2 = buf.end_iter
+        end
+        set_tags(buf, iter1, iter2)
       end
 
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Type', true) do |btn|
