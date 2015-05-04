@@ -9252,9 +9252,9 @@ module PandoraGtk
     RESERVED_WORDS_PATTERN = Regexp.compile(/(^|\s+)(#{RESERVED_WORDS.collect do |pat| Regexp.quote(pat) end.join('|')})(\s+|$)/)
 
     def tokenize(str, index = 0)
+      word = nil
       until str.empty?
         tag = nil
-
         case str
           when /#.*$/
             tag = :comment
@@ -9262,22 +9262,57 @@ module PandoraGtk
             tag = :string
           when RESERVED_WORDS_PATTERN
             tag = :keyword
-          when /[A-Z][A-Za-z0-9]+/
-            i = 1
-            word = $~.to_s
-            while (i<word.size) and (not ('a'..'z').include?(word[i]))
-              i += 1
-            end
-            if i<word.size
-              tag = :constant
+          when /\/.*?[^\\]\//
+            tag = :regex
+          when /[A-Z][A-Za-z0-9_]*/
+            if word=='class '
+              tag = :class
+            elsif word=='module '
+              tag = :module
             else
-              tag = :big_constant
+              i = 1
+              w = $~.to_s
+              while (i<w.size) and (not ('a'..'z').include?(w[i]))
+                i += 1
+              end
+              if i<w.size
+                tag = :constant
+              else
+                tag = :big_constant
+              end
             end
+          when /[:][A-Za-z0-9_]+/
+            tag = :symbol
+          when /[0-9][ex0-9\.]*/
+            tag = :number
+          when /[a-z_][a-z0-9_]*/
+            if word=='def '
+              if $~.to_s == 'self'
+                tag = :keyword2
+              else
+                tag = :function
+              end
+            else
+              if word == 'def.self'
+                tag = :function
+              elsif $~.to_s == 'self'
+                tag = :keyword2
+              else
+                tag = :identifer
+              end
+            end
+          when /[\.\+,\-\\\/=*\^%$()<>&]+/
+            tag = :operator
         end
-
         if tag
-          p [str, tag, $~.to_s, $~.pre_match, $~.post_match]
-          tokenize($~.pre_match, index) do |*args|
+          pre = $~.pre_match
+          if (tag == :keyword2) and (word == 'def ')
+            word = 'def.self'
+          else
+            word = $~.to_s
+          end
+          p [str, tag, word, pre, $~.post_match, word]
+          tokenize(pre, index) do |*args|
             yield(*args)
           end
           yield(tag, index + $~.begin(0), index + $~.end(0))
@@ -9286,6 +9321,7 @@ module PandoraGtk
         else
           index += str.length
           str = ''
+          word = nil
         end
       end
     end
@@ -9344,10 +9380,11 @@ module PandoraGtk
       @view_buffer.create_tag('symbol', {'foreground' => '#008020'})
       @view_buffer.create_tag('comment', {'foreground' => '#8080e0'})
       @view_buffer.create_tag('keyword', {'foreground' => '#ffffff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+      @view_buffer.create_tag('keyword2', {'foreground' => '#ffffff'})
       @view_buffer.create_tag('function', {'foreground' => '#f12111'})
       @view_buffer.create_tag('number', {'foreground' => '#e050e0'})
       @view_buffer.create_tag('constant', {'foreground' => '#60eedd'})
-      @view_buffer.create_tag('big_constant', {'foreground' => '#d030d0'})
+      @view_buffer.create_tag('big_constant', {'foreground' => '#5090f0'})
       @view_buffer.create_tag('identifer', {'foreground' => '#ffff33'})
       @view_buffer.create_tag('operator', {'foreground' => '#ffffff'})
       @view_buffer.create_tag('class', {'foreground' => '#ff1100'})
