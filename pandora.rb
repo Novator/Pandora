@@ -9130,8 +9130,15 @@ module PandoraGtk
         end
 
         if @view_mode
+          font_desc = Pango::FontDescription.new('Monospace 11')
+          tv.modify_font(font_desc)
+          tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+          tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
           set_view_buffer(@format, @view_buffer, @raw_buffer)
         else
+          tv.modify_font(nil)
+          tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
+          tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
           set_raw_buffer(@format, @raw_buffer, @view_buffer)
         end
       end
@@ -9250,16 +9257,26 @@ module PandoraGtk
 
         case str
           when /#.*$/
-            tag = :italic
+            tag = :comment
           when /".+?"/, /'.+?'/
-            tag = :undline
+            tag = :string
           when RESERVED_WORDS_PATTERN
-            tag = :bold
-          when /[A-Z][A-Za-z0-9_]+/
-            tag = :strike
+            tag = :keyword
+          when /[A-Z][A-Za-z0-9]+/
+            i = 1
+            word = $~.to_s
+            while (i<word.size) and (not ('a'..'z').include?(word[i]))
+              i += 1
+            end
+            if i<word.size
+              tag = :constant
+            else
+              tag = :big_constant
+            end
         end
 
         if tag
+          p [str, tag, $~.to_s, $~.pre_match, $~.post_match]
           tokenize($~.pre_match, index) do |*args|
             yield(*args)
           end
@@ -9322,6 +9339,20 @@ module PandoraGtk
       @view_buffer.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
       @view_buffer.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
       @view_buffer.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
+
+      @view_buffer.create_tag('string', {'foreground' => '#00f000'})
+      @view_buffer.create_tag('symbol', {'foreground' => '#008020'})
+      @view_buffer.create_tag('comment', {'foreground' => '#8080e0'})
+      @view_buffer.create_tag('keyword', {'foreground' => '#ffffff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+      @view_buffer.create_tag('function', {'foreground' => '#f12111'})
+      @view_buffer.create_tag('number', {'foreground' => '#e050e0'})
+      @view_buffer.create_tag('constant', {'foreground' => '#60eedd'})
+      @view_buffer.create_tag('big_constant', {'foreground' => '#d030d0'})
+      @view_buffer.create_tag('identifer', {'foreground' => '#ffff33'})
+      @view_buffer.create_tag('operator', {'foreground' => '#ffffff'})
+      @view_buffer.create_tag('class', {'foreground' => '#ff1100'})
+      @view_buffer.create_tag('module', {'foreground' => '#1111ff'})
+      @view_buffer.create_tag('regex', {'foreground' => '#105090'})
 
       @view_buffer.signal_connect('changed') do |buf|
         mark = buf.get_mark('insert')
@@ -12318,19 +12349,26 @@ module PandoraGtk
       end
 
       list_sw.add(list_tree)
-
-      lab_hbox = Gtk::HBox.new
-      image1 = Gtk::Image.new(Gtk::Stock::ORIENTATION_PORTRAIT, Gtk::IconSize::MENU)
-      image1.set_padding(2, 2)
-      image2 = Gtk::Image.new(Gtk::Stock::NETWORK, Gtk::IconSize::MENU)
-      image2.set_padding(2, 2)
+      #lab_hbox = Gtk::HBox.new
+      image = Gtk::Image.new(Gtk::Stock::GO_FORWARD, Gtk::IconSize::MENU)
+      image.set_padding(2, 2)
+      #image1 = Gtk::Image.new(Gtk::Stock::ORIENTATION_PORTRAIT, Gtk::IconSize::MENU)
+      #image1.set_padding(2, 2)
+      #image2 = Gtk::Image.new(Gtk::Stock::NETWORK, Gtk::IconSize::MENU)
+      #image2.set_padding(2, 2)
       align = Gtk::Alignment.new(0.0, 0.5, 0.0, 0.0)
-      label = Gtk::Label.new(_('Neighbors'))
-      align.add(label)
-      lab_hbox.pack_start(image1, false, false, 0)
-      lab_hbox.pack_start(image2, false, false, 0)
-      lab_hbox.pack_start(align, false, false, 0)
-      vbox.pack_start(lab_hbox, false, false, 0)
+      btn = Gtk::Button.new(_('Neighbors'))
+      btn.image = image
+      btn.relief = Gtk::RELIEF_NONE
+      btn.signal_connect('clicked') do |*args|
+        PandoraGtk.show_fish_panel
+      end
+      align.add(btn)
+      #lab_hbox.pack_start(image, false, false, 0)
+      #lab_hbox.pack_start(image2, false, false, 0)
+      #lab_hbox.pack_start(align, false, false, 0)
+      #vbox.pack_start(lab_hbox, false, false, 0)
+      vbox.pack_start(align, false, false, 0)
       vbox.pack_start(hbox, false, false, 0)
       vbox.pack_start(list_sw, true, true, 0)
       vbox.show_all
@@ -13815,6 +13853,7 @@ module PandoraGtk
       list_sw.width_request = list_sw.allocation.width
       hpaned.position = 0
     end
+    $window.correct_fish_btn_state
     #$window.notebook.children.each do |child|
     #  if (child.is_a? FishScrollWin)
     #    $window.notebook.page = $window.notebook.children.index(child)
@@ -14285,6 +14324,17 @@ module PandoraGtk
       tool_btn.safe_set_active($hunter_thread != nil) if tool_btn
     end
 
+    # Change listener button state
+    # RU: Изменить состояние кнопки слушателя
+    def correct_fish_btn_state
+      tool_btn = $toggle_buttons[PandoraGtk::SF_Fish]
+      if tool_btn
+        hpaned = $window.fish_hpaned
+        list_sw = hpaned.children[0]
+        tool_btn.safe_set_active(hpaned.position > 24)
+      end
+    end
+
     # Show notice status
     # RU: Показать уведомления в статусе
     def show_notice(change=nil)
@@ -14680,6 +14730,7 @@ module PandoraGtk
       ['Authorize', nil, 'Authorize', '<control>U'],
       ['Listen', Gtk::Stock::CONNECT, 'Listen', '<control>L', :check],
       ['Hunt', Gtk::Stock::REFRESH, 'Hunt', '<control>H', :check],
+      ['Fish', Gtk::Stock::GO_FORWARD, 'Neighbors', '<control>N', :check],
       ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
       ['Exchange', nil, 'Exchange'],
       ['-', nil, '-'],
@@ -14731,6 +14782,8 @@ module PandoraGtk
                   index = SF_Listen
                 when 'Hunt'
                   index = SF_Hunt
+                when 'Fish'
+                  index = SF_Fish
               end
               if index
                 $toggle_buttons[index] = btn
@@ -14892,6 +14945,9 @@ module PandoraGtk
       @fish_hpaned.pack2(notebook, true, true)
       @fish_hpaned.position = 1
       @fish_hpaned.position = 0
+      @fish_hpaned.signal_connect('notify::position') do |widget, param|
+        $window.correct_fish_btn_state
+      end
 
       vpaned = Gtk::VPaned.new
       vpaned.border_width = 2
