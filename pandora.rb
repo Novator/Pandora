@@ -9283,7 +9283,7 @@ module PandoraGtk
             end
           when /[:][A-Za-z0-9_]+/
             tag = :symbol
-          when /[0-9][ex0-9\.]*/
+          when / -?[0-9][ex0-9\.]*/
             tag = :number
           when /[a-z_][a-z0-9_]*/
             if word=='def '
@@ -9306,7 +9306,7 @@ module PandoraGtk
         end
         if tag
           pre = $~.pre_match
-          if (tag == :keyword2) and (word == 'def ')
+          if ([:keyword2, :constant, :big_constant].include?(tag)) and (word == 'def ')
             word = 'def.self'
           else
             word = $~.to_s
@@ -9387,8 +9387,8 @@ module PandoraGtk
       @view_buffer.create_tag('big_constant', {'foreground' => '#5090f0'})
       @view_buffer.create_tag('identifer', {'foreground' => '#ffff33'})
       @view_buffer.create_tag('operator', {'foreground' => '#ffffff'})
-      @view_buffer.create_tag('class', {'foreground' => '#ff1100'})
-      @view_buffer.create_tag('module', {'foreground' => '#1111ff'})
+      @view_buffer.create_tag('class', {'foreground' => '#ff1100', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+      @view_buffer.create_tag('module', {'foreground' => '#1111ff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
       @view_buffer.create_tag('regex', {'foreground' => '#105090'})
 
       @view_buffer.signal_connect('changed') do |buf|
