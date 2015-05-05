@@ -9105,6 +9105,25 @@ module PandoraGtk
       raw_buffer.text = view_buffer.text
     end
 
+    def get_lines(tv, first_y, last_y, buffer_coords, numbers)
+      # Get iter at first y
+      iter, top = tv.get_line_at_y(first_y)
+      # For each iter, get its location and add it to the arrays.
+      # Stop when we pass last_y
+      count = 0
+      size = 0
+      while not iter.end?
+        y, height = tv.get_line_yrange(iter)
+        buffer_coords << y
+        line_num = iter.line
+        numbers << line_num
+        count += 1
+        break if (y + height) >= last_y
+        iter.forward_line
+      end
+      count
+    end
+
     # Set buffers
     # RU: Задать буферы
     def set_buffers(tv=nil)
@@ -9134,6 +9153,47 @@ module PandoraGtk
           tv.modify_font(font_desc)
           tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
           tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
+          tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
+          tv.set_border_window_size(Gtk::TextView::WINDOW_LEFT, 50)
+          tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#111111'))
+          tv.signal_connect('expose-event') do |widget, event|
+            tv = widget
+            left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
+            right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
+            type = nil
+            if event.window == left_win
+              type = Gtk::TextView::WINDOW_LEFT
+              target = left_win
+            elsif event.window == right_win
+              type = Gtk::TextView::WINDOW_RIGHT
+              target = right_win
+            end
+            if type
+              first_y = event.area.y
+              last_y = first_y + event.area.height
+              x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
+              x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
+              numbers = []
+              pixels = []
+              count = get_lines(tv, first_y, last_y, pixels, numbers)
+              # Draw fully internationalized numbers!
+              layout = widget.create_pango_layout("")
+              count.times do |i|
+                x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
+                str = numbers[i].to_s
+                layout.set_text(str)
+                widget.style.paint_layout(target, widget.state, false,
+                  nil, widget, nil, 2, pos + 2, layout)
+              end
+            end
+            false
+          end
+
+          #style = tv.modifier_style
+          #p style.methods
+          #style.xthickness = 0
+          #style.ythickness = 0
+          #tv.modify_style(style)
           set_view_buffer(@format, @view_buffer, @raw_buffer)
         else
           tv.modify_font(nil)
