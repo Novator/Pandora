@@ -9115,7 +9115,7 @@ module PandoraGtk
       while not iter.end?
         y, height = tv.get_line_yrange(iter)
         buffer_coords << y
-        line_num = iter.line
+        line_num = iter.line+1
         numbers << line_num
         count += 1
         break if (y + height) >= last_y
@@ -9351,7 +9351,7 @@ module PandoraGtk
           w = $~.to_s
           si1 = $~.begin(0)
           si2 = $~.end(0)
-          p 'str/word/w: '+[str, $~.to_s, si1, si2, w].inspect
+          #p 'str/word/w: '+[str, $~.to_s, si1, si2, w].inspect
           if (tag == :keyword) or (tag == :keyword2)
             wl = w.size
             if wl>0
@@ -9362,7 +9362,7 @@ module PandoraGtk
               i2 -= 1 while (i2>i1) and ((w[i2]==' ') or (w[i2]=="\t"))
               si2 -= (wl-i2-1)
               w = w[i1, i2-i1+1]
-              p 's.ind2: '+[si1, si2, i1, i2, w].inspect
+              #p 's.ind2: '+[si1, si2, i1, i2, w].inspect
             end
           end
           if ([:keyword2, :constant, :big_constant].include?(tag)) and (word == 'def')
@@ -9370,7 +9370,7 @@ module PandoraGtk
           else
             word = w
           end
-          p [str, tag, word, pre, $~.post_match, word]
+          #p [str, tag, word, pre, $~.post_match, word]
           tokenize(pre, index) do |*args|
             yield(*args)
           end
@@ -9385,17 +9385,33 @@ module PandoraGtk
       end
     end
 
-    def set_tags(buf, iter1, iter2)
-      text = buf.get_text(iter1, iter2)
-      offset1 = iter1.offset
-      p 'changed '+offset1.inspect+'/'+iter2.offset.inspect+':'+text
-      buf.remove_all_tags(iter1, iter2)
-      #buf.apply_tag('bold', iter1, buf.get_iter_at_offset(iter2.offset-2))
+    def set_tags(buf, line1, line2, clean=nil)
+      buf.begin_user_action do
+        line = line1
+        iter1 = buf.get_iter_at_line(line)
+        iterN = nil
+        while line<=line2
+          line += 1
+          if line<buf.line_count
+            iterN = buf.get_iter_at_line(line)
+            iter2 = buf.get_iter_at_offset(iterN.offset-1)
+          else
+            iter2 = buf.end_iter
+            line = line2+1
+          end
 
-      tokenize(text) do |tag, start, last|
-        buf.apply_tag(tag.to_s,
-          buf.get_iter_at_offset(offset1+start),
-          buf.get_iter_at_offset(offset1+last))
+          text = buf.get_text(iter1, iter2)
+          offset1 = iter1.offset
+          buf.remove_all_tags(iter1, iter2) if clean
+          #buf.apply_tag('keyword', iter1, iter2)
+          tokenize(text) do |tag, start, last|
+            buf.apply_tag(tag.to_s,
+              buf.get_iter_at_offset(offset1+start),
+              buf.get_iter_at_offset(offset1+last))
+          end
+          iter1 = iterN if iterN
+          #Gtk.main_iteration
+        end
       end
     end
 
@@ -9454,18 +9470,45 @@ module PandoraGtk
       @view_buffer.create_tag('module', {'foreground' => '#1111ff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
       @view_buffer.create_tag('regex', {'foreground' => '#105090'})
 
-      @view_buffer.signal_connect('changed') do |buf|
+      @view_buffer.signal_connect('changed') do |buf|  #modified-changed
         mark = buf.get_mark('insert')
         iter = buf.get_iter_at_mark(mark)
         line1 = iter.line
-        iter1 = buf.get_iter_at_line(line1)
-        line2 = line1+1
-        if line2<buf.line_count
-          iter2 = buf.get_iter_at_offset(buf.get_iter_at_line(line2).offset-1)
-        else
-          iter2 = buf.end_iter
+        set_tags(buf, line1, line1, true)
+        false
+      end
+
+      @view_buffer.signal_connect('insert-text') do |buf, iter, text, len|
+        $view_buffer_off1 = iter.offset
+        false
+      end
+
+      @view_buffer.signal_connect('paste-done') do |buf|
+        if $view_buffer_off1
+          child = notebook.get_nth_page(notebook.page)
+          line1 = buf.get_iter_at_offset($view_buffer_off1).line
+          mark = buf.get_mark('insert')
+          iter = buf.get_iter_at_mark(mark)
+          line2 = iter.line
+          $view_buffer_off1 = iter.offset
+          set_tags(buf, line1, line2)
+
+          if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::Viewport) \
+          and (child.children[0].child.is_a? Gtk::TextView)
+            tv = child.children[0].child
+            p 'tv='+tv.inspect
+            tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0)
+            adj = tv.parent.vadjustment
+            adj.value = adj.upper #- adj.page_size
+            #adj.value_changed       # bug: not scroll to end
+            #adj.value = adj.upper   # if add many lines
+            #mark = buf.create_mark(nil, buf.end_iter, false)
+            #tv.scroll_to_mark(mark, 0, true, 0.0, 1.0)
+            #tv.scroll_to_mark(buf.get_mark('insert'), 0.0, true, 0.0, 1.0)
+            #buf.delete_mark(mark)
+          end
         end
-        set_tags(buf, iter1, iter2)
+        false
       end
 
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Type', true) do |btn|
@@ -9599,7 +9642,7 @@ module PandoraGtk
                 if not bodywid
                   textview = Gtk::TextView.new
                   #textview = child.children[0]
-                  textview.wrap_mode = Gtk::TextTag::WRAP_WORD
+                  #textview.wrap_mode = Gtk::TextTag::WRAP_WORD
                   textview.signal_connect('key-press-event') do |widget, event|
                     if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
                       and event.state.control_mask?
