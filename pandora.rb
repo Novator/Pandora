@@ -9079,7 +9079,7 @@ module PandoraGtk
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
       :keep_btn, :rate_label, :vouch_btn, :follow_btn, :trust_scale, :trust0, :public_btn, \
-      :public_scale, :lang_entry, :format, :view_buffer, :last_sw
+      :public_scale, :lang_entry, :format, :view_buffer, :last_sw, :font_desc
 
     # Add menu item
     # RU: Добавляет пункт меню
@@ -9149,46 +9149,13 @@ module PandoraGtk
         end
 
         if @view_mode
-          font_desc = Pango::FontDescription.new('Monospace 11')
-          tv.modify_font(font_desc)
+          @tv_style ||= tv.modifier_style
+          tv.modify_font(@font_desc)
           tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
           tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
           tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
-          tv.set_border_window_size(Gtk::TextView::WINDOW_LEFT, 50)
-          tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#111111'))
-          tv.signal_connect('expose-event') do |widget, event|
-            tv = widget
-            left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
-            right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
-            type = nil
-            if event.window == left_win
-              type = Gtk::TextView::WINDOW_LEFT
-              target = left_win
-            elsif event.window == right_win
-              type = Gtk::TextView::WINDOW_RIGHT
-              target = right_win
-            end
-            if type
-              first_y = event.area.y
-              last_y = first_y + event.area.height
-              x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
-              x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
-              numbers = []
-              pixels = []
-              count = get_lines(tv, first_y, last_y, pixels, numbers)
-              # Draw fully internationalized numbers!
-              layout = widget.create_pango_layout("")
-              count.times do |i|
-                x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
-                str = numbers[i].to_s
-                layout.set_text(str)
-                widget.style.paint_layout(target, widget.state, false,
-                  nil, widget, nil, 2, pos + 2, layout)
-              end
-            end
-            false
-          end
-
+          tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#222222'))
+          tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#aaaaaa'))
           #style = tv.modifier_style
           #p style.methods
           #style.xthickness = 0
@@ -9196,9 +9163,14 @@ module PandoraGtk
           #tv.modify_style(style)
           set_view_buffer(@format, @view_buffer, @raw_buffer)
         else
+          #tv.style = @tv_style
+          tv.modify_style(@tv_style)
           tv.modify_font(nil)
-          tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
-          tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+          #tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
+          #tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+          #tv.modify_cursor(Gdk::Color.parse('#111111'), Gdk::Color.parse('#111111'))
+          #tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#EEEEEE'))
+          #tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#111111'))
           set_raw_buffer(@format, @raw_buffer, @view_buffer)
         end
       end
@@ -9308,8 +9280,8 @@ module PandoraGtk
       widget
     end
 
-    RESERVED_WORDS = %w(begin end module class def if then else while unless do case when require yield)
-    RESERVED_WORDS_PATTERN = Regexp.compile(/(^|\s+)(#{RESERVED_WORDS.collect do |pat| Regexp.quote(pat) end.join('|')})(\s+|$)/)
+    RUBY_KEYWORDS = 'begin|end|module|class|def|if|then|else|elsif|while|unless|do|case|when|require|yield|rescue'
+    RUBY_KEYWORDS2 = 'self|true|false|not|and|or'
 
     def tokenize(str, index = 0)
       word = nil
@@ -9318,12 +9290,26 @@ module PandoraGtk
         case str
           when /#.*$/
             tag = :comment
-          when /".+?"/, /'.+?'/
+          when /".*?"/, /'.*?'/
             tag = :string
-          when RESERVED_WORDS_PATTERN
+          when Regexp.new('(^|\s+)('+RUBY_KEYWORDS+')(\s+|$)')
             tag = :keyword
-          when /\/.*?[^\\]\//
+          when Regexp.new('(^|\s+)('+RUBY_KEYWORDS2+')(\s+|$)')
+            tag = :keyword2
+          when /\/.*?[^\\]\/(i|m|x|o|u|e|s|n){0,8}/
             tag = :regex
+          when /( -)?(0x)[0-9A-F]*/
+            tag = :hexadec
+          when /:[A-Za-z0-9_]+/
+            tag = :symbol
+          when /\$[A-Za-z0-9_]+/
+            tag = :global
+          when /@@[A-Za-z0-9_]+/
+            tag = :classvar
+          when /@[A-Za-z0-9_]+/
+            tag = :instvar
+          when /( -)?[0-9][e0-9\.]*/
+            tag = :number
           when /[A-Z][A-Za-z0-9_]*/
             if word=='class '
               tag = :class
@@ -9341,12 +9327,8 @@ module PandoraGtk
                 tag = :big_constant
               end
             end
-          when /[:][A-Za-z0-9_]+/
-            tag = :symbol
-          when / -?[0-9][ex0-9\.]*/
-            tag = :number
-          when /[a-z_][a-z0-9_]*/
-            if word=='def '
+          when /[a-z_][a-z0-9_]*(!|\?)?/
+            if word=='def'
               if $~.to_s == 'self'
                 tag = :keyword2
               else
@@ -9361,21 +9343,38 @@ module PandoraGtk
                 tag = :identifer
               end
             end
-          when /[\.\+,\-\\\/=*\^%$()<>&]+/
+          when /[\.\+,\-\\\/=*\^%$()<>&\]\[:!\?~\{\}\|]+/
             tag = :operator
         end
         if tag
           pre = $~.pre_match
-          if ([:keyword2, :constant, :big_constant].include?(tag)) and (word == 'def ')
+          w = $~.to_s
+          si1 = $~.begin(0)
+          si2 = $~.end(0)
+          p 'str/word/w: '+[str, $~.to_s, si1, si2, w].inspect
+          if (tag == :keyword) or (tag == :keyword2)
+            wl = w.size
+            if wl>0
+              i1 = 0
+              i1 += 1 while (i1<wl) and ((w[i1]==' ') or (w[i1]=="\t"))
+              si1 += i1
+              i2 = wl-1
+              i2 -= 1 while (i2>i1) and ((w[i2]==' ') or (w[i2]=="\t"))
+              si2 -= (wl-i2-1)
+              w = w[i1, i2-i1+1]
+              p 's.ind2: '+[si1, si2, i1, i2, w].inspect
+            end
+          end
+          if ([:keyword2, :constant, :big_constant].include?(tag)) and (word == 'def')
             word = 'def.self'
           else
-            word = $~.to_s
+            word = w
           end
           p [str, tag, word, pre, $~.post_match, word]
           tokenize(pre, index) do |*args|
             yield(*args)
           end
-          yield(tag, index + $~.begin(0), index + $~.end(0))
+          yield(tag, index + si1, index + si2) if si2>si1
           index += (str.length - $~.post_match.length)
           str = $~.post_match
         else
@@ -9443,9 +9442,13 @@ module PandoraGtk
       @view_buffer.create_tag('keyword2', {'foreground' => '#ffffff'})
       @view_buffer.create_tag('function', {'foreground' => '#f12111'})
       @view_buffer.create_tag('number', {'foreground' => '#e050e0'})
+      @view_buffer.create_tag('hexadec', {'foreground' => '#e070e7'})
       @view_buffer.create_tag('constant', {'foreground' => '#60eedd'})
       @view_buffer.create_tag('big_constant', {'foreground' => '#5090f0'})
       @view_buffer.create_tag('identifer', {'foreground' => '#ffff33'})
+      @view_buffer.create_tag('global', {'foreground' => '#ffa500'})
+      @view_buffer.create_tag('instvar', {'foreground' => '#ff85a2'})
+      @view_buffer.create_tag('classvar', {'foreground' => '#ff79ec'})
       @view_buffer.create_tag('operator', {'foreground' => '#ffffff'})
       @view_buffer.create_tag('class', {'foreground' => '#ff1100', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
       @view_buffer.create_tag('module', {'foreground' => '#1111ff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
@@ -9603,6 +9606,40 @@ module PandoraGtk
                     then
                       true
                     end
+                  end
+                  textview.set_border_window_size(Gtk::TextView::WINDOW_LEFT, 50)
+                  @font_desc = Pango::FontDescription.new('Monospace 11')
+                  textview.signal_connect('expose-event') do |widget, event|
+                    tv = widget
+                    left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
+                    right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
+                    type = nil
+                    if event.window == left_win
+                      type = Gtk::TextView::WINDOW_LEFT
+                      target = left_win
+                    elsif event.window == right_win
+                      type = Gtk::TextView::WINDOW_RIGHT
+                      target = right_win
+                    end
+                    if type
+                      first_y = event.area.y
+                      last_y = first_y + event.area.height
+                      x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
+                      x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
+                      numbers = []
+                      pixels = []
+                      count = get_lines(tv, first_y, last_y, pixels, numbers)
+                      # Draw fully internationalized numbers!
+                      layout = widget.create_pango_layout("")
+                      count.times do |i|
+                        x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
+                        str = numbers[i].to_s
+                        layout.set_text(str)
+                        widget.style.paint_layout(target, widget.state, false,
+                          nil, widget, nil, 2, pos + 2, layout)
+                      end
+                    end
+                    false
                   end
                   bodywid = textview
                 end

@@ -474,9 +474,13 @@
     <keyword_style desc="Keyword style" type="String" section="editor" setting="#ffffff[b]" />
     <function_style desc="Function style" type="String" section="editor" setting="#f12111" />
     <number_style desc="Number style" type="String" section="editor" setting="#e050e0" />
+    <hexadec_style desc="Hexadecimal style" type="String" section="editor" setting="#e070e7" />
     <constant_style desc="Constant style" type="String" section="editor" setting="#60eedd" />
     <big_constant_style desc="Big constant style" type="String" section="editor" setting="#d030d0" />
     <identifer_style desc="Identifer style" type="String" section="editor" setting="#ffff33" />
+    <global_style desc="Identifer style" type="String" section="editor" setting="#ffa500" />
+    <instvar_style desc="Identifer style" type="String" section="editor" setting="#ff85a2" />
+    <classvar_style desc="Identifer style" type="String" section="editor" setting="#ff79ec" />
     <operator_style desc="Operator style" type="String" section="editor" setting="#ffffff" />
     <class_style desc="Class style" type="String" section="editor" setting="#ff1100" />
     <module_style desc="Module style" type="String" section="editor" setting="#1111ff" />
