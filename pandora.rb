@@ -9496,10 +9496,10 @@ module PandoraGtk
           if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::Viewport) \
           and (child.children[0].child.is_a? Gtk::TextView)
             tv = child.children[0].child
-            p 'tv='+tv.inspect
+            #p 'tv='+tv.inspect
             tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0)
-            adj = tv.parent.vadjustment
-            adj.value = adj.upper #- adj.page_size
+            #adj = tv.parent.vadjustment
+            #adj.value = adj.upper #- adj.page_size
             #adj.value_changed       # bug: not scroll to end
             #adj.value = adj.upper   # if add many lines
             #mark = buf.create_mark(nil, buf.end_iter, false)
@@ -9650,6 +9650,10 @@ module PandoraGtk
                       true
                     end
                   end
+                  textview.signal_connect("size-allocate") do |widget, step, arg2|
+                    widget.parent.vadjustment.value = \
+                      widget.parent.vadjustment.upper - widget.parent.vadjustment.page_size
+                  end
                   textview.set_border_window_size(Gtk::TextView::WINDOW_LEFT, 50)
                   @font_desc = Pango::FontDescription.new('Monospace 11')
                   textview.signal_connect('expose-event') do |widget, event|
@@ -9689,7 +9693,8 @@ module PandoraGtk
 
                 if not field[FI_Widget2]
                   field[FI_Widget2] = bodywid
-                  textsw.add_with_viewport(bodywid)
+                  #textsw.add_with_viewport(bodywid)
+                  textsw.add(bodywid)
                 end
                 if bodywid.is_a? Gtk::TextView
                   bodywid.buffer.text = field[FI_Value].to_s
