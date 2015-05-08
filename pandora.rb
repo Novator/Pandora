@@ -5152,44 +5152,57 @@ module PandoraNet
         res = true
       elsif (addr or nodehash or person)
         p 'NEED connect: '+[addr, nodehash].inspect
-        sel = nil
         node_model = PandoraUtils.get_model('Node')
-        filter = nil
-        if node_id
-          filter = {:id=>node_id}
-        elsif nodehash
-          filter = {:panhash=>nodehash}
-        end
-        if filter
-          p 'filter='+filter.inspect
-          sel = node_model.select(filter, false, 'addr, tport, domain, key_hash, id')
-        end
-        sel ||= Array.new
-        if sel and (sel.size==0)
-          host = tport = nil
-          if addr
-            host, tport, proto = decode_node(addr)
-            addr = host
+        ni = 0
+        while (not ni.nil?)
+          sel = nil
+          filter = nil
+          if node_id
+            filter = {:id=>node_id}
+          elsif nodehash
+            if nodehash.is_a? Array
+              filter = {:panhash=>nodehash[ni]} if ni<nodehash.size-1
+            else
+              filter = {:panhash=>nodehash}
+            end
           end
-          sel << [host, tport, nil, key_hash, node_id]
-        end
-        if sel and (sel.size>0)
-          sel.each do |row|
-            addr = row[0]
-            addr.strip! if addr
-            port = row[1]
-            proto = 'tcp'
-            host = row[2]
-            host.strip! if host
-            key_hash_i = row[3]
-            key_hash_i.strip! if key_hash_i
-            key_hash_i ||= key_hash
-            node_id_i = row[4]
-            node_id_i ||= node_id
-            session = Session.new(nil, host, addr, port, proto, \
-              CS_Connecting, node_id_i, dialog, send_state_add, nodehash, \
-              person, key_hash_i, base_id)
-            res = true
+          if filter
+            p 'filter='+filter.inspect
+            sel = node_model.select(filter, false, 'addr, tport, domain, key_hash, id')
+          end
+          sel ||= Array.new
+          if sel and (sel.size==0)
+            host = tport = nil
+            if addr
+              host, tport, proto = decode_node(addr)
+              addr = host
+            end
+
+            sel << [host, tport, nil, key_hash, node_id]
+          end
+          if sel and (sel.size>0)
+            sel.each do |row|
+              addr = row[0]
+              addr.strip! if addr
+              port = row[1]
+              proto = 'tcp'
+              host = row[2]
+              host.strip! if host
+              key_hash_i = row[3]
+              key_hash_i.strip! if key_hash_i.is_a? String
+              key_hash_i ||= key_hash
+              node_id_i = row[4]
+              node_id_i ||= node_id
+              session = Session.new(nil, host, addr, port, proto, \
+                CS_Connecting, node_id_i, dialog, send_state_add, nodehash, \
+                person, key_hash_i, base_id)
+              res = true
+            end
+          end
+          if (nodehash.is_a? Array) and (ni<nodehash.size-1)
+            ni += 1
+          else
+            ni = nil
           end
         end
       end
@@ -9015,6 +9028,12 @@ module PandoraGtk
         end
         res
       end
+
+      self.signal_connect('size-allocate') do |widget, step, arg2|
+        widget.parent.vadjustment.value = \
+        widget.parent.vadjustment.upper - widget.parent.vadjustment.page_size
+      end
+
     end
 
     def set_readonly(value=true)
@@ -9048,8 +9067,9 @@ module PandoraGtk
       if go_to_end
         adj = self.parent.vadjustment
         adj.value = adj.upper
-        adj.value_changed       # bug: not scroll to end
-        adj.value = adj.upper   # if add many lines
+        #adj.value_changed       # bug: not scroll to end
+        #adj.value = adj.upper   # if add many lines
+        scroll_to_iter(buffer.end_iter, 0, false, 0.0, 0.0)
       end
       go_to_end
     end
@@ -9650,7 +9670,7 @@ module PandoraGtk
                       true
                     end
                   end
-                  textview.signal_connect("size-allocate") do |widget, step, arg2|
+                  textview.signal_connect('size-allocate') do |widget, step, arg2|
                     widget.parent.vadjustment.value = \
                       widget.parent.vadjustment.upper - widget.parent.vadjustment.page_size
                   end
