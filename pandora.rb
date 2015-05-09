@@ -9300,12 +9300,162 @@ module PandoraGtk
       widget
     end
 
-    RUBY_KEYWORDS = 'begin|end|module|class|def|if|then|else|elsif|while|unless|do|case|when|require|yield|rescue'
-    RUBY_KEYWORDS2 = 'self|true|false|not|and|or'
+    RUBY_KEYWORDS = 'begin end module class def if then else elsif while unless do case when require yield rescue'.split
+    RUBY_KEYWORDS2 = 'self true false not and or'.split
 
-    def tokenize(str, index = 0)
-      word = nil
-      until str.empty?
+    def ruby_tag_line(str, index=0, mode=0)
+
+      def ident_char?(c)
+        ('a'..'z').include?(c) or ('A'..'Z').include?(c) or (c == '_')
+      end
+
+      def word_char?(c)
+        ('a'..'z').include?(c) or ('A'..'Z').include?(c) or ('0'..'9').include?(c) or (c == '_')
+      end
+
+      def oper_char?(c)
+        '.+,-=*^%$()<>&[]:!?~{}|/\\'.include?(c)
+      end
+
+      def rewind_ident(str, i, ss, pc)
+        c = str[i]
+        fc = c
+        i1 = i
+        i += 1
+        while (i<ss)
+          c = str[i]
+          break unless word_char?(c)
+          i += 1
+        end
+        p 'rewind_ident(str, i1, i, ss, pc)='+[str, i1, i, ss, pc].inspect
+        #i -= 1
+        i2 = i
+        if ('A'..'Z').include?(fc)
+          yield(:constant, i1, i2)
+        else
+          if pc==':'
+            yield(:symbol, i1-1, i2)
+          elsif pc=='@'
+            if (i1-2>0) and (str[i1-2]=='@')
+              yield(:classvar, i1-2, i2)
+            else
+              yield(:instvar, i1-1, i2)
+            end
+          elsif pc=='$'
+            yield(:global, i1-1, i2)
+          else
+            s = str[i1, i2-i1]
+            if RUBY_KEYWORDS.include?(s)
+              yield(:keyword, i1, i2)
+            elsif RUBY_KEYWORDS2.include?(s)
+              yield(:keyword2, i1, i2)
+            else
+              yield(:identifer, i1, i2)
+            end
+          end
+        end
+        i
+      end
+
+      ss = str.size
+      if ss>0
+        i = 0
+        if (mode == 1)
+          if (str[0,4] == '=end')
+            mode = 0
+            i = 4
+            yield(:comment, index, index + i)
+          else
+            yield(:comment, index, index + ss)
+          end
+        elsif (mode == 0) and (str[0] == '=') and (str[1,5] == 'begin')
+          mode = 1
+          yield(:comment, index, index + ss)
+        end
+        if (mode != 1)
+          i += 1 while (i<ss) and ((str[i] == ' ') or (str[i] == "\t"))
+          pc = ' '
+          while (i<ss)
+            c = str[i]
+            if (c != ' ') and (c != "\t")
+              if (c == '#')
+                yield(:comment, index + i, index + ss)
+                break
+              elsif (c == "'") or (c == '"')
+                qc = c
+                i1 = i
+                i += 1
+                if (i<ss)
+                  c = str[i]
+                  if c==qc
+                    i += 1
+                  else
+                    pc = ' '
+                    while (i<ss) and ((c != qc) or (pc == "\\") or (pc == qc))
+                      if (pc=="\\")
+                        pc = ' '
+                      else
+                        pc = c
+                      end
+                      c = str[i]
+                      if (qc=='"') and (c=='{') and (pc=='#')
+                        yield(:string, index + i1, index + i - 1)
+                        yield(:operator, index + i - 1, index + i + 1)
+                        i = rewind_ident(str, i, ss, ' ') do |tag, id1, id2|
+                          yield(tag, index + id1, index + id2)
+                        end
+                        i1 = i
+                      end
+                      i += 1
+                    end
+                  end
+                end
+                yield(:string, index + i1, index + i)
+              elsif ident_char?(c)
+                i = rewind_ident(str, i, ss, pc) do |tag, id1, id2|
+                  yield(tag, index + id1, index + id2)
+                end
+                pc = ' '
+              elsif oper_char?(c)
+                i1 = i
+                i += 1
+                while (i<ss) and oper_char?(str[i])
+                  i += 1
+                end
+                if i<ss
+                  pc = ' '
+                  c = str[i]
+                end
+                yield(:operator, index + i1, index + i)
+              elsif ('0'..'9').include?(c)
+                i1 = i
+                i += 1
+                while (i<ss)
+                  c = str[i]
+                  break unless (('0'..'9').include?(c) or (c=='.'))
+                  i += 1
+                end
+                if i<ss
+                  i -= 1 if str[i-1]=='.'
+                  pc = ' '
+                end
+                yield(:number, index + i1, index + i)
+              else
+                #yield(:keyword, index + i, index + ss/2)
+                #break
+                pc = c
+                i += 1
+              end
+            else
+              pc = c
+              i += 1
+            end
+          end
+        end
+      end
+
+
+      until true or str.empty?
         tag = nil
         case str
           when /#.*$/
@@ -9403,13 +9553,16 @@ module PandoraGtk
           word = nil
         end
       end
+      mode
     end
 
     def set_tags(buf, line1, line2, clean=nil)
+      p 'line1, line2='+[line1, line2].inspect
       buf.begin_user_action do
         line = line1
         iter1 = buf.get_iter_at_line(line)
         iterN = nil
+        mode = 0
         while line<=line2
           line += 1
           if line<buf.line_count
@@ -9424,11 +9577,12 @@ module PandoraGtk
           offset1 = iter1.offset
           buf.remove_all_tags(iter1, iter2) if clean
           #buf.apply_tag('keyword', iter1, iter2)
-          tokenize(text) do |tag, start, last|
+          mode = ruby_tag_line(text, offset1, mode) do |tag, start, last|
             buf.apply_tag(tag.to_s,
-              buf.get_iter_at_offset(offset1+start),
-              buf.get_iter_at_offset(offset1+last))
+              buf.get_iter_at_offset(start),
+              buf.get_iter_at_offset(last))
           end
+          #p mode
           iter1 = iterN if iterN
           #Gtk.main_iteration
         end
