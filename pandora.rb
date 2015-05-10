@@ -9309,6 +9309,10 @@ module PandoraGtk
         ('a'..'z').include?(c) or ('A'..'Z').include?(c) or (c == '_')
       end
 
+      def capt_char?(c)
+        ('A'..'Z').include?(c) or ('0'..'9').include?(c) or (c == '_')
+      end
+
       def word_char?(c)
         ('a'..'z').include?(c) or ('A'..'Z').include?(c) or ('0'..'9').include?(c) or (c == '_')
       end
@@ -9317,21 +9321,53 @@ module PandoraGtk
         '.+,-=*^%$()<>&[]:!?~{}|/\\'.include?(c)
       end
 
-      def rewind_ident(str, i, ss, pc)
+      def rewind_ident(str, i, ss, pc, prev_kw=nil)
+
+        def check_func(prev_kw, c, i, ss, str)
+          if (prev_kw=='def') and (c=='.')
+            yield(:operator, i, i+1)
+            i += 1
+            i1 = i
+            i += 1 while (i<ss) and ident_char?(str[i])
+            i2 = i
+            yield(:function, i1, i2)
+          end
+          i
+        end
+
+        kw = nil
         c = str[i]
         fc = c
         i1 = i
         i += 1
+        big_cons = true
         while (i<ss)
           c = str[i]
-          break unless word_char?(c)
+          if ('a'..'z').include?(c)
+            big_cons = false if big_cons
+          elsif not capt_char?(c)
+            break
+          end
           i += 1
         end
-        p 'rewind_ident(str, i1, i, ss, pc)='+[str, i1, i, ss, pc].inspect
+        #p 'rewind_ident(str, i1, i, ss, pc)='+[str, i1, i, ss, pc].inspect
         #i -= 1
         i2 = i
         if ('A'..'Z').include?(fc)
-          yield(:constant, i1, i2)
+          if prev_kw=='class'
+            yield(:class, i1, i2)
+          elsif prev_kw=='module'
+            yield(:module, i1, i2)
+          else
+            if big_cons
+              yield(:big_constant, i1, i2)
+            else
+              yield(:constant, i1, i2)
+            end
+            i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
+              yield(tag, id1, id2)
+            end
+          end
         else
           if pc==':'
             yield(:symbol, i1-1, i2)
@@ -9347,14 +9383,24 @@ module PandoraGtk
             s = str[i1, i2-i1]
             if RUBY_KEYWORDS.include?(s)
               yield(:keyword, i1, i2)
+              kw = s
             elsif RUBY_KEYWORDS2.include?(s)
               yield(:keyword2, i1, i2)
+              if (s=='self') and (prev_kw=='def')
+                i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
+                  yield(tag, id1, id2)
+                end
+              end
             else
-              yield(:identifer, i1, i2)
+              if prev_kw=='def'
+                yield(:function, i1, i2)
+              else
+                yield(:identifer, i1, i2)
+              end
             end
           end
         end
-        i
+        [i, kw]
       end
 
       ss = str.size
@@ -9375,6 +9421,7 @@ module PandoraGtk
         if (mode != 1)
           i += 1 while (i<ss) and ((str[i] == ' ') or (str[i] == "\t"))
           pc = ' '
+          kw, kw2 = nil
           while (i<ss)
             c = str[i]
             if (c != ' ') and (c != "\t")
@@ -9401,7 +9448,7 @@ module PandoraGtk
                       if (qc=='"') and (c=='{') and (pc=='#')
                         yield(:string, index + i1, index + i - 1)
                         yield(:operator, index + i - 1, index + i + 1)
-                        i = rewind_ident(str, i, ss, ' ') do |tag, id1, id2|
+                        i, kw2 = rewind_ident(str, i, ss, ' ') do |tag, id1, id2|
                           yield(tag, index + id1, index + id2)
                         end
                         i1 = i
@@ -9412,7 +9459,19 @@ module PandoraGtk
                 end
                 yield(:string, index + i1, index + i)
               elsif ident_char?(c)
-                i = rewind_ident(str, i, ss, pc) do |tag, id1, id2|
+                i, kw = rewind_ident(str, i, ss, pc, kw) do |tag, id1, id2|
+                  yield(tag, index + id1, index + id2)
+                end
+                pc = ' '
+              elsif (c=='$') and (i+1<ss) and ('~'.include?(str[i+1]))
+                i1 = i
+                i += 2
+                yield(:global, index + i1, index + i)
+                pc = ' '
+              elsif ((c==':') or (c=='$')) and (i+1<ss) and (ident_char?(str[i+1]))
+                i += 1
+                pc = c
+                i, kw2 = rewind_ident(str, i, ss, pc) do |tag, id1, id2|
                   yield(tag, index + id1, index + id2)
                 end
                 pc = ' '
