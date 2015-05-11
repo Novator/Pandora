@@ -9300,8 +9300,8 @@ module PandoraGtk
       widget
     end
 
-    RUBY_KEYWORDS = 'begin end module class def if then else elsif while unless do case when require yield rescue'.split
-    RUBY_KEYWORDS2 = 'self true false not and or'.split
+    RUBY_KEYWORDS = 'begin end module class def if then else elsif while unless do case when require yield rescue include'.split
+    RUBY_KEYWORDS2 = 'self true false not and or nil '.split
 
     def ruby_tag_line(str, index=0, mode=0)
 
@@ -9329,6 +9329,7 @@ module PandoraGtk
             i += 1
             i1 = i
             i += 1 while (i<ss) and ident_char?(str[i])
+            i += 1 if (i<ss) and ('?!'.include?(str[i]))
             i2 = i
             yield(:function, i1, i2)
           end
@@ -9392,10 +9393,11 @@ module PandoraGtk
                 end
               end
             else
+              i += 1 if (i<ss) and ('?!'.include?(str[i]))
               if prev_kw=='def'
-                yield(:function, i1, i2)
+                yield(:function, i1, i)
               else
-                yield(:identifer, i1, i2)
+                yield(:identifer, i1, i)
               end
             end
           end
@@ -9428,7 +9430,7 @@ module PandoraGtk
               if (c == '#')
                 yield(:comment, index + i, index + ss)
                 break
-              elsif (c == "'") or (c == '"')
+              elsif (c == "'") or (c == '"') or (c == '/')
                 qc = c
                 i1 = i
                 i += 1
@@ -9457,7 +9459,12 @@ module PandoraGtk
                     end
                   end
                 end
-                yield(:string, index + i1, index + i)
+                if (qc == '/')
+                  i += 1 while (i<ss) and ('imxouesn'.include?(str[i]))
+                  yield(:regex, index + i1, index + i)
+                else
+                  yield(:string, index + i1, index + i)
+                end
               elsif ident_char?(c)
                 i, kw = rewind_ident(str, i, ss, pc, kw) do |tag, id1, id2|
                   yield(tag, index + id1, index + id2)
@@ -9489,16 +9496,26 @@ module PandoraGtk
               elsif ('0'..'9').include?(c)
                 i1 = i
                 i += 1
-                while (i<ss)
-                  c = str[i]
-                  break unless (('0'..'9').include?(c) or (c=='.'))
+                if (i<ss) and ((str[i]=='x') or (str[i]=='X'))
                   i += 1
+                  while (i<ss)
+                    c = str[i]
+                    break unless (('0'..'9').include?(c) or ('A'..'F').include?(c))
+                    i += 1
+                  end
+                  yield(:hexadec, index + i1, index + i)
+                else
+                  while (i<ss)
+                    c = str[i]
+                    break unless (('0'..'9').include?(c) or (c=='.') or (c=='e'))
+                    i += 1
+                  end
+                  if i<ss
+                    i -= 1 if str[i-1]=='.'
+                    pc = ' '
+                  end
+                  yield(:number, index + i1, index + i)
                 end
-                if i<ss
-                  i -= 1 if str[i-1]=='.'
-                  pc = ' '
-                end
-                yield(:number, index + i1, index + i)
               else
                 #yield(:keyword, index + i, index + ss/2)
                 #break
@@ -9510,106 +9527,6 @@ module PandoraGtk
               i += 1
             end
           end
-        end
-      end
-
-
-      until true or str.empty?
-        tag = nil
-        case str
-          when /#.*$/
-            tag = :comment
-          when /".*?"/, /'.*?'/
-            tag = :string
-          when Regexp.new('(^|\s+)('+RUBY_KEYWORDS+')(\s+|$)')
-            tag = :keyword
-          when Regexp.new('(^|\s+)('+RUBY_KEYWORDS2+')(\s+|$)')
-            tag = :keyword2
-          when /\/.*?[^\\]\/(i|m|x|o|u|e|s|n){0,8}/
-            tag = :regex
-          when /( -)?(0x)[0-9A-F]*/
-            tag = :hexadec
-          when /:[A-Za-z0-9_]+/
-            tag = :symbol
-          when /\$[A-Za-z0-9_]+/
-            tag = :global
-          when /@@[A-Za-z0-9_]+/
-            tag = :classvar
-          when /@[A-Za-z0-9_]+/
-            tag = :instvar
-          when /( -)?[0-9][e0-9\.]*/
-            tag = :number
-          when /[A-Z][A-Za-z0-9_]*/
-            if word=='class '
-              tag = :class
-            elsif word=='module '
-              tag = :module
-            else
-              i = 1
-              w = $~.to_s
-              while (i<w.size) and (not ('a'..'z').include?(w[i]))
-                i += 1
-              end
-              if i<w.size
-                tag = :constant
-              else
-                tag = :big_constant
-              end
-            end
-          when /[a-z_][a-z0-9_]*(!|\?)?/
-            if word=='def'
-              if $~.to_s == 'self'
-                tag = :keyword2
-              else
-                tag = :function
-              end
-            else
-              if word == 'def.self'
-                tag = :function
-              elsif $~.to_s == 'self'
-                tag = :keyword2
-              else
-                tag = :identifer
-              end
-            end
-          when /[\.\+,\-\\\/=*\^%$()<>&\]\[:!\?~\{\}\|]+/
-            tag = :operator
-        end
-        if tag
-          pre = $~.pre_match
-          w = $~.to_s
-          si1 = $~.begin(0)
-          si2 = $~.end(0)
-          #p 'str/word/w: '+[str, $~.to_s, si1, si2, w].inspect
-          if (tag == :keyword) or (tag == :keyword2)
-            wl = w.size
-            if wl>0
-              i1 = 0
-              i1 += 1 while (i1<wl) and ((w[i1]==' ') or (w[i1]=="\t"))
-              si1 += i1
-              i2 = wl-1
-              i2 -= 1 while (i2>i1) and ((w[i2]==' ') or (w[i2]=="\t"))
-              si2 -= (wl-i2-1)
-              w = w[i1, i2-i1+1]
-              #p 's.ind2: '+[si1, si2, i1, i2, w].inspect
-            end
-          end
-          if ([:keyword2, :constant, :big_constant].include?(tag)) and (word == 'def')
-            word = 'def.self'
-          else
-            word = w
-          end
-          #p [str, tag, word, pre, $~.post_match, word]
-          tokenize(pre, index) do |*args|
-            yield(*args)
-          end
-          yield(tag, index + si1, index + si2) if si2>si1
-          index += (str.length - $~.post_match.length)
-          str = $~.post_match
-        else
-          index += str.length
-          str = ''
-          word = nil
         end
       end
       mode
@@ -9690,10 +9607,10 @@ module PandoraGtk
       @view_buffer.create_tag('keyword', {'foreground' => '#ffffff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
       @view_buffer.create_tag('keyword2', {'foreground' => '#ffffff'})
       @view_buffer.create_tag('function', {'foreground' => '#f12111'})
-      @view_buffer.create_tag('number', {'foreground' => '#e050e0'})
+      @view_buffer.create_tag('number', {'foreground' => '#f050e0'})
       @view_buffer.create_tag('hexadec', {'foreground' => '#e070e7'})
       @view_buffer.create_tag('constant', {'foreground' => '#60eedd'})
-      @view_buffer.create_tag('big_constant', {'foreground' => '#5090f0'})
+      @view_buffer.create_tag('big_constant', {'foreground' => '#d080e0'})
       @view_buffer.create_tag('identifer', {'foreground' => '#ffff33'})
       @view_buffer.create_tag('global', {'foreground' => '#ffa500'})
       @view_buffer.create_tag('instvar', {'foreground' => '#ff85a2'})
