@@ -9174,8 +9174,8 @@ module PandoraGtk
           tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
           tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
           tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
-          tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#222222'))
-          tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#aaaaaa'))
+          tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
+          tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
           #style = tv.modifier_style
           #p style.methods
           #style.xthickness = 0
@@ -9804,19 +9804,19 @@ module PandoraGtk
                     widget.parent.vadjustment.value = \
                       widget.parent.vadjustment.upper - widget.parent.vadjustment.page_size
                   end
-                  textview.set_border_window_size(Gtk::TextView::WINDOW_LEFT, 50)
+                  textview.set_border_window_size(Gtk::TextView::WINDOW_LEFT, 54)
                   @font_desc = Pango::FontDescription.new('Monospace 11')
                   textview.signal_connect('expose-event') do |widget, event|
                     tv = widget
                     left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
-                    right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
+                    #right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
                     type = nil
                     if event.window == left_win
                       type = Gtk::TextView::WINDOW_LEFT
                       target = left_win
-                    elsif event.window == right_win
-                      type = Gtk::TextView::WINDOW_RIGHT
-                      target = right_win
+                    #elsif event.window == right_win
+                    #  type = Gtk::TextView::WINDOW_RIGHT
+                    #  target = right_win
                     end
                     if type
                       first_y = event.area.y
