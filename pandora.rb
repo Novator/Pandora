@@ -6025,6 +6025,10 @@ module PandoraNet
         hole
       end
 
+      def active?
+        res = (conn_state != CS_Connected)
+      end
+
       # Get hook for line
       # RU: Взять крючок для лески
       def init_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, socket=nil, fo_ind=nil)
@@ -6043,7 +6047,7 @@ module PandoraNet
           i = 0
           while (i<@hooks.size) and (i<=255)
             break if (not @hooks[i].is_a? Array) or (@hooks[i][LHI_Session].nil?) \
-              or (@hooks[i][LHI_Session].destroyed?)  #.closed?
+              or (@hooks[i][LHI_Session].active?)
             i += 1
           end
           if i<=255
@@ -6910,7 +6914,7 @@ module PandoraNet
                         #pool.init_session(node, tokey, nil, nil, node_id)
                         #Tsaheylu
                         if not pool.connect_sessions_to_hook(sessions, self, hook, true)
-                          session ||= Session.new(self, nil, hook, nil, nil, \
+                          session = Session.new(self, nil, hook, nil, nil, \
                             CS_Connected, nil, nil, nil, nil)
                         end
                       elsif (fisher == mypersonhash) and \
@@ -6919,7 +6923,7 @@ module PandoraNet
                         p '!!это узел-рыбак, найти/создать сессию рыбки'
                         sessions = pool.sessions_of_personkeybase(fish, fish_key, fish_baseid)
                         if not pool.connect_sessions_to_hook(sessions, self, hook, false)
-                          session ||= Session.new(self, hook, nil, nil, nil, \
+                          session = Session.new(self, hook, nil, nil, nil, \
                             CS_Connected, nil, nil, nil, nil)
                         end
                       else
@@ -6934,10 +6938,11 @@ module PandoraNet
                         end
                       end
 
-                      session = pool.session_of_key(fish_key)
+                      sessions = pool.sessions_of_key(fish_key)
                       sthread = nil
-                      if session
+                      if (sessions.is_a? Array) and (sessions.size>0)
                         # найдена сессия с рыбкой
+                        session = sessions[0]
                         p log_mes+' fish session='+session.inspect
                         #out_lure = take_out_lure_for_fisher(session, to_key)
                         #send_segment_to_fisher(out_lure)
@@ -6945,15 +6950,16 @@ module PandoraNet
                         session.fish_lure = session.registrate_fish(fish)
                         sthread = session.send_thread
                       else
-                        session = pool.session_of_keybase(fisher_keybase)
-                        if session
+                        sessions = pool.sessions_of_key(fisher_key)
+                        if (sessions.is_a? Array) and (sessions.size>0)
                           # найдена сессия с рыбаком
+                          session = sessions[0]
                           p log_mes+' fisher session='+session.inspect
                           session.donor = self
                           session.fish_lure = session.registrate_fish(fish)
                           sthread = session.send_thread
                         else
-                          pool.add_fish_order(self, *line, @recv_models)
+                          pool.add_fish_order(self, *line[0..4], @recv_models)
                         end
                       end
                       if sthread and sthread.alive? and sthread.stop?
@@ -7074,11 +7080,11 @@ module PandoraNet
       @port         = aport
       @proto        = aproto
 
-      p 'Session.new [asocket, ahost_name, ahost_ip, aport, aproto, \
-      aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
-      to_key, to_base_id]'+[asocket, ahost_name, ahost_ip, aport, aproto, \
-      aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
-      to_key, to_base_id].inspect
+      p 'Session.new [asocket, ahost_name, ahost_ip, aport, aproto, '+\
+        'aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, '+\
+        'to_key, to_base_id]'+[asocket.object_id, ahost_name, ahost_ip, aport, aproto, \
+        aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
+        to_key, to_base_id].inspect
 
       init_and_check_node(to_person, to_key, to_base_id)
       pool.add_session(self)
@@ -7189,7 +7195,7 @@ module PandoraNet
 
           work_time = Time.now
 
-          sss = [@socket, @donor].inspect
+          sss = [@socket.object_id, @donor].inspect
           sss += '|1:'+[@socket.closed?].inspect if @socket
           sss += '|2:'+[@donor.socket].inspect if @donor
           sss += '|3:'+[@donor.socket.closed?].inspect if @donor and @donor.socket
@@ -7809,13 +7815,13 @@ module PandoraNet
             #@fishes.each_index do |i|
             #  free_fish_of_in_lure(i)
             #end
-            fishers.each do |val|
-              fisher = nil
-              in_lure = nil
-              fisher, in_lure = val if val.is_a? Array
-              fisher.free_fish_of_in_lure(in_lure) if (fisher and in_lure) #and (not fisher.destroyed?)
-              #fisher.free_out_lure_of_fisher(self, i) if fish #and (not fish.destroyed?)
-            end
+            #fishers.each do |val|
+            #  fisher = nil
+            #  in_lure = nil
+            #  fisher, in_lure = val if val.is_a? Array
+            #  fisher.free_fish_of_in_lure(in_lure) if (fisher and in_lure) #and (not fisher.destroyed?)
+            #  #fisher.free_out_lure_of_fisher(self, i) if fish #and (not fish.destroyed?)
+            #end
           end
 
           need_connect = ((@conn_mode & CM_KeepHere) != 0) and (not (@socket.is_a? FalseClass))
@@ -13188,18 +13194,20 @@ module PandoraGtk
     # RU: Взять иконку ассоциированную с панобъектом
     def self.get_panobject_icon(panobj)
       panobj_icon = nil
-      ind = nil
-      $window.notebook.children.each do |child|
-        if child.name==panobj.ider
-          ind = $window.notebook.children.index(child)
-          break
+      if panobj
+        ind = nil
+        $window.notebook.children.each do |child|
+          if child.name==panobj.ider
+            ind = $window.notebook.children.index(child)
+            break
+          end
         end
-      end
-      if ind
-        first_lab_widget = $window.notebook.get_tab_label($window.notebook.children[ind]).children[0]
-        if first_lab_widget.is_a? Gtk::Image
-          image = first_lab_widget
-          panobj_icon = $window.render_icon(image.stock, Gtk::IconSize::MENU).dup
+        if ind
+          first_lab_widget = $window.notebook.get_tab_label($window.notebook.children[ind]).children[0]
+          if first_lab_widget.is_a? Gtk::Image
+            image = first_lab_widget
+            panobj_icon = $window.render_icon(image.stock, Gtk::IconSize::MENU).dup
+          end
         end
       end
       panobj_icon
@@ -13210,10 +13218,15 @@ module PandoraGtk
       new_act = false
     else
       path, column = tree_view.cursor
-      new_act = action == 'Create'
+      new_act = (action == 'Create')
     end
+    p 'path='+path.inspect
     if path or new_act
-      panobject = tree_view.panobject
+      panobject = nil
+      if (tree_view.is_a? SubjTreeView)
+        panobject = tree_view.panobject
+      end
+      p 'panobject='+panobject.inspect
       store = tree_view.model
       iter = nil
       sel = nil
@@ -13226,16 +13239,20 @@ module PandoraGtk
       if path and (not new_act)
         iter = store.get_iter(path)
         id = iter[0]
-        sel = panobject.select('id='+id.to_s, true)
-        panhash0 = panobject.namesvalues['panhash']
+        if panobject
+          sel = panobject.select('id='+id.to_s, true)
+          panhash0 = panobject.namesvalues['panhash']
+          panstate = panobject.namesvalues['panstate']
+          panstate ||= 0
+          if (panobject.is_a? PandoraModel::Created)
+            created0 = panobject.namesvalues['created']
+            creator0 = panobject.namesvalues['creator']
+          end
+        else
+          panhash0 = PandoraUtils.hex_to_bytes(id)
+        end
         lang = panhash0[1].ord if panhash0 and (panhash0.size>1)
         lang ||= 0
-        panstate = panobject.namesvalues['panstate']
-        panstate ||= 0
-        if (panobject.is_a? PandoraModel::Created)
-          created0 = panobject.namesvalues['created']
-          creator0 = panobject.namesvalues['creator']
-        end
       end
 
       panobjecticon = get_panobject_icon(panobject)
@@ -14875,11 +14892,12 @@ module PandoraGtk
             close_btn.clicked
           end
         when 'Create','Edit','Delete','Copy', 'Dialog', 'Convert', 'Import', 'Export'
+          p 'act_panobject()'
           if (not treeview) and (notebook.page >= 0)
             sw = notebook.get_nth_page(notebook.page)
             treeview = sw.children[0]
           end
-          if treeview and (treeview.is_a? SubjTreeView)
+          if treeview
             if command=='Convert'
               panobject = treeview.panobject
               panobject.update(nil, nil, nil)
