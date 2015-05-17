@@ -22,7 +22,8 @@
       <name pos="|" />
       <blob pos="|" view="blob" />
       <type pos="|" />
-      <hash view="hex" />
+      <sha1 view="hex" />
+      <md5 view="hex" />
     </Blob>
 
     <Country>

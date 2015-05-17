@@ -74,7 +74,8 @@
     <Blob name.ru="Файл|Файлы">
       <name name.ru="Название" />
       <type name.ru="Тип" />
-      <hash name.ru="Хэш" />
+      <sha1 name.ru="Хэш SHA1" />
+      <md5 name.ru="Хэш MD5" />
       <size name.ru="Размер" />
       <blob name.ru="Тело" />
     </Blob>

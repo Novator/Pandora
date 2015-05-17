@@ -7947,12 +7947,14 @@ module PandoraNet
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
-        $host ||= PandoraUtils.get_param('listen_host')
-        $host ||= 'any'
         host = $host
+        if not host
+          host = PandoraUtils.get_param('listen_host')
+          host ||= 'any'
+        end
         if (not host)
           host = ''
-        elsif ((host=='any') or (host=='all'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
+        elsif ((host=='any') or (host=='any4') or (host=='all'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
           host = Socket::INADDR_ANY
           p "ipv4 all"
         elsif ((host=='any6') or (host=='all6'))
@@ -7964,16 +7966,19 @@ module PandoraNet
         #p Socket.gethostbyname(loc_hst)[3]
 
         # TCP Listener
-        $tcp_port ||= PandoraUtils.get_param('tcp_port')
-        $tcp_port ||= 5577
+        tcp_port = $tcp_port
+        if not tcp_port
+          tcp_port = PandoraUtils.get_param('tcp_port')
+          tcp_port ||= 5577
+        end
         $tcp_listen_thread = Thread.new do
           begin
-            server = TCPServer.open(host, $tcp_port)
+            server = TCPServer.open(host, tcp_port)
             addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
             PandoraUtils.log_message(LM_Info, _('Listening address')+': '+addr_str)
           rescue
             server = nil
-            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' TCP '+host.to_s+':'+$tcp_port.to_s)
+            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' TCP '+host.to_s+':'+tcp_port.to_s)
           end
           Thread.current[:tcp_server] = server
           Thread.current[:listen_tcp] = (server != nil)
@@ -8008,8 +8013,11 @@ module PandoraNet
         end
 
         # UDP Listener
-        $udp_port ||= PandoraUtils.get_param('udp_port')
-        $udp_port ||= 5577
+        udp_port = $udp_port
+        if not udp_port
+          udp_port = PandoraUtils.get_param('udp_port')
+          udp_port ||= 5577
+        end
         $udp_listen_thread = Thread.new do
           # Init UDP listener
           begin
@@ -8024,14 +8032,14 @@ module PandoraNet
             #hton2 = IPAddr.new('0.0.0.1').hton
             #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_ADD_MEMBERSHIP, hton+hton2) #listen multicast
             #udp_server.setsockopt(Socket::SOL_IP, Socket::IP_MULTICAST_LOOP, true) #come back (def on)
-            udp_server.bind(host, $udp_port)
+            udp_server.bind(host, udp_port)
 
             #addr_str = server.addr.to_s
             udp_addr_str = udp_server.addr[3].to_s+(' udp')+udp_server.addr[1].to_s
             PandoraUtils.log_message(LM_Info, _('Listening address')+': '+udp_addr_str)
           rescue
             udp_server = nil
-            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' UDP '+host.to_s+':'+$udp_port.to_s)
+            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' UDP '+host.to_s+':'+udp_port.to_s)
           end
           Thread.current[:udp_server] = udp_server
           Thread.current[:listen_udp] = (udp_server != nil)
@@ -8905,6 +8913,7 @@ module PandoraGtk
 
         if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
           @entry.text = dialog.filename
+          yield(@entry.text, @entry, @button) if block_given?
         end
         dialog.destroy
       end
@@ -10180,7 +10189,12 @@ module PandoraGtk
           when 'coord'
             entry = CoordBox.new
           when 'filename', 'blob'
-            entry = FilenameBox.new(window)
+            entry = FilenameBox.new(window) do |filename, entry, button|
+              name_fld = @panobject.field_des('name')
+              if (name_fld.is_a? Array) and (name_fld[FI_Widget].is_a? Gtk::Entry)
+                name_fld[FI_Widget].text = File.basename(filename)
+              end
+            end
           when 'base64'
             entry = Base64Entry.new
           when 'phash', 'panhash'
@@ -13373,7 +13387,7 @@ module PandoraGtk
         st_text = st_text + ' [#'+panobject.panhash(sel[0], lang, true, true)+']' if sel and sel.size>0
         PandoraGtk.set_statusbar_text(dialog.statusbar, st_text)
 
-        if panobject.class==PandoraModel::Key
+        if panobject.is_a? PandoraModel::Key
           mi = Gtk::MenuItem.new("Действия")
           menu = Gtk::MenuBar.new
           menu.append(mi)
@@ -13416,12 +13430,15 @@ module PandoraGtk
               view = ps['view']
               view ||= PandoraUtils.pantype_to_view(par_type)
             end
-
-            p 'val, type, view='+[val, type, view].inspect
+            p 'val.view, type, view='+[val, type, view].inspect
             val = PandoraUtils.view_to_val(val, type, view)
-            val = '@'+val if val and (val != '') and ((view=='blob') or (view=='text'))
+            if (view=='blob') or (view=='text')
+              val = '@'+val if val and (val != '')
+            end
             flds_hash[field[FI_Id]] = val
           end
+
+          # text and blob fields
           dialog.text_fields.each do |field|
             entry = field[FI_Widget]
             if entry.text == ''
@@ -13433,8 +13450,16 @@ module PandoraGtk
                   flds_hash[field[FI_Id]] = field[FI_Value]
                 end
               end
+
+              sha1_fld = panobject.field_des('sha1')
+              md5_fld = panobject.field_des('md5')
+              if sha1_fld or md5_fld
+                p 'need to calc hashs'
+              end
             end
           end
+
+          # language detect
           lg = nil
           begin
             lg = PandoraModel.text_to_lang(dialog.lang_entry.entry.text)

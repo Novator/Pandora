@@ -80,7 +80,8 @@
       <name name="Name" type="String" size="512" hash="1:hash(6)" />
       <blob name="Blob" type="Blob" />
       <type name="Type" type="String" size="32" />
-      <hash name="Hash" type="String" size="65" hash="2:raw(14)" />
+      <sha1 name="Hash SHA1" type="String" size="65" hash="2:raw(14)" />
+      <md5 name="Hash MD5" type="String" size="65" />
       <size name="Size" type="Integer" />
     </Blob>
 
