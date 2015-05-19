@@ -6073,6 +6073,7 @@ module PandoraNet
       # Get hook for line
       # RU: Взять крючок для лески
       def init_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, socket=nil, fo_ind=nil)
+        p '--init_line  [far_hook, hook, sess_hook]='+[far_hook, hook, sess_hook].inspect
         rec = nil
         # find existing rec
         if (not hook) and far_hook
@@ -6080,7 +6081,7 @@ module PandoraNet
         elsif (not hook) and sess_hook
           hook = @hooks.index {|rec| (rec[LHI_Sess_Hook]==sess_hook)}
         elsif (not hook) and (line and session)
-          my_hook = @hooks.index {|rec| (rec[LHI_Line]==line) and (rec[LHI_Session]==session)}
+          hook = @hooks.index {|rec| (rec[LHI_Line]==line) and (rec[LHI_Session]==session)}
         end
         #fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid
         # init empty rec
@@ -6116,21 +6117,24 @@ module PandoraNet
       # Take out lure by input lure for the fisher
       # RU: Взять исходящую наживку по входящей наживке для заданного рыбака
       def take_out_lure_for_fisher(fisher, in_lure)
-        out_lure = nil
+        #out_lure = nil
         #val = [fisher, in_lure]
-        p '[fisher, in_lure]='+[fisher, in_lure].inspect
-        #out_lure = @hooks.index(val)
-        my_hook = @hooks.index {|rec| (rec[LHI_Session]==fisher) and (rec[LHI_Far_Hook]==in_lure)}
+        p '[fisher, in_lure]='+[fisher.object_id, in_lure].inspect
+        out_lure = @hooks.index {|rec| (rec[LHI_Session]==fisher) and (rec[LHI_Far_Hook]==in_lure)}
         p '-===--take_out_lure_for_fisher  in_lure, out_lure='+[in_lure, out_lure].inspect
         if not out_lure
+          p 'NO OUT_LURE [fisher, self]='+[fisher.object_id, self.object_id].inspect
+          p 'hooks - fisher,self: '+\
+            [fisher.hooks.collect {|rec| [rec[LHI_Session].object_id, rec[LHI_Far_Hook]] },
+            fisher.hooks.collect {|rec| [rec[LHI_Session].object_id, rec[LHI_Far_Hook]] }].inspect
           # need to registrate output lure
-          i = 0
-          while (i<@fishers.size)
-            break if (not (@fishers[i].is_a? Array))  #or (@fishers[i][0].destroyed?))
-            i += 1
-          end
-          out_lure = i if (not out_lure) and (i<=255)
-          @fishers[out_lure] = val if out_lure
+        #  i = 0
+        #  while (i<@fishers.size)
+        #    break if (not (@fishers[i].is_a? Array))  #or (@fishers[i][0].destroyed?))
+        #    i += 1
+        #  end
+        #  out_lure = i if (not out_lure) and (i<=255)
+        #  @fishers[out_lure] = val if out_lure
         end
         out_lure
       end
@@ -6217,7 +6221,7 @@ module PandoraNet
       # RU: Отправляет сегмент от текущей рыбацкой сессии к сессии рыбки
       def send_segment_to_fish(in_lure, segment)
         res = nil
-        p '******send_segment_to_fish(in_lure)='+in_lure.inspect
+        p '******send_segment_to_fish(in_lure, segment.size)='+[in_lure, segment.bytesize].inspect
         if segment and (segment.bytesize>1)
           cmd = segment[0].ord
           fish = get_fish_for_in_lure(in_lure)
@@ -6845,8 +6849,8 @@ module PandoraNet
                           line[bi] = pool.base_id
                           p log_mes+' line='+line.inspect
                           line_raw = PandoraUtils.rubyobj_to_pson(line)
-                          session = connect_sessions_to_hook(self, hook)
-                          hook, rec = init_line(line, session)
+                          session = connect_sessions_to_hook([self], hook)
+                          my_hook, rec = init_line(line, session)
                           if my_hook
                             add_send_segment(EC_News, true, my_hook.chr + line_raw, \
                               ECC_News_Hook)
