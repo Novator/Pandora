@@ -2,7 +2,7 @@
 # encoding: UTF-8
 # coding: UTF-8
 
-# P2P national network Pandora
+# P2P folk network Pandora
 # RU: P2P народная сеть Пандора
 #
 # This program is distributed under the GNU GPLv2
@@ -246,7 +246,8 @@ module PandoraUtils
       case lang
         when 'ru'
           res = sname
-          if ['ка', 'га', 'ча'].include? res[-2,2]
+          p res
+          if ['ка', 'га', 'ча'].include?(res[-2,2])
             res[-1] = 'и'
           elsif ['г', 'к'].include? res[-1]
             res += 'и'
@@ -1154,6 +1155,14 @@ module PandoraUtils
     end
   end
 
+  def self.correct_aster_and_quest!(val)
+    if val.is_a? String
+      val.gsub!('*', '%')
+      val.gsub!('?', '_')
+    end
+    val
+  end
+
   TI_Name  = 0
   TI_Type  = 1
   TI_Desc  = 2
@@ -1296,18 +1305,10 @@ module PandoraUtils
       val
     end
 
-    def correct_aster_and_quest!(val)
-      if val.is_a? String
-        val.gsub!('*', '%')
-        val.gsub!('?', '_')
-      end
-      val
-    end
-
     def recognize_filter(filter, sql_values, like_ex=nil)
       esc = false
       if filter.is_a? Hash
-        #Example: {name => 'Michael', value => 0}
+        #Example: {:first_name => 'Michael', 'last_name' => 'Galyuk', :sex => 1}
         seq = ''
         filter.each do |n,v|
           if n
@@ -1318,22 +1319,48 @@ module PandoraUtils
         end
         filter = seq
       elsif filter.is_a? Array
-        #Example: [['name LIKE', 'Tom*'], ['value >', 3.0], ['title REGEXP', '\Wand']]
         seq = ''
-        filter.each do |n,v|
-          if n
-            seq = seq + ' AND ' if seq != ''
-            ns = n.to_s
-            if like_ex
-              if ns.index('LIKE') and (v.is_a? String)
-                v = escape_like_mask(v) if (like_ex & 1 > 0)
-                correct_aster_and_quest!(v) if (like_ex>=2)
-                esc = true
+        if (filter.size>0) and (filter[0].is_a? Array)
+          #Example: [['first_name LIKE', 'Mi*'], ['height >', 1.7], ['last_name REGEXP', '\Wgalyuk']]
+          filter.each do |n,v|
+            if n
+              seq = seq + ' AND ' if seq != ''
+              ns = n.to_s
+              if like_ex
+                if ns.index('LIKE') and (v.is_a? String)
+                  v = v.dup
+                  escape_like_mask(v) if (like_ex & 1 > 0)
+                  correct_aster_and_quest!(v) if (like_ex>=2)
+                  esc = true
+                end
+              end
+              seq = seq + ns + '?' #operation comes with name!
+              sql_values << v
+            end
+          end
+        elsif (filter.size>1) and (filter[0].is_a? String)
+          #Example: ['(last_name LIKE ?) OR (last_name=?)', 'Gal*', 'Галюк']
+          seq = filter[0].dup
+          values = filter[1..-1]
+          if like_ex
+            if seq.index('LIKE')
+              #seq = escape_like_mask(seq) if (like_ex & 1 > 0)
+              #correct_aster_and_quest!(seq) if (like_ex>=2)
+              values.each_with_index do |v,i|
+                if v.is_a? String
+                  v = v.dup
+                  escape_like_mask(v) if (like_ex & 1 > 0)
+                  PandoraUtils.correct_aster_and_quest!(v) if (like_ex>=2)
+                  esc = true
+                  values[i] = v
+                end
               end
             end
-            seq = seq + ns + '?' #operation comes with name!
-            sql_values << v
           end
+          sql_values.concat(values)
+          #p 'sql_values='+sql_values.inspect
+        else
+          puts 'Bad filter: '+filter.inspect
         end
         filter = seq
       end
@@ -1343,7 +1370,13 @@ module PandoraUtils
         sql = ' WHERE ' + filter
         sql = sql + " ESCAPE '$'" if esc
       end
-      [filter, sql]
+      sql
+    end
+
+    def values_to_ascii(sql_values)
+      sql_values.each_with_index do |v, i|
+        sql_values[i] = AsciiString.new(sql_values[i]) if sql_values[i].is_a? String
+      end
     end
 
     # RU: Делает выборку из таблицы
@@ -1355,7 +1388,7 @@ module PandoraUtils
       #  table_name, filter, fields, sort, limit, like_filter].inspect
       if tfd and (tfd != [])
         sql_values = Array.new
-        filter, filter_sql = recognize_filter(filter, sql_values, like_ex)
+        filter_sql = recognize_filter(filter, sql_values, like_ex)
 
         fields ||= '*'
         sql = 'SELECT ' + fields + ' FROM ' + table_name + filter_sql
@@ -1366,6 +1399,7 @@ module PandoraUtils
         if limit
           sql = sql + ' LIMIT '+limit.to_s
         end
+        values_to_ascii(sql_values)
         #p 'select  sql='+sql.inspect+'  values='+sql_values.inspect+' db='+db.inspect
         res = db.execute(sql, sql_values)
       end
@@ -1380,7 +1414,7 @@ module PandoraUtils
       sql = ''
       sql_values = Array.new
       sql_values2 = Array.new
-      filter, filter_sql = recognize_filter(filter, sql_values2)
+      filter_sql = recognize_filter(filter, sql_values2)
 
       if (not values) and (not names) and filter
         sql = 'DELETE FROM ' + table_name + filter_sql
@@ -1424,9 +1458,9 @@ module PandoraUtils
       end
       tfd = fields_table(table_name)
       if tfd and (tfd != [])
-        sql_values = sql_values + sql_values2
-        p '1upd_tab: sql='+sql.inspect
-        p '2upd_tab: sql_values='+sql_values.inspect
+        sql_values.concat(sql_values2)
+        values_to_ascii(sql_values)
+        p 'update: sql='+sql.inspect+' sql_values='+sql_values.inspect
         res = db.execute(sql, sql_values)
         #p 'upd_tab: db.execute.res='+res.inspect
         res = true
@@ -4218,7 +4252,7 @@ module PandoraCrypto
 
           vbox.pack_start(hbox, false, false, 2)
 
-          label = Gtk::Label.new(_('Password'))
+          label = Gtk::Label.new(_('Password')+' ('+_('optional')+')')
           vbox.pack_start(label, false, false, 2)
           pass_entry = Gtk::Entry.new
           pass_entry.width_request = 250
@@ -4226,6 +4260,13 @@ module PandoraCrypto
           align.add(pass_entry)
           vbox.pack_start(align, false, false, 2)
           #vbox.pack_start(pass_entry, false, false, 2)
+
+          agree_btn = Gtk::CheckButton.new(_('I agree to publish the person name'), true)
+          agree_btn.active = true
+          agree_btn.signal_connect('clicked') do |widget|
+            dialog.okbutton.sensitive = widget.active?
+          end
+          vbox.pack_start(agree_btn, false, false, 2)
 
           dialog.def_widget = user_entry.entry
 
@@ -5128,7 +5169,7 @@ module PandoraNet
       key_hash = PandoraUtils.simplify_single_array(key_hash)
       nodehash = PandoraUtils.simplify_single_array(nodehash)
       res = nil
-      send_state_add ||= 0
+      send_state_add ||= CS_Connecting
       sessions = sessions_of_personkeybase(person, key_hash, base_id)
       sessions << sessions_of_node(nodehash) if nodehash
       sessions << sessions_of_address(addr) if addr
@@ -5194,7 +5235,7 @@ module PandoraNet
               node_id_i = row[4]
               node_id_i ||= node_id
               session = Session.new(nil, host, addr, port, proto, \
-                CS_Connecting, node_id_i, dialog, send_state_add, nodehash, \
+                CM_Hunter, node_id_i, dialog, send_state_add, nodehash, \
                 person, key_hash_i, base_id)
               res = true
             end
@@ -5283,7 +5324,7 @@ module PandoraNet
     def init_fish_for_fisher(fisher, in_lure, aim_keyhash=nil, baseid=nil)
       fish = nil
       if (aim_keyhash==nil) #or (aim_keyhash==mykeyhash)   #
-        fish = Session.new(fisher, nil, in_lure, nil, nil, CS_Connected, \
+        fish = Session.new(fisher, nil, in_lure, nil, nil, CM_Hunter, \
           nil, nil, nil, nil)
       else  # alien key
         fish = @sessions.index { |session| session.skey[PandoraCrypto::KV_Panhash] == keyhash }
@@ -6039,7 +6080,7 @@ module PandoraNet
         elsif (not hook) and sess_hook
           hook = @hooks.index {|rec| (rec[LHI_Sess_Hook]==sess_hook)}
         elsif (not hook) and (line and session)
-          my_hook = @hooks.index {|rec| (rec[0]==line) and (rec[1]==session)}
+          my_hook = @hooks.index {|rec| (rec[LHI_Line]==line) and (rec[LHI_Session]==session)}
         end
         #fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid
         # init empty rec
@@ -6068,7 +6109,7 @@ module PandoraNet
           rec[LHI_Far_Hook] ||= far_hook if far_hook
           rec[LHI_Sess_Hook] ||= sess_hook if sess_hook
         end
-        p log_mes+'=======get_line_rec  [session, line, hook]='+[session.to_key, hook, rec].inspect
+        p log_mes+'=======get_line_rec  [session, hook, far_hook]='+[session.to_key, hook, far_hook].inspect
         [hook, rec]
       end
 
@@ -6076,8 +6117,10 @@ module PandoraNet
       # RU: Взять исходящую наживку по входящей наживке для заданного рыбака
       def take_out_lure_for_fisher(fisher, in_lure)
         out_lure = nil
-        val = [fisher, in_lure]
-        out_lure = @fishers.index(val)
+        #val = [fisher, in_lure]
+        p '[fisher, in_lure]='+[fisher, in_lure].inspect
+        #out_lure = @hooks.index(val)
+        my_hook = @hooks.index {|rec| (rec[LHI_Session]==fisher) and (rec[LHI_Far_Hook]==in_lure)}
         p '-===--take_out_lure_for_fisher  in_lure, out_lure='+[in_lure, out_lure].inspect
         if not out_lure
           # need to registrate output lure
@@ -6141,7 +6184,7 @@ module PandoraNet
         fish = nil
         p '+++++get_fish_for_in_lure(in_lure)='+in_lure.inspect
         if in_lure.is_a? Integer
-          fish = @fishes[in_lure]
+          fish = @hooks[in_lure][LHI_Session]
           #if fish #and fish.destroyed?
           #  fish = nil
           #  @fishes[in_lure] = nil
@@ -6915,7 +6958,7 @@ module PandoraNet
                         #Tsaheylu
                         if not pool.connect_sessions_to_hook(sessions, self, hook, true)
                           session = Session.new(self, nil, hook, nil, nil, \
-                            CS_Connected, nil, nil, nil, nil)
+                            0, nil, nil, nil, nil)
                         end
                       elsif (fisher == mypersonhash) and \
                       (fisher_key == mykeyhash) and \
@@ -6924,7 +6967,7 @@ module PandoraNet
                         sessions = pool.sessions_of_personkeybase(fish, fish_key, fish_baseid)
                         if not pool.connect_sessions_to_hook(sessions, self, hook, false)
                           session = Session.new(self, hook, nil, nil, nil, \
-                            CS_Connected, nil, nil, nil, nil)
+                            CM_Hunter, nil, nil, nil, nil)
                         end
                       else
                         p '!!это узел-посредник, пробросить по истории заявок'
@@ -6938,40 +6981,40 @@ module PandoraNet
                         end
                       end
 
-                      sessions = pool.sessions_of_key(fish_key)
-                      sthread = nil
-                      if (sessions.is_a? Array) and (sessions.size>0)
-                        # найдена сессия с рыбкой
-                        session = sessions[0]
-                        p log_mes+' fish session='+session.inspect
-                        #out_lure = take_out_lure_for_fisher(session, to_key)
-                        #send_segment_to_fisher(out_lure)
-                        session.donor = self
-                        session.fish_lure = session.registrate_fish(fish)
-                        sthread = session.send_thread
-                      else
-                        sessions = pool.sessions_of_key(fisher_key)
-                        if (sessions.is_a? Array) and (sessions.size>0)
-                          # найдена сессия с рыбаком
-                          session = sessions[0]
-                          p log_mes+' fisher session='+session.inspect
-                          session.donor = self
-                          session.fish_lure = session.registrate_fish(fish)
-                          sthread = session.send_thread
-                        else
-                          pool.add_fish_order(self, *line[0..4], @recv_models)
-                        end
-                      end
-                      if sthread and sthread.alive? and sthread.stop?
-                        sthread.run
-                      else
-                        sessions = pool.find_by_order(line)
-                        if sessions
-                          sessions.each do |session|
-                            session.add_send_segment(EC_News, true, rdata, ECC_News_Hook)
-                          end
-                        end
-                      end
+                      #sessions = pool.sessions_of_key(fish_key)
+                      #sthread = nil
+                      #if (sessions.is_a? Array) and (sessions.size>0)
+                      #  # найдена сессия с рыбкой
+                      #  session = sessions[0]
+                      #  p log_mes+' fish session='+session.inspect
+                      #  #out_lure = take_out_lure_for_fisher(session, to_key)
+                      #  #send_segment_to_fisher(out_lure)
+                      #  session.donor = self
+                      #  session.fish_lure = session.registrate_fish(fish)
+                      #  sthread = session.send_thread
+                      #else
+                      #  sessions = pool.sessions_of_key(fisher_key)
+                      #  if (sessions.is_a? Array) and (sessions.size>0)
+                      #    # найдена сессия с рыбаком
+                      #    session = sessions[0]
+                      #    p log_mes+' fisher session='+session.inspect
+                      #    session.donor = self
+                      #    session.fish_lure = session.registrate_fish(fish)
+                      #    sthread = session.send_thread
+                      #  else
+                      #    pool.add_fish_order(self, *line[0..4], @recv_models)
+                      #  end
+                      #end
+                      #if sthread and sthread.alive? and sthread.stop?
+                      #  sthread.run
+                      #else
+                      #  sessions = pool.find_by_order(line)
+                      #  if sessions
+                      #    sessions.each do |session|
+                      #      session.add_send_segment(EC_News, true, rdata, ECC_News_Hook)
+                      #    end
+                      #  end
+                      #end
                     end
                   when ECC_News_Notice
                     p log_mes+'ECC_News_Notice'
@@ -7103,15 +7146,17 @@ module PandoraNet
           # сокет
           @socket = asocket if (not asocket.closed?)
         elsif asocket.is_a? Session
-          # донор-сессия
+          p 'донор-сессия: '+asocket.object_id.inspect
           if asocket.socket and (not asocket.socket.closed?)
             # задать донора
             @donor = asocket
             # задать канал
             if ahost_name
               @fisher_lure = ahost_name
+              p 'крючок рыбака '+@fisher_lure.inspect
             else
               @fish_lure = ahost_ip
+              p 'крючок рыбки '+@fish_lure.inspect
             end
           end
         end
@@ -7123,10 +7168,11 @@ module PandoraNet
 
           # is there connection?
           # есть ли подключение?   or (@socket.closed?)
-          if ((not @socket) ) \
-          and ((not @donor) or (not @donor.socket) or (@donor.socket.closed?))
+          if (not @socket) \
+          and (not (@donor and @donor.socket and (not @donor.socket.closed?)))
             # нет подключения ни через сокет, ни через донора
             # значит, нужно подключаться самому
+            p 'нет подключения ни через сокет, ни через донора'
             host = ahost_name
             host = ahost_ip if ((not host) or (host == ''))
 
@@ -7195,7 +7241,7 @@ module PandoraNet
 
           work_time = Time.now
 
-          sss = [@socket.object_id, @donor].inspect
+          sss = [@socket.object_id, @donor.object_id].inspect
           sss += '|1:'+[@socket.closed?].inspect if @socket
           sss += '|2:'+[@donor.socket].inspect if @donor
           sss += '|3:'+[@donor.socket.closed?].inspect if @donor and @donor.socket
@@ -7220,6 +7266,9 @@ module PandoraNet
           # есть ли подключение?
           if (@socket and (not @socket.closed?)) \
           or (@donor and @donor.socket and (not @donor.socket.closed?))
+            @conn_mode = (@conn_mode | (CM_Hunter & aconn_state)) if @donor
+
+            p 'есть подключение [@socket, @donor]' + [@socket.object_id, @donor.object_id].inspect
             @stage          = ES_Protocol  #ES_IpCheck
             #@conn_state     = aconn_state
             @conn_state     = CS_Connected
@@ -7822,6 +7871,8 @@ module PandoraNet
             #  fisher.free_fish_of_in_lure(in_lure) if (fisher and in_lure) #and (not fisher.destroyed?)
             #  #fisher.free_out_lure_of_fisher(self, i) if fish #and (not fish.destroyed?)
             #end
+          else
+            p 'НЕТ ПОДКЛЮЧЕНИЯ'
           end
 
           need_connect = ((@conn_mode & CM_KeepHere) != 0) and (not (@socket.is_a? FalseClass))
@@ -7999,7 +8050,7 @@ module PandoraNet
                 proto = 'tcp'
                 p 'LISTEN: '+[host_name, host_ip, port, proto].inspect
                 session = Session.new(socket, host_name, host_ip, port, proto, \
-                  CS_Connected, nil, nil, nil, nil)
+                  0, nil, nil, nil, nil)
               else
                 PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
               end
@@ -8322,7 +8373,7 @@ module PandoraGtk
           [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
           and (event.state.control_mask? or (enter_like_ok and (not (self.focus.is_a? Gtk::TextView))))
         then
-          okbutton.activate
+          okbutton.activate if okbutton.sensitive?
           true
         elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
           ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
@@ -12056,7 +12107,7 @@ module PandoraGtk
 
   # Search panel
   # RU: Панель поиска
-  class SearchScrollWin < Gtk::ScrolledWindow
+  class SearchScrollWin < Gtk::VBox #Gtk::ScrolledWindow
     attr_accessor :text
 
     include PandoraGtk
@@ -12064,15 +12115,54 @@ module PandoraGtk
     # Search in bases
     # RU: Поиск в базах
     def search_in_bases(text, th, bases='auto')
+
+      def name_filter(fld, val)
+        res = nil
+        if val.index('*') or val.index('?')
+          PandoraUtils.correct_aster_and_quest!(val)
+          res = ' LIKE ?'
+        else
+          res = '=?'
+        end
+        res = fld + res
+        [res, AsciiString.new(val)]
+      end
+
       res = nil
       while th[:processing] and (not res)
         model = PandoraUtils.get_model('Person')
-        fields = nil
-        sort = nil
-        limit = nil
-        filter = [['first_name LIKE', text]]
-        res = model.select(filter, false, fields, sort, limit, 3)
+        fields = 'first_name, last_name, birth_day'
+        sort = 'first_name, last_name'
+        limit = 100
+        word1, word2, word3, words = text.split
+        p [word1, word2, word3, words]
+        word1dup = word1.dup
+        filter1, word1 = name_filter('first_name', word1)
+        filter2, word2 = name_filter('last_name', word2) if word2
+        word4 = nil
+        if word3
+          word3, word4 = word3.split('-')
+          p [word3, word4]
+          p word3 = PandoraUtils.str_to_date(word3).to_i
+          p word4 = PandoraUtils.str_to_date(word4).to_i if word4
+        end
+        if word4
+          filter = [filter1+' AND '+filter2+' AND birth_day>=? AND birth_day<=?', word1, word2, word3, word4]
+          res = model.select(filter, false, fields, sort, limit)
+        elsif word3
+          filter = [filter1+' AND '+filter2+' AND birth_day=?', word1, word2, word3]
+          res = model.select(filter, false, fields, sort, limit)
+        elsif word2
+          filter = [filter1+' AND '+filter2, word1, word2]
+          res = model.select(filter, false, fields, sort, limit)
+        else
+          filter2, word1dup = name_filter('last_name', word1dup)
+          filter = [filter1+' OR '+filter2, word1, word1dup]
+          res = model.select(filter, false, fields, sort, limit)
+        end
         res ||= []
+        res.uniq!
+        res.compact!
       end
       res
     end
@@ -12080,15 +12170,17 @@ module PandoraGtk
     # Show search window
     # RU: Показать окно поиска
     def initialize(text=nil)
-      super(nil, nil)
+      super #(nil, nil)
 
       @text = nil
       @search_thread = nil
 
-      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      #set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       border_width = 0
 
-      vpaned = Gtk::VPaned.new
+      #vbox = Gtk::VBox.new
+      #vpaned = Gtk::VPaned.new
+      vbox = self
 
       search_btn = Gtk::ToolButton.new(Gtk::Stock::FIND, _('Search'))
       search_btn.tooltip_text = _('Start searching')
@@ -12139,6 +12231,9 @@ module PandoraGtk
       #kind_entry.has_frame = true
 
       kind_entry.set_size_request(100, -1)
+      #p stop_btn.allocation.width
+      #search_width = $window.allocation.width-kind_entry.allocation.width-stop_btn.allocation.width*4
+      search_entry.set_size_request(150, -1)
 
       hbox = Gtk::HBox.new
       hbox.pack_start(kind_entry, false, false, 0)
@@ -12150,7 +12245,6 @@ module PandoraGtk
 
       option_box = Gtk::HBox.new
 
-      vbox = Gtk::VBox.new
       vbox.pack_start(hbox, false, true, 0)
       vbox.pack_start(option_box, false, true, 0)
 
@@ -12198,15 +12292,15 @@ module PandoraGtk
       end
       hunt_btn.safe_set_active(true)
 
-      option_box.pack_start(local_btn, false, true, 1)
-      option_box.pack_start(active_btn, false, true, 1)
-      option_box.pack_start(hunt_btn, false, true, 1)
+      option_box.pack_start(local_btn, false, false, 1)
+      option_box.pack_start(active_btn, false, false, 1)
+      option_box.pack_start(hunt_btn, false, false, 1)
 
       list_sw = Gtk::ScrolledWindow.new(nil, nil)
       list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
-      list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+      list_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
 
-      list_store = Gtk::ListStore.new(Integer, String)
+      list_store = Gtk::ListStore.new(Integer, String, String, String)
 
       prev_btn.signal_connect('clicked') do |widget|
         PandoraGtk.set_readonly(next_btn, false)
@@ -12224,17 +12318,23 @@ module PandoraGtk
         text = search_entry.text
         search_entry.position = search_entry.position  # deselect
         if (text.size>0) and (not @search_thread)
+          list_store.clear
           @search_thread = Thread.new do
             th = Thread.current
             th[:processing] = true
             PandoraGtk.set_readonly(stop_btn, false)
             PandoraGtk.set_readonly(widget, true)
+            sleep 0.3
             res = search_in_bases(text, th, 'auto')
             if res.is_a? Array
               res.each_with_index do |row, i|
                 user_iter = list_store.append
                 user_iter[0] = i
-                user_iter[1] = row.to_s
+                user_iter[1] = Utf8String.new(row[0])
+                user_iter[2] = Utf8String.new(row[1])
+                date = row[2]
+                date = PandoraUtils.date_to_str(Time.at(date)) if date.is_a? Integer
+                user_iter[3] = Utf8String.new(date)
               end
             end
             PandoraGtk.set_readonly(stop_btn, true)
@@ -12278,8 +12378,18 @@ module PandoraGtk
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
+      column = Gtk::TreeViewColumn.new(_('First name'), renderer, 'text' => 1)
       column.set_sort_column_id(1)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Last name'), renderer, 'text' => 2)
+      column.set_sort_column_id(2)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Birth date'), renderer, 'text' => 3)
+      column.set_sort_column_id(3)
       list_tree.append_column(column)
 
       list_tree.signal_connect('row_activated') do |tree_view, path, column|
@@ -12288,11 +12398,12 @@ module PandoraGtk
 
       list_sw.add(list_tree)
 
-      vpaned.pack1(vbox, false, true)
-      vpaned.pack2(list_sw, true, true)
+      #vpaned.pack1(vbox, false, true)
+      #vpaned.pack2(list_sw, true, true)
+      vbox.pack_start(list_sw, true, true, 0)
       list_sw.show_all
 
-      self.add_with_viewport(vpaned)
+      #self.add(vbox)
       #self.add(hpaned)
 
       PandoraGtk.hack_grab_focus(search_entry)
@@ -13992,7 +14103,7 @@ module PandoraGtk
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
-    dlg.comments = _('P2P national network')
+    dlg.comments = _('P2P folk network')
     dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
     begin
       file = File.open(File.join($pandora_root_dir, 'LICENSE.TXT'), 'r')
@@ -15743,10 +15854,12 @@ else
   end
   class Utf8String < String
     def initialize(str=nil)
-      if str == nil
-        super('')
-      else
+      if str.is_a? String
         super(str)
+      elsif str.is_a? Numeric
+        super(str.to_s)
+      else
+        super(str.inspect)
       end
       force_encoding('UTF-8')
     end
