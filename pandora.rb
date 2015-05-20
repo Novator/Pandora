@@ -5430,6 +5430,10 @@ module PandoraNet
 
     LONG_SEG_SIGN   = 0xFFFF
 
+    def active_hook
+      i = @hooks.index {|rec| rec[LHI_Session] and rec[LHI_Session] and rec[LHI_Session].active? }
+    end
+
     # Send command, code and date (if exists)
     # RU: Отправляет команду, код и данные (если есть)
     def send_comm_and_data(index, cmd, code, data=nil)
@@ -5439,15 +5443,7 @@ module PandoraNet
       lengt = 0
       lengt = data.bytesize if data
       p log_mes+'SEND_ALL: [index, cmd, code, lengt]='+[index, cmd, code, lengt].inspect
-      if donor
-        segment = [cmd, code].pack('CC')
-        segment << data if data
-        if fisher_lure
-          res = donor.send_queue.add_block_to_queue([EC_Lure, fisher_lure, segment])
-        else
-          res = donor.send_queue.add_block_to_queue([EC_Bite, fish_lure, segment])
-        end
-      else
+      if @socket.is_a? IPSocket
         data ||= ''
         data = AsciiString.new(data)
         datasize = data.bytesize
@@ -5590,6 +5586,23 @@ module PandoraNet
         if res
           @sindex = res
         end
+      elsif @hooks.size>0
+        hook = active_hook
+        if hook
+          rec = @hooks[hook] if hook
+
+          segment = [cmd, code].pack('CC')
+          segment << data if data
+          if rec[LHI_Sess_Hook] rec[LHI_Far_Hook]
+            res = donor.send_queue.add_block_to_queue([EC_Lure, fisher_lure, segment])
+          else
+            res = donor.send_queue.add_block_to_queue([EC_Bite, fish_lure, segment])
+          end
+        else
+          p 'No active hook: '+@hooks.size.to_s
+        end
+      else
+        p 'No socket. No hooks'
       end
       res
     end
@@ -6072,15 +6085,18 @@ module PandoraNet
 
       # Get hook for line
       # RU: Взять крючок для лески
-      def init_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, socket=nil, fo_ind=nil)
-        p '--init_line  [far_hook, hook, sess_hook]='+[far_hook, hook, sess_hook].inspect
+      def init_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, fo_ind=nil)
+        p log_mes+'--init_line  [far_hook, hook, sess_hook, self, session]='+[far_hook, hook, sess_hook, \
+          self.object_id, session.object_id].inspect
         rec = nil
         # find existing rec
         if (not hook) and far_hook
           hook = @hooks.index {|rec| (rec[LHI_Far_Hook]==far_hook)}
-        elsif (not hook) and sess_hook
-          hook = @hooks.index {|rec| (rec[LHI_Sess_Hook]==sess_hook)}
-        elsif (not hook) and (line and session)
+        end
+        if (not hook) and sess_hook and session
+          hook = @hooks.index {|rec| (rec[LHI_Sess_Hook]==sess_hook) and (rec[LHI_Session]==session)}
+        end
+        if (not hook) and line and session
           hook = @hooks.index {|rec| (rec[LHI_Line]==line) and (rec[LHI_Session]==session)}
         end
         #fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid
@@ -6097,6 +6113,7 @@ module PandoraNet
             rec = @hooks[hook]
             rec.clear if rec
           end
+          p log_mes+' Register hook='+hook.inspect
         end
         # fill rec
         if hook
@@ -6110,8 +6127,12 @@ module PandoraNet
           rec[LHI_Far_Hook] ||= far_hook if far_hook
           rec[LHI_Sess_Hook] ||= sess_hook if sess_hook
         end
-        p log_mes+'=======get_line_rec  [session, hook, far_hook]='+[session.to_key, hook, far_hook].inspect
+        p log_mes+'=====init_line  [session, far_hook, hook, sess_hook]='+[session.to_key, far_hook, hook, sess_hook].inspect
         [hook, rec]
+      end
+
+      def rec_info(rec)
+        res = [rec[LHI_Session].object_id, rec[LHI_Far_Hook], rec[LHI_Sess_Hook]]
       end
 
       # Take out lure by input lure for the fisher
@@ -6125,8 +6146,8 @@ module PandoraNet
         if not out_lure
           p 'NO OUT_LURE [fisher, self]='+[fisher.object_id, self.object_id].inspect
           p 'hooks - fisher,self: '+\
-            [fisher.hooks.collect {|rec| [rec[LHI_Session].object_id, rec[LHI_Far_Hook]] },
-            fisher.hooks.collect {|rec| [rec[LHI_Session].object_id, rec[LHI_Far_Hook]] }].inspect
+            [fisher.hooks.collect {|rec| rec_info(rec) },
+            fisher.hooks.collect {|rec| rec_info(rec) }].inspect
           # need to registrate output lure
         #  i = 0
         #  while (i<@fishers.size)
@@ -6868,13 +6889,15 @@ module PandoraNet
                         sessions.uniq!
                         sessions.compact!
                         if sessions and (sessions.size>0)
+                          p 'FOUND fishes: '+sessions.size.to_s
                           sessions.each do |session|
-                            p log_mes+'FOUND fish session='+session.to_key.inspect
+                            p log_mes+'--Fish session='+[session.object_id, session.to_key].inspect
                             line[bi-2] = session.to_person if (not fish)
                             line[bi-1] = session.to_key if (not fish_key)
                             line[bi] = session.to_base_id
-                            p log_mes+' line='+line.inspect
+                            p log_mes+' reg.line='+line.inspect
                             my_hook, rec = init_line(line, session)
+                            #init_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, fo_ind=nil)
                             if my_hook
                               sess_hook, rec = session.init_line(line, self, nil, nil, my_hook)
                               if sess_hook
