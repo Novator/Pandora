@@ -1568,7 +1568,7 @@ module PandoraUtils
         @def_fields_expanded = false
         @panhash_pattern = nil
         #@panhash_ind = nil
-        #@modified_ind = nil
+        @modified = false
       end
       def ider
         @ider
@@ -1591,9 +1591,12 @@ module PandoraUtils
       #def panhash_ind
       #  @panhash_ind
       #end
-      #def modified_ind
-      #  @modified_ind
-      #end
+      def modified
+        @modified
+      end
+      def modified=(x)
+        @modified = x
+      end
       #def lang
       #  @lang
       #end
@@ -2105,6 +2108,7 @@ module PandoraUtils
         #p 'update values='+values.inspect
       end
       res = self.class.repositories.get_tab_update(self, self.class.tables[0], values, names, filter)
+      self.class.modified = true if res
       if set_namesvalues and res
         @namesvalues = {}
         values.each_with_index do |v, i|
@@ -8847,9 +8851,9 @@ module PandoraGtk
           image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
           image.set_padding(2, 0)
           label_box2 = TabLabelBox.new(image, title, nil, false, 0)
-          sw = Gtk::ScrolledWindow.new(nil, nil)
-          page = dialog.notebook.append_page(sw, label_box2)
-          auto_create = PandoraGtk.show_panobject_list(panclass, nil, sw, auto_create)
+          pbox = PandoraGtk::PanobjBox.new
+          page = dialog.notebook.append_page(pbox, label_box2)
+          auto_create = PandoraGtk.show_panobject_list(panclass, nil, pbox, auto_create)
           if panclasses.size>MaxPanhashTabs
             break
           end
@@ -8857,8 +8861,8 @@ module PandoraGtk
         dialog.notebook.page = 0
         dialog.run2 do
           panhash = nil
-          sw = dialog.notebook.get_nth_page(dialog.notebook.page)
-          treeview = sw.children[0]
+          pbox = dialog.notebook.get_nth_page(dialog.notebook.page)
+          treeview = pbox.treeview
           if treeview.is_a? SubjTreeView
             path, column = treeview.cursor
             panobject = treeview.panobject
@@ -9197,23 +9201,6 @@ module PandoraGtk
       end
       go_to_end
     end
-  end
-
-  # Grid for panobjects
-  # RU: Таблица для объектов Пандоры
-  class SubjTreeView < Gtk::TreeView
-    attr_accessor :panobject, :sel, :notebook, :auto_create
-  end
-
-  # Column for SubjTreeView
-  # RU: Колонка для SubjTreeView
-  class SubjTreeViewColumn < Gtk::TreeViewColumn
-    attr_accessor :tab_ind
-  end
-
-  # ScrolledWindow for panobjects
-  # RU: ScrolledWindow для объектов Пандоры
-  class PanobjScrollWin < Gtk::ScrolledWindow
   end
 
   # Dialog with enter fields
@@ -10222,26 +10209,23 @@ module PandoraGtk
       image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
       image.set_padding(2, 0)
       label_box2 = TabLabelBox.new(image, _('Relations'), nil, false, 0)
-      sw = Gtk::ScrolledWindow.new(nil, nil)
-      page = notebook.append_page(sw, label_box2)
-
-      PandoraGtk.show_panobject_list(PandoraModel::Relation, nil, sw)
+      pbox = PandoraGtk::PanobjBox.new
+      page = notebook.append_page(pbox, label_box2)
+      PandoraGtk.show_panobject_list(PandoraModel::Relation, nil, pbox)
 
       image = Gtk::Image.new(Gtk::Stock::DIALOG_AUTHENTICATION, Gtk::IconSize::MENU)
       image.set_padding(2, 0)
       label_box2 = TabLabelBox.new(image, _('Signs'), nil, false, 0)
-      sw = Gtk::ScrolledWindow.new(nil, nil)
-      page = notebook.append_page(sw, label_box2)
-
-      PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, sw)
+      pbox = PandoraGtk::PanobjBox.new
+      page = notebook.append_page(pbox, label_box2)
+      PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox)
 
       image = Gtk::Image.new(Gtk::Stock::DIALOG_INFO, Gtk::IconSize::MENU)
       image.set_padding(2, 0)
       label_box2 = TabLabelBox.new(image, _('Opinions'), nil, false, 0)
-      sw = Gtk::ScrolledWindow.new(nil, nil)
-      page = notebook.append_page(sw, label_box2)
-
-      PandoraGtk.show_panobject_list(PandoraModel::Opinion, nil, sw)
+      pbox = PandoraGtk::PanobjBox.new
+      page = notebook.append_page(pbox, label_box2)
+      PandoraGtk.show_panobject_list(PandoraModel::Opinion, nil, pbox)
 
       # create labels, remember them, calc middle char width
       texts_width = 0
@@ -12165,7 +12149,7 @@ module PandoraGtk
 
   # Search panel
   # RU: Панель поиска
-  class SearchScrollWin < Gtk::VBox #Gtk::ScrolledWindow
+  class SearchBox < Gtk::VBox #Gtk::ScrolledWindow
     attr_accessor :text
 
     include PandoraGtk
@@ -13742,15 +13726,52 @@ module PandoraGtk
     end
   end
 
+  # Grid for panobjects
+  # RU: Таблица для объектов Пандоры
+  class SubjTreeView < Gtk::TreeView
+    attr_accessor :panobject, :sel, :notebook, :auto_create
+  end
+
+  # Column for SubjTreeView
+  # RU: Колонка для SubjTreeView
+  class SubjTreeViewColumn < Gtk::TreeViewColumn
+    attr_accessor :tab_ind
+  end
+
+  $treeview_thread = nil
+
+  def self.update_treeview_if_need(panobjbox=nil)
+    $treeview_thread.exit if $treeview_thread and $treeview_thread.alive?
+    if panobjbox.is_a? PanobjBox
+      $treeview_thread = Thread.new do
+        while panobjbox and (not panobjbox.destroyed?) and panobjbox.treeview \
+        and (not panobjbox.treeview.destroyed?) and $window.visible?
+          p 'update_treeview_if_need: '+panobjbox.treeview.panobject.ider
+          if panobjbox.treeview.panobject.class.modified
+            panobjbox.update_btn.clicked
+          end
+          sleep(2)
+        end
+      end
+    end
+  end
+
+  # ScrolledWindow for panobjects
+  # RU: ScrolledWindow для объектов Пандоры
+  class PanobjBox < Gtk::VBox
+    attr_accessor :update_btn, :treeview
+  end
+
   # Showing panobject list
   # RU: Показ списка панобъектов
-  def self.show_panobject_list(panobject_class, widget=nil, sw=nil, auto_create=false)
+  def self.show_panobject_list(panobject_class, widget=nil, pbox=nil, auto_create=false)
     notebook = $window.notebook
-    single = (sw == nil)
+    single = (pbox == nil)
     if single
       notebook.children.each do |child|
-        if (child.is_a? PanobjScrollWin) and (child.name==panobject_class.ider)
+        if (child.is_a? PanobjBox) and (child.name==panobject_class.ider)
           notebook.page = notebook.children.index(child)
+          #child.update_if_need
           return nil
         end
       end
@@ -13826,15 +13847,14 @@ module PandoraGtk
       if single
         act_panobject(tree_view, 'Edit')
       else
-        dialog = sw.parent.parent.parent
+        dialog = pbox.parent.parent.parent
         dialog.okbutton.activate
       end
     end
 
-    sw ||= PanobjScrollWin.new(nil, nil)
-    #sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-    sw.border_width = 0
-    sw.name = panobject.ider
+    pbox ||= PanobjBox.new
+    pbox.name = panobject.ider
+    pbox.treeview = treeview
 
     list_sw = Gtk::ScrolledWindow.new(nil, nil)
     list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
@@ -13845,11 +13865,13 @@ module PandoraGtk
     hbox = Gtk::HBox.new
 
     title = _('Update')
-    update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
+    pbox.update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
+    update_btn = pbox.update_btn
     update_btn.tooltip_text = title
     update_btn.label = title
     update_btn.signal_connect('clicked') do |*args|
       store.clear
+      panobject.class.modified = false if panobject.class.modified
       sel = panobject.select(nil, false, nil, panobject.sort)
       param_view_col = nil
       param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
@@ -13870,8 +13892,10 @@ module PandoraGtk
       if treeview.sel.size>0
         treeview.set_cursor(Gtk::TreePath.new(treeview.sel.size-1), nil, false)
       end
+      p 'treeview is updated '+panobject.ider
       treeview.grab_focus
     end
+    update_btn.clicked
 
     hunted_btn = SafeCheckButton.new(_('auto'), true)
     hunted_btn.safe_signal_clicked do |widget|
@@ -13882,13 +13906,10 @@ module PandoraGtk
     hbox.pack_start(update_btn, false, true, 0)
     hbox.pack_start(hunted_btn, false, true, 0)
 
-    vbox = Gtk::VBox.new
-    vbox.pack_start(hbox, false, false, 0)
-    vbox.pack_start(list_sw, true, true, 0)
+    pbox.pack_start(hbox, false, false, 0)
+    pbox.pack_start(list_sw, true, true, 0)
 
-    sw.add(vbox)
-
-    if auto_create and sel and (sel.size==0)
+    if auto_create and treeview.sel and (treeview.sel.size==0)
       treeview.auto_create = true
       treeview.signal_connect('map') do |widget, event|
         if treeview.auto_create
@@ -13914,15 +13935,17 @@ module PandoraGtk
         image.set_padding(2, 0)
       end
 
-      label_box = TabLabelBox.new(image, panobject.pname, sw, false, 0) do
+      label_box = TabLabelBox.new(image, panobject.pname, pbox, false, 0) do
         store.clear
         treeview.destroy
       end
 
-      page = notebook.append_page(sw, label_box)
-      notebook.set_tab_reorderable(sw, true)
-      sw.show_all
+      page = notebook.append_page(pbox, label_box)
+      notebook.set_tab_reorderable(pbox, true)
+      pbox.show_all
       notebook.page = notebook.n_pages-1
+
+      #pbox.update_if_need
 
       treeview.grab_focus
     end
@@ -14285,7 +14308,7 @@ module PandoraGtk
   # Showing search panel
   # RU: Показать панель поиска
   def self.show_search_panel(text=nil)
-    sw = SearchScrollWin.new(text)
+    sw = SearchBox.new(text)
 
     image = Gtk::Image.new(Gtk::Stock::FIND, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
@@ -15501,6 +15524,7 @@ module PandoraGtk
           cur_page.init_video_receiver(true, true, false) if not cur_page.area_recv.destroyed?
           cur_page.init_video_sender(true, true) if not cur_page.area_send.destroyed?
         end
+        PandoraGtk.update_treeview_if_need(cur_page)
         $last_page = cur_page
       end
 
@@ -15646,7 +15670,7 @@ module PandoraGtk
           if $window.notebook.n_pages>0
             curpage = $window.notebook.get_nth_page($window.notebook.page)
           end
-          if curpage.is_a? PandoraGtk::PanobjScrollWin
+          if curpage.is_a? PandoraGtk::PanobjBox
             res = false
           else
             res = PandoraGtk.show_panobject_list(PandoraModel::Person)
@@ -15730,6 +15754,8 @@ module PandoraGtk
                 curpage = $window.notebook.get_nth_page($window.notebook.page)
                 if (curpage.is_a? PandoraGtk::DialogScrollWin) and toplevel
                   curpage.update_state(false, curpage)
+                else
+                  PandoraGtk.update_treeview_if_need(curpage)
                 end
               end
               $window.focus_timer = nil
