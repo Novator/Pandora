@@ -2756,6 +2756,8 @@ module PandoraUtils
 
   $mp3_player = 'mpg123'
 
+  # Detect mp3 player command
+  # RU: Определить команду mp3 проигрывателя
   def self.detect_mp3_player
     if PandoraUtils.os_family=='windows'
       if is_64bit_os?
@@ -2990,7 +2992,7 @@ module PandoraModel
               seu = sub_elem.name.upcase
               if seu==sub_elem.name  #elem name has BIG latters
                 # This is a function
-                #p 'Функция не определена: ['+sub_elem.name+']'
+                p 'Функция не определена: ['+sub_elem.name+']'
               else
                 # This is a field
                 i = 0
@@ -3330,14 +3332,14 @@ module PandoraModel
   end
 
   # Float trust (-1..+1) to public level 21 (0..20)
-  # RU: Целое доверие в уровень публикации 21
+  # RU: Дробное доверие в уровень публикации 21
   def self.trust2_to_pub21(trust)
     trust ||= -1
     res = (trust*10).round+10
   end
 
   # Float trust (-1..+1) to public relation kind (235..255)
-  # RU: Целое доверие в вид связи "публикую"
+  # RU: Дробное доверие в вид связи "публикую"
   def self.trust2_to_pub235(trust)
     res = RK_MinPublic + trust2_to_pub21(trust)
   end
@@ -3355,8 +3357,8 @@ module PandoraModel
         filter = [['first=', publisher], ['kind >=', pub_level]]
         filter << ['modified >=', from_time.to_i] if from_time
         pankinds = PandoraUtils.str_to_bytes(pankinds)
-        if ((pankinds.is_a? Array) and (pankinds.size==1))
-          filter << ['second LIKE', pankinds[0].chr+'%']
+        if (pankinds.is_a? Array) and (pankinds.size==1)
+          filter << ['second LIKE', "\\"+pankinds[0].chr+'%']
           #filter << ['second REGEXP', '['+pankinds[0].chr+'].*']  #pankinds[0].chr
           #filter << ['second REGEXP', '['+1.chr+2.chr+'].*']  #pankinds[0].chr
           pankinds = nil
@@ -3368,7 +3370,7 @@ module PandoraModel
         sel.compact!
         sel.sort! {|a,b| a[0]<=>b[0] }
         p 'pankinds='+pankinds.inspect
-        if pankinds
+        if (pankinds.is_a? Array) and (pankinds.size>0)
           sel.delete_if { |panhash| (not (pankinds.include? panhash[0].ord)) }
         end
         p 'public_records sel2='+sel.inspect
@@ -3408,18 +3410,26 @@ module PandoraModel
     sel
   end
 
+  # Predefined Pandora's codes of languages and Alpha-2
+  # RU: Предустановленные коды языков Пандоры и Альфа-2
   Languages = {0=>'all', 1=>'en', 2=>'zh', 3=>'es', 4=>'hi', 5=>'ru', 6=>'ar', \
     7=>'fr', 8=>'pt', 9=>'ja', 10=>'de', 11=>'ko', 12=>'it', 13=>'be', 14=>'id'}
 
+  # Alpha-2 codes of languages
+  # RU: Коды языков Альфа-2
   def self.lang_list
     res = Languages.values
   end
 
+  # Get Alpha-2 with language code
+  # RU: Взять Альфа-2 по коду языка
   def self.lang_to_text(lang)
     res = Languages[lang]
     res ||= ''
   end
 
+  # Get language code with Alpha-2
+  # RU: Взять код языка по Альфа-2
   def self.text_to_lang(text)
     text.downcase! if text.is_a? String
     res = Languages.detect{ |n,v| v==text }
@@ -3540,6 +3550,7 @@ module PandoraCrypto
 
   include PandoraUtils
 
+  # Hashes
   KH_None   = 0
   KH_Md5    = 0x1
   KH_Sha1   = 0x2
@@ -3547,6 +3558,7 @@ module PandoraCrypto
   KH_Sha3   = 0x4
   KH_Rmd    = 0x5
 
+  # Algorithms
   KT_None = 0
   KT_Rsa  = 0x1
   KT_Dsa  = 0x2
@@ -3555,6 +3567,7 @@ module PandoraCrypto
   KT_Bf   = 0x8
   KT_Priv = 0xF
 
+  # Lengths
   KL_None    = 0
   KL_bit128  = 0x10   # 16 byte
   KL_bit160  = 0x20   # 20 byte
@@ -3683,6 +3696,8 @@ module PandoraCrypto
 
   RSA_exponent = 65537
 
+  # Key vector parameter index
+  # RU: Индекс параметра в векторе ключа
   KV_Obj   = 0
   KV_Pub   = 1
   KV_Priv  = 2
@@ -3694,6 +3709,8 @@ module PandoraCrypto
   KV_Trust   = 8
   KV_NameFamily  = 9
 
+  # Key status
+  # RU: Статус ключа
   KS_Exchange  = 1
   KS_Voucher   = 2
 
@@ -4608,9 +4625,10 @@ module PandoraCrypto
 
   # Allowed kinds for trust level
   # RU: Допустимые сорта для уровня доверия
-  def self.allowed_kinds(trust, kind_list=nil)
+  def self.allowed_kinds(trust2, kind_list=nil)
     #res = []
-    res = kind_list
+    trust20 = (trust2+1.0)*10
+    res = Allowed_Kinds[trust20]
     res
   end
 
@@ -5353,8 +5371,7 @@ module PandoraNet
 
     attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, \
       :stage, :dialog, \
-      :send_thread, :read_thread, :socket, :read_state, :send_state, :donor, \
-      :fisher_lure, :fish_lure, \
+      :send_thread, :read_thread, :socket, :read_state, :send_state, \
       :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, \
       :params, \
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
@@ -5388,14 +5405,10 @@ module PandoraNet
     # RU: Тип сессии
     def get_type
       res = nil
-      if @donor
-        res = ST_Fisher
+      if ((@conn_mode & CM_Hunter)>0)
+        res = ST_Hunter
       else
-        if ((@conn_mode & CM_Hunter)>0)
-          res = ST_Hunter
-        else
-          res = ST_Listener
-        end
+        res = ST_Listener
       end
     end
 
@@ -5431,7 +5444,7 @@ module PandoraNet
     LONG_SEG_SIGN   = 0xFFFF
 
     def active_hook
-      i = @hooks.index {|rec| rec[LHI_Session] and rec[LHI_Session] and rec[LHI_Session].active? }
+      i = @hooks.index {|rec| rec[LHI_Session] and rec[LHI_Session].active? }
     end
 
     # Send command, code and date (if exists)
@@ -5593,10 +5606,10 @@ module PandoraNet
 
           segment = [cmd, code].pack('CC')
           segment << data if data
-          if rec[LHI_Sess_Hook] rec[LHI_Far_Hook]
-            res = donor.send_queue.add_block_to_queue([EC_Lure, fisher_lure, segment])
+          if rec[LHI_Far_Hook]
+            res = rec[LHI_Session].send_queue.add_block_to_queue([EC_Bite, rec[LHI_Far_Hook], segment])
           else
-            res = donor.send_queue.add_block_to_queue([EC_Bite, fish_lure, segment])
+            res = rec[LHI_Session].send_queue.add_block_to_queue([EC_Lure, hook, segment])
           end
         else
           p 'No active hook: '+@hooks.size.to_s
@@ -6104,8 +6117,8 @@ module PandoraNet
         if not hook
           i = 0
           while (i<@hooks.size) and (i<=255)
-            break if (not @hooks[i].is_a? Array) or (@hooks[i][LHI_Session].nil?) \
-              or (@hooks[i][LHI_Session].active?)
+            break if (not @hooks[i].is_a? Array) or (@hooks[i][LHI_Session].nil?)
+              #or (not @hooks[i][LHI_Session].active?)
             i += 1
           end
           if i<=255
@@ -6240,36 +6253,53 @@ module PandoraNet
 
       # Send segment from current fisher session to fish session
       # RU: Отправляет сегмент от текущей рыбацкой сессии к сессии рыбки
-      def send_segment_to_fish(in_lure, segment)
+      def send_segment_to_fish(hook, segment, far_hook=false)
         res = nil
-        p '******send_segment_to_fish(in_lure, segment.size)='+[in_lure, segment.bytesize].inspect
-        if segment and (segment.bytesize>1)
-          cmd = segment[0].ord
-          fish = get_fish_for_in_lure(in_lure)
-          if not fish
-            if cmd == EC_Bye
-              fish = false
-            else
-              fish = pool.init_fish_for_fisher(self, in_lure, nil, nil)
-              set_fish_of_in_lure(in_lure, fish)
-            end
+        p '=== send_segment_to_fish(hook, segment.size)='+[hook, segment.bytesize].inspect
+        if hook and segment and (segment.bytesize>1)
+          rec = nil
+          if far_hook
+            hook = @hooks.index {|rec| (rec[LHI_Far_Hook]==hook) }
           end
-          #p 'send_segment_to_fish: in_lure,segsize='+[in_lure, segment.bytesize].inspect
-          if fish
-            if fish.donor == self
-              #p 'DONOR lure'
-              code = segment[1].ord
-              data = nil
-              data = segment[2..-1] if (segment.bytesize>2)
-              #p '-->Add raw to fish (in_lure='+in_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
-              res = fish.read_queue.add_block_to_queue([cmd, code, data])
+          if hook
+            rec = @hooks[hook]
+            if rec
+              sess = rec[LHI_Session]
+              if sess
+                if rec[LHI_Line]
+                  # Middle hook
+                  hook = sess.hooks.index {|rec| (rec[LHI_Session]==self) and (rec[LHI_Sess_Hook]==hook) }
+                  if hook
+                    rec = sess.hooks[hook]
+                    if rec[LHI_Far_Hook]
+                      res = sess.send_queue.add_block_to_queue([EC_Bite, rec[LHI_Far_Hook], segment])
+                    else
+                      res = sess.send_queue.add_block_to_queue([EC_Lure, hook, segment])
+                    end
+                  else
+                    @scmd = EC_Wait
+                    @scode = EC_Wait1_NoFish
+                    @scbuf = nil
+                  end
+                else
+                  # Terminal hook
+                  cmd = segment[0].ord
+                  code = segment[1].ord
+                  data = nil
+                  data = segment[2..-1] if (segment.bytesize>2)
+                  res = sess.read_queue.add_block_to_queue([cmd, code, data])
+                end
+              else
+                @scmd = EC_Wait
+                @scode = EC_Wait1_NoFish
+                @scbuf = nil
+              end
             else
-              p 'RESENDER lure'
-              out_lure = fish.take_out_lure_for_fisher(self, in_lure)
-              p '-->Add LURE to resender: inlure ==>> outlure='+[in_lure, out_lure].inspect
-              res = fish.send_queue.add_block_to_queue([EC_Lure, out_lure, segment]) if out_lure.is_a? Integer
+              @scmd = EC_Wait
+              @scode = EC_Wait1_NoFish
+              @scbuf = nil
             end
-          elsif fish.nil?
+          else
             @scmd = EC_Wait
             @scode = EC_Wait1_NoFish
             @scbuf = nil
@@ -6643,11 +6673,12 @@ module PandoraNet
             err_scmd('Records came on wrong stage')
           end
         when EC_Lure
-          send_segment_to_fish(rcode, rdata)
+          p 'EC_Lure'
+          send_segment_to_fish(rcode, rdata, true)
           #sleep 2
         when EC_Bite
-          #p "EC_Bite"
-          send_segment_to_fisher(rcode, rdata)
+          p 'EC_Bite'
+          send_segment_to_fish(rcode, rdata)
           #sleep 2
         when EC_Sync
           case rcode
@@ -7517,7 +7548,7 @@ module PandoraNet
                   len = rdata.size if rdata
                   #p log_mes+'--**** before accept: [rcmd, rcode, rdata]='+[rcmd, rcode, len].inspect
                   #rcmd, rcode, rdata, scmd, scode, sbuf = \
-                    accept_segment #(rcmd, rcode, rdata, scmd, scode, sbuf)
+                  accept_segment #(rcmd, rcode, rdata, scmd, scode, sbuf)
                   len = 0
                   len = @sbuf.size if @sbuf
                   #p log_mes+'--**** after accept: [scmd, scode, sbuf]='+[@scmd, @scode, len].inspect
@@ -13725,27 +13756,12 @@ module PandoraGtk
       end
     end
     panobject = panobject_class.new
-    sel = panobject.select(nil, false, nil, panobject.sort)
     store = Gtk::ListStore.new(Integer)
-    param_view_col = nil
-    param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
-    sel.each do |row|
-      iter = store.append
-      id = row[0].to_i
-      iter[0] = id
-      if param_view_col
-        type = panobject.field_val('type', row)
-        setting = panobject.field_val('setting', row)
-        ps = PandoraUtils.decode_param_setting(setting)
-        view = ps['view']
-        view ||= PandoraUtils.pantype_to_view(type)
-        row[param_view_col] = view
-      end
-    end
     treeview = SubjTreeView.new(store)
     treeview.name = panobject.ider
     treeview.panobject = panobject
-    treeview.sel = sel
+
+    param_view_col = nil
 
     tab_flds = panobject.tab_fields
     def_flds = panobject.def_fields
@@ -13816,10 +13832,61 @@ module PandoraGtk
     end
 
     sw ||= PanobjScrollWin.new(nil, nil)
-    sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-    sw.name = panobject.ider
-    sw.add(treeview)
+    #sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
     sw.border_width = 0
+    sw.name = panobject.ider
+
+    list_sw = Gtk::ScrolledWindow.new(nil, nil)
+    list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+    list_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+    list_sw.border_width = 0
+    list_sw.add(treeview)
+
+    hbox = Gtk::HBox.new
+
+    title = _('Update')
+    update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
+    update_btn.tooltip_text = title
+    update_btn.label = title
+    update_btn.signal_connect('clicked') do |*args|
+      store.clear
+      sel = panobject.select(nil, false, nil, panobject.sort)
+      param_view_col = nil
+      param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
+      sel.each do |row|
+        iter = store.append
+        id = row[0].to_i
+        iter[0] = id
+        if param_view_col
+          type = panobject.field_val('type', row)
+          setting = panobject.field_val('setting', row)
+          ps = PandoraUtils.decode_param_setting(setting)
+          view = ps['view']
+          view ||= PandoraUtils.pantype_to_view(type)
+          row[param_view_col] = view
+        end
+      end
+      treeview.sel = sel
+      if treeview.sel.size>0
+        treeview.set_cursor(Gtk::TreePath.new(treeview.sel.size-1), nil, false)
+      end
+      treeview.grab_focus
+    end
+
+    hunted_btn = SafeCheckButton.new(_('auto'), true)
+    hunted_btn.safe_signal_clicked do |widget|
+      update_btn.clicked
+    end
+    hunted_btn.safe_set_active(true)
+
+    hbox.pack_start(update_btn, false, true, 0)
+    hbox.pack_start(hunted_btn, false, true, 0)
+
+    vbox = Gtk::VBox.new
+    vbox.pack_start(hbox, false, false, 0)
+    vbox.pack_start(list_sw, true, true, 0)
+
+    sw.add(vbox)
 
     if auto_create and sel and (sel.size==0)
       treeview.auto_create = true
@@ -13857,9 +13924,6 @@ module PandoraGtk
       sw.show_all
       notebook.page = notebook.n_pages-1
 
-      if treeview.sel.size>0
-        treeview.set_cursor(Gtk::TreePath.new(treeview.sel.size-1), nil, false)
-      end
       treeview.grab_focus
     end
 
@@ -15275,7 +15339,7 @@ module PandoraGtk
 
     # Fill toolbar
     # RU: Заполнить панель инструментов
-    def fill_toolbar(toolbar)
+    def fill_main_toolbar(toolbar)
       MENU_ITEMS.each do |mi|
         stock = mi[1]
         if stock
@@ -15414,7 +15478,7 @@ module PandoraGtk
 
       toolbar = Gtk::Toolbar.new
       toolbar.toolbar_style = Gtk::Toolbar::Style::ICONS
-      fill_toolbar(toolbar)
+      fill_main_toolbar(toolbar)
 
       #frame = Gtk::Frame.new
       #frame.shadow_type = Gtk::SHADOW_IN
