@@ -13738,28 +13738,10 @@ module PandoraGtk
     attr_accessor :tab_ind
   end
 
-  $treeview_thread = nil
-
-  def self.update_treeview_if_need(panobjbox=nil)
-    $treeview_thread.exit if $treeview_thread and $treeview_thread.alive?
-    if panobjbox.is_a? PanobjBox
-      $treeview_thread = Thread.new do
-        while panobjbox and (not panobjbox.destroyed?) and panobjbox.treeview \
-        and (not panobjbox.treeview.destroyed?) and $window.visible?
-          p 'update_treeview_if_need: '+panobjbox.treeview.panobject.ider
-          if panobjbox.treeview.panobject.class.modified
-            panobjbox.update_btn.clicked
-          end
-          sleep(2)
-        end
-      end
-    end
-  end
-
   # ScrolledWindow for panobjects
   # RU: ScrolledWindow для объектов Пандоры
   class PanobjBox < Gtk::VBox
-    attr_accessor :update_btn, :treeview
+    attr_accessor :update_btn, :auto_btn, :treeview
   end
 
   # Showing panobject list
@@ -13870,6 +13852,7 @@ module PandoraGtk
     update_btn.tooltip_text = title
     update_btn.label = title
     update_btn.signal_connect('clicked') do |*args|
+      path, column = treeview.cursor
       store.clear
       panobject.class.modified = false if panobject.class.modified
       sel = panobject.select(nil, false, nil, panobject.sort)
@@ -13889,22 +13872,27 @@ module PandoraGtk
         end
       end
       treeview.sel = sel
-      if treeview.sel.size>0
-        treeview.set_cursor(Gtk::TreePath.new(treeview.sel.size-1), nil, false)
+      if path or (treeview.sel.size>0)
+        path ||= Gtk::TreePath.new(treeview.sel.size-1)
+        treeview.set_cursor(path, nil, false)
       end
       p 'treeview is updated '+panobject.ider
       treeview.grab_focus
     end
     update_btn.clicked
 
-    hunted_btn = SafeCheckButton.new(_('auto'), true)
-    hunted_btn.safe_signal_clicked do |widget|
-      update_btn.clicked
+    pbox.auto_btn = nil
+    if single
+      pbox.auto_btn = SafeCheckButton.new(_('auto'), true)
+      auto_btn = pbox.auto_btn
+      auto_btn.safe_signal_clicked do |widget|
+        update_treeview_if_need(pbox)
+      end
+      auto_btn.safe_set_active(true)
     end
-    hunted_btn.safe_set_active(true)
 
     hbox.pack_start(update_btn, false, true, 0)
-    hbox.pack_start(hunted_btn, false, true, 0)
+    hbox.pack_start(auto_btn, false, true, 0) if single
 
     pbox.pack_start(hbox, false, false, 0)
     pbox.pack_start(list_sw, true, true, 0)
@@ -13921,7 +13909,7 @@ module PandoraGtk
     end
 
     if single
-      p 'single: widget='+widget.inspect
+      #p 'single: widget='+widget.inspect
       if widget.is_a? Gtk::ImageMenuItem
         animage = widget.image
       elsif widget.is_a? Gtk::ToolButton
@@ -13997,6 +13985,34 @@ module PandoraGtk
       res
     end
     auto_create
+  end
+
+  # Update period for treeview tables
+  # RU: Период обновления для таблиц
+  TAB_UPD_PERIOD = 2   #second
+
+  $treeview_thread = nil
+
+  # Launch update thread for a table of the panobjbox
+  # RU: Запускает поток обновления таблицы панобъекта
+  def self.update_treeview_if_need(panobjbox=nil)
+    if $treeview_thread
+      $treeview_thread.exit if $treeview_thread.alive?
+      $treeview_thread = nil
+    end
+    if (panobjbox.is_a? PanobjBox) and panobjbox.auto_btn and panobjbox.auto_btn.active?
+      $treeview_thread = Thread.new do
+        while panobjbox and (not panobjbox.destroyed?) and panobjbox.treeview \
+        and (not panobjbox.treeview.destroyed?) and $window.visible?
+          #p 'update_treeview_if_need: '+panobjbox.treeview.panobject.ider
+          if panobjbox.treeview.panobject.class.modified
+            #p 'update_treeview_if_need: modif='+panobjbox.treeview.panobject.class.modified.inspect
+            panobjbox.update_btn.clicked
+          end
+          sleep(TAB_UPD_PERIOD)
+        end
+      end
+    end
   end
 
   $media_buf_size = 50
@@ -15992,6 +16008,8 @@ if PandoraUtils.os_family=='windows'
   $stderr = $stdout
 end
 
+# WinAPI constants for work with the register
+# RU: Константы WinAPI для работы с регистром
 HKEY_LOCAL_MACHINE = 0x80000002
 STANDARD_RIGHTS_READ = 0x00020000
 KEY_QUERY_VALUE = 0x0001
