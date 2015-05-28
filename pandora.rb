@@ -5405,6 +5405,11 @@ module PandoraNet
     ST_Listener = 1
     ST_Fisher   = 2
 
+    LHI_Line       = 0
+    LHI_Session    = 1
+    LHI_Far_Hook   = 2
+    LHI_Sess_Hook  = 3
+
     # Type of session
     # RU: Тип сессии
     def get_type
@@ -5610,14 +5615,29 @@ module PandoraNet
       elsif @hooks.size>0
         hook = active_hook
         if hook
-          rec = @hooks[hook] if hook
-
-          segment = [cmd, code].pack('CC')
-          segment << data if data
-          if rec[LHI_Far_Hook]
-            res = rec[LHI_Session].send_queue.add_block_to_queue([EC_Bite, rec[LHI_Far_Hook], segment])
+          rec = @hooks[hook]
+          sess = rec[LHI_Session]
+          sess_hook = rec[LHI_Sess_Hook]
+          if not sess_hook
+            sess_hook = sess.hooks.index {|rec| (rec[LHI_Sess_Hook]==hook) and (rec[LHI_Session]==self)}
+            p 'Add search sess_hook='+sess_hook.inspect
+          end
+          if sess_hook
+            rec = sess.hooks[sess_hook]
+            p 'Fisher send  rec[hook, self, sess_id, fhook]='+[hook, self.object_id, \
+              sess.object_id, rec[LHI_Far_Hook], rec[LHI_Sess_Hook]].inspect
+            segment = [cmd, code].pack('CC')
+            segment << data if data
+            far_hook = rec[LHI_Far_Hook]
+            if far_hook
+              p 'EC_Bite [fhook, segment]='+ [far_hook, segment.bytesize].inspect
+              res = sess.send_queue.add_block_to_queue([EC_Bite, far_hook, segment])
+            else
+              p 'EC_Lure [hook, segment]='+ [hook, segment.bytesize].inspect
+              res = sess.send_queue.add_block_to_queue([EC_Lure, hook, segment])
+            end
           else
-            res = rec[LHI_Session].send_queue.add_block_to_queue([EC_Lure, hook, segment])
+            p 'No sess_hook by hook='+hook.inspect
           end
         else
           p 'No active hook: '+@hooks.size.to_s
@@ -5759,11 +5779,6 @@ module PandoraNet
         @sbuf = asbuf
       end
     end
-
-    LHI_Line       = 0
-    LHI_Session    = 1
-    LHI_Far_Hook   = 2
-    LHI_Sess_Hook  = 3
 
     # Accept received segment
     # RU: Принять полученный сегмент
@@ -6148,7 +6163,8 @@ module PandoraNet
           rec[LHI_Far_Hook] ||= far_hook if far_hook
           rec[LHI_Sess_Hook] ||= sess_hook if sess_hook
         end
-        p '=====init_line  [session, far_hook, hook, sess_hook]='+[session.to_key, far_hook, hook, sess_hook].inspect
+        p '=====init_line  [session, far_hook, hook, sess_hook]='+[session.object_id, \
+          far_hook, hook, sess_hook].inspect
         [hook, rec]
       end
 
@@ -6261,17 +6277,18 @@ module PandoraNet
 
       # Send segment from current fisher session to fish session
       # RU: Отправляет сегмент от текущей рыбацкой сессии к сессии рыбки
-      def send_segment_to_fish(hook, segment, far_hook=false)
+      def send_segment_to_fish(hook, segment, lure=false)
         res = nil
         p '=== send_segment_to_fish(hook, segment.size)='+[hook, segment.bytesize].inspect
         if hook and segment and (segment.bytesize>1)
           rec = nil
-          if far_hook
+          if lure
             hook = @hooks.index {|rec| (rec[LHI_Far_Hook]==hook) }
+            p 'lure hook='+hook.inspect
           end
           if hook
             rec = @hooks[hook]
-            p 'Hook send: [hook, far_hook]'+[hook, far_hook].inspect
+            p 'Hook send: [hook, lure]'+[hook, lure].inspect
             if rec
               sess = rec[LHI_Session]
               if sess
@@ -7023,8 +7040,19 @@ module PandoraNet
                         sessions = pool.sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
                         #pool.init_session(node, tokey, nil, nil, node_id)
                         #Tsaheylu
-                        if not pool.connect_sessions_to_hook(sessions, self, hook, true)
-                          session = Session.new(self, hook, nil, nil, nil, \
+                        if (sessions.is_a? Array) and (sessions.size>0)
+                          p 'Найдены сущ. сессии'
+                          sessions.each do |session|
+                            p 'Подсоединяюсь к сессии: session.id='+session.object_id.to_s
+                            sess_hook, rec = init_line(line, session)
+                            if not pool.connect_sessions_to_hook(session, self, hook, true)
+                              p 'Не могу прицепить сессию'
+                            end
+                          end
+                        else
+                          #(line, session, far_hook, hook, sess_hook)
+                          sess_hook, rec = init_line(line, nil, hook)
+                          session = Session.new(self, sess_hook, nil, nil, nil, \
                             0, nil, nil, nil, nil, fisher, fisher_key, fisher_baseid)
                         end
                       elsif (fisher == mypersonhash) and \
@@ -7032,8 +7060,19 @@ module PandoraNet
                       (fisher_baseid == pool.base_id)
                         p '!!это узел-рыбак, найти/создать сессию рыбки'
                         sessions = pool.sessions_of_personkeybase(fish, fish_key, fish_baseid)
-                        if not pool.connect_sessions_to_hook(sessions, self, hook, false)
-                          session = Session.new(self, hook, nil, nil, nil, \
+                        if (sessions.is_a? Array) and (sessions.size>0)
+                          p 'Найдены сущ. сессии'
+                          sessions.each do |session|
+                            p 'Подсоединяюсь к сессии: session.id='+session.object_id.to_s
+                            sess_hook, rec = init_line(line, session)
+                            if not pool.connect_sessions_to_hook(session, self, hook, true)
+                              p 'Не могу прицепить сессию'
+                            end
+                          end
+                        else
+                          #(line, session, far_hook, hook, sess_hook)
+                          sess_hook, rec = init_line(line, nil, hook)
+                          session = Session.new(self, sess_hook, nil, nil, nil, \
                             CM_Hunter, nil, nil, nil, nil, fish, fish_key, fish_baseid)
                         end
                       else
@@ -7217,16 +7256,22 @@ module PandoraNet
           sess_hook = ahost_name
           p 'донор-сессия: '+sess.object_id.inspect
           if sess_hook
-            init_line(nil, sess, nil, nil, sess_hook)
-            #add_hook(asocket, ahost_name)
-            if (@conn_mode & CM_Hunter)>0
-              p 'крючок рыбака '+sess_hook.inspect
-              PandoraUtils.log_message(LM_Info, _('Active fisher')+': '+sess.object_id.inspect+\
-                '/'+sess_hook.inspect)
+            #(line, session, far_hook, hook, sess_hook)
+            fhook, rec = init_line(nil, sess, nil, nil, sess_hook)
+            sess_hook2, rec2 = sess.init_line(nil, self, nil, sess_hook, fhook)
+            if sess_hook2
+              #add_hook(asocket, ahost_name)
+              if (@conn_mode & CM_Hunter)>0
+                p 'крючок рыбака '+sess_hook.inspect
+                PandoraUtils.log_message(LM_Info, _('Active fisher')+': [sess, hook]='+\
+                  [sess.object_id, sess_hook].inspect)
+              else
+                p 'крючок рыбки '+sess_hook.inspect
+                PandoraUtils.log_message(LM_Info, _('Passive fisher')+': [sess, hook]='+\
+                  [sess.object_id, sess_hook].inspect)
+              end
             else
-              p 'крючок рыбки '+sess_hook.inspect
-              PandoraUtils.log_message(LM_Info, _('Passive fisher')+': '+sess.object_id.inspect+\
-                '/'+sess_hook.inspect)
+              p 'Не удалось зарегать рыб.сессию'
             end
           end
         end
