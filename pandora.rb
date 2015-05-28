@@ -5163,15 +5163,15 @@ module PandoraNet
       res
     end
 
-    def connect_sessions_to_hook(sessions, donor, hook, fisher=false)
+    def connect_sessions_to_hook(sessions, sess, hook, fisher=false)
       res = false
       if (sessions.is_a? Array) and (sessions.size>0)
         i = 0
         while (i<sessions.size) and (not res)
           session = sessions[i]
           sthread = session.send_thread
-          if session.socket.nil? and sthread and sthread.alive?
-            session.donor = donor
+          if sthread and sthread.alive?
+            session.init_line(line, sess, nil, nil, hook)
             sthread.run if sthread.stop?
             res = true
           end
@@ -5206,7 +5206,7 @@ module PandoraNet
           if session.dialog and (not session.dialog.destroyed?) \
           and session.dialog.online_button
             session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
-            if ((session.socket and (not session.socket.closed?)) or session.donor)
+            if ((session.socket and (not session.socket.closed?)) or session.active_hook)
               session.dialog.online_button.safe_set_active(true)
               session.dialog.online_button.inconsistent = false
             end
@@ -5449,6 +5449,10 @@ module PandoraNet
 
     def active_hook
       i = @hooks.index {|rec| rec[LHI_Session] and rec[LHI_Session].active? }
+    end
+
+    def del_sess_hooks(sess)
+      @hooks.delete_if {|rec| rec[LHI_Session]==sess }
     end
 
     # Send command, code and date (if exists)
@@ -6097,14 +6101,14 @@ module PandoraNet
       end
 
       def active?
-        res = (conn_state != CS_Connected)
+        res = (conn_state == CS_Connected)
       end
 
       # Get hook for line
       # RU: Взять крючок для лески
       def init_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, fo_ind=nil)
-        p log_mes+'--init_line  [far_hook, hook, sess_hook, self, session]='+[far_hook, hook, sess_hook, \
-          self.object_id, session.object_id].inspect
+        p '--init_line  [far_hook, hook, sess_hook, self, session]='+\
+          [far_hook, hook, sess_hook, self.object_id, session.object_id].inspect
         rec = nil
         # find existing rec
         if (not hook) and far_hook
@@ -6130,7 +6134,7 @@ module PandoraNet
             rec = @hooks[hook]
             rec.clear if rec
           end
-          p log_mes+' Register hook='+hook.inspect
+          p 'Register hook='+hook.inspect
         end
         # fill rec
         if hook
@@ -6144,7 +6148,7 @@ module PandoraNet
           rec[LHI_Far_Hook] ||= far_hook if far_hook
           rec[LHI_Sess_Hook] ||= sess_hook if sess_hook
         end
-        p log_mes+'=====init_line  [session, far_hook, hook, sess_hook]='+[session.to_key, far_hook, hook, sess_hook].inspect
+        p '=====init_line  [session, far_hook, hook, sess_hook]='+[session.to_key, far_hook, hook, sess_hook].inspect
         [hook, rec]
       end
 
@@ -6267,11 +6271,12 @@ module PandoraNet
           end
           if hook
             rec = @hooks[hook]
+            p 'Hook send: [hook, far_hook]'+[hook, far_hook].inspect
             if rec
               sess = rec[LHI_Session]
               if sess
                 if rec[LHI_Line]
-                  # Middle hook
+                  p 'Middle hook'
                   hook = sess.hooks.index {|rec| (rec[LHI_Session]==self) and (rec[LHI_Sess_Hook]==hook) }
                   if hook
                     rec = sess.hooks[hook]
@@ -6286,7 +6291,7 @@ module PandoraNet
                     @scbuf = nil
                   end
                 else
-                  # Terminal hook
+                  p 'Terminal hook'
                   cmd = segment[0].ord
                   code = segment[1].ord
                   data = nil
@@ -6898,14 +6903,14 @@ module PandoraNet
                           # find existing (sleep) sessions
                           sessions = sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
                           if (not sessions.is_a? Array) or (sessions.size==0)
-                            sessions = Session.new
+                            sessions = Session.new(111)
                           end
                           line[bi-2] ||= mypersonhash
                           line[bi-1] ||= mykeyhash
                           line[bi] = pool.base_id
                           p log_mes+' line='+line.inspect
                           line_raw = PandoraUtils.rubyobj_to_pson(line)
-                          session = connect_sessions_to_hook([self], hook)
+                          #session = connect_sessions_to_hook([session], self, hook)
                           my_hook, rec = init_line(line, session)
                           if my_hook
                             add_send_segment(EC_News, true, my_hook.chr + line_raw, \
@@ -7019,8 +7024,8 @@ module PandoraNet
                         #pool.init_session(node, tokey, nil, nil, node_id)
                         #Tsaheylu
                         if not pool.connect_sessions_to_hook(sessions, self, hook, true)
-                          session = Session.new(self, nil, hook, nil, nil, \
-                            0, nil, nil, nil, nil)
+                          session = Session.new(self, hook, nil, nil, nil, \
+                            0, nil, nil, nil, nil, fisher, fisher_key, fisher_baseid)
                         end
                       elsif (fisher == mypersonhash) and \
                       (fisher_key == mykeyhash) and \
@@ -7029,7 +7034,7 @@ module PandoraNet
                         sessions = pool.sessions_of_personkeybase(fish, fish_key, fish_baseid)
                         if not pool.connect_sessions_to_hook(sessions, self, hook, false)
                           session = Session.new(self, hook, nil, nil, nil, \
-                            CM_Hunter, nil, nil, nil, nil)
+                            CM_Hunter, nil, nil, nil, nil, fish, fish_key, fish_baseid)
                         end
                       else
                         p '!!это узел-посредник, пробросить по истории заявок'
@@ -7158,14 +7163,14 @@ module PandoraNet
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
     def initialize(asocket, ahost_name, ahost_ip, aport, aproto, \
-    aconn_state, anode_id, a_dialog, send_state_add, nodehash=nil, to_person=nil, \
+    aconn_mode, anode_id, a_dialog, send_state_add, nodehash=nil, to_person=nil, \
     to_key=nil, to_base_id=nil)
       super()
       @conn_state  = CS_Connecting
       @stage       = ES_Begin
       @socket      = nil
-      @donor       = nil
-      @conn_mode   = 0
+      aconn_mode   ||= 0
+      @conn_mode   = aconn_mode
       @read_state  = 0
       send_state_add  ||= 0
       @send_state     = send_state_add
@@ -7185,10 +7190,10 @@ module PandoraNet
       @port         = aport
       @proto        = aproto
 
-      p 'Session.new [asocket, ahost_name, ahost_ip, aport, aproto, '+\
-        'aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, '+\
+      p 'Session.new( [asocket, ahost_name, ahost_ip, aport, aproto, '+\
+        'aconn_mode, anode_id, a_dialog, send_state_add, nodehash, to_person, '+\
         'to_key, to_base_id]'+[asocket.object_id, ahost_name, ahost_ip, aport, aproto, \
-        aconn_state, anode_id, a_dialog, send_state_add, nodehash, to_person, \
+        aconn_mode, anode_id, a_dialog, send_state_add, nodehash, to_person, \
         to_key, to_base_id].inspect
 
       init_and_check_node(to_person, to_key, to_base_id)
@@ -7208,17 +7213,20 @@ module PandoraNet
           # сокет
           @socket = asocket if (not asocket.closed?)
         elsif asocket.is_a? Session
-          p 'донор-сессия: '+asocket.object_id.inspect
-          if asocket.socket and (not asocket.socket.closed?)
-            # задать донора
-            @donor = asocket
-            # задать канал
-            if ahost_name
-              @fisher_lure = ahost_name
-              p 'крючок рыбака '+@fisher_lure.inspect
+          sess = asocket
+          sess_hook = ahost_name
+          p 'донор-сессия: '+sess.object_id.inspect
+          if sess_hook
+            init_line(nil, sess, nil, nil, sess_hook)
+            #add_hook(asocket, ahost_name)
+            if (@conn_mode & CM_Hunter)>0
+              p 'крючок рыбака '+sess_hook.inspect
+              PandoraUtils.log_message(LM_Info, _('Active fisher')+': '+sess.object_id.inspect+\
+                '/'+sess_hook.inspect)
             else
-              @fish_lure = ahost_ip
-              p 'крючок рыбки '+@fish_lure.inspect
+              p 'крючок рыбки '+sess_hook.inspect
+              PandoraUtils.log_message(LM_Info, _('Passive fisher')+': '+sess.object_id.inspect+\
+                '/'+sess_hook.inspect)
             end
           end
         end
@@ -7226,12 +7234,11 @@ module PandoraNet
         # Main cicle of session
         # RU: Главный цикл сессии
         while need_connect do
-          @conn_mode = (@conn_mode & (~CM_Hunter))
+          #@conn_mode = (@conn_mode & (~CM_Hunter))
 
           # is there connection?
           # есть ли подключение?   or (@socket.closed?)
-          if (not @socket) \
-          and (not (@donor and @donor.socket and (not @donor.socket.closed?)))
+          if (not @socket) and (not active_hook)
             # нет подключения ни через сокет, ни через донора
             # значит, нужно подключаться самому
             p 'нет подключения ни через сокет, ни через донора'
@@ -7287,12 +7294,10 @@ module PandoraNet
                 mykeyhash = PandoraCrypto.current_user_or_key(false)
                 pool.add_fish_order(self, mypersonhash, mykeyhash, pool.base_id, \
                   to_person, to_key, @recv_models)
-                #if inited?
-                  while (not @donor) and (not @socket)
-                    p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
-                    Thread.stop
-                  end
-                #end
+                while (not @socket) and (not active_hook)
+                  p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
+                  Thread.stop
+                end
               else
                 @socket = false
                 PandoraUtils.log_message(LM_Trace, _('Session breaks bz of no person and key panhashes'))
@@ -7303,11 +7308,7 @@ module PandoraNet
 
           work_time = Time.now
 
-          sss = [@socket.object_id, @donor.object_id].inspect
-          sss += '|1:'+[@socket.closed?].inspect if @socket
-          sss += '|2:'+[@donor.socket].inspect if @donor
-          sss += '|3:'+[@donor.socket.closed?].inspect if @donor and @donor.socket
-          p '==reconn: '+sss
+          p '==reconn: '+[@socket.object_id].inspect
           sleep 0.5
 
 
@@ -7326,13 +7327,13 @@ module PandoraNet
           end
 
           # есть ли подключение?
-          if (@socket and (not @socket.closed?)) \
-          or (@donor and @donor.socket and (not @donor.socket.closed?))
-            @conn_mode = (@conn_mode | (CM_Hunter & aconn_state)) if @donor
+          ahook = active_hook
+          if (@socket and (not @socket.closed?)) or ahook
+            #@conn_mode = (@conn_mode | (CM_Hunter & aconn_mode)) if @ahook
 
-            p 'есть подключение [@socket, @donor]' + [@socket.object_id, @donor.object_id].inspect
+            p 'есть подключение [@socket, ahook, @conn_mode]' + [@socket.object_id, ahook, @conn_mode].inspect
             @stage          = ES_Protocol  #ES_IpCheck
-            #@conn_state     = aconn_state
+            #@conn_mode      = aconn_mode
             @conn_state     = CS_Connected
             @read_state     = 0
             @send_state     = send_state_add
@@ -7350,7 +7351,7 @@ module PandoraNet
               dialog.set_session(self, true)
               #dialog.online_button.active = (socket and (not socket.closed?))
               if self.dialog and (not self.dialog.destroyed?) and self.dialog.online_button \
-              and ((self.socket and (not self.socket.closed?)) or self.donor)
+              and ((self.socket and (not self.socket.closed?)) or self.active_hook)
                 self.dialog.online_button.safe_set_active(true)
                 self.dialog.online_button.inconsistent = false
               end
@@ -7362,7 +7363,7 @@ module PandoraNet
 
             @max_pack_size = MPS_Proto
             @log_mes = 'LIS: '
-            if (conn_mode & CM_Hunter)>0
+            if (@conn_mode & CM_Hunter)>0
               @log_mes = 'HUN: '
               @max_pack_size = MPS_Captcha
               add_send_segment(EC_Auth, true, to_key)
@@ -7910,18 +7911,23 @@ module PandoraNet
             end
             @socket_thread.exit if @socket_thread
             @read_thread.exit if @read_thread
-            if donor #and (not donor.destroyed?)
-              p 'DONOR free!!!!'
-              if donor.socket and (not donor.socket.closed?)
-                send_comm_and_data(@sindex, EC_Bye, ECC_Bye_NoAnswer, nil)
-              end
-              if fisher_lure
-                p 'free_out_lure fisher_lure='+fisher_lure.inspect
-                donor.free_out_lure_of_fisher(self, fisher_lure)
-              else
-                p 'free_fish fish_lure='+fish_lure.inspect
-                donor.free_fish_of_in_lure(fish_lure)
-              end
+            while @hooks.size>0
+              p 'DONORs free!!!!'
+              i = @hooks.size-1 #active_hook
+              rec = @hooks[i]
+              rec[LHI_Session].del_sess_hooks(self) if rec.is_a? Array and rec[LHI_Session] \
+                and rec[LHI_Session].active?
+              @hooks.delete_at(i)
+              #if rec[LHI_Session] and rec[LHI_Session].active?
+              #  rec[LHI_Session].send_comm_and_data(rec[LHI_Session].sindex, EC_Bye, ECC_Bye_NoAnswer, nil)
+              #end
+              #if fisher_lure
+              #  p 'free_out_lure fisher_lure='+fisher_lure.inspect
+              #  donor.free_out_lure_of_fisher(self, fisher_lure)
+              #else
+              #  p 'free_fish fish_lure='+fish_lure.inspect
+              #  donor.free_fish_of_in_lure(fish_lure)
+              #end
             end
             #@fishes.each_index do |i|
             #  free_fish_of_in_lure(i)
@@ -7947,7 +7953,6 @@ module PandoraNet
 
           @conn_state = CS_Disconnected
           @socket = nil
-          @donor  = nil
 
           attempt += 1
         end
@@ -12537,7 +12542,7 @@ module PandoraGtk
           hunter = ((session.conn_mode & PandoraNet::CM_Hunter)>0)
           if ((hunted_btn.active? and (not hunter)) \
           or (hunters_btn.active? and hunter) \
-          or (fishers_btn.active? and session.donor))
+          or (fishers_btn.active? and session.active_hook))
             sess_iter = list_store.append
             sess_iter[0] = $window.pool.sessions.index(session).to_s
             sess_iter[1] = session.host_ip.to_s
@@ -12552,7 +12557,7 @@ module PandoraGtk
 
           #:host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state,
           #:stage, :dialog, :send_thread, :read_thread, :socket, :read_state, :send_state,
-          #:donor, :fisher_lure, :fish_lure, :send_models, :recv_models, :sindex,
+          #:send_models, :recv_models, :sindex,
           #:read_queue, :send_queue, :confirm_queue, :params, :rcmd, :rcode, :rdata,
           #:scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, :media_send,
           #:node_id, :node_panhash, :entered_captcha, :captcha_sw, :fishes, :fishers
@@ -13876,7 +13881,7 @@ module PandoraGtk
         path ||= Gtk::TreePath.new(treeview.sel.size-1)
         treeview.set_cursor(path, nil, false)
       end
-      p 'treeview is updated '+panobject.ider
+      p 'treeview is updated: '+panobject.ider
       treeview.grab_focus
     end
     update_btn.clicked
