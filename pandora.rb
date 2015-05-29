@@ -5468,7 +5468,7 @@ module PandoraNet
       code ||= 0   #нужно ли??!!
       lengt = 0
       lengt = data.bytesize if data
-      p log_mes+'SEND_ALL: [index, cmd, code, lengt]='+[index, cmd, code, lengt].inspect
+      p log_mes+'SEND: [index, cmd, code, lengt]='+[index, cmd, code, lengt].inspect
       if @socket.is_a? IPSocket
         data ||= ''
         data = AsciiString.new(data)
@@ -6291,46 +6291,52 @@ module PandoraNet
             p 'Hook send: [hook, lure]'+[hook, lure].inspect
             if rec
               sess = rec[LHI_Session]
-              if sess
-                if rec[LHI_Line]
-                  p 'Middle hook'
-                  hook = sess.hooks.index {|rec| (rec[LHI_Session]==self) and (rec[LHI_Sess_Hook]==hook) }
-                  if hook
-                    rec = sess.hooks[hook]
+              sess_hook = rec[LHI_Sess_Hook]
+              if sess and sess_hook
+                rec = sess.hooks[sess_hook]
+                if rec
+                  if rec[LHI_Line]
+                    p 'Middle hook'
+                    #hook = sess.hooks.index {|rec| (rec[LHI_Session]==self) and (rec[LHI_Sess_Hook]==hook) }
                     if rec[LHI_Far_Hook]
                       res = sess.send_queue.add_block_to_queue([EC_Bite, rec[LHI_Far_Hook], segment])
                     else
                       res = sess.send_queue.add_block_to_queue([EC_Lure, hook, segment])
                     end
                   else
-                    @scmd = EC_Wait
-                    @scode = EC_Wait1_NoFish
-                    @scbuf = nil
+                    p 'Terminal hook'
+                    cmd = segment[0].ord
+                    code = segment[1].ord
+                    data = nil
+                    data = segment[2..-1] if (segment.bytesize>2)
+                    res = sess.read_queue.add_block_to_queue([cmd, code, data])
                   end
                 else
-                  p 'Terminal hook'
-                  cmd = segment[0].ord
-                  code = segment[1].ord
-                  data = nil
-                  data = segment[2..-1] if (segment.bytesize>2)
-                  res = sess.read_queue.add_block_to_queue([cmd, code, data])
+                  p 'No neighbor rec'
+                  @scmd = EC_Wait
+                  @scode = EC_Wait1_NoFish
+                  @scbuf = nil
                 end
               else
+                p 'No sess or sess_hook'
                 @scmd = EC_Wait
                 @scode = EC_Wait1_NoFish
                 @scbuf = nil
               end
             else
+              p 'No hook rec'
               @scmd = EC_Wait
               @scode = EC_Wait1_NoFish
               @scbuf = nil
             end
           else
+            p 'No hook for fish'
             @scmd = EC_Wait
             @scode = EC_Wait1_NoFish
             @scbuf = nil
           end
         else
+          p 'No hook or segment'
           @scmd = EC_Wait
           @scode = EC_Wait3_EmptySegment
           @scbuf = nil
@@ -7907,8 +7913,9 @@ module PandoraNet
                   or (@to_key and (fish_order[FO_Fish_key] != @to_key)))
                     p log_mes+'New fish order: '+fish_order[FO_Fisher..FO_Fish_key].inspect
                     #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                    PandoraUtils.log_message(LM_Trace, _('Fishing to')+': ' \
-                      +PandoraUtils.bytes_to_hex(fish_order[FO_Fish])+' '+_('via')+' '+@host_ip+':'+@port.to_s)
+                    PandoraUtils.log_message(LM_Trace, _('Fishing to')+': [fish,host,port]' \
+                      +[PandoraUtils.bytes_to_hex(fish_order[FO_Fish]), \
+                      @host_ip, @port].inspect)
                     line = PandoraUtils.rubyobj_to_pson(fish_order[FO_Fisher..FO_Fish_key])
                     add_send_segment(EC_Query, true, line, ECC_Query_Fish)
                   end
@@ -7947,11 +7954,11 @@ module PandoraNet
               socket.close
               p log_mes+'closed!'
             end
-            if socket
+            if socket.is_a? IPSocket
               if ((conn_mode & CM_Hunter) == 0)
-                PandoraUtils.log_message(LM_Info, _('Hunter disconnects')+': '+@host_ip)
+                PandoraUtils.log_message(LM_Info, _('Hunter disconnects')+': '+@host_ip.inspect)
               else
-                PandoraUtils.log_message(LM_Info, _('Disconnected from listener')+': '+@host_ip)
+                PandoraUtils.log_message(LM_Info, _('Disconnected from listener')+': '+@host_ip.inspect)
               end
             end
             @socket_thread.exit if @socket_thread
