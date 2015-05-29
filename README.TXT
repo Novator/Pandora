@@ -8,9 +8,10 @@ Contents
 3) installation in Ubuntu
 4) installation in Windows
 5) installation in Debian
-6) manual installation or update
-7) join as developer
-8) getting help
+6) installation in Macosx
+7) manual installation or update
+8) join as developer
+9) getting help
 
 
 1. OVERVIEW
@@ -68,22 +69,40 @@ Download a package and install it with root:
   apt-get -f -y install
 
 
-6. MANUAL INSTALLATION OR UPDATE
+6. INSTALLATION IN MACOSX
 
-6.1. Download the archive and unpack it:
+Run these commands in terminal:
+
+  xcode-select --install
+  ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+  brew install gtk+
+  brew install sqlite3
+  brew install Caskroom/cask/xquartz
+
+Restart your computer. Run also:
+
+  sudo gem install sqlite3
+  sudo gem install gtk2
+
+Download and unpack zip-archive (see the next chapter).
+
+
+7. MANUAL INSTALLATION OR UPDATE
+
+7.1. Download the archive and unpack it:
 
   https://github.com/Novator/Pandora/archive/master.zip
 
-6.2. Install packets:
+7.2. Install needed packets if they stil are not installed:
 
   ruby, ruby-sqlite3, ruby-gtk2, ruby-gstreamer, openssl, gstreamer0.10-x,
   gstreamer0.10-ffmpeg, gstreamer0.10-plugins-good, gstreamer0.10-plugins-bad
 
-6.3. Set executable rights:
+7.3. Set executable rights:
 
   chmod +x ./pandora.sh
 
-6.4. Copy shortcut to desktop with root and edit paths inside:
+7.4. Copy shortcut to desktop with root and edit paths inside:
 
   cp ./view/pandora.desktop /usr/share/applications/
   nano /usr/share/applications/pandora.desktop
@@ -91,23 +110,23 @@ Download a package and install it with root:
 Pandora can update itself by user click to button on status bar.
 
 
-7. JOIN AS DEVELOPER
+8. JOIN AS DEVELOPER
 
-7.1. See current technical tasks at file:
+8.1. See current technical tasks at file:
 
   https://github.com/Novator/Pandora/blob/master/doc/todo.ru.txt
 
-7.2. Registrate on GitHub:
+8.2. Registrate on GitHub:
 
   https://github.com/
 
 For example, your login is "YourNick".
 
-7.3. Push "Fork" button on top of Pandora github page:
+8.3. Push "Fork" button on top of Pandora github page:
 
   https://github.com/Novator/Pandora/fork
 
-7.4. Install git in Ubuntu:
+8.4. Install git in Ubuntu:
 
   sudo apt-get -y install git
 
@@ -115,23 +134,23 @@ in Windows download and install:
 
   http://msysgit.github.io/
 
-7.5. Download Pandora to your hard disk via git command:
+8.5. Download Pandora to your hard disk via git command:
 
   git clone --depth=3 https://github.com/YourNick/Pandora.git
 
 Warning: change "YourNick" to your login!
 
-7.6. Correct a code with any text editor, for example Geany:
+8.6. Correct a code with any text editor, for example Geany:
 
   http://www.geany.org/Download/Releases
 
-7.7. Update your github repository:
+8.7. Update your github repository:
 
   git commit -a -m "your comment" && git push
 
 (see more useful git commands in the file "git.sh")
 
-7.8. Push "Pull Request" at your Pandora github page:
+8.8. Push "Pull Request" at your Pandora github page:
 
   https://github.com/YourNick/Pandora/pull/new/master
 
@@ -139,7 +158,7 @@ If your contribution will be rated as useful it will be added to next release.
 When you show yourself like active developer you will be added as collaborator.
 
 
-8. GETTING HELP
+9. GETTING HELP
 
 Help to Pandora project like a programmer, translator, journalist or donator:
 
