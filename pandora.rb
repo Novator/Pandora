@@ -5019,12 +5019,13 @@ module PandoraNet
     # RU: Возвращает сессию по человеку, ключу и идентификатору базы
     def sessions_of_personkeybase(person, key, base_id)
       res = nil
-      if (person or key) and base_id
+      if (person or key) #and base_id
         res = sessions.select do |s|
-          sperson, skey = nil
+          sperson = s.to_person
+          skey = s.to_key
           if s.skey
-            sperson = s.skey[PandoraCrypto::KV_Creator]
-            skey = s.skey[PandoraCrypto::KV_Panhash]
+            sperson ||= s.skey[PandoraCrypto::KV_Creator]
+            skey ||= s.skey[PandoraCrypto::KV_Panhash]
           end
           ((person.nil? or (sperson == person)) and \
           (key.nil? or (skey == key)) and \
@@ -5163,19 +5164,21 @@ module PandoraNet
       res
     end
 
-    def connect_sessions_to_hook(sessions, sess, hook, fisher=false)
+    def connect_sessions_to_hook(sessions, sess, hook, fisher=false, line=nil)
       res = false
       if (sessions.is_a? Array) and (sessions.size>0)
-        i = 0
-        while (i<sessions.size) and (not res)
-          session = sessions[i]
+        sessions.each do |session|
           sthread = session.send_thread
-          if sthread and sthread.alive?
-            session.init_line(line, sess, nil, nil, hook)
-            sthread.run if sthread.stop?
+          if sthread and sthread.alive? and sthread.stop?
+            sess_hook, rec = sess.init_line(line, nil, hook)
+            fhook, rec = session.init_line(nil, sess, nil, nil, sess_hook)
+            sess_hook2, rec2 = sess.init_line(nil, session, nil, sess_hook, fhook)
+            PandoraUtils.log_message(PandoraUtils::LM_Info, _('Unfreeze fisher')+\
+              ': [sess, hook]='+[session.object_id, sess_hook].inspect)
+            sthread.run
             res = true
+            break
           end
-          i += 1
         end
       end
       res
@@ -7066,16 +7069,12 @@ module PandoraNet
                       (fisher_baseid == pool.base_id)
                         p '!!это узел-рыбак, найти/создать сессию рыбки'
                         sessions = pool.sessions_of_personkeybase(fish, fish_key, fish_baseid)
-                        if (sessions.is_a? Array) and (sessions.size>0)
-                          p 'Найдены сущ. сессии'
-                          sessions.each do |session|
-                            p 'Подсоединяюсь к сессии: session.id='+session.object_id.to_s
-                            sess_hook, rec = init_line(line, session)
-                            if not pool.connect_sessions_to_hook(session, self, hook, true)
-                              p 'Не могу прицепить сессию'
-                            end
-                          end
-                        else
+                        p 'sessions1 size='+sessions.size.to_s
+                        if (not (sessions.is_a? Array)) or (sessions.size==0)
+                          sessions = pool.sessions_of_personkeybase(fish, fish_key, nil)
+                          p 'sessions2 size='+sessions.size.to_s
+                        end
+                        if not pool.connect_sessions_to_hook(sessions, self, hook, true, line)
                           #(line, session, far_hook, hook, sess_hook)
                           sess_hook, rec = init_line(line, nil, hook)
                           session = Session.new(self, sess_hook, nil, nil, nil, \
@@ -7399,12 +7398,11 @@ module PandoraNet
 
             if a_dialog and (not a_dialog.destroyed?)
               @dialog = a_dialog
-              dialog.set_session(self, true)
-              #dialog.online_button.active = (socket and (not socket.closed?))
-              if self.dialog and (not self.dialog.destroyed?) and self.dialog.online_button \
-              and ((self.socket and (not self.socket.closed?)) or self.active_hook)
-                self.dialog.online_button.safe_set_active(true)
-                self.dialog.online_button.inconsistent = false
+              @dialog.set_session(self, true)
+              if @dialog and (not @dialog.destroyed?) and @dialog.online_button \
+              and ((@socket and (not @socket.closed?)) or active_hook)
+                @dialog.online_button.safe_set_active(true)
+                @dialog.online_button.inconsistent = false
               end
             end
 
@@ -11295,6 +11293,7 @@ module PandoraGtk
     # Set session
     # RU: Задать сессию
     def set_session(session, online=true)
+      p 'set_session(session, online)='+[session.object_id, online].inspect
       @sessions ||= []
       if online
         @sessions << session if (not @sessions.include?(session))
@@ -11305,7 +11304,9 @@ module PandoraGtk
       end
       active = (@sessions.size>0)
       online_button.safe_set_active(active) if (not online_button.destroyed?)
-      if not active
+      if active
+        online_button.inconsistent = false
+      else
         snd_button.active = false if (not snd_button.destroyed?) and snd_button.active?
         vid_button.active = false if (not vid_button.destroyed?) and vid_button.active?
         #snd_button.safe_set_active(false) if (not snd_button.destroyed?)
