@@ -856,16 +856,20 @@ module PandoraUtils
     res
   end
 
+  # Constants for coil coordinate calculations
+  # RU: Константы для вычисления спиральной координаты
   DegX = 360
   DegY = 180
   MultX = 92681
   MultY = 46340
 
+  # Null coil coord
+  # Нулевая спиральная координата
   NilCoord = 0x7ffe4d8e
 
-  # Coordinate to 4-byte integer
-  # RU: Координату в 4-байтовое целое
-  def self.coord_to_int(y, x)
+  # Geographical coordinate to coil coordinate (4-byte integer)
+  # RU: Географическая координата в спиральную координату (4-байтовое целое)
+  def self.geo_coord_to_coil_coord(y, x)
     begin
       x = text_coord_to_float(x)
       while x>180
@@ -902,11 +906,13 @@ module PandoraUtils
     res
   end
 
+  # Round geo coordinate (for degree) to 0.01
+  # RU: Округлить гео координату (для градусов) до 0,01
   CoordRound = 2
 
-  # Integer to coordinate
-  # RU: Целое в координату
-  def self.int_to_coord(int)
+  # Coil coordinate (4-byte integer) to geographical coordinate
+  # RU: Спиральную координату (4-байтовое целое) в Географическую координату
+  def self.coil_coord_to_geo_coord(int)
     h = (int.fdiv(MultX)).truncate + 1
     s = int - (h-1)*MultX
     x = s.fdiv(MultX)*DegX - 180.0
@@ -917,9 +923,9 @@ module PandoraUtils
     [y, x]
   end
 
-  # Simplify coordinate
-  # RU: Упростить координату
-  def self.simplify_coord(val)
+  # Grid coordinate to cell 0.1 degree (5.5 km)
+  # RU: Округлить координату в сетку 0,1 градуса (5,5 км)
+  def self.grid_coord_to_cell01(val)
     val = val.round(1)
   end
 
@@ -2209,10 +2215,10 @@ module PandoraUtils
               fval = PandoraUtils.bytes_to_bigint(fval[2,4])
             end
             res = fval.to_i
-            coord = PandoraUtils.int_to_coord(res)
-            coord[0] = PandoraUtils.simplify_coord(coord[0])
-            coord[1] = PandoraUtils.simplify_coord(coord[1])
-            fval = PandoraUtils.coord_to_int(*coord)
+            coord = PandoraUtils.coil_coord_to_geo_coord(res)
+            coord[0] = PandoraUtils.grid_coord_to_cell01(coord[0])
+            coord[1] = PandoraUtils.grid_coord_to_cell01(coord[1])
+            fval = PandoraUtils.geo_coord_to_coil_coord(*coord)
             fval ||= res
             fval = 1 if (fval.is_a? Integer) and (fval==0)
           elsif not (fval.is_a? Integer)
@@ -3717,6 +3723,7 @@ module PandoraCrypto
   # RU: Статус ключа
   KS_Exchange  = 1
   KS_Voucher   = 2
+  KS_Robotic   = 4
 
   # Encode or decode key
   # RU: Зашифровать или расшифровать ключ
@@ -4263,13 +4270,17 @@ module PandoraCrypto
 
           hbox = Gtk::HBox.new
 
+          voucher_btn = Gtk::CheckButton.new(_('voucher'), true)
+          voucher_btn.active = ((rights & KS_Voucher)>0)
+          hbox.pack_start(voucher_btn, true, true, 2)
+
           exchange_btn = Gtk::CheckButton.new(_('exchange'), true)
           exchange_btn.active = ((rights & KS_Exchange)>0)
           hbox.pack_start(exchange_btn, true, true, 2)
 
-          voucher_btn = Gtk::CheckButton.new(_('voucher'), true)
-          voucher_btn.active = ((rights & KS_Voucher)>0)
-          hbox.pack_start(voucher_btn, true, true, 2)
+          robotic_btn = Gtk::CheckButton.new(_('robotic'), true)
+          robotic_btn.active = ((rights & KS_Robotic)>0)
+          hbox.pack_start(robotic_btn, true, true, 2)
 
           vbox.pack_start(hbox, false, false, 2)
 
@@ -4304,6 +4315,7 @@ module PandoraCrypto
               rights = 0
               rights = (rights | KS_Exchange) if exchange_btn.active?
               rights = (rights | KS_Voucher) if voucher_btn.active?
+              rights = (rights | KS_Robotic) if robotic_btn.active?
 
               #p 'cipher_hash='+cipher_hash.to_s
               type_klen = KT_Rsa | KL_bit2048
@@ -4683,12 +4695,14 @@ module PandoraCrypto
     aname, afamily = name_and_family_of_person(key, person)
     #p [othername, aname, afamily]
     if view_kind==0
+      # show name only (or family)
       if othername and (othername == aname)
         res = afamily
       else
         res = aname
       end
     else
+      # show name and family
       res = ''
       res << aname if (aname and (aname.size>0))
       res << ' ' if (res.size>0)
@@ -4805,9 +4819,11 @@ module PandoraNet
   ECC_Sync2_Encode      = 2
   ECC_Sync3_Confirm     = 3
 
-  EC_Wait1_NoFish       = 1
-  EC_Wait2_NoFisher     = 2
-  EC_Wait3_EmptySegment = 3
+  EC_Wait1_NoHookOrSeg       = 1
+  EC_Wait2_NoFarHook         = 2
+  EC_Wait3_NoFishRec         = 3
+  EC_Wait4_NoSessOrSessHook  = 4
+  EC_Wait5_NoNeighborRec     = 5
 
   ECC_Bye_Exit          = 200
   ECC_Bye_Unknown       = 201
@@ -4905,8 +4921,9 @@ module PandoraNet
   NO_Baseid          = 3
   NO_Notice_trust    = 4
   NO_Notice_depth    = 5
-  NO_Time            = 6
-  NO_Session         = 7
+  NO_Nick            = 6
+  NO_Time            = 7
+  NO_Session         = 8
 
   # Fish order array indexes
   # RU: Индексы массива заявок на рыбалку
@@ -5054,15 +5071,15 @@ module PandoraNet
 
     # Add order to notice
     # RU: Добавить заявку на уведомление
-    def add_notice_order(session, person, key, baseid, notice_trust, notice_depth)
+    def add_notice_order(session, person, key, baseid, notice_trust, notice_depth, nick=nil)
       res = nil
       if notice_depth>0
         time = Time.now.to_i
         res = find_notice_order(person, key, baseid, time)
         if ((not (res.is_a? Array)) or (res.size == 0))
           notice_depth -= 1
-          p '=====NOTICE ADD [person, key, baseid, notice_trust, notice_depth]='+[person, key, baseid, notice_trust, notice_depth].inspect
-          res = [@notice_ind+1, person, key, baseid, notice_trust, notice_depth, time, session]
+          p '=====NOTICE ADD [person, key, baseid, notice_trust, notice_depth, nick]='+[person, key, baseid, notice_trust, notice_depth, nick].inspect
+          res = [@notice_ind+1, person, key, baseid, notice_trust, notice_depth, nick, time, session]
           @notice_list << res
           @notice_ind += 1
         end
@@ -5344,18 +5361,6 @@ module PandoraNet
       end
     end
 
-    # Initialize a fish for the required fisher
-    # RU: Инициализирует рыбку для заданного рыбака
-    def init_fish_for_fisher(fisher, in_lure, aim_keyhash=nil, baseid=nil)
-      fish = nil
-      if (aim_keyhash==nil) #or (aim_keyhash==mykeyhash)   #
-        fish = Session.new(fisher, nil, in_lure, nil, nil, CM_Hunter, \
-          nil, nil, nil, nil)
-      else  # alien key
-        fish = @sessions.index { |session| session.skey[PandoraCrypto::KV_Panhash] == keyhash }
-      end
-      fish
-    end
   end
 
   $callback_addr = nil
@@ -6098,26 +6103,6 @@ module PandoraNet
         password
       end
 
-      def add_hole_for_fisher(fisher)
-        hole = get_hole_of_fisher(fisher)
-        if not hole
-          size = fishers.size
-          if size>0
-            i = 0
-            while (i<size) and (hole==nil)
-              hole = i if fishers[i]==nil
-              i += 1
-            end
-            hole = size if (hole==nil) and (size<256)
-            list_set(fishers, hole, fisher) if hole != nil
-          else
-            hole = 0
-            list_set(fishers, hole, fisher)
-          end
-        end
-        hole
-      end
-
       def active?
         res = (conn_state == CS_Connected)
       end
@@ -6171,54 +6156,6 @@ module PandoraNet
         [hook, rec]
       end
 
-      def rec_info(rec)
-        res = [rec[LHI_Session].object_id, rec[LHI_Far_Hook], rec[LHI_Sess_Hook]]
-      end
-
-      # Take out lure by input lure for the fisher
-      # RU: Взять исходящую наживку по входящей наживке для заданного рыбака
-      def take_out_lure_for_fisher(fisher, in_lure)
-        #out_lure = nil
-        #val = [fisher, in_lure]
-        p '[fisher, in_lure]='+[fisher.object_id, in_lure].inspect
-        out_lure = @hooks.index {|rec| (rec[LHI_Session]==fisher) and (rec[LHI_Far_Hook]==in_lure)}
-        p '-===--take_out_lure_for_fisher  in_lure, out_lure='+[in_lure, out_lure].inspect
-        if not out_lure
-          p 'NO OUT_LURE [fisher, self]='+[fisher.object_id, self.object_id].inspect
-          p 'hooks - fisher,self: '+\
-            [fisher.hooks.collect {|rec| rec_info(rec) },
-            fisher.hooks.collect {|rec| rec_info(rec) }].inspect
-          # need to registrate output lure
-        #  i = 0
-        #  while (i<@fishers.size)
-        #    break if (not (@fishers[i].is_a? Array))  #or (@fishers[i][0].destroyed?))
-        #    i += 1
-        #  end
-        #  out_lure = i if (not out_lure) and (i<=255)
-        #  @fishers[out_lure] = val if out_lure
-        end
-        out_lure
-      end
-
-      # Check out lure by input lure and the fisher
-      # RU: Проверить исходящую наживку по входящей наживке и рыбаку
-      #def get_out_lure_for_fisher(fisher, in_lure)
-      #  val = [fisher, in_lure]
-      #  out_lure = @fishers.index(val)
-      #  p '----get_out_lure_for_fisher  in_lure, out_lure='+[in_lure, out_lure].inspect
-      #  out_lure
-      #end
-
-      # Get fisher for out lure
-      # RU: Определить рыбака по исходящей наживке
-      def get_fisher_for_out_lure(out_lure)
-        fisher, in_lure = nil, nil
-        val = @fishers[out_lure] if out_lure.is_a? Integer
-        fisher, in_lure = val if val.is_a? Array
-        p '~~~~~ get_fisher_for_out_lure  in_lure, out_lure='+[in_lure, out_lure].inspect
-        [fisher, in_lure]
-      end
-
       # Clear out lures for the fisher and input lure
       # RU: Очистить исходящие наживки для рыбака и входящей наживки
       def free_out_lure_of_fisher(fisher, in_lure)
@@ -6235,32 +6172,6 @@ module PandoraNet
           end
         end
       end
-
-      # Set a fish of the input lure
-      # RU: Поставить рыбку на входящую наживку
-      def set_fish_of_in_lure(in_lure, fish)
-        p '+++++set_fish_of_in_lure(in_lure)='+in_lure.inspect
-        @fishes[in_lure] = fish if in_lure.is_a? Integer
-      end
-
-      # Get a fish by the input lure
-      # RU: Взять рыбку по входящей наживке
-      def get_fish_for_in_lure(in_lure)
-        fish = nil
-        p '+++++get_fish_for_in_lure(in_lure)='+in_lure.inspect
-        if in_lure.is_a? Integer
-          fish = @hooks[in_lure][LHI_Session]
-          #if fish #and fish.destroyed?
-          #  fish = nil
-          #  @fishes[in_lure] = nil
-          #end
-        end
-        fish
-      end
-
-      #def get_in_lure_by_fish(fish)
-      #  lure = @fishes.index(fish) if lure.is_a? Integer
-      #end
 
       # Clear the fish on the input lure
       # RU: Очистить рыбку для входящей наживки
@@ -6317,65 +6228,31 @@ module PandoraNet
                 else
                   p 'No neighbor rec'
                   @scmd = EC_Wait
-                  @scode = EC_Wait1_NoFish
+                  @scode = EC_Wait5_NoNeighborRec
                   @scbuf = nil
                 end
               else
                 p 'No sess or sess_hook'
                 @scmd = EC_Wait
-                @scode = EC_Wait1_NoFish
+                @scode = EC_Wait4_NoSessOrSessHook
                 @scbuf = nil
               end
             else
               p 'No hook rec'
               @scmd = EC_Wait
-              @scode = EC_Wait1_NoFish
+              @scode = EC_Wait3_NoFishRec
               @scbuf = nil
             end
           else
-            p 'No hook for fish'
+            p 'No far hook'
             @scmd = EC_Wait
-            @scode = EC_Wait1_NoFish
+            @scode = EC_Wait2_NoFarHook
             @scbuf = nil
           end
         else
           p 'No hook or segment'
           @scmd = EC_Wait
-          @scode = EC_Wait3_EmptySegment
-          @scbuf = nil
-        end
-        res
-      end
-
-      # Send segment from current session to fisher session
-      # RU: Отправляет сегмент от текущей сессии к сессии рыбака
-      def send_segment_to_fisher(out_lure, segment)
-        res = nil
-        if segment and (segment.bytesize>1)
-          fisher, in_lure = get_fisher_for_out_lure(out_lure)
-          p '&&&&& send_segment_to_fisher: out_lure,fisher,in_lure,segsize='+[out_lure, fisher, in_lure, segment.bytesize].inspect
-          if fisher #and (not fisher.destroyed?)
-            if fisher.donor == self
-              p 'DONOR bite'
-              cmd = segment[0].ord
-              code = segment[1].ord
-              data = nil
-              data = segment[2..-1] if (segment.bytesize>2)
-              p '-->Add raw to fisher (outlure='+out_lure.to_s+') read queue: cmd,code,data='+[cmd, code, data].inspect
-              res = fisher.read_queue.add_block_to_queue([cmd, code, data])
-            else
-              p 'RESENDER bite'
-              #in_lure = fisher.get_in_lure_by_fish(self)
-              res = fisher.send_queue.add_block_to_queue([EC_Bite, in_lure, segment])
-            end
-          else
-            @scmd = EC_Wait
-            @scode = EC_Wait2_NoFisher
-            @scbuf = nil
-          end
-        else
-          @scmd = EC_Wait
-          @scode = EC_Wait3_EmptySegment
+          @scode = EC_Wait1_NoHookOrSeg
           @scbuf = nil
         end
         res
@@ -6509,8 +6386,9 @@ module PandoraNet
                             not_trust = (@notice & 0xFF)
                             not_dep = (@notice >> 8)
                             if not_dep >= 0
+                              nick = PandoraCrypto.short_name_of_person(@skey, @to_person, 1)
                               pool.add_notice_order(self, @to_person, @to_key, \
-                                @to_base_id, not_trust, not_dep)
+                                @to_base_id, not_trust, not_dep, nick)
                             end
                           end
                           if (conn_mode & CM_Hunter) == 0
@@ -6746,8 +6624,12 @@ module PandoraNet
           end
         when EC_Wait
           case rcode
-            when EC_Wait1_NoFish
-              PandoraUtils.log_message(LM_Error, _('Cannot find a fish'))
+            when EC_Wait2_NoFarHook..EC_Wait5_NoNeighborRec
+              PandoraUtils.log_message(LM_Error, _('Error at other side')+': '+ \
+                _('cannot find a fish'))
+            else
+              PandoraUtils.log_message(LM_Error, _('Error at other side')+': '+ \
+                _('unknown'))
           end
         when EC_Bye
           errcode = ECC_Bye_Exit
@@ -6757,12 +6639,7 @@ module PandoraNet
             mes = rdata
             mes ||= ''
             i = mes.index(' (') if mes
-            p '---------'
-            p mes
-            if i
-              p mes[0, i]
-              mes = _(mes[0, i])+mes[i..-1]
-            end
+            mes = _(mes[0, i])+mes[i..-1] if i
             PandoraUtils.log_message(LM_Error, _('Error at other side')+' ErrCode='+rcode.to_s+' "'+mes+'"')
           end
           err_scmd(nil, errcode, false)
@@ -7085,7 +6962,7 @@ module PandoraNet
                         fish_orders = pool.find_fish_order(*line[0..4])
                         fish_orders.each do |fo|
                           sess = fo[PandoraNet::FO_Session]
-                          if sess and (not sess.destroyed?)
+                          if sess
                             sess.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
                               ECC_News_Hook)
                           end
@@ -7878,16 +7755,18 @@ module PandoraNet
                 and (@notice_ind <= pool.notice_ind)
                   notice_order = pool.notice_list[@notice_ind]
                   if notice_order
-                    p log_mes+'======notice_order='+notice_order[NO_Person..NO_Notice_depth].inspect
-                    p log_mes+'======[to_person, to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session], self]='+[@to_person, @to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session].object_id, self.object_id].inspect
+                    p log_mes+'======notice_order='+notice_order[NO_Person..NO_Nick].inspect
+                    p log_mes+'======[to_person, to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session], self]='\
+                      +[@to_person, @to_key, @sess_trust, notice_order[NO_Notice_trust], \
+                      notice_order[NO_Session].object_id, self.object_id].inspect
                     if notice_order and (notice_order[NO_Session] != self) \
                     and @sess_trust and (@sess_trust >= PandoraModel.transform_trust(notice_order[NO_Notice_trust], false)) \
                     and ((@to_key and (notice_order[NO_Key] != @to_key)) \
                     or (@to_person and (notice_order[NO_Person] != @to_person)) \
                     or (@to_base_id and (notice_order[NO_Baseid] != @to_base_id)))
-                      p log_mes+'=====New notice order: '+notice_order[NO_Person..NO_Notice_depth].inspect
+                      p log_mes+'=====New notice order: '+notice_order[NO_Person..NO_Nick].inspect
                       #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                      notic = PandoraUtils.rubyobj_to_pson(notice_order[NO_Person..NO_Notice_depth])
+                      notic = PandoraUtils.rubyobj_to_pson(notice_order[NO_Person..NO_Nick])
                       add_send_segment(EC_News, true, notic, ECC_News_Notice)
                     end
                     processed += 1
@@ -7961,13 +7840,21 @@ module PandoraNet
             end
             @socket_thread.exit if @socket_thread
             @read_thread.exit if @read_thread
-            while @hooks.size>0
+            while (@hooks.size>0)
               p 'DONORs free!!!!'
-              i = @hooks.size-1 #active_hook
-              rec = @hooks[i]
-              rec[LHI_Session].del_sess_hooks(self) if rec.is_a? Array and rec[LHI_Session] \
-                and rec[LHI_Session].active?
-              @hooks.delete_at(i)
+              hook = @hooks.size-1 #active_hook
+              send_segment_to_fish(hook, EC_Bye.chr + ECC_Bye_NoAnswer.chr)
+              rec = @hooks[hook]
+              if (rec.is_a? Array) and (sess = rec[LHI_Session]) #and sess.active?
+                #sess_hook = rec[LHI_Sess_Hook]
+                #if sess_hook and (rec2 = sess.hooks[sess_hook]) and rec2[LHI_Line]
+                #  sess.send_comm_and_data(sess.sindex, EC_Bye, ECC_Bye_NoAnswer, nil)
+                #else
+                #far_hook = rec[LHI_Far_Hook]
+                #sess.send_comm_and_data(sess.sindex, EC_Bye, ECC_Bye_NoAnswer, nil)
+                sess.del_sess_hooks(self)
+              end
+              @hooks.delete(rec)
               #if rec[LHI_Session] and rec[LHI_Session].active?
               #  rec[LHI_Session].send_comm_and_data(rec[LHI_Session].sindex, EC_Bye, ECC_Bye_NoAnswer, nil)
               #end
@@ -8299,7 +8186,7 @@ module PandoraNet
         filter = 'addr<>"" OR domain<>""'
         flds = 'id, addr, domain, tport, key_hash, base_id'
         sel = node_model.select(filter, false, flds)
-        if sel and sel.size>0
+        if sel and (sel.size>0)
           $hunter_thread = Thread.new(node_model, filter, flds, sel) \
           do |node_model, filter, flds, sel|
             $window.set_status_field(PandoraGtk::SF_Hunt, 'Hunting', nil, true)
@@ -9162,7 +9049,7 @@ module PandoraGtk
         i = nil
       end
       if i
-        coord = PandoraUtils.int_to_coord(i)
+        coord = PandoraUtils.coil_coord_to_geo_coord(i)
       else
         coord = ['', '']
       end
@@ -9171,7 +9058,7 @@ module PandoraGtk
     end
 
     def text
-      res = PandoraUtils.coord_to_int(latitude.text, longitude.text).to_s
+      res = PandoraUtils.geo_coord_to_coil_coord(latitude.text, longitude.text).to_s
     end
 
     def width_request=(wr)
@@ -12779,23 +12666,26 @@ module PandoraGtk
 
       #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
-      list_store = Gtk::ListStore.new(String, String, String, Integer, Integer, \
+      list_store = Gtk::ListStore.new(String, String, String, String, Integer, Integer, \
         Integer, Integer, String, Integer)
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
         if $window.pool
           $window.pool.notice_list.each do |no|
+            p '---no:'
+            p no[0..6]
             sess_iter = list_store.append
-            sess_iter[0] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Person])
-            sess_iter[1] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Key])
-            sess_iter[2] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Baseid])
-            sess_iter[3] = no[PandoraNet::NO_Notice_trust]
-            sess_iter[4] = no[PandoraNet::NO_Notice_depth]
-            sess_iter[5] = 0 #distance
-            sess_iter[6] = no[PandoraNet::NO_Session].object_id
-            sess_iter[7] = PandoraUtils.time_to_str(no[PandoraNet::NO_Time])
-            sess_iter[8] = no[PandoraNet::NO_Index]
+            sess_iter[0] = no[PandoraNet::NO_Nick]
+            sess_iter[1] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Person])
+            sess_iter[2] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Key])
+            sess_iter[3] = PandoraUtils.bytes_to_hex(no[PandoraNet::NO_Baseid])
+            sess_iter[4] = no[PandoraNet::NO_Notice_trust]
+            sess_iter[5] = no[PandoraNet::NO_Notice_depth]
+            sess_iter[6] = 0 #distance
+            sess_iter[7] = no[PandoraNet::NO_Session].object_id
+            sess_iter[8] = PandoraUtils.time_to_str(no[PandoraNet::NO_Time])
+            sess_iter[9] = no[PandoraNet::NO_Index]
           end
         end
       end
@@ -12808,48 +12698,53 @@ module PandoraGtk
       #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Person'), renderer, 'text' => 0)
+      column = Gtk::TreeViewColumn.new(_('Nick'), renderer, 'text' => 0)
       column.set_sort_column_id(0)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Key'), renderer, 'text' => 1)
+      column = Gtk::TreeViewColumn.new(_('Person'), renderer, 'text' => 1)
       column.set_sort_column_id(1)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('BaseID'), renderer, 'text' => 2)
+      column = Gtk::TreeViewColumn.new(_('Key'), renderer, 'text' => 2)
       column.set_sort_column_id(2)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Trust'), renderer, 'text' => 3)
+      column = Gtk::TreeViewColumn.new(_('BaseID'), renderer, 'text' => 3)
       column.set_sort_column_id(3)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Depth'), renderer, 'text' => 4)
+      column = Gtk::TreeViewColumn.new(_('Trust'), renderer, 'text' => 4)
       column.set_sort_column_id(4)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Distance'), renderer, 'text' => 5)
+      column = Gtk::TreeViewColumn.new(_('Depth'), renderer, 'text' => 5)
       column.set_sort_column_id(5)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 6)
+      column = Gtk::TreeViewColumn.new(_('Distance'), renderer, 'text' => 6)
       column.set_sort_column_id(6)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 7)
+      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 7)
       column.set_sort_column_id(7)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 8)
+      column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 8)
       column.set_sort_column_id(8)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 9)
+      column.set_sort_column_id(9)
       list_tree.append_column(column)
 
       list_tree.signal_connect('row_activated') do |tree_view, path, column|
@@ -13463,8 +13358,8 @@ module PandoraGtk
       creator0 = nil
       if path and (not new_act)
         iter = store.get_iter(path)
-        id = iter[0]
         if panobject
+          id = iter[0]
           sel = panobject.select('id='+id.to_s, true)
           panhash0 = panobject.namesvalues['panhash']
           panstate = panobject.namesvalues['panstate']
@@ -13474,7 +13369,7 @@ module PandoraGtk
             creator0 = panobject.namesvalues['creator']
           end
         else
-          panhash0 = PandoraUtils.hex_to_bytes(id)
+          panhash0 = PandoraUtils.hex_to_bytes(iter[1])
         end
         lang = panhash0[1].ord if panhash0 and (panhash0.size>1)
         lang ||= 0
@@ -13800,6 +13695,42 @@ module PandoraGtk
   # RU: ScrolledWindow для объектов Пандоры
   class PanobjBox < Gtk::VBox
     attr_accessor :update_btn, :auto_btn, :treeview
+
+    def update_treeview
+      panobject = treeview.panobject
+      store = treeview.model
+      Gdk::Threads.synchronize do
+        Gdk::Display.default.sync
+
+        path, column = treeview.cursor
+        store.clear
+        panobject.class.modified = false if panobject.class.modified
+        sel = panobject.select(nil, false, nil, panobject.sort)
+        param_view_col = nil
+        param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
+        sel.each do |row|
+          iter = store.append
+          id = row[0].to_i
+          iter[0] = id
+          if param_view_col
+            type = panobject.field_val('type', row)
+            setting = panobject.field_val('setting', row)
+            ps = PandoraUtils.decode_param_setting(setting)
+            view = ps['view']
+            view ||= PandoraUtils.pantype_to_view(type)
+            row[param_view_col] = view
+          end
+        end
+        treeview.sel = sel
+        if path or (treeview.sel.size>0)
+          path ||= Gtk::TreePath.new(treeview.sel.size-1)
+          treeview.set_cursor(path, nil, false)
+        end
+        p 'treeview is updated: '+panobject.ider
+        treeview.grab_focus
+      end
+    end
+
   end
 
   # Showing panobject list
@@ -13910,32 +13841,7 @@ module PandoraGtk
     update_btn.tooltip_text = title
     update_btn.label = title
     update_btn.signal_connect('clicked') do |*args|
-      path, column = treeview.cursor
-      store.clear
-      panobject.class.modified = false if panobject.class.modified
-      sel = panobject.select(nil, false, nil, panobject.sort)
-      param_view_col = nil
-      param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
-      sel.each do |row|
-        iter = store.append
-        id = row[0].to_i
-        iter[0] = id
-        if param_view_col
-          type = panobject.field_val('type', row)
-          setting = panobject.field_val('setting', row)
-          ps = PandoraUtils.decode_param_setting(setting)
-          view = ps['view']
-          view ||= PandoraUtils.pantype_to_view(type)
-          row[param_view_col] = view
-        end
-      end
-      treeview.sel = sel
-      if path or (treeview.sel.size>0)
-        path ||= Gtk::TreePath.new(treeview.sel.size-1)
-        treeview.set_cursor(path, nil, false)
-      end
-      p 'treeview is updated: '+panobject.ider
-      treeview.grab_focus
+      pbox.update_treeview
     end
     update_btn.clicked
 
@@ -14065,7 +13971,8 @@ module PandoraGtk
           #p 'update_treeview_if_need: '+panobjbox.treeview.panobject.ider
           if panobjbox.treeview.panobject.class.modified
             #p 'update_treeview_if_need: modif='+panobjbox.treeview.panobject.class.modified.inspect
-            panobjbox.update_btn.clicked
+            #panobjbox.update_btn.clicked
+            panobjbox.update_treeview
           end
           sleep(TAB_UPD_PERIOD)
         end
