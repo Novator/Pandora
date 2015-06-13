@@ -13733,6 +13733,71 @@ module PandoraGtk
 
   end
 
+  class FilterHBox < Gtk::HBox
+    attr_accessor :filters, :field_com, :oper_com, :val_entry
+
+    def delete
+      if @filters.size>1
+        parent.remove(self)
+        filters.delete(self)
+      else
+        field_com.entry.text = ''
+        while children.size>1
+          remove(children[children.size-1])
+        end
+      end
+    end
+
+    def initialize(a_filters, hbox)
+      super()
+      @filters = a_filters
+
+      filter_box = self
+
+      @field_com = Gtk::Combo.new
+      field_com.set_popdown_strings(['<no filter>','panhash','creator','birthday'])
+      field_com.set_size_request(110, -1)
+
+      field_com.entry.signal_connect('changed') do |entry|
+        if filter_box.children.size>1
+          if (entry.text == '<no filter>') or (entry.text == '')
+            delete
+          end
+        elsif (entry.text != '<no filter>') and (entry.text != '')
+          @oper_com = Gtk::Combo.new
+          oper_com.set_popdown_strings(['LIKE','=','<>','>','<'])
+          oper_com.set_size_request(62, -1)
+          filter_box.pack_start(oper_com, false, false, 0)
+
+          @val_entry = Gtk::Entry.new
+          val_entry.set_size_request(120, -1)
+          filter_box.pack_start(val_entry, false, false, 0)
+
+          del_btn = Gtk::ToolButton.new(Gtk::Stock::DELETE, _('Delete'))
+          del_btn.tooltip_text = _('Delete this filter')
+          del_btn.signal_connect('clicked') do |*args|
+            delete
+          end
+          filter_box.pack_start(del_btn, false, false, 0)
+
+          add_btn = Gtk::ToolButton.new(Gtk::Stock::ADD, _('Add'))
+          add_btn.tooltip_text = _('Add a new filter')
+          add_btn.signal_connect('clicked') { |*args| FilterHBox.new(filters, hbox) }
+          filter_box.pack_start(add_btn, false, false, 0)
+
+          filter_box.show_all
+        end
+      end
+      filter_box.pack_start(field_com, false, false, 0)
+
+      filter_box.show_all
+      hbox.pack_start(filter_box, false, true, 0)
+
+      @filters << filter_box
+      filter_box
+    end
+  end
+
   # Showing panobject list
   # RU: Показ списка панобъектов
   def self.show_panobject_list(panobject_class, widget=nil, pbox=nil, auto_create=false)
@@ -13844,6 +13909,7 @@ module PandoraGtk
       pbox.update_treeview
     end
     update_btn.clicked
+    hbox.pack_start(update_btn, false, true, 0)
 
     pbox.auto_btn = nil
     if single
@@ -13854,9 +13920,10 @@ module PandoraGtk
       end
       auto_btn.safe_set_active(true)
     end
-
-    hbox.pack_start(update_btn, false, true, 0)
     hbox.pack_start(auto_btn, false, true, 0) if single
+
+    filters = Array.new
+    filter_box = FilterHBox.new(filters, hbox)
 
     pbox.pack_start(hbox, false, false, 0)
     pbox.pack_start(list_sw, true, true, 0)
@@ -13976,6 +14043,7 @@ module PandoraGtk
           end
           sleep(TAB_UPD_PERIOD)
         end
+        $treeview_thread = nil
       end
     end
   end
