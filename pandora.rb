@@ -13733,9 +13733,13 @@ module PandoraGtk
 
   end
 
+  # Filter box: field, operation and value
+  # RU: Группа фильтра: поле, операция и значение
   class FilterHBox < Gtk::HBox
     attr_accessor :filters, :field_com, :oper_com, :val_entry
 
+    # Remove itself
+    # RU: Удалить себя
     def delete
       if @filters.size>1
         parent.remove(self)
@@ -13748,14 +13752,34 @@ module PandoraGtk
       end
     end
 
-    def initialize(a_filters, hbox)
+    # Create new instance
+    # RU: Создать новый экземпляр
+    def initialize(a_filters, hbox, pbox)
       super()
       @filters = a_filters
 
       filter_box = self
 
+      panobject = pbox.treeview.panobject
+
+      p tab_flds = panobject.tab_fields
+      p def_flds = panobject.def_fields
+      #def_flds.each do |df|
+      #id = df[FI_Id]
+      #tab_ind = tab_flds.index{ |tf| tf[0] == id }
+      #if tab_ind
+      #  renderer = Gtk::CellRendererText.new
+        #renderer.background = 'red'
+        #renderer.editable = true
+        #renderer.text = 'aaa'
+
+      #  title = df[FI_VFName]
+
+      fields = Array.new
+      fields << '<no filter>'
+      fields.concat(tab_flds.collect{|tf| tf[0]})
       @field_com = Gtk::Combo.new
-      field_com.set_popdown_strings(['<no filter>','panhash','creator','birthday'])
+      field_com.set_popdown_strings(fields)
       field_com.set_size_request(110, -1)
 
       field_com.entry.signal_connect('changed') do |entry|
@@ -13765,8 +13789,8 @@ module PandoraGtk
           end
         elsif (entry.text != '<no filter>') and (entry.text != '')
           @oper_com = Gtk::Combo.new
-          oper_com.set_popdown_strings(['LIKE','=','<>','>','<'])
-          oper_com.set_size_request(62, -1)
+          oper_com.set_popdown_strings(['=','><','>','<'])
+          oper_com.set_size_request(56, -1)
           filter_box.pack_start(oper_com, false, false, 0)
 
           @val_entry = Gtk::Entry.new
@@ -13782,7 +13806,7 @@ module PandoraGtk
 
           add_btn = Gtk::ToolButton.new(Gtk::Stock::ADD, _('Add'))
           add_btn.tooltip_text = _('Add a new filter')
-          add_btn.signal_connect('clicked') { |*args| FilterHBox.new(filters, hbox) }
+          add_btn.signal_connect('clicked') { |*args| FilterHBox.new(filters, hbox, pbox) }
           filter_box.pack_start(add_btn, false, false, 0)
 
           filter_box.show_all
@@ -13923,7 +13947,7 @@ module PandoraGtk
     hbox.pack_start(auto_btn, false, true, 0) if single
 
     filters = Array.new
-    filter_box = FilterHBox.new(filters, hbox)
+    filter_box = FilterHBox.new(filters, hbox, pbox)
 
     pbox.pack_start(hbox, false, false, 0)
     pbox.pack_start(list_sw, true, true, 0)
