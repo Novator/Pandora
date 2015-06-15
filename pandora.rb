@@ -7782,19 +7782,26 @@ module PandoraNet
               and (processed<$fish_block_count) \
               and (@fish_ind <= pool.fish_ind)
                 fish_order = pool.fish_orders[@fish_ind]
+                p '++++pool.fish_orders[size, @fish_ind, fo]='+[pool.fish_orders.size, @fish_ind, \
+                  fish_order.object_id].inspect
                 if fish_order
                   p log_mes+'fish_order='+fish_order[FO_Fisher..FO_Fish_key].inspect
                   p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
-                  if fish_order and (fish_order[FO_Session] != self) \
-                  and ((@to_person and (fish_order[FO_Fish] != @to_person)) \
-                  or (@to_key and (fish_order[FO_Fish_key] != @to_key)))
-                    p log_mes+'New fish order: '+fish_order[FO_Fisher..FO_Fish_key].inspect
-                    #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                    PandoraUtils.log_message(LM_Trace, _('Fishing to')+': [fish,host,port]' \
-                      +[PandoraUtils.bytes_to_hex(fish_order[FO_Fish]), \
-                      @host_ip, @port].inspect)
-                    line = PandoraUtils.rubyobj_to_pson(fish_order[FO_Fisher..FO_Fish_key])
-                    add_send_segment(EC_Query, true, line, ECC_Query_Fish)
+                  if fish_order and (fish_order[FO_Session] != self)
+                    if (@to_person and (fish_order[FO_Fish] != @to_person)) \
+                    or (@to_key and (fish_order[FO_Fish_key] != @to_key))
+                      p log_mes+'New fish order: '+fish_order[FO_Fisher..FO_Fish_key].inspect
+                      #mykeyhash = PandoraCrypto.current_user_or_key(false)
+                      PandoraUtils.log_message(LM_Trace, _('Fishing to')+': [fish,host,port]' \
+                        +[PandoraUtils.bytes_to_hex(fish_order[FO_Fish]), \
+                        @host_ip, @port].inspect)
+                      line = PandoraUtils.rubyobj_to_pson(fish_order[FO_Fisher..FO_Fish_key])
+                      add_send_segment(EC_Query, true, line, ECC_Query_Fish)
+                    else
+                      # fishing to this session!
+                      p 'fishing to this session!'
+                      #init_line, see "FOUND fishes"
+                    end
                   end
                   processed += 1
                 end
@@ -15167,6 +15174,16 @@ module PandoraGtk
       separ = '|'
 
       File.open(filename, 'w') do |file|
+        file.puts('# Export table ['+ider+']')
+
+        tab_flds = panobject.tab_fields
+        #def_flds = panobject.def_fields
+        #id = df[FI_Id]
+        #tab_ind = tab_flds.index{ |tf| tf[0] == id }
+        fields = tab_flds.collect{|tf| tf[0]}
+        fields = fields.join('|')
+        file.puts('# Fields: '+fields)
+
         sel = panobject.select(nil, false, nil, panobject.sort)
         sel.each do |row|
           line = ''
@@ -15180,7 +15197,7 @@ module PandoraGtk
               end
             end
           end
-          file.puts(line)
+          file.puts(Utf8String.new(line))
         end
       end
 
