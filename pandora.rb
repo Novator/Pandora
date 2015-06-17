@@ -857,18 +857,18 @@ module PandoraUtils
   end
 
   # Constants for coil coordinate calculations
-  # RU: Константы для вычисления спиральной координаты
+  # RU: Константы для вычисления катушечной координаты
   DegX = 360
   DegY = 180
   MultX = 92681
   MultY = 46340
 
   # Null coil coord
-  # Нулевая спиральная координата
+  # Нулевая катушечная координата
   NilCoord = 0x7ffe4d8e
 
   # Geographical coordinate to coil coordinate (4-byte integer)
-  # RU: Географическая координата в спиральную координату (4-байтовое целое)
+  # RU: Географическая координата в катушечную координату (4-байтовое целое)
   def self.geo_coord_to_coil_coord(y, x)
     begin
       x = text_coord_to_float(x)
@@ -911,7 +911,7 @@ module PandoraUtils
   CoordRound = 2
 
   # Coil coordinate (4-byte integer) to geographical coordinate
-  # RU: Спиральную координату (4-байтовое целое) в Географическую координату
+  # RU: Катушечную координату (4-байтовое целое) в Географическую координату
   def self.coil_coord_to_geo_coord(int)
     h = (int.fdiv(MultX)).truncate + 1
     s = int - (h-1)*MultX
