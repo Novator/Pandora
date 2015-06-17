@@ -4925,16 +4925,20 @@ module PandoraNet
   NO_Time            = 7
   NO_Session         = 8
 
-  # Fish order array indexes
-  # RU: Индексы массива заявок на рыбалку
-  FO_Index           = 0
-  FO_Session         = 1
-  FO_Fisher          = 2
-  FO_Fisher_key      = 3
-  FO_Fisher_baseid   = 4
-  FO_Fish            = 5
-  FO_Fish_key        = 6
-  FO_Time            = 7
+  # Line order array indexes
+  # RU: Индексы массива заявок на линию
+  LO_Fisher          = 0
+  LO_Fisher_key      = 1
+  LO_Fisher_baseid   = 2
+  LO_Fish            = 3
+  LO_Fish_key        = 4
+  LO_Index           = 5
+  LO_Session         = 6
+  LO_Time            = 7
+
+  # Base ID index of fish in line
+  # RU: Индекс Base ID для рыбки в линии
+  LN_Fish_Baseid  =   LO_Fish_key + 1
 
   # Pool
   # RU: Пул
@@ -5113,8 +5117,8 @@ module PandoraNet
     def add_fish_order(session, fisher, fisher_key, fisher_baseid, fish, fish_key, models=nil)
       res = nil
       time = Time.now.to_i
-      clear_list(@fish_orders, FO_Time, $fish_live_per, time)
-      @fish_orders << [@fish_ind+1, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+      clear_list(@fish_orders, LO_Time, $fish_live_per, time)
+      @fish_orders << [fisher, fisher_key, fisher_baseid, fish, fish_key, @fish_ind+1, session, time]
       @fish_ind += 1
       res = true
 
@@ -5169,13 +5173,13 @@ module PandoraNet
 
     def find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
       res = @fish_orders.select do |fo|
-        ((fisher.nil? or (fo[PandoraNet::FO_Fisher] == fisher)) and \
-        (fisher_key.nil? or (fo[PandoraNet::FO_Fisher_key] == fisher_key)) and \
-        (fisher_baseid.nil? or (fo[PandoraNet::FO_Fisher_baseid] == fisher_baseid)) and \
-        (fish.nil? or (fo[PandoraNet::FO_Fish] == fish)) and \
-        (fish_key.nil? or (fo[PandoraNet::FO_Fish_key] == fish_key)))
+        ((fisher.nil? or (fo[PandoraNet::LO_Fisher] == fisher)) and \
+        (fisher_key.nil? or (fo[PandoraNet::LO_Fisher_key] == fisher_key)) and \
+        (fisher_baseid.nil? or (fo[PandoraNet::LO_Fisher_baseid] == fisher_baseid)) and \
+        (fish.nil? or (fo[PandoraNet::LO_Fish] == fish)) and \
+        (fish_key.nil? or (fo[PandoraNet::LO_Fish_key] == fish_key)))
       end
-      #FO_Session
+      #LO_Session
       #res.uniq!
       #res.compact!
       res
@@ -5187,9 +5191,9 @@ module PandoraNet
         sessions.each do |session|
           sthread = session.send_thread
           if sthread and sthread.alive? and sthread.stop?
-            sess_hook, rec = sess.init_line(line, nil, hook)
-            fhook, rec = session.init_line(nil, sess, nil, nil, sess_hook)
-            sess_hook2, rec2 = sess.init_line(nil, session, nil, sess_hook, fhook)
+            sess_hook, rec = sess.reg_line(line, nil, hook)
+            fhook, rec = session.reg_line(nil, sess, nil, nil, sess_hook)
+            sess_hook2, rec2 = sess.reg_line(nil, session, nil, sess_hook, fhook)
             PandoraUtils.log_message(PandoraUtils::LM_Info, _('Unfreeze fisher')+\
               ': [sess, hook]='+[session.object_id, sess_hook].inspect)
             sthread.run
@@ -6109,8 +6113,8 @@ module PandoraNet
 
       # Get hook for line
       # RU: Взять крючок для лески
-      def init_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, fo_ind=nil)
-        p '--init_line  [far_hook, hook, sess_hook, self, session]='+\
+      def reg_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, fo_ind=nil)
+        p '--reg_line  [far_hook, hook, sess_hook, self, session]='+\
           [far_hook, hook, sess_hook, self.object_id, session.object_id].inspect
         rec = nil
         # find existing rec
@@ -6151,9 +6155,103 @@ module PandoraNet
           rec[LHI_Far_Hook] ||= far_hook if far_hook
           rec[LHI_Sess_Hook] ||= sess_hook if sess_hook
         end
-        p '=====init_line  [session, far_hook, hook, sess_hook]='+[session.object_id, \
+        p '=====reg_line  [session, far_hook, hook, sess_hook]='+[session.object_id, \
           far_hook, hook, sess_hook].inspect
         [hook, rec]
+      end
+
+      # Initialize the line, send hooks
+      # RU: Инициализировать линию, разослать крючки
+      def init_line(line_order, mykeyhash=nil)
+        res = nil
+        fisher, fisher_key, fisher_baseid, fish, fish_key = line_order
+        if fisher_key and fisher_baseid and (fish or fish_key)
+          if mykeyhash and (fisher_key == mykeyhash) and (fisher_baseid == pool.base_id)
+            # fishing from me
+            PandoraUtils.log_message(LM_Warning, _('Somebody uses your ID'))
+          else
+            res = false
+
+            # check fishing to me
+            if false and ((fish == mypersonhash) or (fish_key == mykeyhash))
+              p log_mes+'Fishing to me!='+session.to_key.inspect
+              # find existing (sleep) sessions
+              sessions = sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
+              if (not sessions.is_a? Array) or (sessions.size==0)
+                sessions = Session.new(111)
+              end
+              line = line_order.dup
+              line[LO_Fish] ||= mypersonhash
+              line[LO_Fish_key] ||= mykeyhash
+              line[LN_Fish_Baseid] = pool.base_id
+              p log_mes+' line='+line.inspect
+              #session = connect_sessions_to_hook([session], self, hook)
+              my_hook, rec = reg_line(line, session)
+              if my_hook
+                line_raw = PandoraUtils.rubyobj_to_pson(line)
+                add_send_segment(EC_News, true, my_hook.chr + line_raw, \
+                  ECC_News_Hook)
+              end
+              # sessions.each do |session|
+              #    hook, rec = session.reg_line(line, self, nil, nil, my_hook)
+              #    session.add_send_segment(EC_News, true, hook.chr + line_raw, \
+              #      ECC_News_Hook)
+              #  end
+              #end
+              res = true
+            end
+
+            # check fishing to there
+            if (@to_person and (fish == @to_person)) \
+            or (@to_key and (fish_key == @to_key))
+              sessions = sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
+              #sessions.flatten!
+              sessions.uniq!
+              sessions.compact!
+              if sessions and (sessions.size>0)
+                init_line_terminal()
+                # См. ECC_News_Hook
+              end
+            else
+              # check other session
+              sessions = pool.sessions_of_person(fish)
+              sessions.concat(pool.sessions_of_key(fish_key))
+              #sessions.flatten!
+              sessions.uniq!
+              sessions.compact!
+              if sessions and (sessions.size>0)
+                p 'FOUND fishes: '+sessions.size.to_s
+                sessions.each do |session|
+                  p log_mes+'--Fish session='+[session.object_id, session.to_key].inspect
+
+                  line = line_order.dup
+                  line[LO_Fish] = session.to_person if (not fish)
+                  line[LO_Fish_key] = session.to_key if (not fish_key)
+                  line[LN_Fish_Baseid] = session.to_base_id
+                  p log_mes+' reg.line='+line.inspect
+                  my_hook, rec = reg_line(line, session)
+                  #reg_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, fo_ind=nil)
+                  if my_hook
+                    sess_hook, rec = session.reg_line(line, self, nil, nil, my_hook)
+                    if sess_hook
+                      reg_line(line, session, nil, nil, my_hook, sess_hook)
+                      line_raw = PandoraUtils.rubyobj_to_pson(line)
+                      session.add_send_segment(EC_News, true, sess_hook.chr + line_raw, \
+                        ECC_News_Hook)
+                      add_send_segment(EC_News, true, my_hook.chr + line_raw, \
+                        ECC_News_Hook)
+                    end
+                  end
+                end
+                res = true
+              else
+                #p log_mes+'RESEND fish order: line='+line.inspect
+                #pool.add_fish_order(self, *line, @recv_models)
+                res = false
+              end
+            end
+          end
+        end
       end
 
       # Clear out lures for the fisher and input lure
@@ -6792,72 +6890,13 @@ module PandoraNet
                     @sbuf = PandoraUtils.rubyobj_to_pson([pson_records, created_list])
                   when ECC_Query_Fish
                     # пришла заявка на рыбалку
-                    line_raw = rdata
-                    line, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    fisher, fisher_key, fisher_baseid, fish, fish_key = line
-                    p '--ECC_Query_Fish line='+line.inspect
-                    if fisher_key and fisher_baseid and (fish or fish_key)
-                      if (fisher_key == mykeyhash) and (fisher_baseid == pool.base_id)
-                        PandoraUtils.log_message(LM_Warning, _('Somebody uses your ID'))
-                      else
-                        bi = line.size
-                        if false and ((fish == mypersonhash) or (fish_key == mykeyhash))
-                          p log_mes+'Fishing to me!='+session.to_key.inspect
-                          # find existing (sleep) sessions
-                          sessions = sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
-                          if (not sessions.is_a? Array) or (sessions.size==0)
-                            sessions = Session.new(111)
-                          end
-                          line[bi-2] ||= mypersonhash
-                          line[bi-1] ||= mykeyhash
-                          line[bi] = pool.base_id
-                          p log_mes+' line='+line.inspect
-                          line_raw = PandoraUtils.rubyobj_to_pson(line)
-                          #session = connect_sessions_to_hook([session], self, hook)
-                          my_hook, rec = init_line(line, session)
-                          if my_hook
-                            add_send_segment(EC_News, true, my_hook.chr + line_raw, \
-                              ECC_News_Hook)
-                          end
-                          # sessions.each do |session|
-                          #    hook, rec = session.init_line(line, self, nil, nil, my_hook)
-                          #    session.add_send_segment(EC_News, true, hook.chr + line_raw, \
-                          #      ECC_News_Hook)
-                          #  end
-                          #end
-                        end
-                        sessions = pool.sessions_of_person(fish)
-                        sessions << pool.sessions_of_key(fish_key)
-                        sessions.flatten!
-                        sessions.uniq!
-                        sessions.compact!
-                        if sessions and (sessions.size>0)
-                          p 'FOUND fishes: '+sessions.size.to_s
-                          sessions.each do |session|
-                            p log_mes+'--Fish session='+[session.object_id, session.to_key].inspect
-                            line[bi-2] = session.to_person if (not fish)
-                            line[bi-1] = session.to_key if (not fish_key)
-                            line[bi] = session.to_base_id
-                            p log_mes+' reg.line='+line.inspect
-                            my_hook, rec = init_line(line, session)
-                            #init_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, fo_ind=nil)
-                            if my_hook
-                              sess_hook, rec = session.init_line(line, self, nil, nil, my_hook)
-                              if sess_hook
-                                init_line(line, session, nil, nil, my_hook, sess_hook)
-                                line_raw = PandoraUtils.rubyobj_to_pson(line)
-                                session.add_send_segment(EC_News, true, sess_hook.chr + line_raw, \
-                                  ECC_News_Hook)
-                                add_send_segment(EC_News, true, my_hook.chr + line_raw, \
-                                  ECC_News_Hook)
-                              end
-                            end
-                          end
-                        else
-                          p log_mes+'RESEND fish order: line='+line.inspect
-                          pool.add_fish_order(self, *line, @recv_models)
-                        end
-                      end
+                    line_order_raw = rdata
+                    line_order, len = PandoraUtils.pson_to_rubyobj(line_order_raw)
+                    p '--ECC_Query_Fish line_order='+line_order.inspect
+
+                    if init_line(line_order, mykeyhash) == false
+                      p log_mes+'ADD fish order to pool list: line_order='+line_order.inspect
+                      pool.add_fish_order(self, *line_order, @recv_models)
                     end
                   else #запрос сорта (1-254) или всех сортов (255)
                     afrom_data = rdata
@@ -6930,14 +6969,14 @@ module PandoraNet
                           p 'Найдены сущ. сессии'
                           sessions.each do |session|
                             p 'Подсоединяюсь к сессии: session.id='+session.object_id.to_s
-                            sess_hook, rec = init_line(line, session)
+                            sess_hook, rec = reg_line(line, session)
                             if not pool.connect_sessions_to_hook(session, self, hook, true)
                               p 'Не могу прицепить сессию'
                             end
                           end
                         else
                           #(line, session, far_hook, hook, sess_hook)
-                          sess_hook, rec = init_line(line, nil, hook)
+                          sess_hook, rec = reg_line(line, nil, hook)
                           session = Session.new(self, sess_hook, nil, nil, nil, \
                             0, nil, nil, nil, nil, fisher, fisher_key, fisher_baseid)
                         end
@@ -6953,7 +6992,7 @@ module PandoraNet
                         end
                         if not pool.connect_sessions_to_hook(sessions, self, hook, true, line)
                           #(line, session, far_hook, hook, sess_hook)
-                          sess_hook, rec = init_line(line, nil, hook)
+                          sess_hook, rec = reg_line(line, nil, hook)
                           session = Session.new(self, sess_hook, nil, nil, nil, \
                             CM_Hunter, nil, nil, nil, nil, fish, fish_key, fish_baseid)
                         end
@@ -6961,7 +7000,7 @@ module PandoraNet
                         p '!!это узел-посредник, пробросить по истории заявок'
                         fish_orders = pool.find_fish_order(*line[0..4])
                         fish_orders.each do |fo|
-                          sess = fo[PandoraNet::FO_Session]
+                          sess = fo[PandoraNet::LO_Session]
                           if sess
                             sess.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
                               ECC_News_Hook)
@@ -7139,8 +7178,8 @@ module PandoraNet
           p 'донор-сессия: '+sess.object_id.inspect
           if sess_hook
             #(line, session, far_hook, hook, sess_hook)
-            fhook, rec = init_line(nil, sess, nil, nil, sess_hook)
-            sess_hook2, rec2 = sess.init_line(nil, self, nil, sess_hook, fhook)
+            fhook, rec = reg_line(nil, sess, nil, nil, sess_hook)
+            sess_hook2, rec2 = sess.reg_line(nil, self, nil, sess_hook, fhook)
             if sess_hook2
               #add_hook(asocket, ahost_name)
               if (@conn_mode & CM_Hunter)>0
@@ -7785,22 +7824,25 @@ module PandoraNet
                 p '++++pool.fish_orders[size, @fish_ind, fo]='+[pool.fish_orders.size, @fish_ind, \
                   fish_order.object_id].inspect
                 if fish_order
-                  p log_mes+'fish_order='+fish_order[FO_Fisher..FO_Fish_key].inspect
+                  p log_mes+'fish_order='+fish_order[LO_Fisher..LO_Fish_key].inspect
                   p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
-                  if fish_order and (fish_order[FO_Session] != self)
-                    if (@to_person and (fish_order[FO_Fish] != @to_person)) \
-                    or (@to_key and (fish_order[FO_Fish_key] != @to_key))
-                      p log_mes+'New fish order: '+fish_order[FO_Fisher..FO_Fish_key].inspect
+                  if fish_order and (fish_order[LO_Session] != self)
+                    # fish order is not from me
+                    line = fish_order[LO_Fisher..LO_Fish_key]
+                    if (@to_person and (fish_order[LO_Fish] != @to_person)) \
+                    or (@to_key and (fish_order[LO_Fish_key] != @to_key))
+                      # fishing not to me
+                      p log_mes+'New fish order: '+line.inspect
                       #mykeyhash = PandoraCrypto.current_user_or_key(false)
                       PandoraUtils.log_message(LM_Trace, _('Fishing to')+': [fish,host,port]' \
-                        +[PandoraUtils.bytes_to_hex(fish_order[FO_Fish]), \
+                        +[PandoraUtils.bytes_to_hex(fish_order[LO_Fish]), \
                         @host_ip, @port].inspect)
-                      line = PandoraUtils.rubyobj_to_pson(fish_order[FO_Fisher..FO_Fish_key])
-                      add_send_segment(EC_Query, true, line, ECC_Query_Fish)
+                      line_raw = PandoraUtils.rubyobj_to_pson(line)
+                      add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish)
                     else
-                      # fishing to this session!
+                      # fishing to me
                       p 'fishing to this session!'
-                      #init_line, see "FOUND fishes"
+                      init_line(line)
                     end
                   end
                   processed += 1
@@ -12889,14 +12931,14 @@ module PandoraGtk
         list_store.clear
         $window.pool.fish_orders.each do |fo|
           sess_iter = list_store.append
-          sess_iter[0] = fo[PandoraNet::FO_Index]
-          sess_iter[1] = fo[PandoraNet::FO_Session].object_id
-          sess_iter[2] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fisher])
-          sess_iter[3] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fisher_key])
-          sess_iter[4] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fisher_baseid])
-          sess_iter[5] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fish])
-          sess_iter[6] = PandoraUtils.bytes_to_hex(fo[PandoraNet::FO_Fish_key])
-          sess_iter[7] = PandoraUtils.time_to_str(fo[PandoraNet::FO_Time])
+          sess_iter[0] = fo[PandoraNet::LO_Index]
+          sess_iter[1] = fo[PandoraNet::LO_Session].object_id
+          sess_iter[2] = PandoraUtils.bytes_to_hex(fo[PandoraNet::LO_Fisher])
+          sess_iter[3] = PandoraUtils.bytes_to_hex(fo[PandoraNet::LO_Fisher_key])
+          sess_iter[4] = PandoraUtils.bytes_to_hex(fo[PandoraNet::LO_Fisher_baseid])
+          sess_iter[5] = PandoraUtils.bytes_to_hex(fo[PandoraNet::LO_Fish])
+          sess_iter[6] = PandoraUtils.bytes_to_hex(fo[PandoraNet::LO_Fish_key])
+          sess_iter[7] = PandoraUtils.time_to_str(fo[PandoraNet::LO_Time])
         end
       end
 
