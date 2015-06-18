@@ -7828,9 +7828,13 @@ module PandoraNet
                   if fish_order and (fish_order[LO_Session] != self)
                     # fish order is not from me
                     line = fish_order[LO_Fisher..LO_Fish_key]
-                    if (@to_person and (fish_order[LO_Fish] != @to_person)) \
-                    or (@to_key and (fish_order[LO_Fish_key] != @to_key))
-                      # fishing not to me
+                    #if (fish_order[LO_Fisher] == mykeyhash) \
+                    #or (fish_order[LO_Fisher_key] == pool.base_id) \
+                    #or (@to_person and ((fish_order[LO_Fisher] == @to_person) or (fish_order[LO_Fish] == @to_person))) \
+                    #or (@to_key and ((fish_order[LO_Fisher_key] == @to_key) or (fish_order[LO_Fish_key] == @to_key)))
+                      # fishing to me or neighbor
+                    if init_line(line) == false
+                      # fishing not to the session
                       p log_mes+'New fish order: '+line.inspect
                       #mykeyhash = PandoraCrypto.current_user_or_key(false)
                       PandoraUtils.log_message(LM_Trace, _('Fishing to')+': [fish,host,port]' \
@@ -7838,10 +7842,6 @@ module PandoraNet
                         @host_ip, @port].inspect)
                       line_raw = PandoraUtils.rubyobj_to_pson(line)
                       add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish)
-                    else
-                      # fishing to me
-                      p 'fishing to this session!'
-                      init_line(line)
                     end
                   end
                   processed += 1
@@ -13448,7 +13448,8 @@ module PandoraGtk
         end
       elsif action=='Dialog'
         show_talk_dialog(panhash0) if panhash0
-      else  # Edit or Insert
+      elsif panobject
+        # Edit or Insert
 
         edit = ((not new_act) and (action != 'Copy'))
 
@@ -14334,7 +14335,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.4'
+    dlg.version = '0.41'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
