@@ -12858,22 +12858,25 @@ module PandoraGtk
       end
 
       list_sw.add(list_tree)
-      #lab_hbox = Gtk::HBox.new
       image = Gtk::Image.new(Gtk::Stock::GO_FORWARD, Gtk::IconSize::MENU)
-      image.set_padding(2, 2)
+      image.set_padding(2, 0)
       #image1 = Gtk::Image.new(Gtk::Stock::ORIENTATION_PORTRAIT, Gtk::IconSize::MENU)
       #image1.set_padding(2, 2)
       #image2 = Gtk::Image.new(Gtk::Stock::NETWORK, Gtk::IconSize::MENU)
       #image2.set_padding(2, 2)
-      align = Gtk::Alignment.new(0.0, 0.5, 0.0, 0.0)
-      btn = Gtk::Button.new(_('Neighbors'))
-      btn.image = image
       image.show_all
-      #btn.add(Gtk::Label.new(_('Neighbors')))
+      align = Gtk::Alignment.new(0.0, 0.5, 0.0, 0.0)
+      btn_hbox = Gtk::HBox.new
+      label = Gtk::Label.new(_('Neighbors'))
+      btn_hbox.pack_start(image, false, false, 0)
+      btn_hbox.pack_start(label, false, false, 2)
+      btn = Gtk::Button.new
       btn.relief = Gtk::RELIEF_NONE
+      btn.focus_on_click = false
       btn.signal_connect('clicked') do |*args|
         PandoraGtk.show_fish_panel
       end
+      btn.add(btn_hbox)
       align.add(btn)
       #lab_hbox.pack_start(image, false, false, 0)
       #lab_hbox.pack_start(image2, false, false, 0)
