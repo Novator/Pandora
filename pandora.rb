@@ -705,8 +705,8 @@ module PandoraUtils
           end
         end
       elsif (not can_edit) and (val.is_a? String) # and (view=='text')
-        val = Utf8String.new(val)
-        val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
+        val = Utf8String.new(val[0,50])
+        val = val.gsub(/[\r\n\t]/, ' ').squeeze(' ')
         val = val.rstrip
         color = '#226633'
       end
