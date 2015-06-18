@@ -705,8 +705,11 @@ module PandoraUtils
           end
         end
       elsif (not can_edit) and (val.is_a? String) # and (view=='text')
-        val = Utf8String.new(val[0,50])
-        val = val.gsub(/[\r\n\t]/, ' ').squeeze(' ')
+        val = Utf8String.new(val)
+        begin
+          val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
+        rescue
+        end
         val = val.rstrip
         color = '#226633'
       end
@@ -13731,7 +13734,7 @@ module PandoraGtk
   # Grid for panobjects
   # RU: Таблица для объектов Пандоры
   class SubjTreeView < Gtk::TreeView
-    attr_accessor :panobject, :sel, :notebook, :auto_create
+    attr_accessor :panobject, :sel, :notebook, :auto_create, :param_view_col
   end
 
   # Column for SubjTreeView
@@ -13755,19 +13758,19 @@ module PandoraGtk
         store.clear
         panobject.class.modified = false if panobject.class.modified
         sel = panobject.select(nil, false, nil, panobject.sort)
-        param_view_col = nil
-        param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
+        treeview.param_view_col = nil
+        treeview.param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
         sel.each do |row|
           iter = store.append
           id = row[0].to_i
           iter[0] = id
-          if param_view_col
+          if treeview.param_view_col
             type = panobject.field_val('type', row)
             setting = panobject.field_val('setting', row)
             ps = PandoraUtils.decode_param_setting(setting)
             view = ps['view']
             view ||= PandoraUtils.pantype_to_view(type)
-            row[param_view_col] = view
+            row[treeview.param_view_col] = view
           end
         end
         treeview.sel = sel
@@ -13891,8 +13894,6 @@ module PandoraGtk
     treeview.name = panobject.ider
     treeview.panobject = panobject
 
-    param_view_col = nil
-
     tab_flds = panobject.tab_fields
     def_flds = panobject.def_fields
     def_flds.each do |df|
@@ -13934,8 +13935,8 @@ module PandoraGtk
             fdesc = panobject.tab_fields[col][TI_Desc]
             if fdesc.is_a? Array
               view = nil
-              if param_view_col and (fdesc[FI_Id]=='value')
-                view = row[param_view_col] if row
+              if tvc.tree_view.param_view_col and (fdesc[FI_Id]=='value')
+                view = row[tvc.tree_view.param_view_col] if row
               else
                 view = fdesc[FI_View]
               end
