@@ -12868,6 +12868,8 @@ module PandoraGtk
       align = Gtk::Alignment.new(0.0, 0.5, 0.0, 0.0)
       btn = Gtk::Button.new(_('Neighbors'))
       btn.image = image
+      image.show_all
+      #btn.add(Gtk::Label.new(_('Neighbors')))
       btn.relief = Gtk::RELIEF_NONE
       btn.signal_connect('clicked') do |*args|
         PandoraGtk.show_fish_panel
