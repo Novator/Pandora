@@ -2111,7 +2111,7 @@ module PandoraUtils
     def do_update_trigger
       case ider
         when 'Task'
-          $window.task_counter = nil
+          $window.task_offset = nil
       end
     end
 
@@ -3557,8 +3557,8 @@ module PandoraModel
   # RU: Флаги состояния объекта/записи
   PSF_Support    = 1      # must keep on this node (else will be deleted by GC)
   PSF_Harvest    = 2      # download by pieces in progress
-  PSF_Deleted    = 4      # marked to delete
-  PSF_Verified   = 8      # signature was verified
+  PSF_Verified   = 4      # signature was verified
+  PSF_Deleted    = 128    # marked to delete
 
 end
 
@@ -15024,7 +15024,7 @@ module PandoraGtk
   # RU: Главное окно
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
-      :cvpaned, :pool, :focus_timer, :title_view, :do_on_show, :fish_hpaned, :task_counter
+      :cvpaned, :pool, :focus_timer, :title_view, :do_on_show, :fish_hpaned, :task_offset
 
     include PandoraUtils
 
@@ -15549,33 +15549,51 @@ module PandoraGtk
       end
     end
 
-    # Scheduler parameters
-    # RU: Параметры планировщика
-    CheckTaskEverySec = 5*60*1000   #(5 min)
+    # Scheduler parameters (sec)
+    # RU: Параметры планировщика (сек)
+    CheckTaskPeriod = 5*60   #5 min
+    CheckBasePeriod = 60*60  #60 min
+    CheckBaseStep   = 10     #10 sec
+    # Size of bundle processed at one cycle
+    HuntTrain       = 10     #10 nodes at a heat
+    BaseGarbTrain   = 3      #3 records at a heat
 
-    # Initialize scheduler (tasks, gabager
-    # RU: Инициировать планировщик
-    def init_scheduler(interval=nil)
-      if (not @scheduler) and interval
-        @scheduler_step = interval if interval
-        @scheduler_step ||= 1000
-        @task_counter = nil
+    # Initialize scheduler (tasks, hunter, base gabager, mem gabager)
+    # RU: Инициировать планировщик (задачи, охотник, мусорщики баз и памяти)
+    def init_scheduler(step=nil)
+      step ||= 1.0
+      p 'scheduler_step='+step.inspect
+      if (not @scheduler) and step
+        @scheduler_step = step
+        @base_garbage_term = PandoraUtils.get_param('base_garbage_term')
+        @base_purge_term = PandoraUtils.get_param('base_purge_term')
+        @base_garbage_term ||= 3   #day
+        @base_purge_term ||= 7   #day
+        @base_garbage_term = @base_garbage_term * 24*60*60   #sec
+        @shed_models ||= {}
+        @task_offset = nil
         @task_model = nil
         @task_list = nil
+        @hunt_node_id = nil
+        @base_garb_model = nil
+        @base_garb_kind = 0
+        @base_garb_offset = nil
         @scheduler = Thread.new do
-          while ((@scheduler_step.is_a? Integer) and @scheduler_step>=100)
+          sleep 1
+          while @scheduler_step
 
             # Task executer
-            if (not @task_counter) or (@task_counter*@scheduler_step >= CheckTaskEverySec)
-              @task_counter ||= 0
+            if (not @task_offset) or (@task_offset >= CheckTaskPeriod)
+              @task_offset = 0.0
               user ||= PandoraCrypto.current_user_or_key(true, false)
               if user
-                @task_model ||= PandoraUtils.get_model('Task')
+                @task_model ||= PandoraUtils.get_model('Task', @shed_models)
                 cur_time = Time.now.to_i
-                filter = [['executor=', user], ['mode>', 0], ['time<=', cur_time+5*(CheckTaskEverySec/1000)]]
+                filter = [['executor=', user], ['mode>', 0], ['time<=', cur_time+5*(CheckTaskPeriod/1000)]]
                 fields = 'id, time, mode, message'
                 @task_list = @task_model.select(filter, false, fields, 'time ASC')
                 p '@task_list='+@task_list.inspect
+                Thread.pass
               end
             end
             if @task_list and (@task_list.size>0)
@@ -15633,18 +15651,79 @@ module PandoraGtk
                   row[1] = nil
                 end
               end
+              Thread.pass
             end
-            @task_counter += 1 if @task_counter
+            @task_offset += @scheduler_step if @task_offset
 
-            # Base gabager
+            # Hunter
+            if false #$window.hunt
+              if not @hunt_node_id
+                @hunt_node_id = 0
+              end
+              Thread.pass
+              @hunt_node_id += HuntTrain
+            end
 
-            # List gabager
+            # Base garbager
+            if (not @base_garb_offset) \
+            or ((@base_garb_offset >= CheckBaseStep) and @base_garb_kind<254) \
+            or (@base_garb_offset >= CheckBasePeriod)
+              #p '@base_garb_offset='+@base_garb_offset.inspect
+              #p '@base_garb_kind='+@base_garb_kind.inspect
+              @base_garb_kind = 0 if @base_garb_offset \
+                and (@base_garb_offset >= CheckBasePeriod) and (@base_garb_kind >= 254)
+              @base_garb_offset = 0.0
+              train_tail = BaseGarbTrain
+              while train_tail>0
+                if (not @base_garb_kind) or (not @base_garb_model)
+                  @base_garb_id = 0
+                  while (@base_garb_kind<254) and (not @base_garb_model.is_a? PandoraModel::Panobject)
+                    @base_garb_kind += 1
+                    panobjectclass = PandoraModel.panobjectclass_by_kind(@base_garb_kind)
+                    if panobjectclass
+                      @base_garb_model = PandoraUtils.get_model(panobjectclass.ider, @shed_models)
+                    end
+                  end
+                end
+
+                if @base_garb_model
+                  arch_time = Time.now.to_i - @base_garbage_term
+                  purge_time = Time.now.to_i - @base_purge_term
+
+                  filter = ['id>=? AND modified<? AND IFNULL(panstate,0)=0', @base_garb_id, arch_time]
+                  fields = 'id, panstate'
+                  sel = @base_garb_model.select(filter, false, fields, 'id ASC', train_tail)
+                  p '=====Base Garb: '+@base_garb_model.ider
+                  #p 'base_garb_sel='+sel.inspect
+                  if sel and (sel.size>0)
+                    res ||= []
+                    sel.each do |row|
+                      #res << row[0]
+                      id = row[0]
+                      panstate = row[1]
+                      @base_garb_id = id
+                      p '@base_garb_id, panstate='+[@base_garb_id, panstate].inspect
+                    end
+                    train_tail -= sel.size
+                    @base_garb_id += 1
+                  else
+                    @base_garb_model = nil
+                  end
+                  Thread.pass
+                else
+                  train_tail = 0
+                end
+              end
+            end
+            @base_garb_offset += @scheduler_step if @base_garb_offset
+
+            # Memory garbager
 
             # GUI updater (list, traffic)
 
-            sleep(@scheduler_step.fdiv(1000))
+            sleep(@scheduler_step)
 
-            #p 'Next sheduler'
+            #p 'Next sheduler step'
 
             Thread.pass
           end
