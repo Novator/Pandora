@@ -6201,54 +6201,53 @@ module PandoraNet
               res = true
             end
 
+            sessions = nil
             # check fishing to there
+            fisher_sess = false
             if (@to_person and (fish == @to_person)) \
             or (@to_key and (fish_key == @to_key))
-              sessions = sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
-              #sessions.flatten!
-              sessions.uniq!
-              sessions.compact!
-              if sessions and (sessions.size>0)
-                init_line_terminal()
-                # См. ECC_News_Hook
-              end
+              sessions = pool.sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
+              fisher_sess = true
             else
               # check other session
               sessions = pool.sessions_of_person(fish)
               sessions.concat(pool.sessions_of_key(fish_key))
-              #sessions.flatten!
-              sessions.uniq!
-              sessions.compact!
-              if sessions and (sessions.size>0)
-                p 'FOUND fishes: '+sessions.size.to_s
-                sessions.each do |session|
-                  p log_mes+'--Fish session='+[session.object_id, session.to_key].inspect
-
-                  line = line_order.dup
+            end
+            #sessions.flatten!
+            sessions.uniq!
+            sessions.compact!
+            if (sessions.is_a? Array) and (sessions.size>0)
+              p 'FOUND fishers/fishes: '+sessions.size.to_s
+              line = line_order.dup
+              if fisher_sess
+                line[LO_Fish] = @to_person if (not fish)
+                line[LO_Fish_key] = @to_key if (not fish_key)
+                line[LN_Fish_Baseid] = @to_base_id
+              end
+              sessions.each do |session|
+                p log_mes+'--Fisher/Fish session='+[session.object_id, session.to_key].inspect
+                if not fisher_sess
                   line[LO_Fish] = session.to_person if (not fish)
                   line[LO_Fish_key] = session.to_key if (not fish_key)
                   line[LN_Fish_Baseid] = session.to_base_id
-                  p log_mes+' reg.line='+line.inspect
-                  my_hook, rec = reg_line(line, session)
-                  #reg_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, fo_ind=nil)
-                  if my_hook
-                    sess_hook, rec = session.reg_line(line, self, nil, nil, my_hook)
-                    if sess_hook
-                      reg_line(line, session, nil, nil, my_hook, sess_hook)
-                      line_raw = PandoraUtils.rubyobj_to_pson(line)
-                      session.add_send_segment(EC_News, true, sess_hook.chr + line_raw, \
-                        ECC_News_Hook)
-                      add_send_segment(EC_News, true, my_hook.chr + line_raw, \
-                        ECC_News_Hook)
-                    end
+                end
+                p log_mes+' reg.line='+line.inspect
+                my_hook, rec = reg_line(line, session)
+                if my_hook
+                  sess_hook, rec = session.reg_line(line, self, nil, nil, my_hook)
+                  if sess_hook
+                    reg_line(line, session, nil, nil, my_hook, sess_hook)
+                    line_raw = PandoraUtils.rubyobj_to_pson(line)
+                    session.add_send_segment(EC_News, true, sess_hook.chr + line_raw, \
+                      ECC_News_Hook)
+                    add_send_segment(EC_News, true, my_hook.chr + line_raw, \
+                      ECC_News_Hook)
                   end
                 end
-                res = true
-              else
-                #p log_mes+'RESEND fish order: line='+line.inspect
-                #pool.add_fish_order(self, *line, @recv_models)
-                res = false
               end
+              res = true
+            else
+              res = false
             end
           end
         end
