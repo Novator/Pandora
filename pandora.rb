@@ -2108,6 +2108,13 @@ module PandoraUtils
       res
     end
 
+    def do_update_trigger
+      case ider
+        when 'Task'
+          $window.task_counter = nil
+      end
+    end
+
     # RU: Записывает данные в таблицу
     def update(values, names=nil, filter='', set_namesvalues=false)
       if values.is_a? Hash
@@ -2117,7 +2124,10 @@ module PandoraUtils
         #p 'update values='+values.inspect
       end
       res = self.class.repositories.get_tab_update(self, self.class.tables[0], values, names, filter)
-      self.class.modified = true if res
+      if res
+        do_update_trigger
+        self.class.modified = true
+      end
       if set_namesvalues and res
         @namesvalues = {}
         values.each_with_index do |v, i|
@@ -2510,7 +2520,7 @@ module PandoraUtils
     id = nil
     param_model = PandoraUtils.get_model('Parameter')
     sel = param_model.select({'name'=>name}, false, 'value, id, type')
-    if not sel[0]
+    if (not sel) or (sel.size==0)
       #p 'parameter was not found: ['+name+']'
       ind = $pandora_parameters.index{ |row| row[PF_Name]==name }
       if ind
@@ -2531,7 +2541,7 @@ module PandoraUtils
         sel = param_model.select({'name'=>name}, false, 'value, id, type')
       end
     end
-    if sel[0]
+    if sel and (sel.size>0)
       # value exists
       value = sel[0][0]
       type = sel[0][2]
@@ -8450,7 +8460,7 @@ module PandoraGtk
 
     # Show dialog in modal mode
     # RU: Показать диалог в модальном режиме
-    def run2
+    def run2(in_thread=false)
       res = nil
       show_all
       if @def_widget
@@ -8459,11 +8469,12 @@ module PandoraGtk
       end
 
       while (not destroyed?) and (@response == 0) do
-        #unless alien_thread
+        if in_thread
+          Thread.pass
+        else
           Gtk.main_iteration
-        #end
-        sleep(0.001)
-        Thread.pass
+        end
+        #sleep(0.001)
       end
 
       if not destroyed?
@@ -14626,7 +14637,7 @@ module PandoraGtk
   # Status icon
   # RU: Иконка в трее
   class PandoraStatusIcon < Gtk::StatusIcon
-    attr_accessor :main_icon, :play_sounds, :online, :hide_on_minimize
+    attr_accessor :main_icon, :play_sounds, :online, :hide_on_minimize, :message
 
     # Create status icon
     # RU: Создает иконку в трее
@@ -15013,7 +15024,7 @@ module PandoraGtk
   # RU: Главное окно
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
-      :cvpaned, :pool, :focus_timer, :title_view, :do_on_show, :fish_hpaned
+      :cvpaned, :pool, :focus_timer, :title_view, :do_on_show, :fish_hpaned, :task_counter
 
     include PandoraUtils
 
@@ -15538,63 +15549,92 @@ module PandoraGtk
       end
     end
 
-    # Initialize scheduler
+    # Scheduler parameters
+    # RU: Параметры планировщика
+    CheckTaskEverySec = 5*60*1000   #(5 min)
+
+    # Initialize scheduler (tasks, gabager
     # RU: Инициировать планировщик
     def init_scheduler(interval=nil)
       if (not @scheduler) and interval
-        @scheduler_interval = interval if interval
-        @scheduler_interval ||= 1000
+        @scheduler_step = interval if interval
+        @scheduler_step ||= 1000
+        @task_counter = nil
+        @task_model = nil
+        @task_list = nil
         @scheduler = Thread.new do
-          while ((@scheduler_interval.is_a? Integer) and @scheduler_interval>=100)
-            next_step = true
+          while ((@scheduler_step.is_a? Integer) and @scheduler_step>=100)
 
-            # Scheduler (task executer)
-            Thread.new do
-              message = 'Message here'
-              #dialog = Gtk::MessageDialog.new($window, \
-              #  Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
-              #  Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-              #  message)
-              #dialog.title = _('Task')
-              #dialog.default_response = Gtk::Dialog::RESPONSE_OK
-              #dialog.icon = $window.icon
-              #if (dialog.run == Gtk::Dialog::RESPONSE_OK)
-              #  p 'Here need to switch of the task'
-              #end
-              #dialog.destroy
-
-              if not @scheduler_dialog
-                @scheduler_dialog = PandoraGtk::AdvancedDialog.new(_('Tasks'))
-                dialog = @scheduler_dialog
-                dialog.set_default_size(420, 250)
-                vbox = Gtk::VBox.new
-                dialog.viewport.add(vbox)
-
-                label = Gtk::Label.new(_('Message'))
-                vbox.pack_start(label, false, false, 2)
-                user_entry = Gtk::Entry.new
-                user_entry.text = message
-                vbox.pack_start(user_entry, false, false, 2)
-
-
-                label = Gtk::Label.new(_('Here'))
-                vbox.pack_start(label, false, false, 2)
-                pass_entry = Gtk::Entry.new
-                pass_entry.width_request = 250
-                align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
-                align.add(pass_entry)
-                vbox.pack_start(align, false, false, 2)
-                vbox.pack_start(pass_entry, false, false, 2)
-
-                dialog.def_widget = user_entry
-
-                dialog.run2 do
-                  p 'reset dialog flag'
-                end
-                @scheduler_dialog = nil
+            # Task executer
+            if (not @task_counter) or (@task_counter*@scheduler_step >= CheckTaskEverySec)
+              @task_counter ||= 0
+              user ||= PandoraCrypto.current_user_or_key(true, false)
+              if user
+                @task_model ||= PandoraUtils.get_model('Task')
+                cur_time = Time.now.to_i
+                filter = [['executor=', user], ['mode>', 0], ['time<=', cur_time+5*(CheckTaskEverySec/1000)]]
+                fields = 'id, time, mode, message'
+                @task_list = @task_model.select(filter, false, fields, 'time ASC')
+                p '@task_list='+@task_list.inspect
               end
-
             end
+            if @task_list and (@task_list.size>0)
+              cur_time = Time.now.to_i
+              @task_list.each do |row|
+                time = row[1]
+                if time and (time <= cur_time)
+                  id = row[0]
+                  mode = row[2]
+                  message = Utf8String.new(row[3])
+                  message = _('Task') + ' ' + Time.at(time).strftime('%d.%m.%Y %H:%M:%S') + ': ' + message
+
+                  viewed = false
+                  if false and $window.visible? and $window.has_toplevel_focus?
+                    dialog = PandoraGtk::AdvancedDialog.new(_('Tasks'))
+                    dialog.set_default_size(420, 250)
+                    vbox = Gtk::VBox.new
+                    dialog.viewport.add(vbox)
+
+                    label = Gtk::Label.new(_('Message'))
+                    vbox.pack_start(label, false, false, 2)
+                    user_entry = Gtk::Entry.new
+                    user_entry.text = message
+                    vbox.pack_start(user_entry, false, false, 2)
+
+                    label = Gtk::Label.new(_('Here'))
+                    vbox.pack_start(label, false, false, 2)
+                    pass_entry = Gtk::Entry.new
+                    pass_entry.width_request = 250
+                    align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+                    align.add(pass_entry)
+                    vbox.pack_start(align, false, false, 2)
+                    vbox.pack_start(pass_entry, false, false, 2)
+
+                    dialog.def_widget = user_entry
+
+                    dialog.run2(true) do
+                      viewed = true
+                    end
+                  else
+                    PandoraUtils.log_message(LM_Warning, message)
+                    viewed = true
+                  end
+                  if viewed
+                    @task_model.update({:mode=>0}, nil, {:id=>id})
+                  end
+                  PandoraUtils.play_mp3('message')
+                  if $statusicon.message.nil?
+                    $statusicon.set_message(message)
+                    Thread.new do
+                      sleep(10)
+                      $statusicon.set_message(nil)
+                    end
+                  end
+                  row[1] = nil
+                end
+              end
+            end
+            @task_counter += 1 if @task_counter
 
             # Base gabager
 
@@ -15602,7 +15642,10 @@ module PandoraGtk
 
             # GUI updater (list, traffic)
 
-            sleep(@scheduler_interval/1000)
+            sleep(@scheduler_step.fdiv(1000))
+
+            #p 'Next sheduler'
+
             Thread.pass
           end
           @scheduler = nil
@@ -15755,10 +15798,6 @@ module PandoraGtk
       $statusicon = PandoraGtk::PandoraStatusIcon.new(update_win_icon, flash_on_new, \
         flash_interval, play_sounds, hide_on_minimize)
 
-      @chech_tasks = false
-      @gabage_clear = false
-      init_scheduler(1000) if (@chech_tasks or @gabage_clear)
-
       $window.signal_connect('delete-event') do |*args|
         if hide_on_close
           $window.do_menu_act('Hide')
@@ -15801,7 +15840,10 @@ module PandoraGtk
         elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
         and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
         1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
-          $window.destroy
+          $window.do_menu_act('Quit')
+        elsif ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) \
+        and event.state.control_mask?) #w, W, ц, Ц
+          $window.do_menu_act('Close')
         elsif event.state.control_mask? \
         and [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
           curpage = nil
@@ -15857,6 +15899,8 @@ module PandoraGtk
           end
           $window.do_on_show = 0
         end
+        scheduler_step = PandoraUtils.get_param('scheduler_step')
+        init_scheduler(scheduler_step)
         false
       end
 

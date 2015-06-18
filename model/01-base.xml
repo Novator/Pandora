@@ -335,6 +335,7 @@
     <section_editor desc="Editor" type="Word" section="0" setting="7" />
 
     <base_id desc="Base ID" type="String" section="common" setting="[create_base_id],hex" />
+    <scheduler_step desc="Scheduler step (ms)" type="Integer" section="common" setting="1000" />
 
     <do_on_show desc="Do on show main window" type="Integer" section="view" setting="2" />
     <hide_on_minimize desc="Hide on minimize" type="Boolean" section="view" setting="false" />
