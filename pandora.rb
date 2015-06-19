@@ -2533,7 +2533,8 @@ module PandoraUtils
         section ||= row[PF_Section].to_i
         values = { :name=>name, :desc=>row[PF_Desc],
           :value=>calc_default_param_val(type, row[PF_Setting]), :type=>type,
-          :section=>section, :setting=>row[PF_Setting], :modified=>Time.now.to_i }
+          :section=>section, :setting=>row[PF_Setting], :modified=>Time.now.to_i,
+          :panstate=>PandoraModel::PSF_Support }
         panhash = param_model.panhash(values)
         values['panhash'] = panhash
         #p 'add param: '+values.inspect
@@ -4470,7 +4471,7 @@ module PandoraCrypto
 
           values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, \
             :pack=>PT_Pson1, :trust=>trust, :creator=>creator, :created=>time_now, \
-            :sign=>sign}
+            :sign=>sign, :panstate=>PandoraModel::PSF_Support}
 
           sign_model = PandoraUtils.get_model('Sign', models)
           panhash = sign_model.panhash(values)
@@ -13771,13 +13772,17 @@ module PandoraGtk
         Gdk::Display.default.sync
 
         path, column = treeview.cursor
-        store.clear
+        #store.clear
         panobject.class.modified = false if panobject.class.modified
         sel = panobject.select(nil, false, nil, panobject.sort)
+        treeview.sel = sel
         treeview.param_view_col = nil
         treeview.param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
-        sel.each do |row|
-          iter = store.append
+        sel.each_with_index do |row,i|
+          #iter = store.append
+          iter = store.get_iter(Gtk::TreePath.new(i))
+          iter ||= store.append
+          #store.set_value(iter, column, value)
           id = row[0].to_i
           iter[0] = id
           if treeview.param_view_col
@@ -13789,7 +13794,10 @@ module PandoraGtk
             row[treeview.param_view_col] = view
           end
         end
-        treeview.sel = sel
+        while store.size>sel.size
+          iter = store.get_iter(Gtk::TreePath.new(store.size-1))
+          store.remove(iter)
+        end
         if path or (treeview.sel.size>0)
           path ||= Gtk::TreePath.new(treeview.sel.size-1)
           treeview.set_cursor(path, nil, false)
@@ -13942,12 +13950,21 @@ module PandoraGtk
           p 'sort clicked'
         end
         column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
+          row = nil
+          begin
+            if model.iter_is_valid?(iter) and iter and iter.path
+              row = tvc.tree_view.sel[iter.path.indices[0]]
+            end
+          rescue
+          end
           color = 'black'
-          col = tvc.tab_ind
-          panobject = tvc.tree_view.panobject
-          row = tvc.tree_view.sel[iter.path.indices[0]]
-          val = row[col] if row
+          val = nil
+          if row
+            col = tvc.tab_ind
+            val = row[col]
+          end
           if val
+            panobject = tvc.tree_view.panobject
             fdesc = panobject.tab_fields[col][TI_Desc]
             if fdesc.is_a? Array
               view = nil
@@ -13961,10 +13978,9 @@ module PandoraGtk
               val = val.to_s
             end
             val = val[0,46]
-          else
-            val = ''
           end
           renderer.foreground = color
+          val ||= ''
           renderer.text = val
         end
       end
@@ -15553,7 +15569,7 @@ module PandoraGtk
     # RU: Параметры планировщика (сек)
     CheckTaskPeriod = 5*60   #5 min
     CheckBasePeriod = 60*60  #60 min
-    CheckBaseStep   = 10     #10 sec
+    CheckBaseStep   = 2     #10 sec
     # Size of bundle processed at one cycle
     HuntTrain       = 10     #10 nodes at a heat
     BaseGarbTrain   = 3      #3 records at a heat
@@ -15567,14 +15583,15 @@ module PandoraGtk
         @scheduler_step = step
         @base_garbage_term = PandoraUtils.get_param('base_garbage_term')
         @base_purge_term = PandoraUtils.get_param('base_purge_term')
-        @base_garbage_term ||= 3   #day
-        @base_purge_term ||= 7   #day
+        @base_garbage_term ||= 5   #day
+        @base_purge_term ||= 15   #day
         @base_garbage_term = @base_garbage_term * 24*60*60   #sec
         @shed_models ||= {}
         @task_offset = nil
         @task_model = nil
         @task_list = nil
         @hunt_node_id = nil
+        @base_garb_mode = :arch
         @base_garb_model = nil
         @base_garb_kind = 0
         @base_garb_offset = nil
@@ -15666,34 +15683,47 @@ module PandoraGtk
 
             # Base garbager
             if (not @base_garb_offset) \
-            or ((@base_garb_offset >= CheckBaseStep) and @base_garb_kind<254) \
+            or ((@base_garb_offset >= CheckBaseStep) and @base_garb_kind<255) \
             or (@base_garb_offset >= CheckBasePeriod)
               #p '@base_garb_offset='+@base_garb_offset.inspect
               #p '@base_garb_kind='+@base_garb_kind.inspect
               @base_garb_kind = 0 if @base_garb_offset \
-                and (@base_garb_offset >= CheckBasePeriod) and (@base_garb_kind >= 254)
+                and (@base_garb_offset >= CheckBasePeriod) and (@base_garb_kind >= 255)
               @base_garb_offset = 0.0
               train_tail = BaseGarbTrain
               while train_tail>0
-                if (not @base_garb_kind) or (not @base_garb_model)
+                if (not @base_garb_model)
                   @base_garb_id = 0
-                  while (@base_garb_kind<254) and (not @base_garb_model.is_a? PandoraModel::Panobject)
+                  while (@base_garb_kind<255) and (not @base_garb_model.is_a? PandoraModel::Panobject)
                     @base_garb_kind += 1
                     panobjectclass = PandoraModel.panobjectclass_by_kind(@base_garb_kind)
                     if panobjectclass
                       @base_garb_model = PandoraUtils.get_model(panobjectclass.ider, @shed_models)
                     end
                   end
+                  if @base_garb_kind >= 255
+                    if @base_garb_mode == :arch
+                      @base_garb_mode = :purge
+                      @base_garb_kind = 0
+                    else
+                      @base_garb_mode = :arch
+                    end
+                  end
                 end
 
                 if @base_garb_model
-                  arch_time = Time.now.to_i - @base_garbage_term
-                  purge_time = Time.now.to_i - @base_purge_term
-
-                  filter = ['id>=? AND modified<? AND IFNULL(panstate,0)=0', @base_garb_id, arch_time]
+                  if @base_garb_mode == :arch
+                    arch_time = Time.now.to_i - @base_garbage_term
+                    filter = ['id>=? AND modified<? AND IFNULL(panstate,0)=0', \
+                      @base_garb_id, arch_time]
+                  else # :purge
+                    purge_time = Time.now.to_i - @base_purge_term
+                    filter = ['id>=? AND modified<? AND panstate>=', @base_garb_id, \
+                      purge_time, PandoraModel::PSF_Deleted]
+                  end
                   fields = 'id, panstate'
                   sel = @base_garb_model.select(filter, false, fields, 'id ASC', train_tail)
-                  p '=====Base Garb: '+@base_garb_model.ider
+                  p '=====Base Garb [ider,mode]: '+[@base_garb_model.ider, @base_garb_mode].inspect
                   #p 'base_garb_sel='+sel.inspect
                   if sel and (sel.size>0)
                     res ||= []
@@ -15703,6 +15733,12 @@ module PandoraGtk
                       panstate = row[1]
                       @base_garb_id = id
                       p '@base_garb_id, panstate='+[@base_garb_id, panstate].inspect
+                      values = nil
+                      if @base_garb_mode == :arch
+                        values = {:panstate=>PandoraModel::PSF_Deleted}
+                      end
+                      filter = {:id=>id}
+                      @base_garb_model.update(values, nil, filter)
                     end
                     train_tail -= sel.size
                     @base_garb_id += 1
