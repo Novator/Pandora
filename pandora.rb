@@ -13794,9 +13794,11 @@ module PandoraGtk
             row[treeview.param_view_col] = view
           end
         end
-        while store.size>sel.size
-          iter = store.get_iter(Gtk::TreePath.new(store.size-1))
+        i = sel.size
+        iter = store.get_iter(Gtk::TreePath.new(i))
+        while iter
           store.remove(iter)
+          iter = store.get_iter(Gtk::TreePath.new(i))
         end
         if path or (treeview.sel.size>0)
           path ||= Gtk::TreePath.new(treeview.sel.size-1)
@@ -15569,8 +15571,9 @@ module PandoraGtk
     # RU: Параметры планировщика (сек)
     CheckTaskPeriod = 5*60   #5 min
     CheckBasePeriod = 60*60  #60 min
-    CheckBaseStep   = 2     #10 sec
+    CheckBaseStep   = 10     #10 sec
     # Size of bundle processed at one cycle
+    # RU: Размер пачки, обрабатываемой за цикл
     HuntTrain       = 10     #10 nodes at a heat
     BaseGarbTrain   = 3      #3 records at a heat
 
@@ -15584,8 +15587,9 @@ module PandoraGtk
         @base_garbage_term = PandoraUtils.get_param('base_garbage_term')
         @base_purge_term = PandoraUtils.get_param('base_purge_term')
         @base_garbage_term ||= 5   #day
-        @base_purge_term ||= 15   #day
-        @base_garbage_term = @base_garbage_term * 24*60*60   #sec
+        @base_purge_term ||= 30    #day
+        @base_garbage_term = (@base_garbage_term * 24*60*60).round   #sec
+        @base_purge_term = (@base_purge_term * 24*60*60).round   #sec
         @shed_models ||= {}
         @task_offset = nil
         @task_model = nil
@@ -15718,12 +15722,12 @@ module PandoraGtk
                       @base_garb_id, arch_time]
                   else # :purge
                     purge_time = Time.now.to_i - @base_purge_term
-                    filter = ['id>=? AND modified<? AND panstate>=', @base_garb_id, \
+                    filter = ['id>=? AND modified<? AND panstate>=?', @base_garb_id, \
                       purge_time, PandoraModel::PSF_Deleted]
                   end
                   fields = 'id, panstate'
+                  p 'Base garbager [ider,mode,filt]: '+[@base_garb_model.ider, @base_garb_mode, filter].inspect
                   sel = @base_garb_model.select(filter, false, fields, 'id ASC', train_tail)
-                  p '=====Base Garb [ider,mode]: '+[@base_garb_model.ider, @base_garb_mode].inspect
                   #p 'base_garb_sel='+sel.inspect
                   if sel and (sel.size>0)
                     res ||= []
