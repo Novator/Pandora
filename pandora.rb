@@ -5018,6 +5018,17 @@ module PandoraNet
       end
     end
 
+    def active_socket?
+      res = false
+      sessions.each do |session|
+        if session.active?
+          res = session
+          break
+        end
+      end
+      res
+    end
+
     # Get a session by address (ip, port, protocol)
     # RU: Возвращает сессию для адреса
     def sessions_of_address(node)
@@ -8236,9 +8247,19 @@ module PandoraNet
 
   # Start hunt
   # RU: Начать охоту
-  def self.hunt_nodes(round_count=1)
+  def self.start_or_stop_hunt
     if $hunter_thread
-      $hunter_thread.exit
+      if $hunter_thread.alive?
+        $hunter_thread[:active] = false
+        if $hunter_thread.stop?
+          $hunter_thread.run
+          sleep(0.1)
+        else
+          sleep(0.05)
+        end
+        sleep(0.2) if $hunter_thread and $hunter_thread.alive?
+      end
+      $hunter_thread.exit if $hunter_thread and $hunter_thread.alive?
       $hunter_thread = nil
       $window.correct_hunt_btn_state
     else
@@ -8248,41 +8269,43 @@ module PandoraNet
         filter = 'addr<>"" OR domain<>""'
         flds = 'id, addr, domain, tport, key_hash, base_id'
         sel = node_model.select(filter, false, flds)
-        if sel and (sel.size>0)
-          $hunter_thread = Thread.new(node_model, filter, flds, sel) \
-          do |node_model, filter, flds, sel|
+        if sel and sel.size>0
+          $hunter_thread = Thread.new do
             $window.set_status_field(PandoraGtk::SF_Hunt, 'Hunting', nil, true)
-            while round_count>0
-              if sel and sel.size>0
-                sel.each do |row|
-                  node_id = row[0]
-                  addr   = row[1]
-                  domain = row[2]
+            Thread.current[:active] = true
+            while Thread.current[:active] and sel and (sel.size>0)
+              sel.each do |row|
+                node_id = row[0]
+                addr   = row[1]
+                domain = row[2]
+                key_hash = row[4]
+                if (addr and (addr.size>0)) or (domain and (domain.size>0)) \
+                or ($window.pool.active_socket? and key_hash and (key_hash.size>0))
                   tport = 0
                   begin
                     tport = row[3].to_i
                   rescue
                   end
                   person = nil
-                  key_hash = row[4]
                   base_id = row[5]
                   tport = 5577 if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
                   addr = $window.pool.encode_addr(domain, tport, 'tcp')
-                  $window.pool.init_session(addr, nil, 0, nil, node_id, person, \
-                    key_hash, base_id)
+                  if Thread.current[:active]
+                    $window.pool.init_session(addr, nil, 0, nil, node_id, person, \
+                      key_hash, base_id)
+                    sleep(2) if Thread.current[:active]
+                  end
                 end
-                round_count -= 1
-                if round_count>0
-                  sleep 3
-                  sel = node_model.select(filter, false, flds)
-                end
-              else
-                round_count = 0
+                break if not Thread.current[:active]
+              end
+              if Thread.current[:active]
+                sel = node_model.select(filter, false, flds)
+                sleep(10)
               end
             end
-            $hunter_thread = nil
             $window.set_status_field(PandoraGtk::SF_Hunt, 'No hunt', nil, false)
+            $hunter_thread = nil
           end
         else
           $window.correct_hunt_btn_state
@@ -15330,7 +15353,7 @@ module PandoraGtk
         when 'Listen'
           PandoraNet.start_or_stop_listen
         when 'Hunt'
-          PandoraNet.hunt_nodes
+          PandoraNet.start_or_stop_hunt
         when 'Notice'
           $window.show_notice(true)
         when 'Authorize'
