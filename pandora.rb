@@ -13786,46 +13786,62 @@ module PandoraGtk
   # ScrolledWindow for panobjects
   # RU: ScrolledWindow для объектов Пандоры
   class PanobjBox < Gtk::VBox
-    attr_accessor :update_btn, :auto_btn, :treeview
+    attr_accessor :update_btn, :auto_btn, :arch_btn, :treeview
 
     def update_treeview
       panobject = treeview.panobject
       store = treeview.model
       Gdk::Threads.synchronize do
         Gdk::Display.default.sync
-
-        path, column = treeview.cursor
-        #store.clear
-        panobject.class.modified = false if panobject.class.modified
-        sel = panobject.select(nil, false, nil, panobject.sort)
-        treeview.sel = sel
-        treeview.param_view_col = nil
-        treeview.param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
-        sel.each_with_index do |row,i|
-          #iter = store.append
-          iter = store.get_iter(Gtk::TreePath.new(i))
-          iter ||= store.append
-          #store.set_value(iter, column, value)
-          id = row[0].to_i
-          iter[0] = id
-          if treeview.param_view_col
-            type = panobject.field_val('type', row)
-            setting = panobject.field_val('setting', row)
-            ps = PandoraUtils.decode_param_setting(setting)
-            view = ps['view']
-            view ||= PandoraUtils.pantype_to_view(type)
-            row[treeview.param_view_col] = view
+        $window.mutex.synchronize do
+          path, column = treeview.cursor
+          id0 = nil
+          if path
+            iter = store.get_iter(path)
+            id0 = iter[0]
           end
-        end
-        i = sel.size
-        iter = store.get_iter(Gtk::TreePath.new(i))
-        while iter
-          store.remove(iter)
+          #store.clear
+          panobject.class.modified = false if panobject.class.modified
+          filter = nil
+          filter = ['IFNULL(panstate,0)<?', PandoraModel::PSF_Deleted] if (not arch_btn.active?)
+          p filter
+          sel = panobject.select(filter, false, nil, panobject.sort)
+          treeview.sel = sel
+          treeview.param_view_col = nil
+          treeview.param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
+          iter0 = nil
+          sel.each_with_index do |row,i|
+            #iter = store.append
+            iter = store.get_iter(Gtk::TreePath.new(i))
+            iter ||= store.append
+            #store.set_value(iter, column, value)
+            id = row[0].to_i
+            iter[0] = id
+            iter0 = iter if id0 and id and (id == id0)
+            if treeview.param_view_col
+              type = panobject.field_val('type', row)
+              setting = panobject.field_val('setting', row)
+              ps = PandoraUtils.decode_param_setting(setting)
+              view = ps['view']
+              view ||= PandoraUtils.pantype_to_view(type)
+              row[treeview.param_view_col] = view
+            end
+          end
+          i = sel.size
           iter = store.get_iter(Gtk::TreePath.new(i))
-        end
-        if path or (treeview.sel.size>0)
-          path ||= Gtk::TreePath.new(treeview.sel.size-1)
-          treeview.set_cursor(path, nil, false)
+          while iter
+            store.remove(iter)
+            iter = store.get_iter(Gtk::TreePath.new(i))
+          end
+          if treeview.sel.size>0
+            if (not path) or (not store.get_iter(path)) \
+            or (not store.iter_is_valid?(store.get_iter(path)))
+              path = iter0.path if iter0
+              path ||= Gtk::TreePath.new(treeview.sel.size-1)
+            end
+            treeview.set_cursor(path, nil, false)
+            treeview.scroll_to_cell(path, nil, false, 0.0, 0.0)
+          end
         end
         p 'treeview is updated: '+panobject.ider
         treeview.grab_focus
@@ -13863,8 +13879,8 @@ module PandoraGtk
 
       panobject = pbox.treeview.panobject
 
-      p tab_flds = panobject.tab_fields
-      p def_flds = panobject.def_fields
+      tab_flds = panobject.tab_fields
+      def_flds = panobject.def_fields
       #def_flds.each do |df|
       #id = df[FI_Id]
       #tab_ind = tab_flds.index{ |tf| tf[0] == id }
@@ -14039,7 +14055,6 @@ module PandoraGtk
     update_btn.signal_connect('clicked') do |*args|
       pbox.update_treeview
     end
-    update_btn.clicked
     hbox.pack_start(update_btn, false, true, 0)
 
     pbox.auto_btn = nil
@@ -14050,14 +14065,23 @@ module PandoraGtk
         update_treeview_if_need(pbox)
       end
       auto_btn.safe_set_active(true)
+      hbox.pack_start(auto_btn, false, true, 0)
     end
-    hbox.pack_start(auto_btn, false, true, 0) if single
+    pbox.arch_btn = SafeCheckButton.new(_('arch'), true)
+    arch_btn = pbox.arch_btn
+    arch_btn.safe_signal_clicked do |widget|
+      update_btn.clicked
+    end
+    arch_btn.safe_set_active(false)
+    hbox.pack_start(arch_btn, false, true, 0)
 
     filters = Array.new
     filter_box = FilterHBox.new(filters, hbox, pbox)
 
     pbox.pack_start(hbox, false, false, 0)
     pbox.pack_start(list_sw, true, true, 0)
+
+    update_btn.clicked
 
     if auto_create and treeview.sel and (treeview.sel.size==0)
       treeview.auto_create = true
@@ -15304,6 +15328,10 @@ module PandoraGtk
       PandoraUtils.log_message(LM_Info, _('Table exported')+': '+filename)
     end
 
+    def mutex
+      @mutex ||= Mutex.new
+    end
+
     # Menu event handler
     # RU: Обработчик события меню
     def do_menu_act(command, treeview=nil)
@@ -15636,7 +15664,7 @@ module PandoraGtk
                 filter = [['executor=', user], ['mode>', 0], ['time<=', cur_time+5*(CheckTaskPeriod/1000)]]
                 fields = 'id, time, mode, message'
                 @task_list = @task_model.select(filter, false, fields, 'time ASC')
-                p '@task_list='+@task_list.inspect
+                #p '@task_list='+@task_list.inspect
                 Thread.pass
               end
             end
@@ -15748,24 +15776,20 @@ module PandoraGtk
                     filter = ['id>=? AND modified<? AND panstate>=?', @base_garb_id, \
                       purge_time, PandoraModel::PSF_Deleted]
                   end
-                  fields = 'id, panstate'
-                  p 'Base garbager [ider,mode,filt]: '+[@base_garb_model.ider, @base_garb_mode, filter].inspect
-                  sel = @base_garb_model.select(filter, false, fields, 'id ASC', train_tail)
+                  #p 'Base garbager [ider,mode,filt]: '+[@base_garb_model.ider, @base_garb_mode, filter].inspect
+                  sel = @base_garb_model.select(filter, false, 'id', 'id ASC', train_tail)
                   #p 'base_garb_sel='+sel.inspect
                   if sel and (sel.size>0)
-                    res ||= []
                     sel.each do |row|
-                      #res << row[0]
                       id = row[0]
-                      panstate = row[1]
                       @base_garb_id = id
-                      p '@base_garb_id, panstate='+[@base_garb_id, panstate].inspect
+                      #p '@base_garb_id='+@base_garb_id.inspect
                       values = nil
                       if @base_garb_mode == :arch
+                        # mark the record as deleted, else purge it
                         values = {:panstate=>PandoraModel::PSF_Deleted}
                       end
-                      filter = {:id=>id}
-                      @base_garb_model.update(values, nil, filter)
+                      @base_garb_model.update(values, nil, {:id=>id})
                     end
                     train_tail -= sel.size
                     @base_garb_id += 1
