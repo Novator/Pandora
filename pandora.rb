@@ -4852,12 +4852,6 @@ module PandoraNet
   ECC_Bye_NoAnswer      = 210
   ECC_Bye_Silent        = 211
 
-  # Session modes
-  # RU: Режимы соединения
-  SM_GetNotice   = 1
-  SM_CiperBF     = 2
-  SM_CiperAES    = 4
-
   # Read modes of socket
   # RU: Режимы чтения из сокета
   RM_Comm      = 0   # Базовая команда
@@ -4872,7 +4866,11 @@ module PandoraNet
   CM_Hunter       = 1
   CM_KeepHere     = 2
   CM_KeepThere    = 4
-  CM_Double       = 8
+  CM_GetNotice    = 8
+  CM_Captcha      = 16
+  CM_CiperBF      = 32
+  CM_CiperAES     = 64
+  CM_Double       = 128
 
   # Connection state
   # RU: Состояние соединения
@@ -5728,7 +5726,8 @@ module PandoraNet
             params['mykey'] = key_hash
             params['tokey'] = param
             mode = 0
-            mode |= SM_GetNotice if $get_notice
+            mode |= CM_GetNotice if $get_notice
+            mode |= CM_Captcha if true #captcha_avail
             hparams = {:version=>0, :mode=>mode, :mykey=>key_hash, :tokey=>param, \
               :notice=>(($notice_depth << 8) | $notice_trust)}
             hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
@@ -7809,7 +7808,7 @@ module PandoraNet
                 end
               end
 
-              if (@sess_mode.is_a? Integer) and ((@sess_mode & SM_GetNotice)>0)
+              if (@sess_mode.is_a? Integer) and ((@sess_mode & CM_GetNotice)>0)
                 # проверка новых уведомлений
                 processed = 0
                 while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
