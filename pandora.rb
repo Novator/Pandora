@@ -4822,6 +4822,7 @@ module PandoraNet
   ECC_News_Record       = 1
   ECC_News_Hook         = 2
   ECC_News_Notice       = 3
+  ECC_News_SessMode     = 4
 
   ECC_Channel0_Open     = 0
   ECC_Channel1_Opened   = 1
@@ -5417,7 +5418,7 @@ module PandoraNet
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
       :entered_captcha, :captcha_sw, :hooks, :fish_ind, :notice_ind, \
-      :sess_trust, :sess_mode, :notice
+      :sess_trust, :sess_mode, :sess_mode2, :notice
 
     # Set socket options
     # RU: Установить опции сокета
@@ -6277,6 +6278,12 @@ module PandoraNet
         end
       end
 
+      # Tell other side my session mode
+      # RU: Сообщить другой стороне мой режим сессии
+      def send_sess_mode
+        add_send_segment(EC_News, true, (@sess_mode & 255), ECC_News_SessMode)
+      end
+
       # Clear out lures for the fisher and input lure
       # RU: Очистить исходящие наживки для рыбака и входящей наживки
       def free_out_lure_of_fisher(fisher, in_lure)
@@ -7070,6 +7077,9 @@ module PandoraNet
                     p log_mes+'ECC_News_Notice'
                     notic, len = PandoraUtils.pson_to_rubyobj(rdata)
                     pool.add_notice_order(self, *notic)
+                  when ECC_News_SessMode
+                    p log_mes + 'ECC_News_SessMode'
+                    @sess_mode2 = rcode
                   else
                     p "news more!!!!"
                     pkind = rcode
@@ -13905,7 +13915,7 @@ module PandoraGtk
           end
         elsif (entry.text != '<no filter>') and (entry.text != '')
           @oper_com = Gtk::Combo.new
-          oper_com.set_popdown_strings(['=','><','>','<'])
+          oper_com.set_popdown_strings(['==','><','>','<'])
           oper_com.set_size_request(56, -1)
           filter_box.pack_start(oper_com, false, false, 0)
 
