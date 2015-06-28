@@ -4852,6 +4852,7 @@ module PandoraNet
   ECC_Wait_NoHandlerYet = 209
   ECC_Bye_NoAnswer      = 210
   ECC_Bye_Silent        = 211
+  ECC_Bye_TimeOut       = 212
 
   # Read modes of socket
   # RU: Режимы чтения из сокета
@@ -4957,7 +4958,7 @@ module PandoraNet
   # RU: Пул
   class Pool
     attr_accessor :window, :sessions, :white_list, :fish_orders, :fish_ind, \
-      :notice_list, :notice_ind
+      :notice_list, :notice_ind, :time_now
 
     MaxWhiteSize = 500
     FishQueueSize = 100
@@ -4965,6 +4966,7 @@ module PandoraNet
     def initialize(main_window)
       super()
       @window = main_window
+      @time_now = Time.now.to_i
       @sessions = Array.new
       @white_list = Array.new
       @fish_ind = -1
@@ -5409,8 +5411,8 @@ module PandoraNet
 
     include PandoraUtils
 
-    attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state, \
-      :stage, :dialog, \
+    attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_mode2, \
+      :conn_state, :stage, :dialog, \
       :send_thread, :read_thread, :socket, :read_state, :send_state, \
       :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, \
       :params, \
@@ -5418,7 +5420,7 @@ module PandoraNet
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
       :entered_captcha, :captcha_sw, :hooks, :fish_ind, :notice_ind, \
-      :sess_trust, :sess_mode, :sess_mode2, :notice
+      :sess_trust, :notice, :activity
 
     # Set socket options
     # RU: Установить опции сокета
@@ -5505,6 +5507,7 @@ module PandoraNet
       lengt = 0
       lengt = data.bytesize if data
       p log_mes+'SEND: [index, cmd, code, lengt]='+[index, cmd, code, lengt].inspect
+      @last_send_time = pool.time_now
       if @socket.is_a? IPSocket
         data ||= ''
         data = AsciiString.new(data)
@@ -5717,6 +5720,7 @@ module PandoraNet
       ascmd = ex_comm
       ascode ||= 0
       asbuf = nil
+      @activity = 1
       case ex_comm
         when EC_Auth
           #p log_mes+'first key='+key.inspect
@@ -5815,6 +5819,15 @@ module PandoraNet
         @scode = ascode
         @sbuf = asbuf
       end
+    end
+
+    # Tell other side my session mode
+    # RU: Сообщить другой стороне мой режим сессии
+    def send_conn_mode
+      @conn_mode ||= 0
+      buf = (@conn_mode & 255).chr
+      p 'send_conn_mode  buf='+buf.inspect
+      add_send_segment(EC_News, true, AsciiString.new(), ECC_News_SessMode)
     end
 
     # Accept received segment
@@ -6278,12 +6291,6 @@ module PandoraNet
         end
       end
 
-      # Tell other side my session mode
-      # RU: Сообщить другой стороне мой режим сессии
-      def send_sess_mode
-        add_send_segment(EC_News, true, (@sess_mode & 255), ECC_News_SessMode)
-      end
-
       # Clear out lures for the fisher and input lure
       # RU: Очистить исходящие наживки для рыбака и входящей наживки
       def free_out_lure_of_fisher(fisher, in_lure)
@@ -6345,6 +6352,7 @@ module PandoraNet
                     else
                       res = sess.send_queue.add_block_to_queue([EC_Lure, hook, segment])
                     end
+                    @last_send_time = pool.time_now
                   else
                     p 'Terminal hook'
                     cmd = segment[0].ord
@@ -7079,7 +7087,7 @@ module PandoraNet
                     pool.add_notice_order(self, *notic)
                   when ECC_News_SessMode
                     p log_mes + 'ECC_News_SessMode'
-                    @sess_mode2 = rcode
+                    @conn_mode2 = rdata[1].ord if rdata.bytesize>0
                   else
                     p "news more!!!!"
                     pkind = rcode
@@ -7134,6 +7142,11 @@ module PandoraNet
       res = (@to_person != nil) and (@to_key != nil) and (@to_base_id != nil)
     end
 
+    def is_timeout?(act_time, limit)
+      res = false
+      res = ((pool.time_now - act_time) >= limit) if act_time
+    end
+
     # Number of messages per cicle
     # RU: Число сообщений за цикл
     $mes_block_count = 5
@@ -7149,9 +7162,15 @@ module PandoraNet
     # Number of fish orders per cicle
     # RU: Число запросов на рабылку за цикл
     $fish_block_count = 2
-    # Reconnection period is sec
+    # Reconnection period in sec
     # RU: Период переподключения в сек
     $conn_period       = 5
+    # Exchange timeout in sec
+    # RU: Таймаут обмена в секундах
+    $exchange_timeout = 5
+    # Timeout after message in sec
+    # RU: Таймаут после сообщений в секундах
+    $dialog_timeout = 30
 
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
@@ -7162,8 +7181,9 @@ module PandoraNet
       @conn_state  = CS_Connecting
       @stage       = ES_Begin
       @socket      = nil
-      aconn_mode   ||= 0
       @conn_mode   = aconn_mode
+      @conn_mode   ||= 0
+      @conn_mode2  = 0
       @read_state  = 0
       send_state_add  ||= 0
       @send_state     = send_state_add
@@ -7371,6 +7391,8 @@ module PandoraNet
             # RU: Цикл чтения из сокета
             if @socket
               @socket_thread = Thread.new do
+                @activity = 0
+
                 readmode = RM_Comm
                 waitlen = CommSize
                 rdatasize = 0
@@ -7501,6 +7523,7 @@ module PandoraNet
                       end
 
                       if rkcmd==EC_Media
+                        @last_recv_time = pool.time_now
                         process_media_segment(rkcode, rkdata)
                       else
                         while (@read_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) \
@@ -7546,6 +7569,7 @@ module PandoraNet
               while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead)
                 read_segment = @read_queue.get_block_from_queue
                 if (@conn_state != CS_Disconnected) and read_segment
+                  @last_recv_time = pool.time_now
                   @rcmd, @rcode, @rdata = read_segment
                   len = 0
                   len = rdata.size if rdata
@@ -7594,8 +7618,6 @@ module PandoraNet
             while (@conn_state != CS_Disconnected)
               #p '@conn_state='+@conn_state.inspect
 
-              fast_data = false
-
               # формирование подтверждений
               if (@conn_state != CS_Disconnected)
                 ssbuf = ''
@@ -7643,11 +7665,18 @@ module PandoraNet
                     @conn_state = CS_Disconnected
                   else
                     if (sscmd==EC_Media)
-                      fast_data = true
+                      @activity = 2
                     end
                     send_segment = @send_queue.get_block_from_queue
                   end
                 end
+              end
+
+              #отправить состояние
+              if ((not @last_conn_mode) or (@last_conn_mode != @conn_mode)) \
+              and (@conn_state == CS_Connected) and (@stage>=ES_Exchange)
+                @last_conn_mode = @conn_mode
+                send_conn_mode
               end
 
               # выполнить несколько заданий почемучки по его шагам
@@ -7716,7 +7745,7 @@ module PandoraNet
                   rc_queue = dialog.recv_media_queue[cannel]
                   recv_media_chunk = rc_queue.get_block_from_queue($media_buf_size) if rc_queue
                   if recv_media_chunk #and (recv_media_chunk.size>0)
-                    fast_data = true
+                    @activity = 2
                     #p 'LOAD MED BUF size='+recv_media_chunk.size.to_s
                     buf = Gst::Buffer.new
                     buf.data = recv_media_chunk
@@ -7739,7 +7768,7 @@ module PandoraNet
               #sleep 1
               if (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
-                fast_data = true
+                @activity = 2
                 @send_state = (send_state & (~CSF_Message))
                 receiver = @skey[PandoraCrypto::KV_Creator]
                 if @skey and receiver
@@ -7787,7 +7816,7 @@ module PandoraNet
               and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
               and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
               or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
-                fast_data = true
+                @activity = 2
                 #p 'packbuf '+cannel.to_s
                 pointer_ind = PandoraGtk.get_send_ptrind_by_room(dialog.room_id)
                 processed = 0
@@ -7889,10 +7918,25 @@ module PandoraNet
               if (socket and socket.closed?) or (@conn_state == CS_StopRead) \
               and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Empty)
                 @conn_state = CS_Disconnected
-              elsif (not fast_data)
-                sleep(0.02)
-              #elsif conn_state == CS_Stoping
-              #  add_send_segment(EC_Bye, true)
+              elsif @activity == 0
+                p log_mes+'[pool.time_now, @last_recv_time, @last_send_time, cm, cm2]=' \
+                +[pool.time_now, @last_recv_time, @last_send_time, $exchange_timeout, \
+                @conn_mode, @conn_mode2].inspect
+                if is_timeout?(@last_recv_time, $exchange_timeout) \
+                and is_timeout?(@last_send_time, $exchange_timeout) \
+                and ((@conn_mode & PandoraNet::CM_KeepHere) == 0) \
+                and ((@conn_mode2 & PandoraNet::CM_KeepHere) == 0) \
+                and ((not @dialog) or @dialog.destroyed?)
+                  add_send_segment(EC_Bye, true, nil, ECC_Bye_TimeOut)
+                  PandoraUtils.log_message(LM_Trace, _('Timeout for: ')+@host_ip.inspect)
+                else
+                  sleep(0.08)
+                end
+              else
+                if @activity == 1
+                  sleep(0.01)
+                end
+                @activity = 0
               end
               Thread.pass
             end
@@ -15662,6 +15706,9 @@ module PandoraGtk
         @scheduler = Thread.new do
           sleep 1
           while @scheduler_step
+
+            # Update pool time_now
+            pool.time_now = Time.now.to_i
 
             # Task executer
             if (not @task_offset) or (@task_offset >= CheckTaskPeriod)
