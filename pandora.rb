@@ -7919,9 +7919,9 @@ module PandoraNet
               and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Empty)
                 @conn_state = CS_Disconnected
               elsif @activity == 0
-                p log_mes+'[pool.time_now, @last_recv_time, @last_send_time, cm, cm2]=' \
-                +[pool.time_now, @last_recv_time, @last_send_time, $exchange_timeout, \
-                @conn_mode, @conn_mode2].inspect
+                #p log_mes+'[pool.time_now, @last_recv_time, @last_send_time, cm, cm2]=' \
+                #+[pool.time_now, @last_recv_time, @last_send_time, $exchange_timeout, \
+                #@conn_mode, @conn_mode2].inspect
                 if is_timeout?(@last_recv_time, $exchange_timeout) \
                 and is_timeout?(@last_send_time, $exchange_timeout) \
                 and ((@conn_mode & PandoraNet::CM_KeepHere) == 0) \
@@ -8300,20 +8300,37 @@ module PandoraNet
 
   # Start hunt
   # RU: Начать охоту
-  def self.start_or_stop_hunt
+  def self.start_or_stop_hunt(continue=true)
     if $hunter_thread
       if $hunter_thread.alive?
-        $hunter_thread[:active] = false
-        if $hunter_thread.stop?
-          $hunter_thread.run
-          sleep(0.1)
+        if $hunter_thread[:active] and continue
+          $hunter_thread[:paused] = (not $hunter_thread[:paused])
+          if (not $hunter_thread[:paused]) and $hunter_thread.stop?
+            $hunter_thread.run
+          end
+          p '$hunter_thread[:paused]='+$hunter_thread[:paused].inspect
         else
-          sleep(0.05)
+          if $hunter_thread[:active]
+            # need to exit thread
+            $hunter_thread[:active] = false
+            if $hunter_thread.stop?
+              $hunter_thread.run
+              sleep(0.1)
+            else
+              sleep(0.05)
+            end
+            sleep(0.2) if $hunter_thread and $hunter_thread.alive?
+          else
+            # need to restart thread
+            $hunter_thread[:active] = nil
+          end
         end
-        sleep(0.2) if $hunter_thread and $hunter_thread.alive?
       end
-      $hunter_thread.exit if $hunter_thread and $hunter_thread.alive?
-      $hunter_thread = nil
+      if $hunter_thread and ((not $hunter_thread.alive?) \
+      or (($hunter_thread[:active]==false) and (not continue)))
+        $hunter_thread.exit if $hunter_thread.alive?
+        $hunter_thread = nil
+      end
       $window.correct_hunt_btn_state
     else
       user = PandoraCrypto.current_user_or_key(true)
@@ -8326,7 +8343,8 @@ module PandoraNet
           $hunter_thread = Thread.new do
             $window.set_status_field(PandoraGtk::SF_Hunt, 'Hunting', nil, true)
             Thread.current[:active] = true
-            while Thread.current[:active] and sel and (sel.size>0)
+            Thread.current[:paused] = false
+            while (Thread.current[:active] != false) and sel and (sel.size>0)
               sel.each do |row|
                 node_id = row[0]
                 addr   = row[1]
@@ -8351,10 +8369,13 @@ module PandoraNet
                   end
                 end
                 break if not Thread.current[:active]
+                Thread.stop if Thread.current[:paused]
               end
-              if Thread.current[:active]
+              if Thread.current[:active] or (Thread.current[:active]==nil)
+                Thread.current[:active] ||= true
                 sel = node_model.select(filter, false, flds)
                 sleep(10)
+                Thread.stop if Thread.current[:paused]
               end
             end
             $window.set_status_field(PandoraGtk::SF_Hunt, 'No hunt', nil, false)
@@ -15177,7 +15198,9 @@ module PandoraGtk
     # RU: Изменить состояние кнопки охотника
     def correct_hunt_btn_state
       tool_btn = $toggle_buttons[SF_Hunt]
-      tool_btn.safe_set_active($hunter_thread != nil) if tool_btn
+      pushed = ($hunter_thread and $hunter_thread[:active] and (not $hunter_thread[:paused]))
+      p 'pushed='+pushed.inspect
+      tool_btn.safe_set_active(pushed) if tool_btn
     end
 
     # Change listener button state
@@ -15434,7 +15457,9 @@ module PandoraGtk
         when 'Listen'
           PandoraNet.start_or_stop_listen
         when 'Hunt'
-          PandoraNet.start_or_stop_hunt
+          screen, x, y, mask = Gdk::Display.default.pointer
+          continue = ((mask & Gdk::Window::SHIFT_MASK.to_i) == 0)
+          PandoraNet.start_or_stop_hunt(continue)
         when 'Notice'
           $window.show_notice(true)
         when 'Authorize'
@@ -16044,6 +16069,9 @@ module PandoraGtk
         if ([Gdk::Keyval::GDK_m, Gdk::Keyval::GDK_M, 1752, 1784].include?(event.keyval) \
         and event.state.control_mask?)
           $window.hide
+        elsif ([Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H].include?(event.keyval) \
+        and event.state.control_mask?)
+          $window.do_menu_act('Hunt')
         elsif event.keyval == Gdk::Keyval::GDK_F5
           PandoraNet.hunt_nodes
         elsif event.state.control_mask? and (Gdk::Keyval::GDK_0..Gdk::Keyval::GDK_9).include?(event.keyval)
