@@ -8058,6 +8058,11 @@ module PandoraNet
     $max_notice_depth    ||= 5
   end
 
+  $max_session_count   = 300
+  $hunt_step_pause     = 0.1
+  $hunt_overflow_pause = 1.0
+  $min_hunt_round      = 60*3
+
   # Get exchange params
   # RU: Взять параметры обмена
   def self.get_exchange_params
@@ -8069,6 +8074,11 @@ module PandoraNet
     $trust_captchaed     = PandoraUtils.get_param('trust_captchaed')
     $trust_listener      = PandoraUtils.get_param('trust_listener')
     $low_conn_trust      = PandoraUtils.get_param('low_conn_trust')
+    $max_opened_keys     = PandoraUtils.get_param('max_opened_keys')
+    $max_session_count   = PandoraUtils.get_param('max_session_count')
+    $hunt_step_pause     = PandoraUtils.get_param('hunt_step_pause')
+    $hunt_overflow_pause = PandoraUtils.get_param('hunt_overflow_pause')
+    $min_hunt_round      = PandoraUtils.get_param('min_hunt_round')
     $low_conn_trust     ||= 0.0
     get_notice_params
   end
@@ -8337,7 +8347,7 @@ module PandoraNet
       if user
         node_model = PandoraModel::Node.new
         filter = 'addr<>"" OR domain<>""'
-        flds = 'id, addr, domain, tport, key_hash, base_id'
+        flds = 'id, addr, domain, key_hash, tport, panhash, base_id'
         sel = node_model.select(filter, false, flds)
         if sel and sel.size>0
           $hunter_thread = Thread.new do
@@ -8345,37 +8355,53 @@ module PandoraNet
             Thread.current[:active] = true
             Thread.current[:paused] = false
             while (Thread.current[:active] != false) and sel and (sel.size>0)
+              start_time = Time.now.to_i
               sel.each do |row|
                 node_id = row[0]
                 addr   = row[1]
                 domain = row[2]
-                key_hash = row[4]
+                key_hash = row[3]
                 if (addr and (addr.size>0)) or (domain and (domain.size>0)) \
                 or ($window.pool.active_socket? and key_hash and (key_hash.size>0))
                   tport = 0
                   begin
-                    tport = row[3].to_i
+                    tport = row[4].to_i
                   rescue
                   end
                   person = nil
+                  panhash = row[4]
                   base_id = row[5]
                   tport = 5577 if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
                   addr = $window.pool.encode_addr(domain, tport, 'tcp')
                   if Thread.current[:active]
-                    $window.pool.init_session(addr, nil, 0, nil, node_id, person, \
+                    $window.pool.init_session(addr, panhash, 0, nil, node_id, person, \
                       key_hash, base_id)
-                    sleep(2) if Thread.current[:active]
+                    if Thread.current[:active]
+                      if $window.pool.sessions.size<$max_session_count
+                        sleep($hunt_step_pause)
+                      else
+                        while Thread.current[:active] and ($window.pool.sessions.size>=$max_session_count)
+                          sleep($hunt_overflow_pause)
+                          Thread.stop if Thread.current[:paused]
+                        end
+                      end
+                    end
                   end
                 end
                 break if not Thread.current[:active]
                 Thread.stop if Thread.current[:paused]
               end
-              if Thread.current[:active] or (Thread.current[:active]==nil)
-                Thread.current[:active] ||= true
+              restart = (Thread.current[:active]==nil)
+              if restart or Thread.current[:active]
+                Thread.current[:active] = true if restart
                 sel = node_model.select(filter, false, flds)
-                sleep(10)
-                Thread.stop if Thread.current[:paused]
+                if not restart
+                  spend_time = Time.now.to_i - start_time
+                  need_pause = $min_hunt_round - spend_time
+                  sleep(need_pause) if need_pause>0
+                end
+                Thread.stop if (Thread.current[:paused] and Thread.current[:active])
               end
             end
             $window.set_status_field(PandoraGtk::SF_Hunt, 'No hunt', nil, false)

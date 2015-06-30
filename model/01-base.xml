@@ -374,6 +374,11 @@
     <notice_depth desc="Notice send depth" type="Byte" section="net" setting="2" />
     <max_notice_depth desc="Max broadcast depth" type="Byte" section="net" setting="2" />
     <low_conn_trust desc="Low allowed trust to connection for key" type="Real" section="net" setting="0.0" />
+    <max_opened_keys desc="Max opened keys" type="Integer" section="net" setting="1000" />
+    <max_session_count desc="Max session count" type="Integer" section="net" setting="400" />
+    <hunt_step_pause desc="Hunt step pause" type="Real" section="net" setting="0.1" />
+    <hunt_overflow_pause desc="Hunt overflow pause" type="Real" section="net" setting="1.0" />
+    <min_hunt_round desc="min_hunt_round" type="Real" section="net" setting="180.0" />
     <ask_kinds_m10 desc="Ask kinds from -1.0" type="String" section="net" setting="" />
     <ask_kinds_p01 desc="Ask kinds from +0.1" type="String" section="net" setting="2" />
     <ask_kinds_p10 desc="Ask kinds from +1.0" type="String" section="net" setting="1,2" />
