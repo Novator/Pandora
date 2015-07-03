@@ -4678,7 +4678,7 @@ module PandoraCrypto
       sel = PandoraModel.get_record_by_panhash(kind, person, nil, nil, 'first_name, last_name')
       #p 'key, person, sel='+[key, person, sel].inspect
       if (sel.is_a? Array) and (sel.size>0)
-        aname, afamily = Utf8String.new(sel[0][0]), Utf8String.new(sel[0][1])
+        aname, afamily = [Utf8String.new(sel[0][0]), Utf8String.new(sel[0][1])]
       end
       #p '[aname, afamily]='+[aname, afamily].inspect
       if (not aname) and (not afamily) and (key.is_a? Array)
@@ -4699,7 +4699,7 @@ module PandoraCrypto
     end
     aname ||= ''
     afamily ||= ''
-    #p 'name_and_family_of_person: '+[aname, afamily].inspect
+    p 'name_and_family_of_person: '+[aname, afamily].inspect
     [aname, afamily]
   end
 
@@ -5376,16 +5376,16 @@ module PandoraNet
 
     # Call callback address
     # RU: Стукануться по обратному адресу
-    def check_callback_addr(addr, host_ip)
+    def check_incoming_addr(addr, host_ip)
       res = false
-      #p 'check_callback_addr  [addr, host_ip]='+[addr, host_ip].inspect
+      #p 'check_incoming_addr  [addr, host_ip]='+[addr, host_ip].inspect
       if (addr.is_a? String) and (addr.size>0)
         host, port, proto = decode_node(addr)
         host.strip!
         host = host_ip if (not host) or (host=='')
-        #p 'check_callback_addr  [host, port, proto]='+[host, port, proto].inspect
+        #p 'check_incoming_addr  [host, port, proto]='+[host, port, proto].inspect
         if (host.is_a? String) and (host.size>0)
-          p 'check_callback_addr DONE [host, port, proto]='+[host, port, proto].inspect
+          p 'check_incoming_addr DONE [host, port, proto]='+[host, port, proto].inspect
           res = true
         end
       end
@@ -5393,7 +5393,7 @@ module PandoraNet
 
   end
 
-  $callback_addr = nil
+  $incoming_addr = nil
   $puzzle_bit_length = 0  #8..24  (recommended 14)
   $puzzle_sec_delay = 2   #0..255 (recommended 2)
   $captcha_length = 4     #4..8   (recommended 6)
@@ -5735,7 +5735,7 @@ module PandoraNet
             mode |= CM_Captcha if true #captcha_avail
             hparams = {:version=>0, :mode=>mode, :mykey=>key_hash, :tokey=>param, \
               :notice=>(($notice_depth << 8) | $notice_trust)}
-            hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
+            hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
             asbuf = PandoraUtils.hash_to_namepson(hparams)
           else
             ascmd = EC_Bye
@@ -6042,7 +6042,7 @@ module PandoraNet
         if inaddr and (inaddr != '')
           host, port, proto = pool.decode_node(inaddr)
           #p log_mes+'ADDR [addr, host, port, proto]='+[addr, host, port, proto].inspect
-          if host and (host != '') and ((not adomain) or (adomain=='') or trusted)
+          if host and (host != '') and ((not adomain) or (adomain=='')) #and trusted
             adomain = host
             port = 5577 if (not port) or (port==0)
             proto ||= ''
@@ -6071,14 +6071,8 @@ module PandoraNet
           end
         end
 
-        if (not adomain) or (adomain=='')
-          if (not aaddr) or (aaddr=='')
-            aaddr = @host_ip
-            adomain = @host_name
-          else
-            adomain = aaddr
-          end
-        end
+        adomain = @host_name if (not adomain) or (adomain=='')
+        aaddr = @host_ip if (not aaddr) or (aaddr=='')
 
         values[:addr] = aaddr
         values[:domain] = adomain
@@ -6406,7 +6400,7 @@ module PandoraNet
                     addr = params['addr']
                     p log_mes+'addr='+addr.inspect
                     # need to change an ip checking
-                    pool.check_callback_addr(addr, host_ip) if addr
+                    pool.check_incoming_addr(addr, host_ip) if addr
                     @sess_mode = params['mode']
                     @notice = params['notice']
                     init_skey_or_error(true)
@@ -8066,7 +8060,7 @@ module PandoraNet
   # Get exchange params
   # RU: Взять параметры обмена
   def self.get_exchange_params
-    $callback_addr       = PandoraUtils.get_param('callback_addr')
+    $incoming_addr       = PandoraUtils.get_param('incoming_addr')
     $puzzle_bit_length   = PandoraUtils.get_param('puzzle_bit_length')
     $puzzle_sec_delay    = PandoraUtils.get_param('puzzle_sec_delay')
     $captcha_length      = PandoraUtils.get_param('captcha_length')
@@ -8242,7 +8236,7 @@ module PandoraNet
               if res.is_a? Array
                 person_hash, key_hash = res
                 hparams = {:version=>0, :iam=>person_hash, :mykey=>key_hash, :base=>$base_id}
-                hparams[:addr] = $callback_addr if $callback_addr and ($callback_addr != '')
+                hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
                 hello = UdpHello + PandoraUtils.hash_to_namepson(hparams)
                 if $udp_listen_thread
                   udp_server = $udp_listen_thread[:udp_server]
@@ -8310,7 +8304,7 @@ module PandoraNet
 
   # Start hunt
   # RU: Начать охоту
-  def self.start_or_stop_hunt(continue=true)
+  def self.start_or_stop_hunt(continue=true, delay=0)
     if $hunter_thread
       if $hunter_thread.alive?
         if $hunter_thread[:active] and continue
@@ -8351,6 +8345,7 @@ module PandoraNet
         sel = node_model.select(filter, false, flds)
         if sel and sel.size>0
           $hunter_thread = Thread.new do
+            sleep(delay) if delay>0
             $window.set_status_field(PandoraGtk::SF_Hunt, 'Hunting', nil, true)
             Thread.current[:active] = true
             Thread.current[:paused] = false
@@ -15189,7 +15184,7 @@ module PandoraGtk
   # RU: Главное окно
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
-      :cvpaned, :pool, :focus_timer, :title_view, :do_on_show, :fish_hpaned, :task_offset
+      :cvpaned, :pool, :focus_timer, :title_view, :do_on_start, :fish_hpaned, :task_offset
 
     include PandoraUtils
 
@@ -16166,14 +16161,17 @@ module PandoraGtk
       #  p 'focus-out-event: ' + $window.has_toplevel_focus?.inspect
       #  false
       #end
-      $window.do_on_show = PandoraUtils.get_param('do_on_show')
+      $window.do_on_start = PandoraUtils.get_param('do_on_start')
       $window.signal_connect('show') do |window, event|
-        if $window.do_on_show > 0
+        if $window.do_on_start > 0
           key = PandoraCrypto.current_key(false, true)
-          if ($window.do_on_show>1) and key and (not $listen_thread)
+          if (($window.do_on_start & 2) != 0) and key and (not $listen_thread)
             PandoraNet.start_or_stop_listen
           end
-          $window.do_on_show = 0
+          if (($window.do_on_start & 4) != 0) and key and (not $hunter_thread)
+            PandoraNet.start_or_stop_hunt(true, 3)
+          end
+          $window.do_on_start = 0
         end
         scheduler_step = PandoraUtils.get_param('scheduler_step')
         init_scheduler(scheduler_step)
@@ -16433,6 +16431,8 @@ else
         super(str)
       elsif str.is_a? Numeric
         super(str.to_s)
+      elsif str.nil?
+        super('')
       else
         super(str.inspect)
       end

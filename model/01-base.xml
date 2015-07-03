@@ -339,7 +339,7 @@
     <base_garbage_term desc="Base garbage term (day)" type="Real" section="common" setting="5" />
     <base_purge_term desc="Base purge term (day)" type="Real" section="common" setting="30" />
 
-    <do_on_show desc="Do on show main window" type="Integer" section="view" setting="2" />
+    <do_on_start desc="Do on start (1-auth,2-listen,4-hunt,7-all)" type="Integer" section="view" setting="7" />
     <hide_on_minimize desc="Hide on minimize" type="Boolean" section="view" setting="false" />
     <hide_on_close desc="Hide on close" type="Boolean" section="view" setting="true" />
     <status_update_win_icon desc="Update window icon on message" type="Boolean" section="view" setting="false" />
