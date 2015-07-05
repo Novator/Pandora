@@ -5231,6 +5231,20 @@ module PandoraNet
       res
     end
 
+    $search_queue   = nil
+    $search_answers = nil
+
+    # Add request to search queue
+    # RU: Добавить запрос в поисковую очередь
+    def add_search_request(request, kind, hunt=true)
+      $search_queue   ||= []
+      $search_answers ||= []
+      queue = $search_queue
+      queue << [request, kind]
+      PandoraNet.start_hunt if hunt
+      answers = $search_answers
+    end
+
     # Find or create session with necessary node
     # RU: Находит или создает соединение с нужным узлом
     def init_session(addr=nil, nodehash=nil, send_state_add=nil, dialog=nil, \
@@ -8302,8 +8316,8 @@ module PandoraNet
 
   $hunter_thread = nil
 
-  # Start hunt
-  # RU: Начать охоту
+  # Start or stop hunt
+  # RU: Начать или остановить охоту
   def self.start_or_stop_hunt(continue=true, delay=0)
     if $hunter_thread
       if $hunter_thread.alive?
@@ -8419,6 +8433,15 @@ module PandoraNet
       else
         $window.correct_hunt_btn_state
       end
+    end
+  end
+
+  # Start hunt
+  # RU: Начать охоту
+  def self.start_hunt
+    if (not $hunter_thread) or (not $hunter_thread.alive?) \
+    or (not $hunter_thread[:active]) or $hunter_thread[:paused]
+      start_or_stop_hunt
     end
   end
 
@@ -12444,19 +12467,19 @@ module PandoraGtk
 
       local_btn = SafeCheckButton.new(_('locally'), true)
       local_btn.safe_signal_clicked do |widget|
-        #update_btn.clicked
+        search_btn.clicked if local_btn.active?
       end
       local_btn.safe_set_active(true)
 
       active_btn = SafeCheckButton.new(_('active only'), true)
       active_btn.safe_signal_clicked do |widget|
-        #update_btn.clicked
+        search_btn.clicked if active_btn.active?
       end
       active_btn.safe_set_active(true)
 
       hunt_btn = SafeCheckButton.new(_('hunt!'), true)
       hunt_btn.safe_signal_clicked do |widget|
-        #update_btn.clicked
+        search_btn.clicked if hunt_btn.active?
       end
       hunt_btn.safe_set_active(true)
 
@@ -12483,18 +12506,26 @@ module PandoraGtk
       end
 
       search_btn.signal_connect('clicked') do |widget|
-        text = search_entry.text
+        request = search_entry.text
         search_entry.position = search_entry.position  # deselect
-        if (text.size>0) and (not @search_thread)
+        if (request.size>0) and (not @search_thread)
           list_store.clear
+          kind = kind_entry.entry.text
           @search_thread = Thread.new do
             th = Thread.current
             th[:processing] = true
             PandoraGtk.set_readonly(stop_btn, false)
             PandoraGtk.set_readonly(widget, true)
             sleep 0.3
-            res = search_in_bases(text, th, 'auto')
-            if res.is_a? Array
+            res = []
+            if local_btn.active?
+              res1 = search_in_bases(request, th, kind)
+              res.concat(res1) if res1
+            end
+            if ((not res) or (res.size==0)) and (active_btn.active? or hunt_btn.active?)
+              $window.pool.add_search_request(request, kind)
+            end
+            if res
               res.each_with_index do |row, i|
                 user_iter = list_store.append
                 user_iter[0] = i
@@ -16450,8 +16481,8 @@ if PandoraUtils.os_family=='windows'
   $stderr = $stdout
 end
 
-# WinAPI constants for work with the register
-# RU: Константы WinAPI для работы с регистром
+# WinAPI constants for work with the registry
+# RU: Константы WinAPI для работы с реестром
 HKEY_LOCAL_MACHINE = 0x80000002
 STANDARD_RIGHTS_READ = 0x00020000
 KEY_QUERY_VALUE = 0x0001
