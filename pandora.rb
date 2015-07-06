@@ -8059,7 +8059,8 @@ module PandoraNet
                 and is_timeout?(@last_send_time, $exchange_timeout) \
                 and ((@conn_mode & PandoraNet::CM_KeepHere) == 0) \
                 and ((@conn_mode2 & PandoraNet::CM_KeepHere) == 0) \
-                and ((not @dialog) or @dialog.destroyed?)
+                and ((not @dialog) or @dialog.destroyed?) \
+                and (@stage != ES_Protocol) and (@stage != ES_Greeting) and (@stage != ES_Captcha)
                   add_send_segment(EC_Bye, true, nil, ECC_Bye_TimeOut)
                   PandoraUtils.log_message(LM_Trace, _('Timeout for: ')+@host_ip.inspect)
                 else
