@@ -4817,6 +4817,7 @@ module PandoraNet
   ECC_Query_Rel        = 0
   ECC_Query_Record     = 1
   ECC_Query_Fish       = 2
+  ECC_Query_Search     = 3
 
   ECC_News_Panhash      = 0
   ECC_News_Record       = 1
@@ -4958,7 +4959,8 @@ module PandoraNet
   # RU: Пул
   class Pool
     attr_accessor :window, :sessions, :white_list, :fish_orders, :fish_ind, \
-      :notice_list, :notice_ind, :time_now
+      :notice_list, :notice_ind, :time_now, :search_requests, :search_answers, \
+      :search_ind
 
     MaxWhiteSize = 500
     FishQueueSize = 100
@@ -4971,8 +4973,11 @@ module PandoraNet
       @white_list = Array.new
       @fish_ind = -1
       @notice_ind = -1
+      @search_ind = -1
       @fish_orders = Array.new #PandoraUtils::RoundQueue.new(true)
       @notice_list = Array.new
+      @search_requests = Array.new
+      @search_answers = Array.new
     end
 
     def base_id
@@ -5231,18 +5236,91 @@ module PandoraNet
       res
     end
 
-    $search_queue   = nil
-    $search_answers = nil
+    SR_Request   = 0
+    SR_Kind      = 1
+    SR_BaseId    = 2
+    SR_Index     = 3
+    SR_Time      = 4
+    SR_Session   = 5
+
+    # Search in bases
+    # RU: Поиск в базах
+    def search_in_bases(text, bases='auto', th=nil)
+
+      def name_filter(fld, val)
+        res = nil
+        if val.index('*') or val.index('?')
+          PandoraUtils.correct_aster_and_quest!(val)
+          res = ' LIKE ?'
+        else
+          res = '=?'
+        end
+        res = fld + res
+        [res, AsciiString.new(val)]
+      end
+
+      res = nil
+      while ((not th) or th[:processing]) and (not res)
+        model = PandoraUtils.get_model('Person')
+        fields = 'first_name, last_name, birth_day'
+        sort = 'first_name, last_name'
+        limit = 100
+        word1, word2, word3, words = text.split
+        p [word1, word2, word3, words]
+        word1dup = word1.dup
+        filter1, word1 = name_filter('first_name', word1)
+        filter2, word2 = name_filter('last_name', word2) if word2
+        word4 = nil
+        if word3
+          word3, word4 = word3.split('-')
+          p [word3, word4]
+          p word3 = PandoraUtils.str_to_date(word3).to_i
+          p word4 = PandoraUtils.str_to_date(word4).to_i if word4
+        end
+        if word4
+          filter = [filter1+' AND '+filter2+' AND birth_day>=? AND birth_day<=?', word1, word2, word3, word4]
+          res = model.select(filter, false, fields, sort, limit)
+        elsif word3
+          filter = [filter1+' AND '+filter2+' AND birth_day=?', word1, word2, word3]
+          res = model.select(filter, false, fields, sort, limit)
+        elsif word2
+          filter = [filter1+' AND '+filter2, word1, word2]
+          res = model.select(filter, false, fields, sort, limit)
+        else
+          filter2, word1dup = name_filter('last_name', word1dup)
+          filter = [filter1+' OR '+filter2, word1, word1dup]
+          res = model.select(filter, false, fields, sort, limit)
+        end
+        res ||= []
+        res.uniq!
+        res.compact!
+      end
+      res
+    end
+
+    # Find search request in queue
+    # RU: Найти поисковый запрос в очереди
+    def find_search_request(request, kind)
+      @search_requests.select do |sr|
+        (sr[SR_Request] == request) and (sr[SR_Request] == kind)
+      end
+	end
 
     # Add request to search queue
     # RU: Добавить запрос в поисковую очередь
-    def add_search_request(request, kind, hunt=true)
-      $search_queue   ||= []
-      $search_answers ||= []
-      queue = $search_queue
-      queue << [request, kind]
+    def add_search_request(request, kind, abase_id=nil, sess=nil, hunt=true)
+      res = nil
+      sel = find_search_request(request, kind)
+      if sel and (sel.size>0)
+        res = true
+      else
+        time = Time.now.to_i
+        @search_requests << [request, kind, abase_id, @search_ind+1, time, sess]
+        @search_ind += 1
+        res = true
+      end
       PandoraNet.start_hunt if hunt
-      answers = $search_answers
+      res
     end
 
     # Find or create session with necessary node
@@ -5434,7 +5512,7 @@ module PandoraNet
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
       :entered_captcha, :captcha_sw, :hooks, :fish_ind, :notice_ind, \
-      :sess_trust, :notice, :activity
+      :sess_trust, :notice, :activity, :search_ind
 
     # Set socket options
     # RU: Установить опции сокета
@@ -6944,6 +7022,19 @@ module PandoraNet
                       p log_mes+'ADD fish order to pool list: line_order='+line_order.inspect
                       pool.add_fish_order(self, *line_order, @recv_models)
                     end
+                  when ECC_Query_Search
+                    # пришёл поисковый запрос
+                    search_req_raw = rdata
+                    search_req, len = PandoraUtils.pson_to_rubyobj(search_req_raw)
+                    p '--ECC_Query_Search  search_req='+search_req.inspect
+                    if (search_req.is_a? Array) and (search_req.size>=2)
+                      abase_id = search_req[SR_BaseId]
+                      abase_id ||= @to_base_id
+                      if abase_id != pool.base_id
+                        p log_mes+'ADD search req to pool list'
+                        pool.add_search_request(search_req[SR_Request], search_req[SR_Kind], abase_id, self)
+                      end
+                    end
                   else #запрос сорта (1-254) или всех сортов (255)
                     afrom_data = rdata
                     akind = rcode
@@ -7170,6 +7261,9 @@ module PandoraNet
     # Number of fish orders per cicle
     # RU: Число запросов на рабылку за цикл
     $fish_block_count = 2
+    # Number of search requests per cicle
+    # RU: Число поисковых запросов за цикл
+    $search_block_count = 2
     # Reconnection period in sec
     # RU: Период переподключения в сек
     $conn_period       = 5
@@ -7197,6 +7291,7 @@ module PandoraNet
       @send_state     = send_state_add
       @fish_ind       = 0
       @notice_ind     = 0
+      @search_ind	  = 0
       #@fishes         = Array.new
       @hooks          = Array.new
       @read_queue     = PandoraUtils::RoundQueue.new
@@ -7920,6 +8015,36 @@ module PandoraNet
                 @fish_ind += 1
               end
 
+              # проверка новых поисковых запросов
+              processed = 0
+              while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
+              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
+              and (processed<$search_block_count) \
+              and (@search_ind <= pool.search_ind)
+                search_req = pool.search_requests[@search_ind]
+                p '++++pool.search_requests[size, @search_ind, obj_id]='+[pool.search_requests.size, @search_ind, \
+                  search_req.object_id].inspect
+                if search_req
+                  req = search_req[SR_Request..SR_BaseId]
+                  p log_mes+'search_req='+req.inspect
+                  p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
+                  if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
+                    # search request is not from this session/node, need resend
+                    #res = search_in_bases(search_req[SR_Request], search_req[SR_Kind])
+                    #if res and (res.size>0)
+                    p log_mes+'New search request: '+req.inspect
+                    #mykeyhash = PandoraCrypto.current_user_or_key(false)
+                    #PandoraUtils.log_message(LM_Trace, _('Fishing to')+': [fish,host,port]' \
+                    #    +[PandoraUtils.bytes_to_hex(fish_order[LO_Fish]), \
+                    #    @host_ip, @port].inspect)
+                    req_raw = PandoraUtils.rubyobj_to_pson(req)
+                    add_send_segment(EC_Query, true, req_raw, ECC_Query_Search)
+                  end
+                  processed += 1
+                end
+                @search_ind += 1
+              end
+
               #p '---@conn_state='+@conn_state.inspect
               #sleep 0.5
 
@@ -8360,9 +8485,9 @@ module PandoraNet
         if sel and sel.size>0
           $hunter_thread = Thread.new do
             sleep(delay) if delay>0
-            $window.set_status_field(PandoraGtk::SF_Hunt, 'Hunting', nil, true)
             Thread.current[:active] = true
             Thread.current[:paused] = false
+            $window.correct_hunt_btn_state
             while (Thread.current[:active] != false) and sel and (sel.size>0)
               start_time = Time.now.to_i
               sel.each do |row|
@@ -8413,9 +8538,9 @@ module PandoraNet
                 Thread.stop if (Thread.current[:paused] and Thread.current[:active])
               end
             end
-            $window.set_status_field(PandoraGtk::SF_Hunt, 'No hunt', nil, false)
             $hunter_thread = nil
           end
+          $window.correct_hunt_btn_state
         else
           $window.correct_hunt_btn_state
           dialog = Gtk::MessageDialog.new($window, \
@@ -12303,61 +12428,6 @@ module PandoraGtk
 
     include PandoraGtk
 
-    # Search in bases
-    # RU: Поиск в базах
-    def search_in_bases(text, th, bases='auto')
-
-      def name_filter(fld, val)
-        res = nil
-        if val.index('*') or val.index('?')
-          PandoraUtils.correct_aster_and_quest!(val)
-          res = ' LIKE ?'
-        else
-          res = '=?'
-        end
-        res = fld + res
-        [res, AsciiString.new(val)]
-      end
-
-      res = nil
-      while th[:processing] and (not res)
-        model = PandoraUtils.get_model('Person')
-        fields = 'first_name, last_name, birth_day'
-        sort = 'first_name, last_name'
-        limit = 100
-        word1, word2, word3, words = text.split
-        p [word1, word2, word3, words]
-        word1dup = word1.dup
-        filter1, word1 = name_filter('first_name', word1)
-        filter2, word2 = name_filter('last_name', word2) if word2
-        word4 = nil
-        if word3
-          word3, word4 = word3.split('-')
-          p [word3, word4]
-          p word3 = PandoraUtils.str_to_date(word3).to_i
-          p word4 = PandoraUtils.str_to_date(word4).to_i if word4
-        end
-        if word4
-          filter = [filter1+' AND '+filter2+' AND birth_day>=? AND birth_day<=?', word1, word2, word3, word4]
-          res = model.select(filter, false, fields, sort, limit)
-        elsif word3
-          filter = [filter1+' AND '+filter2+' AND birth_day=?', word1, word2, word3]
-          res = model.select(filter, false, fields, sort, limit)
-        elsif word2
-          filter = [filter1+' AND '+filter2, word1, word2]
-          res = model.select(filter, false, fields, sort, limit)
-        else
-          filter2, word1dup = name_filter('last_name', word1dup)
-          filter = [filter1+' OR '+filter2, word1, word1dup]
-          res = model.select(filter, false, fields, sort, limit)
-        end
-        res ||= []
-        res.uniq!
-        res.compact!
-      end
-      res
-    end
-
     # Show search window
     # RU: Показать окно поиска
     def initialize(text=nil)
@@ -12519,7 +12589,7 @@ module PandoraGtk
             sleep 0.3
             res = []
             if local_btn.active?
-              res1 = search_in_bases(request, th, kind)
+              res1 = $window.pool.search_in_bases(request, kind, th)
               res.concat(res1) if res1
             end
             if ((not res) or (res.size==0)) and (active_btn.active? or hunt_btn.active?)
@@ -15253,6 +15323,11 @@ module PandoraGtk
       pushed = ($hunter_thread and $hunter_thread[:active] and (not $hunter_thread[:paused]))
       p 'pushed='+pushed.inspect
       tool_btn.safe_set_active(pushed) if tool_btn
+      if pushed
+        $window.set_status_field(PandoraGtk::SF_Hunt, 'Hunting', nil, true)
+      else
+        $window.set_status_field(PandoraGtk::SF_Hunt, 'No hunt', nil, false)
+      end
     end
 
     # Change listener button state
@@ -15510,7 +15585,8 @@ module PandoraGtk
           PandoraNet.start_or_stop_listen
         when 'Hunt'
           screen, x, y, mask = Gdk::Display.default.pointer
-          continue = ((mask & Gdk::Window::SHIFT_MASK.to_i) == 0)
+          continue = ((mask & Gdk::Window::SHIFT_MASK.to_i) == 0) \
+            and ((mask & Gdk::Window::CONTROL_MASK.to_i) == 0)
           PandoraNet.start_or_stop_hunt(continue)
         when 'Notice'
           $window.show_notice(true)
@@ -16123,7 +16199,8 @@ module PandoraGtk
           $window.hide
         elsif ([Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H].include?(event.keyval) \
         and event.state.control_mask?)
-          $window.do_menu_act('Hunt')
+          continue = (not event.state.shift_mask?)
+          PandoraNet.start_or_stop_hunt(continue)
         elsif event.keyval == Gdk::Keyval::GDK_F5
           PandoraNet.hunt_nodes
         elsif event.state.control_mask? and (Gdk::Keyval::GDK_0..Gdk::Keyval::GDK_9).include?(event.keyval)
