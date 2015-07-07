@@ -4850,7 +4850,6 @@ module PandoraNet
   ECC_Bye_BadDataCRC    = 206
   ECC_Bye_DataTooShort  = 207
   ECC_Bye_DataTooLong   = 208
-  ECC_Wait_NoHandlerYet = 209
   ECC_Bye_NoAnswer      = 210
   ECC_Bye_Silent        = 211
   ECC_Bye_TimeOut       = 212
@@ -4867,12 +4866,11 @@ module PandoraNet
   # Connection mode
   # RU: Режим соединения
   CM_Hunter       = 1
-  CM_KeepHere     = 2
-  CM_KeepThere    = 4
-  CM_GetNotice    = 8
-  CM_Captcha      = 16
-  CM_CiperBF      = 32
-  CM_CiperAES     = 64
+  CM_Keep         = 2
+  CM_GetNotice    = 4
+  CM_Captcha      = 8
+  CM_CiperBF      = 16
+  CM_CiperAES     = 32
   CM_Double       = 128
 
   # Connection state
@@ -5326,7 +5324,7 @@ module PandoraNet
     # Find or create session with necessary node
     # RU: Находит или создает соединение с нужным узлом
     def init_session(addr=nil, nodehash=nil, send_state_add=nil, dialog=nil, \
-    node_id=nil, person=nil, key_hash=nil, base_id=nil)
+    node_id=nil, person=nil, key_hash=nil, base_id=nil, aconn_mode=nil)
       p '-------init_session: '+[addr, nodehash, send_state_add, dialog, node_id, \
         person, key_hash, base_id].inspect
       person = PandoraUtils.simplify_single_array(person)
@@ -5347,7 +5345,7 @@ module PandoraNet
           session.dialog = dialog if dialog and (i==0)
           if session.dialog and (not session.dialog.destroyed?) \
           and session.dialog.online_button
-            session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
+            session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep)
             if ((session.socket and (not session.socket.closed?)) or session.active_hook)
               session.dialog.online_button.safe_set_active(true)
               session.dialog.online_button.inconsistent = false
@@ -5398,8 +5396,12 @@ module PandoraNet
               key_hash_i ||= key_hash
               node_id_i = row[4]
               node_id_i ||= node_id
+              aconn_mode ||= 0
+              if (not $window.cvpaned.csw)
+                aconn_mode = (aconn_mode | PandoraNet::CM_Captcha)
+              end
               session = Session.new(nil, host, addr, port, proto, \
-                CM_Hunter, node_id_i, dialog, send_state_add, nodehash, \
+                (CM_Hunter | aconn_mode), node_id_i, dialog, send_state_add, nodehash, \
                 person, key_hash_i, base_id)
               res = true
             end
@@ -5431,7 +5433,7 @@ module PandoraNet
       if (sessions.is_a? Array) and (sessions.size>0)
         sessions.each do |session|
           if (not session.nil?)
-            session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
+            session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Keep))
             session.conn_state = CS_StopRead if disconnect
           end
         end
@@ -5824,7 +5826,7 @@ module PandoraNet
             params['tokey'] = param
             mode = 0
             mode |= CM_GetNotice if $get_notice
-            mode |= CM_Captcha if true #captcha_avail
+            mode |= CM_Captcha if (@conn_mode & CM_Captcha)>0
             hparams = {:version=>0, :mode=>mode, :mykey=>key_hash, :tokey=>param, \
               :notice=>(($notice_depth << 8) | $notice_trust)}
             hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
@@ -6182,7 +6184,7 @@ module PandoraNet
       # RU: Обработать медиа сегмент
       def process_media_segment(cannel, mediabuf)
         if not dialog
-          @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
+          @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
           #node = PandoraNet.encode_addr(host_ip, port, proto)
           panhash = @skey[PandoraCrypto::KV_Creator]
           @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
@@ -6494,6 +6496,7 @@ module PandoraNet
                     # need to change an ip checking
                     pool.check_incoming_addr(addr, host_ip) if addr
                     @sess_mode = params['mode']
+                    p log_mes+'--------@sess_mode='+@sess_mode.inspect
                     @notice = params['notice']
                     init_skey_or_error(true)
                   else
@@ -6597,7 +6600,7 @@ module PandoraNet
                       end
                       p log_mes+'----trust='+trust.inspect
                       if ($captcha_length>0) and (trust.is_a? Integer) \
-                      and ((conn_mode & CM_Hunter) == 0)
+                      and ((@conn_mode & CM_Hunter) == 0) and ((@sess_mode & CM_Captcha)>0)
                         @skey[PandoraCrypto::KV_Trust] = 0
                         send_captcha
                       elsif trust.is_a? Float
@@ -6651,7 +6654,7 @@ module PandoraNet
                   @scmd = EC_Auth
                   @scode = ECC_Auth_Answer
                   @sbuf = answer
-                  @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
+                  @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
                 else
                   err_scmd('Node password is not setted')
                 end
@@ -6872,7 +6875,7 @@ module PandoraNet
               when EC_Message, EC_Channel
                 p log_mes+'EC_Message  dialog='+@dialog.inspect
                 if (not @dialog) or @dialog.destroyed?
-                  @conn_mode = (@conn_mode | PandoraNet::CM_KeepHere)
+                  @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
                   panhash = @skey[PandoraCrypto::KV_Creator]
                   @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
                   Thread.pass
@@ -7035,18 +7038,6 @@ module PandoraNet
                         pool.add_search_request(search_req[SR_Request], search_req[SR_Kind], abase_id, self)
                       end
                     end
-                  else #запрос сорта (1-254) или всех сортов (255)
-                    afrom_data = rdata
-                    akind = rcode
-                    if (akind == ECC_Query255_AllChanges)
-                      pkind = 3 #отправка первого кайнда из серии
-                    else
-                      pkind = akind  #отправка только запрашиваемого
-                    end
-                    @scmd = EC_News
-                    pnoticecount = 3
-                    @scode = pkind
-                    @sbuf = [pnoticecount].pack('N')
                 end
               when EC_News
                 case rcode
@@ -8057,8 +8048,8 @@ module PandoraNet
                 #@conn_mode, @conn_mode2].inspect
                 if is_timeout?(@last_recv_time, $exchange_timeout) \
                 and is_timeout?(@last_send_time, $exchange_timeout) \
-                and ((@conn_mode & PandoraNet::CM_KeepHere) == 0) \
-                and ((@conn_mode2 & PandoraNet::CM_KeepHere) == 0) \
+                and ((@conn_mode & PandoraNet::CM_Keep) == 0) \
+                and ((@conn_mode2 & PandoraNet::CM_Keep) == 0) \
                 and ((not @dialog) or @dialog.destroyed?) \
                 and (@stage != ES_Protocol) and (@stage != ES_Greeting) and (@stage != ES_Captcha)
                   add_send_segment(EC_Bye, true, nil, ECC_Bye_TimeOut)
@@ -8140,7 +8131,7 @@ module PandoraNet
             p 'НЕТ ПОДКЛЮЧЕНИЯ'
           end
 
-          need_connect = ((@conn_mode & CM_KeepHere) != 0) and (not (@socket.is_a? FalseClass))
+          need_connect = ((@conn_mode & CM_Keep) != 0) and (not (@socket.is_a? FalseClass))
           p 'NEED??? [need_connect, @conn_mode, @socket]='+[need_connect, @conn_mode, @socket].inspect
 
           if need_connect and (not @socket) and work_time and ((Time.now.to_i - work_time.to_i)<15)
@@ -11039,7 +11030,7 @@ module PandoraGtk
           widget.inconsistent = true
           targets[CSI_Persons].each_with_index do |person, i|
             $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-              person, targets[CSI_Keys])
+              person, targets[CSI_Keys], nil, PandoraNet::CM_Captcha)
           end
         else
           widget.safe_set_active(false)
@@ -11516,7 +11507,7 @@ module PandoraGtk
         @sessions << session if (not @sessions.include?(session))
       else
         @sessions.delete(session)
-        session.conn_mode = (session.conn_mode & (~PandoraNet::CM_KeepHere))
+        session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Keep))
         session.dialog = nil
       end
       active = (@sessions.size>0)
@@ -11553,7 +11544,7 @@ module PandoraGtk
         end
         dlg_sessions = $window.pool.sessions_on_dialog(self)
         dlg_sessions.each do |session|
-          session.conn_mode = (session.conn_mode | PandoraNet::CM_KeepHere)
+          session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep)
           session.send_state = (session.send_state | PandoraNet::CSF_Message)
         end
       end
