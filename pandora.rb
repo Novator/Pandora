@@ -7232,9 +7232,13 @@ module PandoraNet
       res = (@to_person != nil) and (@to_key != nil) and (@to_base_id != nil)
     end
 
-    def is_timeout?(act_time, limit)
+    def is_timeout?(limit)
       res = false
-      res = ((pool.time_now - act_time) >= limit) if act_time
+      if limit
+        res = ((pool.time_now - @last_recv_time) >= limit) if @last_recv_time
+        res = ((pool.time_now - @last_send_time) >= limit) if ((not res) and @last_send_time)
+      end
+      res
     end
 
     # Number of messages per cicle
@@ -7263,7 +7267,10 @@ module PandoraNet
     $exchange_timeout = 5
     # Timeout after message in sec
     # RU: Таймаут после сообщений в секундах
-    $dialog_timeout = 30
+    $dialog_timeout = 90
+    # Timeout for captcha in sec
+    # RU: Таймаут для капчи в секундах
+    $captcha_timeout = 120
 
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
@@ -8046,14 +8053,26 @@ module PandoraNet
                 #p log_mes+'[pool.time_now, @last_recv_time, @last_send_time, cm, cm2]=' \
                 #+[pool.time_now, @last_recv_time, @last_send_time, $exchange_timeout, \
                 #@conn_mode, @conn_mode2].inspect
-                if is_timeout?(@last_recv_time, $exchange_timeout) \
-                and is_timeout?(@last_send_time, $exchange_timeout) \
-                and ((@conn_mode & PandoraNet::CM_Keep) == 0) \
-                and ((@conn_mode2 & PandoraNet::CM_Keep) == 0) \
-                and ((not @dialog) or @dialog.destroyed?) \
-                and (@stage != ES_Protocol) and (@stage != ES_Greeting) and (@stage != ES_Captcha)
+                ito = false
+                if ((@conn_mode & PandoraNet::CM_Keep) == 0) \
+                and ((@conn_mode2 & PandoraNet::CM_Keep) == 0)
+                  if ((@stage == ES_Protocol) or (@stage == ES_Greeting) \
+                  or (@stage == ES_Captcha) and ($captcha_timeout>0))
+                    ito = is_timeout?($captcha_timeout)
+                    #p log_mes+'capcha timeout  ito='+ito.inspect
+                  else
+                    if @dialog and (not @dialog.destroyed?) and ($dialog_timeout>0)
+                      ito = is_timeout?($dialog_timeout)
+                      #p log_mes+'dialog timeout  ito='+ito.inspect
+                    else
+                      ito = is_timeout?($exchange_timeout)
+                      #p log_mes+'all timeout  ito='+ito.inspect
+                    end
+                  end
+                end
+                if ito
                   add_send_segment(EC_Bye, true, nil, ECC_Bye_TimeOut)
-                  PandoraUtils.log_message(LM_Trace, _('Timeout for: ')+@host_ip.inspect)
+                  PandoraUtils.log_message(LM_Trace, _('Idle timeout')+': '+@host_ip.inspect)
                 else
                   sleep(0.08)
                 end
@@ -8186,7 +8205,7 @@ module PandoraNet
   $max_session_count   = 300
   $hunt_step_pause     = 0.1
   $hunt_overflow_pause = 1.0
-  $min_hunt_round      = 60*3
+  $hunt_period         = 60*3
 
   # Get exchange params
   # RU: Взять параметры обмена
@@ -8203,7 +8222,10 @@ module PandoraNet
     $max_session_count   = PandoraUtils.get_param('max_session_count')
     $hunt_step_pause     = PandoraUtils.get_param('hunt_step_pause')
     $hunt_overflow_pause = PandoraUtils.get_param('hunt_overflow_pause')
-    $min_hunt_round      = PandoraUtils.get_param('min_hunt_round')
+    $hunt_period         = PandoraUtils.get_param('hunt_period')
+    $exchange_timeout    = PandoraUtils.get_param('exchange_timeout')
+    $dialog_timeout      = PandoraUtils.get_param('dialog_timeout')
+    $captcha_timeout     = PandoraUtils.get_param('captcha_timeout')
     $low_conn_trust     ||= 0.0
     get_notice_params
   end
@@ -8476,10 +8498,11 @@ module PandoraNet
         sel = node_model.select(filter, false, flds)
         if sel and sel.size>0
           $hunter_thread = Thread.new do
-            sleep(delay) if delay>0
+            sleep(0.1) if delay>0
             Thread.current[:active] = true
             Thread.current[:paused] = false
             $window.correct_hunt_btn_state
+            sleep(delay) if delay>0
             while (Thread.current[:active] != false) and sel and (sel.size>0)
               start_time = Time.now.to_i
               sel.each do |row|
@@ -8524,7 +8547,7 @@ module PandoraNet
                 sel = node_model.select(filter, false, flds)
                 if not restart
                   spend_time = Time.now.to_i - start_time
-                  need_pause = $min_hunt_round - spend_time
+                  need_pause = $hunt_period - spend_time
                   sleep(need_pause) if need_pause>0
                 end
                 Thread.stop if (Thread.current[:paused] and Thread.current[:active])
@@ -16269,7 +16292,7 @@ module PandoraGtk
             PandoraNet.start_or_stop_listen
           end
           if (($window.do_on_start & 4) != 0) and key and (not $hunter_thread)
-            PandoraNet.start_or_stop_hunt(true, 3)
+            PandoraNet.start_or_stop_hunt(true, 2)
           end
           $window.do_on_start = 0
         end

@@ -346,3 +346,4 @@ auto=>авто
 arch=>арх
 Delete this filter=>Удалить этот фильтр
 Add a new filter=>Добавить новый фильтр
+Idle timeout=>Таймаут бездействия

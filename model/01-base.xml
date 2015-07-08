@@ -378,13 +378,17 @@
     <max_session_count desc="Max session count" type="Integer" section="net" setting="400" />
     <hunt_step_pause desc="Hunt step pause" type="Real" section="net" setting="0.1" />
     <hunt_overflow_pause desc="Hunt overflow pause" type="Real" section="net" setting="1.0" />
-    <min_hunt_round desc="min_hunt_round" type="Real" section="net" setting="180.0" />
-    <ask_kinds_m10 desc="Ask kinds from -1.0" type="String" section="net" setting="" />
-    <ask_kinds_p01 desc="Ask kinds from +0.1" type="String" section="net" setting="2" />
-    <ask_kinds_p10 desc="Ask kinds from +1.0" type="String" section="net" setting="1,2" />
-    <give_kinds_m10 desc="Ask kinds from -1.0" type="String" section="net" setting="" />
-    <give_kinds_p01 desc="Give kinds from +0.1" type="String" section="net" setting="2" />
-    <give_kinds_p10 desc="Give kinds from +1.0" type="String" section="net" setting="1,2" />
+    <hunt_period desc="Hunt period (sec)" type="Real" section="net" setting="180.0" />
+    <exchange_timeout desc="Exchange timeout (sec)" type="Real" section="net" setting="5.0" />
+    <dialog_timeout desc="Dialog timeout (sec)" type="Real" section="net" setting="90.0" />
+    <captcha_timeout desc="Captcha timeout (sec)" type="Real" section="net" setting="120.0" />
+
+    <ask_kinds_m10 desc="Ask kinds above -1.0" type="String" section="net" setting="" />
+    <ask_kinds_p01 desc="Ask kinds above +0.1" type="String" section="net" setting="2" />
+    <ask_kinds_p10 desc="Ask kinds above +1.0" type="String" section="net" setting="1,2" />
+    <give_kinds_m10 desc="Ask kinds above -1.0" type="String" section="net" setting="" />
+    <give_kinds_p01 desc="Give kinds above +0.1" type="String" section="net" setting="2" />
+    <give_kinds_p10 desc="Give kinds above +1.0" type="String" section="net" setting="1,2" />
 
     <last_auth_key desc="Last auth key" type="Bigint" section="crypto" setting=",hex" />
 
