@@ -3178,14 +3178,20 @@ module PandoraModel
     res
   end
 
+  $keep_for_trust  = 0.5
+
   # Save record
   # RU: Сохранить запись
-  def self.save_record(kind, lang, values, models=nil, require_panhash=nil)
+  def self.save_record(kind, lang, values, models=nil, require_panhash=nil, support=:auto)
     res = false
     p '=======save_record  [kind, lang, values]='+[kind, lang, values].inspect
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
     ider = panobjectclass.ider
     model = PandoraUtils.get_model(ider, models)
+    if not require_panhash
+      require_panhash = values['panhash']
+      require_panhash ||= values[:panhash]
+    end
     panhash = model.panhash(values, lang)
     p 'panhash='+panhash.inspect
     if (not require_panhash) or (panhash==require_panhash)
@@ -3197,6 +3203,20 @@ module PandoraModel
       if sel and (sel.size>0)
         res = true
       else
+        if ((support==:auto) or support.nil?) and $keep_for_trust
+          creator = values['creator']
+          if creator
+            trust_or_num = PandoraCrypto.trust_to_panobj(creator, models)
+            if (trust_or_num.is_a? Float) and (trust_or_num >= $keep_for_trust)
+              support = :yes
+            end
+          end
+        end
+        panstate = 0
+        if support==:yes
+          panstate = (panstate | PandoraModel::PSF_Support)
+        end
+        values['panstate'] = panstate
         values['panhash'] = panhash
         values['modified'] = Time.now.to_i
         res = model.update(values, nil, nil)
@@ -3236,13 +3256,13 @@ module PandoraModel
 
   # Save records from PSON array
   # RU: Сохранить записи из массива PSON
-  def self.save_records(records, models=nil)
+  def self.save_records(records, models=nil, support=:auto)
     if records.is_a? Array
       records.each do |record|
         kind = record[0].ord
         lang = record[1].ord
         values = PandoraUtils.namepson_to_hash(record[2..-1])
-        if not PandoraModel.save_record(kind, lang, values, models)
+        if not PandoraModel.save_record(kind, lang, values, models, nil, support)
           PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 2')
         end
       end
@@ -4504,9 +4524,9 @@ module PandoraCrypto
 
   $person_trusts = {}
 
-  # Get trust to panobject by its panhash
-  # RU: Возвращает доверие к панобъекту по его панхэшу
-  def self.trust_in_panobj(panhash, models=nil)
+  # Get trust to panobject from current user or number of signs
+  # RU: Возвращает доверие к панобъекту от текущего пользователя или число подписей
+  def self.trust_to_panobj(panhash, models=nil)
     res = nil
     if panhash and (panhash != '')
       key_hash = current_user_or_key(false, false)
@@ -4601,7 +4621,7 @@ module PandoraCrypto
       key_vec = $open_keys[panhash]
       #p 'openkey key='+key_vec.inspect+' $open_keys.size='+$open_keys.size.inspect
       if key_vec
-        cur_trust = trust_in_panobj(panhash)
+        cur_trust = trust_to_panobj(panhash)
         key_vec[KV_Trust] = cur_trust if cur_trust
       elsif ($open_keys.size<$max_opened_keys)
         model = PandoraUtils.get_model('Key', models)
@@ -4623,7 +4643,7 @@ module PandoraCrypto
               #key_vec[KV_Pass] = passwd
               key_vec[KV_Panhash] = panhash
               key_vec[KV_Creator] = creator
-              key_vec[KV_Trust] = trust_in_panobj(panhash)
+              key_vec[KV_Trust] = trust_to_panobj(panhash)
 
               $open_keys[panhash] = key_vec
               break
@@ -4953,12 +4973,21 @@ module PandoraNet
   # RU: Индекс Base ID для рыбки в линии
   LN_Fish_Baseid  =   LO_Fish_key + 1
 
+  # Field indexes in a search request
+  # RU: Индексы полей в поисковом запросе
+  SR_Request   = 0
+  SR_Kind      = 1
+  SR_BaseId    = 2
+  SR_Index     = 3
+  SR_Time      = 4
+  SR_Session   = 5
+
   # Pool
   # RU: Пул
   class Pool
     attr_accessor :window, :sessions, :white_list, :fish_orders, :fish_ind, \
       :notice_list, :notice_ind, :time_now, :search_requests, :search_answers, \
-      :search_ind
+      :search_ind, :found_ind
 
     MaxWhiteSize = 500
     FishQueueSize = 100
@@ -4972,6 +5001,7 @@ module PandoraNet
       @fish_ind = -1
       @notice_ind = -1
       @search_ind = -1
+      @found_ind = 0
       @fish_orders = Array.new #PandoraUtils::RoundQueue.new(true)
       @notice_list = Array.new
       @search_requests = Array.new
@@ -5234,13 +5264,6 @@ module PandoraNet
       res
     end
 
-    SR_Request   = 0
-    SR_Kind      = 1
-    SR_BaseId    = 2
-    SR_Index     = 3
-    SR_Time      = 4
-    SR_Session   = 5
-
     # Search in bases
     # RU: Поиск в базах
     def search_in_bases(text, bases='auto', th=nil)
@@ -5300,7 +5323,7 @@ module PandoraNet
     # RU: Найти поисковый запрос в очереди
     def find_search_request(request, kind)
       @search_requests.select do |sr|
-        (sr[SR_Request] == request) and (sr[SR_Request] == kind)
+        (sr[SR_Request] == request) and (sr[SR_Kind] == kind)
       end
 	end
 
@@ -5308,13 +5331,17 @@ module PandoraNet
     # RU: Добавить запрос в поисковую очередь
     def add_search_request(request, kind, abase_id=nil, sess=nil, hunt=true)
       res = nil
+      p '===add_search_request(request, kind, abase_id, sess)='+[request, kind, abase_id, sess.object_id].inspect
       sel = find_search_request(request, kind)
       if sel and (sel.size>0)
+        p '---add_search_request already exist'
         res = true
       else
+        p '---add_search_request  NEW REQUEST'
         time = Time.now.to_i
         @search_requests << [request, kind, abase_id, @search_ind+1, time, sess]
         @search_ind += 1
+        $window.set_status_field(PandoraGtk::SF_Search, @search_requests.size.to_s)
         res = true
       end
       PandoraNet.start_hunt if hunt
@@ -5922,6 +5949,12 @@ module PandoraNet
       buf = (@conn_mode & 255).chr
       p 'send_conn_mode  buf='+buf.inspect
       add_send_segment(EC_News, true, AsciiString.new(), ECC_News_SessMode)
+    end
+
+    def skey_trust
+      res = @skey[PandoraCrypto::KV_Trust]
+      res = -1.0 if not (trust.is_a? Float)
+      res
     end
 
     # Accept received segment
@@ -6780,6 +6813,8 @@ module PandoraNet
           end
         when EC_Record
           p log_mes+' EC_Record: [rcode, rdata.bytesize]='+[rcode, rdata.bytesize].inspect
+          support = :auto
+          support = :yes if (skey_trust >= $keep_for_trust)
           if rcode>0
             kind = rcode
             if (@stage==ES_Exchange) or ((kind==PandoraModel::PK_Key) and (@stage==ES_KeyRequest))
@@ -6789,7 +6824,7 @@ module PandoraNet
               if @stage==ES_KeyRequest
                 panhash = params['srckey']
               end
-              res = PandoraModel.save_record(kind, lang, values, @recv_models, panhash)
+              res = PandoraModel.save_record(kind, lang, values, @recv_models, panhash, support)
               if res
                 if @stage==ES_KeyRequest
                   @stage = ES_Protocol
@@ -6806,7 +6841,7 @@ module PandoraNet
           elsif (@stage==ES_Exchange)
             records, len = PandoraUtils.pson_to_rubyobj(rdata)
             p log_mes+"!record2! recs="+records.inspect
-            PandoraModel.save_records(records, @recv_models)
+            PandoraModel.save_records(records, @recv_models, support)
           else
             err_scmd('Records came on wrong stage')
           end
@@ -6954,8 +6989,7 @@ module PandoraNet
                     p log_mes+'===ECC_Query_Rel'
                     from_time = rdata[0, 4].unpack('N')[0]
                     pankinds = rdata[4..-1]
-                    trust = @skey[PandoraCrypto::KV_Trust]
-                    trust = -1.0 if not (trust.is_a? Float)
+                    trust = skey_trust
                     p log_mes+'from_time, pankinds, trust='+[from_time, pankinds, trust].inspect
                     pankinds = PandoraCrypto.allowed_kinds(trust, pankinds)
                     p log_mes+'pankinds='+pankinds.inspect
@@ -7033,7 +7067,7 @@ module PandoraNet
                     if (search_req.is_a? Array) and (search_req.size>=2)
                       abase_id = search_req[SR_BaseId]
                       abase_id ||= @to_base_id
-                      if abase_id != pool.base_id
+                      if true #abase_id != pool.base_id
                         p log_mes+'ADD search req to pool list'
                         pool.add_search_request(search_req[SR_Request], search_req[SR_Kind], abase_id, self)
                       end
@@ -7069,7 +7103,9 @@ module PandoraNet
                     two_list, len = PandoraUtils.pson_to_rubyobj(rdata)
                     pson_records, created_list = two_list
                     p log_mes+'pson_records, created_list='+[pson_records, created_list].inspect
-                    PandoraModel.save_records(pson_records, @recv_models)
+                    support = :auto
+                    support = :yes if (skey_trust >= $keep_for_trust)
+                    PandoraModel.save_records(pson_records, @recv_models, support)
                     if (created_list.is_a? Array) and (created_list.size>0)
                       need_ph_list = PandoraModel.needed_records(created_list, @send_models)
                       @scmd = EC_Query
@@ -8024,13 +8060,13 @@ module PandoraNet
                   search_req.object_id].inspect
                 if search_req
                   req = search_req[SR_Request..SR_BaseId]
-                  p log_mes+'search_req='+req.inspect
+                  p log_mes+'search_req2='+req.inspect
                   p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
                   if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
                     # search request is not from this session/node, need resend
                     #res = search_in_bases(search_req[SR_Request], search_req[SR_Kind])
                     #if res and (res.size>0)
-                    p log_mes+'New search request: '+req.inspect
+                    p log_mes+'Send search request: '+req.inspect
                     #mykeyhash = PandoraCrypto.current_user_or_key(false)
                     #PandoraUtils.log_message(LM_Trace, _('Fishing to')+': [fish,host,port]' \
                     #    +[PandoraUtils.bytes_to_hex(fish_order[LO_Fish]), \
@@ -8618,6 +8654,7 @@ module PandoraGtk
   SF_Conn   = 6
   SF_Fish   = 7
   SF_Fisher = 8
+  SF_Search = 9
 
   # Advanced dialog window
   # RU: Продвинутое окно диалога
@@ -13752,7 +13789,7 @@ module PandoraGtk
           trust = nil
           #p PandoraUtils.bytes_to_hex(panhash0)
           #p 'trust or num'
-          trust_or_num = PandoraCrypto.trust_in_panobj(panhash0)
+          trust_or_num = PandoraCrypto.trust_to_panobj(panhash0)
           trust = trust_or_num if (trust_or_num.is_a? Float)
           dialog.vouch_btn.active = (trust_or_num != nil)
           dialog.vouch_btn.inconsistent = (trust_or_num.is_a? Integer)
@@ -15848,6 +15885,7 @@ module PandoraGtk
     # RU: Размер пачки, обрабатываемой за цикл
     HuntTrain       = 10     #10 nodes at a heat
     BaseGarbTrain   = 3      #3 records at a heat
+    SearchTrain     = 3      #3 request at a heat
 
     # Initialize scheduler (tasks, hunter, base gabager, mem gabager)
     # RU: Инициировать планировщик (задачи, охотник, мусорщики баз и памяти)
@@ -15958,6 +15996,24 @@ module PandoraGtk
               end
               Thread.pass
               @hunt_node_id += HuntTrain
+            end
+
+            # Search spider
+            processed = SearchTrain
+            while (pool.found_ind <= pool.search_ind) and (processed > 0)
+              search_req = pool.search_requests[pool.found_ind]
+              p '####  Spider  [size, @found_ind, obj_id]='+[pool.search_requests.size, pool.found_ind, \
+                search_req.object_id].inspect
+              if search_req
+                req = search_req[SR_Request..SR_BaseId]
+                p log_mes+'search_req3='+req.inspect
+                #p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
+                #if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
+                processed -= 1
+              else
+                processed = 0
+              end
+              pool.found_ind += 1
             end
 
             # Base garbager
@@ -16158,6 +16214,9 @@ module PandoraGtk
       end
       add_status_field(SF_Fisher, '0') do
         do_menu_act('Fisher')
+      end
+      add_status_field(SF_Search, '0') do
+        do_menu_act('Search')
       end
 
       vbox = Gtk::VBox.new
