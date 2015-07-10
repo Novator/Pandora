@@ -4981,6 +4981,7 @@ module PandoraNet
   SR_Index     = 3
   SR_Time      = 4
   SR_Session   = 5
+  SR_Answer    = 6
 
   # Pool
   # RU: Пул
@@ -16004,9 +16005,10 @@ module PandoraGtk
               search_req = pool.search_requests[pool.found_ind]
               p '####  Spider  [size, @found_ind, obj_id]='+[pool.search_requests.size, pool.found_ind, \
                 search_req.object_id].inspect
-              if search_req
+              if search_req and (not search_req[SR_Answer])
                 req = search_req[SR_Request..SR_BaseId]
                 p log_mes+'search_req3='+req.inspect
+                search_in_bases(search_req[SR_Request], search_req[SR_Kind])
                 #p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
                 #if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
                 processed -= 1
