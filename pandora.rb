@@ -5326,7 +5326,7 @@ module PandoraNet
       @search_requests.select do |sr|
         (sr[SR_Request] == request) and (sr[SR_Kind] == kind)
       end
-	end
+  end
 
     # Add request to search queue
     # RU: Добавить запрос в поисковую очередь
@@ -7326,7 +7326,7 @@ module PandoraNet
       @send_state     = send_state_add
       @fish_ind       = 0
       @notice_ind     = 0
-      @search_ind	  = 0
+      @search_ind   = 0
       #@fishes         = Array.new
       @hooks          = Array.new
       @read_queue     = PandoraUtils::RoundQueue.new
@@ -16005,10 +16005,11 @@ module PandoraGtk
               search_req = pool.search_requests[pool.found_ind]
               p '####  Spider  [size, @found_ind, obj_id]='+[pool.search_requests.size, pool.found_ind, \
                 search_req.object_id].inspect
-              if search_req and (not search_req[SR_Answer])
-                req = search_req[SR_Request..SR_BaseId]
-                p log_mes+'search_req3='+req.inspect
-                search_in_bases(search_req[SR_Request], search_req[SR_Kind])
+              if search_req and (not search_req[PandoraNet::SR_Answer])
+                req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
+                p 'search_req3='+req.inspect
+                res1 = pool.search_in_bases(search_req[PandoraNet::SR_Request], search_req[PandoraNet::SR_Kind])
+                p res1
                 #p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
                 #if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
                 processed -= 1
