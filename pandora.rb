@@ -9534,7 +9534,19 @@ module PandoraGtk
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
       :keep_btn, :rate_label, :vouch_btn, :follow_btn, :trust_scale, :trust0, :public_btn, \
-      :public_scale, :lang_entry, :format, :view_buffer, :last_sw, :font_desc
+      :public_scale, :lang_entry, :last_sw, :font_desc
+
+    class BodyScrolledWindow < Gtk::ScrolledWindow
+      attr_accessor :field, :link_name, :text_view, :format, :view_buffer
+    end
+
+    def get_bodywin(page_num=nil)
+      res = nil
+      page_num ||= notebook.page
+      child = notebook.get_nth_page(page_num)
+      res = child if (child.is_a? BodyScrolledWindow)
+      res
+    end
 
     # Add menu item
     # RU: Добавляет пункт меню
@@ -9543,21 +9555,11 @@ module PandoraGtk
       menu.append(mi)
       mi.signal_connect('activate') do |mi|
         label.label = mi.label
-        @format = mi.label.to_s
-        p 'format changed to: '+format.to_s
+        if bw = get_bodywin
+          bw.format = mi.label.to_s
+          p 'format changed to: '+bw.format.to_s
+        end
       end
-    end
-
-    # Set view text buffer
-    # RU: Задает тестовый буфер для просмотра
-    def set_view_buffer(format, view_buffer, raw_buffer)
-      view_buffer.text = raw_buffer.text
-    end
-
-    # Set raw text buffer
-    # RU: Задает сырой тестовый буфер
-    def set_raw_buffer(format, raw_buffer, view_buffer)
-      raw_buffer.text = view_buffer.text
     end
 
     def get_lines(tv, first_y, last_y, buffer_coords, numbers)
@@ -9579,128 +9581,10 @@ module PandoraGtk
       count
     end
 
-    # Set buffers
-    # RU: Задать буферы
-    def set_buffers(tv=nil)
-      if not tv
-        p '!!!!!!!!!!!!!'
-        p notebook.page
-        child = notebook.get_nth_page(notebook.page)
-        if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::Viewport) \
-        and child.children[0].child
-          #and (child.children[0].child.is_a? Gtk::TextView)
-          p 'child  ch[0]='+[child, child.children[0], child.children[0].child].inspect
-          p 'child  ch[0]='+[child.children[0].child.children].inspect
-          p tv = child.children[0].child
-        end
-      end
-      if tv
-        @raw_buffer ||= tv.buffer
-
-        if @view_mode
-          tv.buffer = @view_buffer if tv.buffer != @view_buffer
-        elsif tv.buffer != @raw_buffer
-          tv.buffer = @raw_buffer
-        end
-
-        if @view_mode
-          @tv_style ||= tv.modifier_style
-          tv.modify_font(@font_desc)
-          tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
-          tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
-          tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
-          tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
-          tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
-          #style = tv.modifier_style
-          #p style.methods
-          #style.xthickness = 0
-          #style.ythickness = 0
-          #tv.modify_style(style)
-          set_view_buffer(@format, @view_buffer, @raw_buffer)
-        else
-          #tv.style = @tv_style
-          tv.modify_style(@tv_style)
-          tv.modify_font(nil)
-          #tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
-          #tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
-          #tv.modify_cursor(Gdk::Color.parse('#111111'), Gdk::Color.parse('#111111'))
-          #tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#EEEEEE'))
-          #tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#111111'))
-          set_raw_buffer(@format, @raw_buffer, @view_buffer)
-        end
-      end
-    end
-
-    # Set tag for selection
-    # RU: Задать тэг для выделенного
-    def set_tag(tag)
-      if tag
-        child = notebook.get_nth_page(notebook.page)
-        if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::Viewport) \
-        and (child.children[0].child.is_a? Gtk::TextView)
-          tv = child.children[0].child
-          buffer = tv.buffer
-
-          if @view_buffer==buffer
-            bounds = buffer.selection_bounds
-            @view_buffer.apply_tag(tag, bounds[0], bounds[1])
-          else
-            bounds = buffer.selection_bounds
-            ltext = rtext = ''
-            case @format
-              when 'bbcode'
-                t = ''
-                case tag
-                  when 'bold'
-                    t = 'b'
-                  when 'italic'
-                    t = 'i'
-                  when 'strike'
-                    t = 's'
-                  when 'undline'
-                    t = 'u'
-                end
-                ltext = '['+t+']'
-                rtext = '[/'+t+']'
-              when 'orgmode'
-                case tag
-                  when 'bold'
-                    ltext = rtext = '*'
-                  when 'italic'
-                    ltext = rtext = '/'
-                  when 'strike'
-                    ltext = rtext = '-'
-                  when 'undline'
-                    ltext = rtext = '_'
-                end
-            end
-            lpos = bounds[0].offset
-            rpos = bounds[1].offset
-            if ltext != ''
-              @raw_buffer.insert(@raw_buffer.get_iter_at_offset(lpos), ltext)
-              lpos += ltext.length
-              rpos += ltext.length
-            end
-            if rtext != ''
-              @raw_buffer.insert(@raw_buffer.get_iter_at_offset(rpos), rtext)
-            end
-            p [lpos, rpos]
-            #buffer.selection_bounds = [bounds[0], rpos]
-            @raw_buffer.move_mark('selection_bound', @raw_buffer.get_iter_at_offset(lpos))
-            @raw_buffer.move_mark('insert', @raw_buffer.get_iter_at_offset(rpos))
-            #@raw_buffer.get_iter_at_offset(0)
-          end
-        end
-      end
-    end
-
-    class BodyScrolledWindow < Gtk::ScrolledWindow
-      attr_accessor :field, :link_name, :text_view
-    end
-
     # Start loading image from file
     # RU: Запускает загрузку картинки в файл
     def start_image_loading(filename)
+      widget = nil
       begin
         image_stream = File.open(filename, 'rb')
         image = Gtk::Image.new
@@ -10000,6 +9884,114 @@ module PandoraGtk
       end
     end
 
+    # Set tag for selection
+    # RU: Задать тэг для выделенного
+    def set_tag(tag)
+      if tag
+        bw = get_bodywin
+        if bw
+          tv = bw.text_view
+          buffer = tv.buffer
+
+          if @view_buffer==buffer
+            bounds = buffer.selection_bounds
+            @view_buffer.apply_tag(tag, bounds[0], bounds[1])
+          else
+            bounds = buffer.selection_bounds
+            ltext = rtext = ''
+            case @format
+              when 'bbcode'
+                t = ''
+                case tag
+                  when 'bold'
+                    t = 'b'
+                  when 'italic'
+                    t = 'i'
+                  when 'strike'
+                    t = 's'
+                  when 'undline'
+                    t = 'u'
+                end
+                ltext = '['+t+']'
+                rtext = '[/'+t+']'
+              when 'orgmode'
+                case tag
+                  when 'bold'
+                    ltext = rtext = '*'
+                  when 'italic'
+                    ltext = rtext = '/'
+                  when 'strike'
+                    ltext = rtext = '-'
+                  when 'undline'
+                    ltext = rtext = '_'
+                end
+            end
+            lpos = bounds[0].offset
+            rpos = bounds[1].offset
+            if ltext != ''
+              @raw_buffer.insert(@raw_buffer.get_iter_at_offset(lpos), ltext)
+              lpos += ltext.length
+              rpos += ltext.length
+            end
+            if rtext != ''
+              @raw_buffer.insert(@raw_buffer.get_iter_at_offset(rpos), rtext)
+            end
+            p [lpos, rpos]
+            #buffer.selection_bounds = [bounds[0], rpos]
+            @raw_buffer.move_mark('selection_bound', @raw_buffer.get_iter_at_offset(lpos))
+            @raw_buffer.move_mark('insert', @raw_buffer.get_iter_at_offset(rpos))
+            #@raw_buffer.get_iter_at_offset(0)
+          end
+        end
+      end
+    end
+
+    # Set buffers
+    # RU: Задать буферы
+    def set_buffers(tv=nil)
+      if not tv
+        bw = get_bodywin
+        if bw
+          tv = bw.text_view if bw.text_view.is_a? Gtk::TextView
+        end
+      end
+      if tv
+        @raw_buffer ||= tv.buffer
+
+        if @view_mode
+          tv.buffer = @view_buffer if (tv.buffer != @view_buffer)
+        elsif tv.buffer != @raw_buffer
+          tv.buffer = @raw_buffer
+        end
+
+        if @view_mode
+          @tv_style ||= tv.modifier_style
+          tv.modify_font(@font_desc)
+          tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+          tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
+          tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
+          tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
+          tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+          #style = tv.modifier_style
+          #p style.methods
+          #style.xthickness = 0
+          #style.ythickness = 0
+          #tv.modify_style(style)
+          @view_buffer.text = @raw_buffer.text #if @format
+        else
+          #tv.style = @tv_style
+          tv.modify_style(@tv_style)
+          tv.modify_font(nil)
+          #tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
+          #tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+          #tv.modify_cursor(Gdk::Color.parse('#111111'), Gdk::Color.parse('#111111'))
+          #tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#EEEEEE'))
+          #tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#111111'))
+          @raw_buffer.text = @view_buffer.text #if @format
+        end
+      end
+    end
+
     # Create fields dialog
     # RU: Создать форму с полями
     def initialize(apanobject, afields=[], *args)
@@ -10098,6 +10090,7 @@ module PandoraGtk
 
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Type', true) do |btn|
         @view_mode = btn.active?
+        p 'Type  @view_mode='+@view_mode.inspect
         set_buffers
       end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::INDEX, 'Color', true) do |btn|
@@ -10182,18 +10175,17 @@ module PandoraGtk
           toolbar2.hide
           hbox.show
         else
-          child = notebook.get_nth_page(page_num)
-          if (child.is_a? BodyScrolledWindow)
-            p '---BodyScrolledWindow'
+          bodywin = get_bodywin(page_num)
+          p 'bodywin='+bodywin.inspect
+          if bodywin
             toolbar2.hide
             hbox.hide
-            textsw = child
-            field = textsw.field
+            field = bodywin.field
             if field
               link_name = field[FI_Widget].text
               link_name.chomp! if link_name
               bodywid = field[FI_Widget2]
-              if (not bodywid) or (link_name != textsw.link_name)
+              if (not bodywid) or (link_name != bodywin.link_name)
                 @last_sw = child
                 if bodywid
                   bodywid.destroy if (not bodywid.destroyed?)
@@ -10203,16 +10195,25 @@ module PandoraGtk
                 if link_name and (link_name != '')
                   if File.exist?(link_name)
                     ext = File.extname(link_name)
-                    if ext and (['.jpg','.gif','.png'].include? ext.downcase)
-                      image = start_image_loading(link_name)
-                      bodywid = image
-                      textsw.link_name = link_name
-                    elsif ext and (['.txt','.rb','.xml','.py','.csv','.sh'].include? ext.downcase)
-                      p 'Read file: '+link_name
-                      File.open(link_name, 'r') do |file|
-                        field[FI_Value] = file.read
+                    ext_dc = ext.downcase
+                    if ext
+                      if (['.jpg','.gif','.png'].include? ext_dc)
+                        image = start_image_loading(link_name)
+                        bodywid = image
+                        bodywin.link_name = link_name
+                      elsif (['.txt','.rb','.xml','.py','.csv','.sh'].include? ext_dc)
+                        if ext_dc=='.rb'
+                          @format = 'ruby'
+                        end
+                        p 'Read file: '+link_name
+                        File.open(link_name, 'r') do |file|
+                          field[FI_Value] = file.read
+                        end
+                      else
+                        ext = nil
                       end
-                    else
+                    end
+                    if not ext
                       field[FI_Value] = '@'+link_name
                     end
                   else
@@ -10278,19 +10279,19 @@ module PandoraGtk
 
                 if not field[FI_Widget2]
                   field[FI_Widget2] = bodywid
-                  #textsw.add_with_viewport(bodywid)
-                  textsw.add(bodywid)
+                  #bodywin.add_with_viewport(bodywid)
+                  bodywin.add(bodywid)
                 end
                 if bodywid.is_a? Gtk::TextView
+                  bodywin.text_view = bodywid
                   bodywid.buffer.text = field[FI_Value].to_s
                   set_buffers(bodywid)
                   toolbar.show
                 end
-                textsw.show_all
+                bodywin.show_all
               end
             end
           else
-            p '---NOT BodyScrolledWindow'
             toolbar.hide
             hbox.hide
             toolbar2.show
@@ -10512,19 +10513,19 @@ module PandoraGtk
         #if (atype=='Blob') or (atype=='Text')
         aview = field[FI_View]
         if (aview=='blob') or (aview=='text')
-          textsw = BodyScrolledWindow.new(nil, nil)
-          textsw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+          bodywin = BodyScrolledWindow.new(nil, nil)
+          bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
 
           image = Gtk::Image.new(Gtk::Stock::DND, Gtk::IconSize::MENU)
           image.set_padding(2, 0)
           label_box = TabLabelBox.new(image, atext, nil, false, 0)
-          page = notebook.append_page(textsw, label_box)
+          page = notebook.append_page(bodywin, label_box)
 
           #field[FI_Widget] = textview
 
           #field << page
           @text_fields << field
-          textsw.field = field
+          bodywin.field = field
 
           #@fields.delete_at(i) if (atype=='Text')
         end
@@ -13890,7 +13891,7 @@ module PandoraGtk
             entry = field[FI_Widget]
             if entry.text == ''
               textview = field[FI_Widget2]
-              if (not textview.destroyed?) and (textview.is_a? Gtk::TextView)
+              if textview and (not textview.destroyed?) and (textview.is_a? Gtk::TextView)
                 text = textview.buffer.text
                 if text and (text.size>0)
                   field[FI_Value] = text
