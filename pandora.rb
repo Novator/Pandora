@@ -3282,6 +3282,26 @@ module PandoraModel
     need_list
   end
 
+  $kind_list = nil
+
+  # Get kind list of all models
+  # RU: Возвращает список типов всех моделей
+  def self.get_kind_list
+    res = $kind_list
+    if not res
+      $kind_list = []
+      res = $kind_list
+      kinds = (1..254)
+      kinds = PandoraUtils.str_to_bytes(kinds)
+      kinds.each do |kind|
+        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+        res << [kind, panobjectclass.ider, \
+          _(PandoraUtils.get_name_or_names(panobjectclass.name))] if panobjectclass
+      end
+    end
+    res
+  end
+
   # Get panhash list of modified recs from time for required kinds
   # RU: Ищет список панхэшей изменённых с заданого времени для заданных сортов
   def self.modified_records(from_time=nil, kinds=nil, models=nil)
@@ -5267,7 +5287,7 @@ module PandoraNet
 
     # Search in bases
     # RU: Поиск в базах
-    def search_in_bases(text, bases='auto', th=nil)
+    def search_in_bases(text, bases='auto', th=nil, from_id=nil, limit=nil)
 
       def name_filter(fld, val)
         res = nil
@@ -5281,12 +5301,13 @@ module PandoraNet
         [res, AsciiString.new(val)]
       end
 
-      res = nil
-      while ((not th) or th[:processing]) and (not res)
+      model = nil
+      fields, sort, word1, word2, word3, words, word1dup, filter1, filter2 = nil
+      bases = 'Person' if (bases == 'auto')
+      if bases == 'Person'
         model = PandoraUtils.get_model('Person')
         fields = 'first_name, last_name, birth_day'
         sort = 'first_name, last_name'
-        limit = 100
         word1, word2, word3, words = text.split
         p [word1, word2, word3, words]
         word1dup = word1.dup
@@ -5299,24 +5320,31 @@ module PandoraNet
           p word3 = PandoraUtils.str_to_date(word3).to_i
           p word4 = PandoraUtils.str_to_date(word4).to_i if word4
         end
-        if word4
-          filter = [filter1+' AND '+filter2+' AND birth_day>=? AND birth_day<=?', word1, word2, word3, word4]
-          res = model.select(filter, false, fields, sort, limit)
-        elsif word3
-          filter = [filter1+' AND '+filter2+' AND birth_day=?', word1, word2, word3]
-          res = model.select(filter, false, fields, sort, limit)
-        elsif word2
-          filter = [filter1+' AND '+filter2, word1, word2]
-          res = model.select(filter, false, fields, sort, limit)
-        else
-          filter2, word1dup = name_filter('last_name', word1dup)
-          filter = [filter1+' OR '+filter2, word1, word1dup]
-          res = model.select(filter, false, fields, sort, limit)
-        end
-        res ||= []
-        res.uniq!
-        res.compact!
       end
+      limit ||= 100
+
+      res = nil
+      while ((not th) or th[:processing]) and (not res) and model
+        if model
+          if word4
+            filter = [filter1+' AND '+filter2+' AND birth_day>=? AND birth_day<=?', word1, word2, word3, word4]
+            res = model.select(filter, false, fields, sort, limit)
+          elsif word3
+            filter = [filter1+' AND '+filter2+' AND birth_day=?', word1, word2, word3]
+            res = model.select(filter, false, fields, sort, limit)
+          elsif word2
+            filter = [filter1+' AND '+filter2, word1, word2]
+            res = model.select(filter, false, fields, sort, limit)
+          else
+            filter2, word1dup = name_filter('last_name', word1dup)
+            filter = [filter1+' OR '+filter2, word1, word1dup]
+            res = model.select(filter, false, fields, sort, limit)
+          end
+        end
+      end
+      res ||= []
+      res.uniq!
+      res.compact!
       res
     end
 
@@ -7679,7 +7707,7 @@ module PandoraNet
                     end
 
                     if not ok1comm
-                      PandoraUtils.log_message(LM_Error, 'Bad first command')
+                      PandoraUtils.log_message(LM_Error, _('Bad first command'))
                       @conn_state = CS_Stoping
                     end
                   end
@@ -9527,6 +9555,8 @@ module PandoraGtk
     end
   end
 
+  $font_desc = nil
+
   # Dialog with enter fields
   # RU: Диалог с полями ввода
   class FieldsDialog < AdvancedDialog
@@ -9534,10 +9564,418 @@ module PandoraGtk
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
       :keep_btn, :rate_label, :vouch_btn, :follow_btn, :trust_scale, :trust0, :public_btn, \
-      :public_scale, :lang_entry, :last_sw, :font_desc
+      :public_scale, :lang_entry, :last_sw
 
     class BodyScrolledWindow < Gtk::ScrolledWindow
-      attr_accessor :field, :link_name, :text_view, :format, :view_buffer
+      attr_accessor :field, :link_name, :text_view, :format, :view_buffer, :view_mode, :color_mode
+
+      RUBY_KEYWORDS = 'begin end module class def if then else elsif while unless do case when require yield rescue include'.split
+      RUBY_KEYWORDS2 = 'self true false not and or nil '.split
+
+      def ruby_tag_line(str, index=0, mode=0)
+
+        def ident_char?(c)
+          ('a'..'z').include?(c) or ('A'..'Z').include?(c) or (c == '_')
+        end
+
+        def capt_char?(c)
+          ('A'..'Z').include?(c) or ('0'..'9').include?(c) or (c == '_')
+        end
+
+        def word_char?(c)
+          ('a'..'z').include?(c) or ('A'..'Z').include?(c) or ('0'..'9').include?(c) or (c == '_')
+        end
+
+        def oper_char?(c)
+          '.+,-=*^%$()<>&[]:!?~{}|/\\'.include?(c)
+        end
+
+        def rewind_ident(str, i, ss, pc, prev_kw=nil)
+
+          def check_func(prev_kw, c, i, ss, str)
+            if (prev_kw=='def') and (c=='.')
+              yield(:operator, i, i+1)
+              i += 1
+              i1 = i
+              i += 1 while (i<ss) and ident_char?(str[i])
+              i += 1 if (i<ss) and ('?!'.include?(str[i]))
+              i2 = i
+              yield(:function, i1, i2)
+            end
+            i
+          end
+
+          kw = nil
+          c = str[i]
+          fc = c
+          i1 = i
+          i += 1
+          big_cons = true
+          while (i<ss)
+            c = str[i]
+            if ('a'..'z').include?(c)
+              big_cons = false if big_cons
+            elsif not capt_char?(c)
+              break
+            end
+            i += 1
+          end
+          #p 'rewind_ident(str, i1, i, ss, pc)='+[str, i1, i, ss, pc].inspect
+          #i -= 1
+          i2 = i
+          if ('A'..'Z').include?(fc)
+            if prev_kw=='class'
+              yield(:class, i1, i2)
+            elsif prev_kw=='module'
+              yield(:module, i1, i2)
+            else
+              if big_cons
+                yield(:big_constant, i1, i2)
+              else
+                yield(:constant, i1, i2)
+              end
+              i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
+                yield(tag, id1, id2)
+              end
+            end
+          else
+            if pc==':'
+              yield(:symbol, i1-1, i2)
+            elsif pc=='@'
+              if (i1-2>0) and (str[i1-2]=='@')
+                yield(:classvar, i1-2, i2)
+              else
+                yield(:instvar, i1-1, i2)
+              end
+            elsif pc=='$'
+              yield(:global, i1-1, i2)
+            else
+              s = str[i1, i2-i1]
+              if RUBY_KEYWORDS.include?(s)
+                yield(:keyword, i1, i2)
+                kw = s
+              elsif RUBY_KEYWORDS2.include?(s)
+                yield(:keyword2, i1, i2)
+                if (s=='self') and (prev_kw=='def')
+                  i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
+                    yield(tag, id1, id2)
+                  end
+                end
+              else
+                i += 1 if (i<ss) and ('?!'.include?(str[i]))
+                if prev_kw=='def'
+                  yield(:function, i1, i)
+                else
+                  yield(:identifer, i1, i)
+                end
+              end
+            end
+          end
+          [i, kw]
+        end
+
+        ss = str.size
+        if ss>0
+          i = 0
+          if (mode == 1)
+            if (str[0,4] == '=end')
+              mode = 0
+              i = 4
+              yield(:comment, index, index + i)
+            else
+              yield(:comment, index, index + ss)
+            end
+          elsif (mode == 0) and (str[0] == '=') and (str[1,5] == 'begin')
+            mode = 1
+            yield(:comment, index, index + ss)
+          end
+          if (mode != 1)
+            i += 1 while (i<ss) and ((str[i] == ' ') or (str[i] == "\t"))
+            pc = ' '
+            kw, kw2 = nil
+            while (i<ss)
+              c = str[i]
+              if (c != ' ') and (c != "\t")
+                if (c == '#')
+                  yield(:comment, index + i, index + ss)
+                  break
+                elsif (c == "'") or (c == '"') or (c == '/')
+                  qc = c
+                  i1 = i
+                  i += 1
+                  if (i<ss)
+                    c = str[i]
+                    if c==qc
+                      i += 1
+                    else
+                      pc = ' '
+                      while (i<ss) and ((c != qc) or (pc == "\\") or (pc == qc))
+                        if (pc=="\\")
+                          pc = ' '
+                        else
+                          pc = c
+                        end
+                        c = str[i]
+                        if (qc=='"') and (c=='{') and (pc=='#')
+                          yield(:string, index + i1, index + i - 1)
+                          yield(:operator, index + i - 1, index + i + 1)
+                          i, kw2 = rewind_ident(str, i, ss, ' ') do |tag, id1, id2|
+                            yield(tag, index + id1, index + id2)
+                          end
+                          i1 = i
+                        end
+                        i += 1
+                      end
+                    end
+                  end
+                  if (qc == '/')
+                    i += 1 while (i<ss) and ('imxouesn'.include?(str[i]))
+                    yield(:regex, index + i1, index + i)
+                  else
+                    yield(:string, index + i1, index + i)
+                  end
+                elsif ident_char?(c)
+                  i, kw = rewind_ident(str, i, ss, pc, kw) do |tag, id1, id2|
+                    yield(tag, index + id1, index + id2)
+                  end
+                  pc = ' '
+                elsif (c=='$') and (i+1<ss) and ('~'.include?(str[i+1]))
+                  i1 = i
+                  i += 2
+                  yield(:global, index + i1, index + i)
+                  pc = ' '
+                elsif ((c==':') or (c=='$')) and (i+1<ss) and (ident_char?(str[i+1]))
+                  i += 1
+                  pc = c
+                  i, kw2 = rewind_ident(str, i, ss, pc) do |tag, id1, id2|
+                    yield(tag, index + id1, index + id2)
+                  end
+                  pc = ' '
+                elsif oper_char?(c)
+                  i1 = i
+                  i += 1
+                  while (i<ss) and oper_char?(str[i])
+                    i += 1
+                  end
+                  if i<ss
+                    pc = ' '
+                    c = str[i]
+                  end
+                  yield(:operator, index + i1, index + i)
+                elsif ('0'..'9').include?(c)
+                  i1 = i
+                  i += 1
+                  if (i<ss) and ((str[i]=='x') or (str[i]=='X'))
+                    i += 1
+                    while (i<ss)
+                      c = str[i]
+                      break unless (('0'..'9').include?(c) or ('A'..'F').include?(c))
+                      i += 1
+                    end
+                    yield(:hexadec, index + i1, index + i)
+                  else
+                    while (i<ss)
+                      c = str[i]
+                      break unless (('0'..'9').include?(c) or (c=='.') or (c=='e'))
+                      i += 1
+                    end
+                    if i<ss
+                      i -= 1 if str[i-1]=='.'
+                      pc = ' '
+                    end
+                    yield(:number, index + i1, index + i)
+                  end
+                else
+                  #yield(:keyword, index + i, index + ss/2)
+                  #break
+                  pc = c
+                  i += 1
+                end
+              else
+                pc = c
+                i += 1
+              end
+            end
+          end
+        end
+        mode
+      end
+
+      def set_tags(buf, line1, line2, clean=nil)
+        #p 'line1, line2, view_mode='+[line1, line2, view_mode].inspect
+        if (not view_mode) and color_mode
+          buf.begin_user_action do
+            line = line1
+            iter1 = buf.get_iter_at_line(line)
+            iterN = nil
+            mode = 0
+            while line<=line2
+              line += 1
+              if line<buf.line_count
+                iterN = buf.get_iter_at_line(line)
+                iter2 = buf.get_iter_at_offset(iterN.offset-1)
+              else
+                iter2 = buf.end_iter
+                line = line2+1
+              end
+
+              text = buf.get_text(iter1, iter2)
+              offset1 = iter1.offset
+              buf.remove_all_tags(iter1, iter2) if clean
+              #buf.apply_tag('keyword', iter1, iter2)
+              case @format
+                when 'ruby'
+                  mode = ruby_tag_line(text, offset1, mode) do |tag, start, last|
+                    buf.apply_tag(tag.to_s,
+                      buf.get_iter_at_offset(start),
+                      buf.get_iter_at_offset(last))
+                  end
+              end
+              #p mode
+              iter1 = iterN if iterN
+              #Gtk.main_iteration
+            end
+          end
+        end
+      end
+
+      def initialize(*args)
+        super(*args)
+        @format = nil
+        @view_mode = true
+        @color_mode = true
+        @view_buffer = Gtk::TextBuffer.new
+
+        @view_buffer.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
+        @view_buffer.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
+        @view_buffer.create_tag('strike', 'strikethrough' => true)
+        @view_buffer.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
+        @view_buffer.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
+        @view_buffer.create_tag('link', {'foreground' => 'blue', 'underline' => Pango::AttrUnderline::SINGLE})
+        @view_buffer.create_tag('linked', {'foreground' => 'navy', 'underline' => Pango::AttrUnderline::SINGLE})
+        @view_buffer.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
+        @view_buffer.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
+        @view_buffer.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
+        @view_buffer.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
+
+        @view_buffer.create_tag('string', {'foreground' => '#00f000'})
+        @view_buffer.create_tag('symbol', {'foreground' => '#008020'})
+        @view_buffer.create_tag('comment', {'foreground' => '#8080e0'})
+        @view_buffer.create_tag('keyword', {'foreground' => '#ffffff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+        @view_buffer.create_tag('keyword2', {'foreground' => '#ffffff'})
+        @view_buffer.create_tag('function', {'foreground' => '#f12111'})
+        @view_buffer.create_tag('number', {'foreground' => '#f050e0'})
+        @view_buffer.create_tag('hexadec', {'foreground' => '#e070e7'})
+        @view_buffer.create_tag('constant', {'foreground' => '#60eedd'})
+        @view_buffer.create_tag('big_constant', {'foreground' => '#d080e0'})
+        @view_buffer.create_tag('identifer', {'foreground' => '#ffff33'})
+        @view_buffer.create_tag('global', {'foreground' => '#ffa500'})
+        @view_buffer.create_tag('instvar', {'foreground' => '#ff85a2'})
+        @view_buffer.create_tag('classvar', {'foreground' => '#ff79ec'})
+        @view_buffer.create_tag('operator', {'foreground' => '#ffffff'})
+        @view_buffer.create_tag('class', {'foreground' => '#ff1100', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+        @view_buffer.create_tag('module', {'foreground' => '#1111ff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+        @view_buffer.create_tag('regex', {'foreground' => '#105090'})
+
+        @view_buffer.signal_connect('changed') do |buf|  #modified-changed
+          mark = buf.get_mark('insert')
+          iter = buf.get_iter_at_mark(mark)
+          line1 = iter.line
+          set_tags(buf, line1, line1, true)
+          false
+        end
+
+        @view_buffer.signal_connect('insert-text') do |buf, iter, text, len|
+          $view_buffer_off1 = iter.offset
+          false
+        end
+
+        @view_buffer.signal_connect('paste-done') do |buf|
+          if $view_buffer_off1
+            line1 = buf.get_iter_at_offset($view_buffer_off1).line
+            mark = buf.get_mark('insert')
+            iter = buf.get_iter_at_mark(mark)
+            line2 = iter.line
+            $view_buffer_off1 = iter.offset
+            set_tags(buf, line1, line2)
+
+            #tv = self.text_view
+            #tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0) if tv
+            #adj = tv.parent.vadjustment
+            #adj.value = adj.upper #- adj.page_size
+            #adj.value_changed       # bug: not scroll to end
+            #adj.value = adj.upper   # if add many lines
+            #mark = buf.create_mark(nil, buf.end_iter, false)
+            #tv.scroll_to_mark(mark, 0, true, 0.0, 1.0)
+            #tv.scroll_to_mark(buf.get_mark('insert'), 0.0, true, 0.0, 1.0)
+            #buf.delete_mark(mark)
+          end
+          false
+        end
+
+      end
+
+      def raw_buffer
+        res = nil
+        res = text_view.buffer if text_view
+        res
+      end
+
+      # Set buffers
+      # RU: Задать буферы
+      def set_buffers
+        tv = text_view
+        bw = self
+        text_changed = false
+        if bw.view_mode
+          if (tv.buffer != bw.view_buffer)
+            tv.buffer = bw.view_buffer
+            text_changed = true
+          end
+        elsif tv.buffer != bw.raw_buffer
+          tv.buffer = bw.raw_buffer
+          text_changed = true
+        end
+
+        if bw.view_mode
+          #tv.style = @tv_style
+          tv.modify_style(@tv_style)
+          tv.modify_font(nil)
+          #tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
+          #tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+          #tv.modify_cursor(Gdk::Color.parse('#111111'), Gdk::Color.parse('#111111'))
+          #tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#EEEEEE'))
+          #tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#111111'))
+          if text_changed
+            bw.raw_buffer.text = bw.view_buffer.text
+          else
+            buf = bw.raw_buffer
+            buf.remove_all_tags(buf.start_iter, buf.end_iter)
+          end
+        else
+          @tv_style ||= tv.modifier_style
+          tv.modify_font($font_desc)
+          tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+          tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
+          tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
+          tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
+          tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+          #style = tv.modifier_style
+          #p style.methods
+          #style.xthickness = 0
+          #style.ythickness = 0
+          #tv.modify_style(style)
+          buf = bw.view_buffer
+          if text_changed
+            bw.view_buffer.text = bw.raw_buffer.text
+          else
+            buf.remove_all_tags(buf.start_iter, buf.end_iter)
+          end
+          set_tags(buf, 0, buf.line_count)
+          #tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0)
+        end
+      end
+
     end
 
     def get_bodywin(page_num=nil)
@@ -9558,6 +9996,7 @@ module PandoraGtk
         if bw = get_bodywin
           bw.format = mi.label.to_s
           p 'format changed to: '+bw.format.to_s
+          bw.set_buffers
         end
       end
     end
@@ -9619,271 +10058,6 @@ module PandoraGtk
       widget
     end
 
-    RUBY_KEYWORDS = 'begin end module class def if then else elsif while unless do case when require yield rescue include'.split
-    RUBY_KEYWORDS2 = 'self true false not and or nil '.split
-
-    def ruby_tag_line(str, index=0, mode=0)
-
-      def ident_char?(c)
-        ('a'..'z').include?(c) or ('A'..'Z').include?(c) or (c == '_')
-      end
-
-      def capt_char?(c)
-        ('A'..'Z').include?(c) or ('0'..'9').include?(c) or (c == '_')
-      end
-
-      def word_char?(c)
-        ('a'..'z').include?(c) or ('A'..'Z').include?(c) or ('0'..'9').include?(c) or (c == '_')
-      end
-
-      def oper_char?(c)
-        '.+,-=*^%$()<>&[]:!?~{}|/\\'.include?(c)
-      end
-
-      def rewind_ident(str, i, ss, pc, prev_kw=nil)
-
-        def check_func(prev_kw, c, i, ss, str)
-          if (prev_kw=='def') and (c=='.')
-            yield(:operator, i, i+1)
-            i += 1
-            i1 = i
-            i += 1 while (i<ss) and ident_char?(str[i])
-            i += 1 if (i<ss) and ('?!'.include?(str[i]))
-            i2 = i
-            yield(:function, i1, i2)
-          end
-          i
-        end
-
-        kw = nil
-        c = str[i]
-        fc = c
-        i1 = i
-        i += 1
-        big_cons = true
-        while (i<ss)
-          c = str[i]
-          if ('a'..'z').include?(c)
-            big_cons = false if big_cons
-          elsif not capt_char?(c)
-            break
-          end
-          i += 1
-        end
-        #p 'rewind_ident(str, i1, i, ss, pc)='+[str, i1, i, ss, pc].inspect
-        #i -= 1
-        i2 = i
-        if ('A'..'Z').include?(fc)
-          if prev_kw=='class'
-            yield(:class, i1, i2)
-          elsif prev_kw=='module'
-            yield(:module, i1, i2)
-          else
-            if big_cons
-              yield(:big_constant, i1, i2)
-            else
-              yield(:constant, i1, i2)
-            end
-            i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
-              yield(tag, id1, id2)
-            end
-          end
-        else
-          if pc==':'
-            yield(:symbol, i1-1, i2)
-          elsif pc=='@'
-            if (i1-2>0) and (str[i1-2]=='@')
-              yield(:classvar, i1-2, i2)
-            else
-              yield(:instvar, i1-1, i2)
-            end
-          elsif pc=='$'
-            yield(:global, i1-1, i2)
-          else
-            s = str[i1, i2-i1]
-            if RUBY_KEYWORDS.include?(s)
-              yield(:keyword, i1, i2)
-              kw = s
-            elsif RUBY_KEYWORDS2.include?(s)
-              yield(:keyword2, i1, i2)
-              if (s=='self') and (prev_kw=='def')
-                i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
-                  yield(tag, id1, id2)
-                end
-              end
-            else
-              i += 1 if (i<ss) and ('?!'.include?(str[i]))
-              if prev_kw=='def'
-                yield(:function, i1, i)
-              else
-                yield(:identifer, i1, i)
-              end
-            end
-          end
-        end
-        [i, kw]
-      end
-
-      ss = str.size
-      if ss>0
-        i = 0
-        if (mode == 1)
-          if (str[0,4] == '=end')
-            mode = 0
-            i = 4
-            yield(:comment, index, index + i)
-          else
-            yield(:comment, index, index + ss)
-          end
-        elsif (mode == 0) and (str[0] == '=') and (str[1,5] == 'begin')
-          mode = 1
-          yield(:comment, index, index + ss)
-        end
-        if (mode != 1)
-          i += 1 while (i<ss) and ((str[i] == ' ') or (str[i] == "\t"))
-          pc = ' '
-          kw, kw2 = nil
-          while (i<ss)
-            c = str[i]
-            if (c != ' ') and (c != "\t")
-              if (c == '#')
-                yield(:comment, index + i, index + ss)
-                break
-              elsif (c == "'") or (c == '"') or (c == '/')
-                qc = c
-                i1 = i
-                i += 1
-                if (i<ss)
-                  c = str[i]
-                  if c==qc
-                    i += 1
-                  else
-                    pc = ' '
-                    while (i<ss) and ((c != qc) or (pc == "\\") or (pc == qc))
-                      if (pc=="\\")
-                        pc = ' '
-                      else
-                        pc = c
-                      end
-                      c = str[i]
-                      if (qc=='"') and (c=='{') and (pc=='#')
-                        yield(:string, index + i1, index + i - 1)
-                        yield(:operator, index + i - 1, index + i + 1)
-                        i, kw2 = rewind_ident(str, i, ss, ' ') do |tag, id1, id2|
-                          yield(tag, index + id1, index + id2)
-                        end
-                        i1 = i
-                      end
-                      i += 1
-                    end
-                  end
-                end
-                if (qc == '/')
-                  i += 1 while (i<ss) and ('imxouesn'.include?(str[i]))
-                  yield(:regex, index + i1, index + i)
-                else
-                  yield(:string, index + i1, index + i)
-                end
-              elsif ident_char?(c)
-                i, kw = rewind_ident(str, i, ss, pc, kw) do |tag, id1, id2|
-                  yield(tag, index + id1, index + id2)
-                end
-                pc = ' '
-              elsif (c=='$') and (i+1<ss) and ('~'.include?(str[i+1]))
-                i1 = i
-                i += 2
-                yield(:global, index + i1, index + i)
-                pc = ' '
-              elsif ((c==':') or (c=='$')) and (i+1<ss) and (ident_char?(str[i+1]))
-                i += 1
-                pc = c
-                i, kw2 = rewind_ident(str, i, ss, pc) do |tag, id1, id2|
-                  yield(tag, index + id1, index + id2)
-                end
-                pc = ' '
-              elsif oper_char?(c)
-                i1 = i
-                i += 1
-                while (i<ss) and oper_char?(str[i])
-                  i += 1
-                end
-                if i<ss
-                  pc = ' '
-                  c = str[i]
-                end
-                yield(:operator, index + i1, index + i)
-              elsif ('0'..'9').include?(c)
-                i1 = i
-                i += 1
-                if (i<ss) and ((str[i]=='x') or (str[i]=='X'))
-                  i += 1
-                  while (i<ss)
-                    c = str[i]
-                    break unless (('0'..'9').include?(c) or ('A'..'F').include?(c))
-                    i += 1
-                  end
-                  yield(:hexadec, index + i1, index + i)
-                else
-                  while (i<ss)
-                    c = str[i]
-                    break unless (('0'..'9').include?(c) or (c=='.') or (c=='e'))
-                    i += 1
-                  end
-                  if i<ss
-                    i -= 1 if str[i-1]=='.'
-                    pc = ' '
-                  end
-                  yield(:number, index + i1, index + i)
-                end
-              else
-                #yield(:keyword, index + i, index + ss/2)
-                #break
-                pc = c
-                i += 1
-              end
-            else
-              pc = c
-              i += 1
-            end
-          end
-        end
-      end
-      mode
-    end
-
-    def set_tags(buf, line1, line2, clean=nil)
-      p 'line1, line2='+[line1, line2].inspect
-      buf.begin_user_action do
-        line = line1
-        iter1 = buf.get_iter_at_line(line)
-        iterN = nil
-        mode = 0
-        while line<=line2
-          line += 1
-          if line<buf.line_count
-            iterN = buf.get_iter_at_line(line)
-            iter2 = buf.get_iter_at_offset(iterN.offset-1)
-          else
-            iter2 = buf.end_iter
-            line = line2+1
-          end
-
-          text = buf.get_text(iter1, iter2)
-          offset1 = iter1.offset
-          buf.remove_all_tags(iter1, iter2) if clean
-          #buf.apply_tag('keyword', iter1, iter2)
-          mode = ruby_tag_line(text, offset1, mode) do |tag, start, last|
-            buf.apply_tag(tag.to_s,
-              buf.get_iter_at_offset(start),
-              buf.get_iter_at_offset(last))
-          end
-          #p mode
-          iter1 = iterN if iterN
-          #Gtk.main_iteration
-        end
-      end
-    end
-
     # Set tag for selection
     # RU: Задать тэг для выделенного
     def set_tag(tag)
@@ -9893,13 +10067,13 @@ module PandoraGtk
           tv = bw.text_view
           buffer = tv.buffer
 
-          if @view_buffer==buffer
+          if bw.view_mode #bw.view_buffer==buffer
             bounds = buffer.selection_bounds
-            @view_buffer.apply_tag(tag, bounds[0], bounds[1])
+            bw.view_buffer.apply_tag(tag, bounds[0], bounds[1])
           else
             bounds = buffer.selection_bounds
             ltext = rtext = ''
-            case @format
+            case bw.format
               when 'bbcode'
                 t = ''
                 case tag
@@ -9929,65 +10103,19 @@ module PandoraGtk
             lpos = bounds[0].offset
             rpos = bounds[1].offset
             if ltext != ''
-              @raw_buffer.insert(@raw_buffer.get_iter_at_offset(lpos), ltext)
+              bw.raw_buffer.insert(bw.raw_buffer.get_iter_at_offset(lpos), ltext)
               lpos += ltext.length
               rpos += ltext.length
             end
             if rtext != ''
-              @raw_buffer.insert(@raw_buffer.get_iter_at_offset(rpos), rtext)
+              bw.raw_buffer.insert(bw.raw_buffer.get_iter_at_offset(rpos), rtext)
             end
             p [lpos, rpos]
             #buffer.selection_bounds = [bounds[0], rpos]
-            @raw_buffer.move_mark('selection_bound', @raw_buffer.get_iter_at_offset(lpos))
-            @raw_buffer.move_mark('insert', @raw_buffer.get_iter_at_offset(rpos))
+            bw.raw_buffer.move_mark('selection_bound', bw.raw_buffer.get_iter_at_offset(lpos))
+            bw.raw_buffer.move_mark('insert', bw.raw_buffer.get_iter_at_offset(rpos))
             #@raw_buffer.get_iter_at_offset(0)
           end
-        end
-      end
-    end
-
-    # Set buffers
-    # RU: Задать буферы
-    def set_buffers(tv=nil)
-      if not tv
-        bw = get_bodywin
-        if bw
-          tv = bw.text_view if bw.text_view.is_a? Gtk::TextView
-        end
-      end
-      if tv
-        @raw_buffer ||= tv.buffer
-
-        if @view_mode
-          tv.buffer = @view_buffer if (tv.buffer != @view_buffer)
-        elsif tv.buffer != @raw_buffer
-          tv.buffer = @raw_buffer
-        end
-
-        if @view_mode
-          @tv_style ||= tv.modifier_style
-          tv.modify_font(@font_desc)
-          tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
-          tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
-          tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
-          tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
-          tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
-          #style = tv.modifier_style
-          #p style.methods
-          #style.xthickness = 0
-          #style.ythickness = 0
-          #tv.modify_style(style)
-          @view_buffer.text = @raw_buffer.text #if @format
-        else
-          #tv.style = @tv_style
-          tv.modify_style(@tv_style)
-          tv.modify_font(nil)
-          #tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
-          #tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
-          #tv.modify_cursor(Gdk::Color.parse('#111111'), Gdk::Color.parse('#111111'))
-          #tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#EEEEEE'))
-          #tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#111111'))
-          @raw_buffer.text = @view_buffer.text #if @format
         end
       end
     end
@@ -10012,89 +10140,21 @@ module PandoraGtk
       toolbar2.toolbar_style = Gtk::Toolbar::Style::ICONS
       panelbox.pack_start(toolbar2, false, false, 0)
 
-      @raw_buffer = nil
-      @view_mode = true
-      @format = nil
-      @view_buffer = Gtk::TextBuffer.new
-      @view_buffer.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
-      @view_buffer.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
-      @view_buffer.create_tag('strike', 'strikethrough' => true)
-      @view_buffer.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
-      @view_buffer.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
-      @view_buffer.create_tag('link', {'foreground' => 'blue', 'underline' => Pango::AttrUnderline::SINGLE})
-      @view_buffer.create_tag('linked', {'foreground' => 'navy', 'underline' => Pango::AttrUnderline::SINGLE})
-      @view_buffer.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
-      @view_buffer.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
-      @view_buffer.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
-      @view_buffer.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
-
-      @view_buffer.create_tag('string', {'foreground' => '#00f000'})
-      @view_buffer.create_tag('symbol', {'foreground' => '#008020'})
-      @view_buffer.create_tag('comment', {'foreground' => '#8080e0'})
-      @view_buffer.create_tag('keyword', {'foreground' => '#ffffff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
-      @view_buffer.create_tag('keyword2', {'foreground' => '#ffffff'})
-      @view_buffer.create_tag('function', {'foreground' => '#f12111'})
-      @view_buffer.create_tag('number', {'foreground' => '#f050e0'})
-      @view_buffer.create_tag('hexadec', {'foreground' => '#e070e7'})
-      @view_buffer.create_tag('constant', {'foreground' => '#60eedd'})
-      @view_buffer.create_tag('big_constant', {'foreground' => '#d080e0'})
-      @view_buffer.create_tag('identifer', {'foreground' => '#ffff33'})
-      @view_buffer.create_tag('global', {'foreground' => '#ffa500'})
-      @view_buffer.create_tag('instvar', {'foreground' => '#ff85a2'})
-      @view_buffer.create_tag('classvar', {'foreground' => '#ff79ec'})
-      @view_buffer.create_tag('operator', {'foreground' => '#ffffff'})
-      @view_buffer.create_tag('class', {'foreground' => '#ff1100', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
-      @view_buffer.create_tag('module', {'foreground' => '#1111ff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
-      @view_buffer.create_tag('regex', {'foreground' => '#105090'})
-
-      @view_buffer.signal_connect('changed') do |buf|  #modified-changed
-        mark = buf.get_mark('insert')
-        iter = buf.get_iter_at_mark(mark)
-        line1 = iter.line
-        set_tags(buf, line1, line1, true)
-        false
-      end
-
-      @view_buffer.signal_connect('insert-text') do |buf, iter, text, len|
-        $view_buffer_off1 = iter.offset
-        false
-      end
-
-      @view_buffer.signal_connect('paste-done') do |buf|
-        if $view_buffer_off1
-          child = notebook.get_nth_page(notebook.page)
-          line1 = buf.get_iter_at_offset($view_buffer_off1).line
-          mark = buf.get_mark('insert')
-          iter = buf.get_iter_at_mark(mark)
-          line2 = iter.line
-          $view_buffer_off1 = iter.offset
-          set_tags(buf, line1, line2)
-
-          if (child.is_a? Gtk::ScrolledWindow) and (child.children[0].is_a? Gtk::Viewport) \
-          and (child.children[0].child.is_a? Gtk::TextView)
-            tv = child.children[0].child
-            #p 'tv='+tv.inspect
-            tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0)
-            #adj = tv.parent.vadjustment
-            #adj.value = adj.upper #- adj.page_size
-            #adj.value_changed       # bug: not scroll to end
-            #adj.value = adj.upper   # if add many lines
-            #mark = buf.create_mark(nil, buf.end_iter, false)
-            #tv.scroll_to_mark(mark, 0, true, 0.0, 1.0)
-            #tv.scroll_to_mark(buf.get_mark('insert'), 0.0, true, 0.0, 1.0)
-            #buf.delete_mark(mark)
-          end
-        end
-        false
-      end
-
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Type', true) do |btn|
-        @view_mode = btn.active?
-        p 'Type  @view_mode='+@view_mode.inspect
-        set_buffers
+        bw = get_bodywin
+        if bw
+          bw.view_mode = btn.active?
+          p 'Type  @view_mode='+bw.view_mode.inspect
+          bw.set_buffers
+        end
       end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::INDEX, 'Color', true) do |btn|
-        p 'Color'
+        bw = get_bodywin
+        if bw
+          bw.color_mode = btn.active?
+          p 'Color  @color_mode='+bw.view_mode.inspect
+          bw.set_buffers
+        end
       end
 
       btn = Gtk::MenuToolButton.new(nil, 'auto')
@@ -10241,7 +10301,7 @@ module PandoraGtk
                       widget.parent.vadjustment.upper - widget.parent.vadjustment.page_size
                   end
                   textview.set_border_window_size(Gtk::TextView::WINDOW_LEFT, 54)
-                  @font_desc = Pango::FontDescription.new('Monospace 11')
+                  $font_desc ||= Pango::FontDescription.new('Monospace 11')
                   textview.signal_connect('expose-event') do |widget, event|
                     tv = widget
                     left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
@@ -10285,7 +10345,7 @@ module PandoraGtk
                 if bodywid.is_a? Gtk::TextView
                   bodywin.text_view = bodywid
                   bodywid.buffer.text = field[FI_Value].to_s
-                  set_buffers(bodywid)
+                  bodywin.set_buffers
                   toolbar.show
                 end
                 bodywin.show_all
@@ -12533,7 +12593,12 @@ module PandoraGtk
       end
 
       kind_entry = Gtk::Combo.new
-      kind_entry.set_popdown_strings(['auto','person','file','all'])
+      kind_list = PandoraModel.get_kind_list
+      name_list = []
+      name_list << 'auto'
+      #name_list.concat( kind_list.collect{ |rec| rec[2] + ' ('+rec[0].to_s+'='+rec[1]+')' } )
+      name_list.concat( kind_list.collect{ |rec| rec[1] } )
+      kind_entry.set_popdown_strings(name_list)
       #kind_entry.entry.select_region(0, -1)
 
       #kind_entry = Gtk::ComboBox.new(true)
