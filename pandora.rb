@@ -2207,7 +2207,7 @@ module PandoraUtils
           siz += hp[2].to_i
         end
         kn = ider.downcase
-        res = 'pandora:' + kn + '/' + res + ' =' + siz.to_s
+        res = kn + '/' + res + ' =' + siz.to_s
       end
       res
     end
@@ -4615,7 +4615,8 @@ module PandoraCrypto
               end
               if (creator != prev_creator) or (i==last_i)
                 p 'sign3: [creator, created, last_trust]='+[creator, created, last_trust].inspect
-                person_trust = 1.0 #trust_of_person(creator, my_key_hash)
+                person_trust = trust_to_panobj(creator, models) #trust_of_person(creator, my_key_hash)
+                person_trust = 0.0 if (not person_trust.is_a? Float)
                 rate += PandoraModel.transform_trust(last_trust, false) * person_trust
                 prev_creator = creator
                 last_date = created
@@ -9564,7 +9565,7 @@ module PandoraGtk
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
       :keep_btn, :rate_label, :vouch_btn, :follow_btn, :trust_scale, :trust0, :public_btn, \
-      :public_scale, :lang_entry, :last_sw
+      :public_scale, :lang_entry, :last_sw, :rate_btn
 
     class BodyScrolledWindow < Gtk::ScrolledWindow
       attr_accessor :field, :link_name, :text_view, :format, :view_buffer, :view_mode, :color_mode
@@ -10365,9 +10366,9 @@ module PandoraGtk
       @statusbar = Gtk::Statusbar.new
       PandoraGtk.set_statusbar_text(statusbar, '')
       statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
-      panhash_btn = Gtk::Button.new(_('Rate: '))
-      panhash_btn.relief = Gtk::RELIEF_NONE
-      statusbar.pack_start(panhash_btn, false, false, 0)
+      @rate_btn = Gtk::Button.new(_('Rate')+':')
+      rate_btn.relief = Gtk::RELIEF_NONE
+      statusbar.pack_start(rate_btn, false, false, 0)
 
       panelbox.pack_start(statusbar, false, false, 0)
 
@@ -13853,6 +13854,7 @@ module PandoraGtk
 
         if edit
           count, rate, querist_rate = PandoraCrypto.rate_of_panobj(panhash0)
+          dialog.rate_btn.label = _('Rate')+': '+rate.round(2).to_s if rate.is_a? Float
           trust = nil
           #p PandoraUtils.bytes_to_hex(panhash0)
           #p 'trust or num'
