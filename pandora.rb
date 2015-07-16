@@ -1081,6 +1081,8 @@ module PandoraUtils
               count += alen
             end
             val = Hash[*val] if basetype == PT_Hash
+          when PT_Nil
+            val = nil
           else
             puts 'pson_to_rubyobj: illegal pson type '+basetype.inspect
         end
@@ -4865,6 +4867,7 @@ module PandoraNet
   ECC_News_Hook         = 2
   ECC_News_Notice       = 3
   ECC_News_SessMode     = 4
+  ECC_News_Answer       = 5
 
   ECC_Channel0_Open     = 0
   ECC_Channel1_Opened   = 1
@@ -5113,7 +5116,7 @@ module PandoraNet
     # RU: Возвращает сессию по ключу и идентификатору базы
     def sessions_of_keybase(key, base_id)
       res = sessions.select { |s| (s.to_base_id == base_id) and \
-        (s.skey[PandoraCrypto::KV_Panhash] == key) }
+        (key.nil? or (s.skey[PandoraCrypto::KV_Panhash] == key)) }
       res
     end
 
@@ -5288,7 +5291,7 @@ module PandoraNet
 
     # Search in bases
     # RU: Поиск в базах
-    def search_in_bases(text, bases='auto', th=nil, from_id=nil, limit=nil)
+    def search_in_local_bases(text, bases='auto', th=nil, from_id=nil, limit=nil)
 
       def name_filter(fld, val)
         res = nil
@@ -5346,33 +5349,33 @@ module PandoraNet
       res ||= []
       res.uniq!
       res.compact!
-      res
+      [res, bases]
     end
 
     # Find search request in queue
     # RU: Найти поисковый запрос в очереди
     def find_search_request(request, kind)
-      @search_requests.select do |sr|
+      res = @search_requests.select do |sr|
         (sr[SR_Request] == request) and (sr[SR_Kind] == kind)
       end
-  end
+      res
+    end
 
     # Add request to search queue
     # RU: Добавить запрос в поисковую очередь
     def add_search_request(request, kind, abase_id=nil, sess=nil, hunt=true)
-      res = nil
+      request = AsciiString.new(request)
       p '===add_search_request(request, kind, abase_id, sess)='+[request, kind, abase_id, sess.object_id].inspect
-      sel = find_search_request(request, kind)
-      if sel and (sel.size>0)
+      res = find_search_request(request, kind)
+      if res and (res.size>0)
         p '---add_search_request already exist'
-        res = true
       else
         p '---add_search_request  NEW REQUEST'
         time = Time.now.to_i
         @search_requests << [request, kind, abase_id, @search_ind+1, time, sess]
         @search_ind += 1
         $window.set_status_field(PandoraGtk::SF_Search, @search_requests.size.to_s)
-        res = true
+        res = find_search_request(request, kind)
       end
       PandoraNet.start_hunt if hunt
       res
@@ -7244,6 +7247,15 @@ module PandoraNet
                   when ECC_News_SessMode
                     p log_mes + 'ECC_News_SessMode'
                     @conn_mode2 = rdata[1].ord if rdata.bytesize>0
+                  when ECC_News_Answer
+                    p log_mes + 'ECC_News_Answer'
+                    req_answer, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    req,answ = req_answer
+                    p log_mes+'req,answ='+[req,answ].inspect
+                    reqs = find_search_request(req[0], req[1])
+                    reqs.each do |sr|
+                      sr[SR_Answer] = answ
+                    end
                   else
                     p "news more!!!!"
                     pkind = rcode
@@ -8644,10 +8656,12 @@ module PandoraNet
 
   # Start hunt
   # RU: Начать охоту
-  def self.start_hunt
+  def self.start_hunt(continue=true)
     if (not $hunter_thread) or (not $hunter_thread.alive?) \
     or (not $hunter_thread[:active]) or $hunter_thread[:paused]
       start_or_stop_hunt
+    elsif continue and $hunter_thread and $hunter_thread.alive? and $hunter_thread.stop?
+      $hunter_thread.run
     end
   end
 
@@ -12543,6 +12557,22 @@ module PandoraGtk
 
     include PandoraGtk
 
+    def show_all_reqs(reqs=nil)
+      pool = $window.pool
+      if reqs or (not @last_search_ind) or (@last_search_ind < pool.search_ind)
+        @list_store.clear
+        reqs ||= pool.search_requests
+        reqs.each do |sr|
+          user_iter = @list_store.append
+          user_iter[0] = sr[PandoraNet::SR_Index]
+          user_iter[1] = Utf8String.new(sr[PandoraNet::SR_Request])
+          user_iter[2] = Utf8String.new(sr[PandoraNet::SR_Kind])
+          user_iter[3] = Utf8String.new(sr[PandoraNet::SR_Answer].inspect)
+        end
+        @last_search_ind = pool.search_ind
+      end
+    end
+
     # Show search window
     # RU: Показать окно поиска
     def initialize(text=nil)
@@ -12574,6 +12604,8 @@ module PandoraGtk
       next_btn.tooltip_text = _('Next search')
       PandoraGtk.set_readonly(next_btn, true)
 
+      @list_store = Gtk::ListStore.new(Integer, String, String, String)
+
       search_entry = Gtk::Entry.new
       #PandoraGtk.hack_enter_bug(search_entry)
       search_entry.signal_connect('key-press-event') do |widget, event|
@@ -12588,8 +12620,17 @@ module PandoraGtk
         res
       end
       search_entry.signal_connect('changed') do |widget, event|
-        cant_find = (@search_thread or (search_entry.text.size==0))
+        empty = (search_entry.text.size==0)
+        cant_find = (@search_thread or empty)
         PandoraGtk.set_readonly(search_btn, cant_find)
+        if empty
+          show_all_reqs
+        else
+          if @last_search_ind
+            @list_store.clear
+            @last_search_ind = nil
+          end
+        end
         false
       end
 
@@ -12681,8 +12722,6 @@ module PandoraGtk
       list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
       list_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
 
-      list_store = Gtk::ListStore.new(Integer, String, String, String)
-
       prev_btn.signal_connect('clicked') do |widget|
         PandoraGtk.set_readonly(next_btn, false)
         PandoraGtk.set_readonly(prev_btn, true)
@@ -12698,46 +12737,22 @@ module PandoraGtk
       search_btn.signal_connect('clicked') do |widget|
         request = search_entry.text
         search_entry.position = search_entry.position  # deselect
-        if (request.size>0) and (not @search_thread)
-          list_store.clear
+        if (request.size>0)
           kind = kind_entry.entry.text
-          @search_thread = Thread.new do
-            th = Thread.current
-            th[:processing] = true
-            PandoraGtk.set_readonly(stop_btn, false)
-            PandoraGtk.set_readonly(widget, true)
-            sleep 0.3
-            res = []
-            if local_btn.active?
-              res1 = $window.pool.search_in_bases(request, kind, th)
-              res.concat(res1) if res1
-            end
-            if ((not res) or (res.size==0)) and (active_btn.active? or hunt_btn.active?)
-              $window.pool.add_search_request(request, kind)
-            end
-            if res
-              res.each_with_index do |row, i|
-                user_iter = list_store.append
-                user_iter[0] = i
-                user_iter[1] = Utf8String.new(row[0])
-                user_iter[2] = Utf8String.new(row[1])
-                date = row[2]
-                date = PandoraUtils.date_to_str(Time.at(date)) if date.is_a? Integer
-                user_iter[3] = Utf8String.new(date)
-              end
-            end
-            PandoraGtk.set_readonly(stop_btn, true)
-            if th[:processing]
-              th[:processing] = false
-            end
-            PandoraGtk.set_readonly(widget, false)
-            PandoraGtk.set_readonly(prev_btn, false)
-            PandoraGtk.set_readonly(next_btn, true)
-            @search_thread = nil
-          end
+          PandoraGtk.set_readonly(stop_btn, false)
+          PandoraGtk.set_readonly(widget, true)
+          #bases = kind
+          #local_btn.active?  active_btn.active?  hunt_btn.active?
+          reqs = $window.pool.add_search_request(request, kind)
+          show_all_reqs(reqs)
+          PandoraGtk.set_readonly(stop_btn, true)
+          PandoraGtk.set_readonly(widget, false)
+          PandoraGtk.set_readonly(prev_btn, false)
+          PandoraGtk.set_readonly(next_btn, true)
         end
         false
       end
+      show_all_reqs
 
       stop_btn.signal_connect('clicked') do |widget|
         if @search_thread
@@ -12757,7 +12772,7 @@ module PandoraGtk
       #end
 
       # create tree view
-      list_tree = Gtk::TreeView.new(list_store)
+      list_tree = Gtk::TreeView.new(@list_store)
       #list_tree.rules_hint = true
       #list_tree.search_column = CL_Name
 
@@ -12767,17 +12782,17 @@ module PandoraGtk
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('First name'), renderer, 'text' => 1)
+      column = Gtk::TreeViewColumn.new(_('Field1'), renderer, 'text' => 1)
       column.set_sort_column_id(1)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Last name'), renderer, 'text' => 2)
+      column = Gtk::TreeViewColumn.new(_('Field2'), renderer, 'text' => 2)
       column.set_sort_column_id(2)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Birth date'), renderer, 'text' => 3)
+      column = Gtk::TreeViewColumn.new(_('Field3'), renderer, 'text' => 3)
       column.set_sort_column_id(3)
       list_tree.append_column(column)
 
@@ -16076,8 +16091,26 @@ module PandoraGtk
               if search_req and (not search_req[PandoraNet::SR_Answer])
                 req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
                 p 'search_req3='+req.inspect
-                res1 = pool.search_in_bases(search_req[PandoraNet::SR_Request], search_req[PandoraNet::SR_Kind])
-                p res1
+                answ,bases = pool.search_in_local_bases(search_req[PandoraNet::SR_Request], search_req[PandoraNet::SR_Kind])
+                p 'answ='+answ.inspect
+                if answ and (answ.size>0)
+                  search_req[PandoraNet::SR_Answer] = answ
+                  answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
+                  session = search_req[PandoraNet::SR_Session]
+                  sessions = []
+                  if pool.sessions.include?(session)
+                    sessions << sessions
+                  end
+                  sessions.concat(pool.sessions_of_keybase(nil, search_req[PandoraNet::SR_BaseId]))
+                  sessions.flatten!
+                  sessions.uniq!
+                  sessions.compact!
+                  sessions.each do |sess|
+                    if sess.active?
+                      sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, PandoraNet::ECC_News_Answer)
+                    end
+                  end
+                end
                 #p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
                 #if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
                 processed -= 1
