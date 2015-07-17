@@ -8228,7 +8228,7 @@ module PandoraNet
             p 'НЕТ ПОДКЛЮЧЕНИЯ'
           end
 
-          need_connect = ((@conn_mode & CM_Keep) != 0) and (not (@socket.is_a? FalseClass))
+          need_connect = (((@conn_mode & CM_Keep) != 0) and (not (@socket.is_a? FalseClass)))
           p 'NEED??? [need_connect, @conn_mode, @socket]='+[need_connect, @conn_mode, @socket].inspect
 
           if need_connect and (not @socket) and work_time and ((Time.now.to_i - work_time.to_i)<15)
