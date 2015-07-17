@@ -12569,7 +12569,11 @@ module PandoraGtk
           user_iter[2] = Utf8String.new(sr[PandoraNet::SR_Kind])
           user_iter[3] = Utf8String.new(sr[PandoraNet::SR_Answer].inspect)
         end
-        @last_search_ind = pool.search_ind
+        if reqs
+          @last_search_ind = nil
+        else
+          @last_search_ind = pool.search_ind
+        end
       end
     end
 
@@ -12579,7 +12583,6 @@ module PandoraGtk
       super #(nil, nil)
 
       @text = nil
-      @search_thread = nil
 
       #set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       border_width = 0
@@ -12621,8 +12624,7 @@ module PandoraGtk
       end
       search_entry.signal_connect('changed') do |widget, event|
         empty = (search_entry.text.size==0)
-        cant_find = (@search_thread or empty)
-        PandoraGtk.set_readonly(search_btn, cant_find)
+        PandoraGtk.set_readonly(search_btn, empty)
         if empty
           show_all_reqs
         else

@@ -346,10 +346,13 @@
     <status_flash_on_new desc="Flash on new" type="Boolean" section="view" setting="true" />
     <status_flash_interval desc="Interval of status icon flash (sec)" type="Real" section="view" setting="0.8" />
     <play_sounds desc="Play sounds on events" type="Boolean" section="view" setting="true" />
-    <linux_mp3_player desc="Linux mp3 player" type="String" section="view" setting='' />
-    <win_mp3_player desc="Windows mp3 player" type="String" section="view" setting='' />
+    <linux_mp3_player desc="Linux mp3 player" type="String" section="view" setting="" />
+    <win_mp3_player desc="Windows mp3 player" type="String" section="view" setting="" />
     <load_history_count desc="Load message history count" type="Integer" section="view" setting="6" />
     <sort_history_mode desc="Sort history mode (0-receive, 1-create)" type="Integer" section="view" setting="0" />
+    <emoticons desc="Emotion icons" type="String" section="view" setting="smiles_qip" />
+    <smiles_qip desc="Qip icons file" type="String" section="view" setting="smiles_qip.png:8x5:1p:1p|smile|sad|wink|cry|lol|shock|halo|kiss|glass|angry|tong|annoy|shame|thumb|ok|dance|music|stop|rose|kissed|sos|secret|hug|heart|cool|gun|work|dead|bomb|vomit|pardon|crazy|drink|fight|hurt|confuse|discontent|joy|fall|bingo" />
+    <smiles_utf8 desc="UTF8 icons codes" type="String" section="view" setting="|smile:0x263A|sad:0x2639|wink:0x1F609|cry:0x1F622|lol:0x1F606|shock:0x1F632|halo:0x1F607|kiss:0x1F618|glass:0x1F60E|angry:0x1F620|tong:0x1F61D|annoy:0x1F615|shame:0x1F633|heart:0x1F60D" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
     <check_interval desc="Сheck interval (days)" type="Integer" section="update" setting="0" />
