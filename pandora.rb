@@ -4436,9 +4436,7 @@ module PandoraCrypto
           if key_vec and key_vec[KV_Obj]
             self.the_current_key = key_vec
             text = PandoraCrypto.short_name_of_person(key_vec, nil, 1)
-            if text and (text.size>0)
-              #text = '['+text+']'
-            else
+            if not (text and (text.size>0))
               text = 'Logged'
             end
             $window.set_status_field(PandoraGtk::SF_Auth, text, nil, true)
@@ -8852,6 +8850,32 @@ module PandoraGtk
     end
   end
 
+  # ToggleButton with safety "active" switching
+  # RU: ToggleButton с безопасным переключением "active"
+  class SafeToggleButton < Gtk::ToggleButton
+
+    # Remember signal handler
+    # RU: Запомнить обработчик сигнала
+    def safe_signal_clicked
+      @clicked_signal = self.signal_connect('clicked') do |*args|
+        yield(*args) if block_given?
+      end
+    end
+
+    # Set "active" property safety
+    # RU: Безопасно установить свойство "active"
+    def safe_set_active(an_active)
+      if @clicked_signal
+        self.signal_handler_block(@clicked_signal) do
+          self.active = an_active
+        end
+      else
+        self.active = an_active
+      end
+    end
+
+  end
+
   # ToggleToolButton with safety "active" switching
   # RU: ToggleToolButton с безопасным переключением "active"
   class SafeToggleToolButton < Gtk::ToggleToolButton
@@ -13027,6 +13051,10 @@ module PandoraGtk
 
     include PandoraGtk
 
+    def autocrop_pixbuf(buf)
+      buf
+    end
+
     # Show fishes window
     # RU: Показать окно рыб
     def initialize
@@ -13238,6 +13266,66 @@ module PandoraGtk
       label = Gtk::Label.new(_('Neighbors'))
       btn_hbox.pack_start(image, false, false, 0)
       btn_hbox.pack_start(label, false, false, 2)
+
+      #sleep 3
+      #close_image = Gtk::Image.new(Gtk::Stock::CLOSE, Gtk::IconSize::MENU)
+      all_buf = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'smiles-qip.png'))
+      #close_buf = Gdk::Pixbuf.new(all_buf, 0, 0, 21, 24)
+      close_buf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, 21, 24)
+      all_buf.copy_area(13, 3, 21, 24, close_buf, 0, 0)
+
+      buf = close_buf
+
+      pixs = AsciiString.new(buf.pixels)
+      pix_size = buf.n_channels
+      width = buf.width
+      height = buf.height
+      w = width * pix_size  #buf.rowstride
+
+      bg = pixs[0, pix_size]
+      y = 0
+      while (y<height)
+        x = 0
+        while (x<width) and (pixs[x+w*y, pix_size]==bg)
+          x += pix_size
+        end
+        if x<width
+          break
+        else
+          y += 1
+        end
+      end
+      p 'y='+y.inspect
+
+      #autocrop_pixbuf(buf)
+
+
+
+      p 'close_buf.n_channels='+close_buf.n_channels.inspect
+      pixs = AsciiString.new(close_buf.pixels)
+      w = close_buf.width * close_buf.n_channels
+      h = close_buf.height
+      p '[pixs.bytesize, w, h, w*h]='+[pixs.bytesize, w, h, w*h].inspect
+      h.times do |y|
+        str = AsciiString.new
+        w.times do |x|
+          c = pixs[(x+0)+w*y]
+          #if c==0.chr
+          #  str << '0'
+          #else
+          #  str << '1'
+          #end
+          str << PandoraUtils.bytes_to_hex(c)
+          str << '|' if ((x+1) / 4)*4 == (x+1)
+        end
+        #p str[0,124]
+      end
+      #close_buf.fill!(0x88000055)
+      close_image = Gtk::Image.new(close_buf)
+      #Cairo::ImageSurface.from_png
+
+      btn_hbox.pack_start(close_image, false, false, 2)
+
       btn = Gtk::Button.new
       btn.relief = Gtk::RELIEF_NONE
       btn.focus_on_click = false
@@ -15471,12 +15559,14 @@ module PandoraGtk
     # Change listener button state
     # RU: Изменить состояние кнопки слушателя
     def correct_fish_btn_state
-      tool_btn = $toggle_buttons[PandoraGtk::SF_Fish]
-      if tool_btn
-        hpaned = $window.fish_hpaned
-        list_sw = hpaned.children[0]
-        tool_btn.safe_set_active(hpaned.position > 24)
-      end
+      an_active = ($window.fish_hpaned.position > 24)
+      $window.set_status_field(PandoraGtk::SF_Fish, nil, nil, an_active)
+      #tool_btn = $toggle_buttons[PandoraGtk::SF_Fish]
+      #if tool_btn
+      #  hpaned = $window.fish_hpaned
+      #  list_sw = hpaned.children[0]
+      #  tool_btn.safe_set_active(hpaned.position > 24)
+      #end
     end
 
     # Show notice status
@@ -15497,13 +15587,30 @@ module PandoraGtk
 
     # Add field to statusbar
     # RU: Добавляет поле в статусбар
-    def add_status_field(index, text)
+    def add_status_field(index, text, stock=nil, toggle=nil)
       $statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0) if ($status_fields != [])
-      btn = Gtk::Button.new(text)
+      if toggle.nil?
+        btn = Gtk::Button.new(text)
+      else
+        btn = SafeToggleButton.new(text)
+      end
+      if stock
+        image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
+        #image.set_padding(2, 0)
+        #image.sensitive = false
+        btn.image = image
+      end
       btn.relief = Gtk::RELIEF_NONE
       if block_given?
-        btn.signal_connect('clicked') do |*args|
-          yield(*args)
+        if toggle.nil?
+          btn.signal_connect('clicked') do |*args|
+            yield(*args)
+          end
+        else
+          btn.safe_signal_clicked do |widget|
+            yield(widget)
+          end
+          btn.safe_set_active(toggle)
         end
       end
       $statusbar.pack_start(btn, false, false, 0)
@@ -15515,14 +15622,17 @@ module PandoraGtk
     def set_status_field(index, text, enabled=nil, toggle=nil)
       btn = $status_fields[index]
       if btn
-        str = _(text)
-        str = _('Version') + ': ' + str if (index==SF_Update)
-        btn.label = str
+        if text
+          str = _(text)
+          str = _('Version') + ': ' + str if (index==SF_Update)
+          btn.label = str
+        end
         if (enabled != nil)
           btn.sensitive = enabled
         end
-        if (toggle != nil) and $toggle_buttons[index]
-          $toggle_buttons[index].safe_set_active(toggle)
+        if (toggle != nil)
+          btn.safe_set_active(toggle) if btn.is_a? SafeToggleButton
+          $toggle_buttons[index].safe_set_active(toggle) if $toggle_buttons[index]
         end
       end
     end
@@ -15882,14 +15992,14 @@ module PandoraGtk
       [nil, nil, '_Node'],
       ['Parameter', Gtk::Stock::PROPERTIES, 'Parameters'],
       ['-', nil, '-'],
-      ['Key', Gtk::Stock::DIALOG_AUTHENTICATION, 'Keys'],
+      ['Key', Gtk::Stock::GOTO_BOTTOM, 'Keys'],
       ['Sign', nil, 'Signs'],
       ['Node', Gtk::Stock::NETWORK, 'Nodes'],
       ['Event', nil, 'Events'],
       ['Request', Gtk::Stock::SELECT_COLOR, 'Requests'],
       ['Session', Gtk::Stock::JUSTIFY_FILL, 'Sessions', '<control>S'],
       ['-', nil, '-'],
-      ['Authorize', nil, 'Authorize', '<control>U'],
+      ['Authorize', Gtk::Stock::DIALOG_AUTHENTICATION, 'Authorize', '<control>U'],
       ['Listen', Gtk::Stock::CONNECT, 'Listen', '<control>L', :check],
       ['Hunt', Gtk::Stock::REFRESH, 'Hunt', '<control>H', :check],
       ['Fish', Gtk::Stock::GO_FORWARD, 'Neighbors', '<control>N', :check],
@@ -16300,28 +16410,28 @@ module PandoraGtk
       add_status_field(SF_Lang, $lang) do
         do_menu_act('Blob')
       end
-      add_status_field(SF_Auth, _('Not logged')) do
+      add_status_field(SF_Auth, _('Not logged'), Gtk::Stock::DIALOG_AUTHENTICATION, false) do
         do_menu_act('Authorize')
       end
-      add_status_field(SF_Listen, _('Not listen')) do
+      add_status_field(SF_Listen, _('Not listen'), Gtk::Stock::CONNECT, false) do
         do_menu_act('Listen')
       end
-      add_status_field(SF_Hunt, _('No hunt')) do
+      add_status_field(SF_Hunt, _('No hunt'), Gtk::Stock::REFRESH, false) do
         do_menu_act('Hunt')
       end
-      add_status_field(SF_Notice, '-') do
+      add_status_field(SF_Notice, '-', Gtk::Stock::PROPERTIES) do
         do_menu_act('Notice')
       end
-      add_status_field(SF_Conn, '0/0/0') do
+      add_status_field(SF_Conn, '0/0/0', Gtk::Stock::JUSTIFY_FILL) do
         do_menu_act('Session')
       end
-      add_status_field(SF_Fish, '0') do
+      add_status_field(SF_Fish, '0', Gtk::Stock::GO_FORWARD, false) do
         do_menu_act('Fish')
       end
-      add_status_field(SF_Fisher, '0') do
+      add_status_field(SF_Fisher, '0', Gtk::Stock::JUSTIFY_RIGHT) do
         do_menu_act('Fisher')
       end
-      add_status_field(SF_Search, '0') do
+      add_status_field(SF_Search, '0', Gtk::Stock::FIND) do
         do_menu_act('Search')
       end
 
