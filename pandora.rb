@@ -13051,10 +13051,6 @@ module PandoraGtk
 
     include PandoraGtk
 
-    def autocrop_pixbuf(buf)
-      buf
-    end
-
     # Show fishes window
     # RU: Показать окно рыб
     def initialize
@@ -13267,63 +13263,7 @@ module PandoraGtk
       btn_hbox.pack_start(image, false, false, 0)
       btn_hbox.pack_start(label, false, false, 2)
 
-      #sleep 3
-      #close_image = Gtk::Image.new(Gtk::Stock::CLOSE, Gtk::IconSize::MENU)
-      all_buf = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'smiles-qip.png'))
-      #close_buf = Gdk::Pixbuf.new(all_buf, 0, 0, 21, 24)
-      close_buf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, 21, 24)
-      all_buf.copy_area(13, 3, 21, 24, close_buf, 0, 0)
-
-      buf = close_buf
-
-      pixs = AsciiString.new(buf.pixels)
-      pix_size = buf.n_channels
-      width = buf.width
-      height = buf.height
-      w = width * pix_size  #buf.rowstride
-
-      bg = pixs[0, pix_size]
-      y = 0
-      while (y<height)
-        x = 0
-        while (x<width) and (pixs[x+w*y, pix_size]==bg)
-          x += pix_size
-        end
-        if x<width
-          break
-        else
-          y += 1
-        end
-      end
-      p 'y='+y.inspect
-
-      #autocrop_pixbuf(buf)
-
-
-
-      p 'close_buf.n_channels='+close_buf.n_channels.inspect
-      pixs = AsciiString.new(close_buf.pixels)
-      w = close_buf.width * close_buf.n_channels
-      h = close_buf.height
-      p '[pixs.bytesize, w, h, w*h]='+[pixs.bytesize, w, h, w*h].inspect
-      h.times do |y|
-        str = AsciiString.new
-        w.times do |x|
-          c = pixs[(x+0)+w*y]
-          #if c==0.chr
-          #  str << '0'
-          #else
-          #  str << '1'
-          #end
-          str << PandoraUtils.bytes_to_hex(c)
-          str << '|' if ((x+1) / 4)*4 == (x+1)
-        end
-        #p str[0,124]
-      end
-      #close_buf.fill!(0x88000055)
-      close_image = Gtk::Image.new(close_buf)
-      #Cairo::ImageSurface.from_png
-
+      close_image = Gtk::Image.new(Gtk::Stock::CLOSE, Gtk::IconSize::MENU)
       btn_hbox.pack_start(close_image, false, false, 2)
 
       btn = Gtk::Button.new
@@ -15642,6 +15582,176 @@ module PandoraGtk
     def get_status_field(index)
       $status_fields[index]
     end
+
+    # Return Pixbuf with smile picture
+    # RU: Возвращает Pixbuf с изображением смайла
+    def get_smile_buf(emot='smile', preset='qip')
+      buf = nil
+      if not preset
+        @def_smiles ||= PandoraUtils.get_param('def_smiles')
+        preset = @def_smiles
+      end
+      buf = @smile_bufs[preset][emot] if @smile_bufs and @smile_bufs[preset]
+      smile_preset = nil
+      if buf.nil?
+        @smile_presets ||= Hash.new
+        smile_preset = @smile_presets[preset]
+        if smile_preset.nil?
+          smile_desc = PandoraUtils.get_param('smiles_'+preset)
+          smile_params = smile_desc.split('|')
+          smile_file_desc = smile_params[0]
+          smile_params.delete_at(0)
+          smile_file_params = smile_file_desc.split(':')
+          smile_file_name = smile_file_params[0]
+          numXs, numYs = smile_file_params[1].split('x')
+          bord_s = smile_file_params[2]
+          bord_s.delete!('p')
+          padd_s = smile_file_params[3]
+          padd_s.delete!('p')
+          begin
+            smile_fn = File.join($pandora_view_dir, smile_file_name)
+            preset_buf = Gdk::Pixbuf.new(smile_fn)
+            if preset_buf
+              big_width = preset_buf.width
+              big_height = preset_buf.height
+              p '[big_width, big_height]='+[big_width, big_height].inspect
+              bord = bord_s.to_i
+              padd = padd_s.to_i
+              numX = numXs.to_i
+              numY = numYs.to_i
+              cellX = (big_width - 2*bord - (numX-1)*padd)/numX
+              cellY = (big_height - 2*bord - (numY-1)*padd)/numY
+
+              smile_preset = Hash.new
+              smile_preset[:names]      = smile_params
+              smile_preset[:big_width]  = big_width
+              smile_preset[:big_height] = big_height
+              smile_preset[:bord]       = bord
+              smile_preset[:padd]       = padd
+              smile_preset[:numX]       = numX
+              smile_preset[:numY]       = numY
+              smile_preset[:cellX]      = cellX
+              smile_preset[:cellY]      = cellY
+              smile_preset[:buf]        = preset_buf
+              @smile_presets[preset] = smile_preset
+            end
+          rescue
+            p 'Error while load smile file: ['+smile_fn+']'
+          end
+        end
+      end
+
+      if buf.nil? and smile_preset
+        index = smile_preset[:names].index(emot)
+        if index
+          big_width  = smile_preset[:big_width]
+          big_height = smile_preset[:big_height]
+          bord       = smile_preset[:bord]
+          padd       = smile_preset[:padd]
+          numX       = smile_preset[:numX]
+          numY       = smile_preset[:numY]
+          cellX      = smile_preset[:cellX]
+          cellY      = smile_preset[:cellY]
+          preset_buf = smile_preset[:buf]
+
+          iY = index.div(numX)
+          iX = index - (iY*numX)
+          dX = bord + iX*(cellX+padd)
+          dY = bord + iY*(cellY+padd)
+          #p '[cellX, cellY, iX, iY, dX, dY]='+[cellX, cellY, iX, iY, dX, dY].inspect
+          draft_buf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, cellX, cellY)
+          preset_buf.copy_area(dX, dY, cellX, cellY, draft_buf, 0, 0)
+          #draft_buf = Gdk::Pixbuf.new(preset_buf, 0, 0, 21, 24)
+
+          pixs = AsciiString.new(draft_buf.pixels)
+          pix_size = draft_buf.n_channels
+          width = draft_buf.width
+          height = draft_buf.height
+          w = width * pix_size  #buf.rowstride
+          #p '[pixs.bytesize, width, height, w]='+[pixs.bytesize, width, height, w].inspect
+
+          bg = pixs[0, pix_size]   #top left pixel consider background
+
+          # Find top border
+          top = 0
+          while (top<height)
+            x = 0
+            while (x<w) and (pixs[w*top+x, pix_size]==bg)
+              x += pix_size
+            end
+            if x<w
+              break
+            else
+              top += 1
+            end
+          end
+
+          # Find bottom border
+          bottom = height-1
+          while (bottom>top)
+            x = 0
+            while (x<w) and (pixs[w*bottom+x, pix_size]==bg)
+              x += pix_size
+            end
+            if x<w
+              break
+            else
+              bottom -= 1
+            end
+          end
+
+          # Find left border
+          left = 0
+          while (left<w)
+            y = 0
+            while (y<height) and (pixs[w*y+left, pix_size]==bg)
+              y += 1
+            end
+            if y<height
+              break
+            else
+              left += pix_size
+            end
+          end
+
+          # Find right border
+          right = w - pix_size
+          while (right>left)
+            y = 0
+            while (y<height) and (pixs[w*y+right, pix_size]==bg)
+              y += 1
+            end
+            if y<height
+              break
+            else
+              right -= pix_size
+            end
+          end
+
+          left = left/pix_size
+          right = right/pix_size
+          p '====[top,bottom,left,right]='+[top,bottom,left,right].inspect
+
+          width2 = right-left+1
+          height2 = bottom-top+1
+
+          if (left>0) or (top>0) or (width2<width) or (height2<height)
+            # Crop borders
+            buf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, width2, height2)
+            draft_buf.copy_area(left, top, width2, height2, buf, 0, 0)
+          else
+            buf = draft_buf
+          end
+          @smile_bufs ||= Hash.new
+          @smile_bufs[preset] ||= Hash.new
+          @smile_bufs[preset][emot] = buf
+        else
+          p 'No emotion ['+emot+'] in the preset ['+preset+']'
+        end
+      end
+      buf
+    end
+
 
     TV_Name    = 0
     TV_NameF   = 1
