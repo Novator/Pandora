@@ -5192,18 +5192,39 @@ module PandoraNet
       res
     end
 
+    def find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
+      res = @fish_orders.select do |fo|
+        ((fisher.nil? or (fo[PandoraNet::LO_Fisher] == fisher)) and \
+        (fisher_key.nil? or (fo[PandoraNet::LO_Fisher_key] == fisher_key)) and \
+        (fisher_baseid.nil? or (fo[PandoraNet::LO_Fisher_baseid] == fisher_baseid)) and \
+        (fish.nil? or (fo[PandoraNet::LO_Fish] == fish)) and \
+        (fish_key.nil? or (fo[PandoraNet::LO_Fish_key] == fish_key)))
+      end
+      #LO_Session
+      #res.uniq!
+      #res.compact!
+      res
+    end
+
     $fish_live_per = 10*60
 
     # Add order to fishing
     # RU: Добавить заявку на рыбалку
     def add_fish_order(session, fisher, fisher_key, fisher_baseid, fish, fish_key, models=nil)
-      res = nil
       time = Time.now.to_i
       clear_list(@fish_orders, LO_Time, $fish_live_per, time)
-      @fish_orders << [fisher, fisher_key, fisher_baseid, fish, fish_key, @fish_ind+1, session, time]
-      @fish_ind += 1
-      res = true
-
+      res = find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
+      if (not res) or (res.size==0)
+        res = [fisher, fisher_key, fisher_baseid, fish, fish_key, @fish_ind+1, session, time]
+        @fish_orders << res
+        @fish_ind += 1
+        $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.size.to_s)
+        info = ''
+        info << PandoraUtils.bytes_to_hex(fish) if fish
+        info << ', '+PandoraUtils.bytes_to_hex(fish_key) if fish_key
+        PandoraUtils.log_message(PandoraUtils::LM_Trace, _('Fish order is added')+ \
+          ' '+@fish_ind.to_s+':['+info+']')
+      end
       #model = PandoraUtils.get_model('Request', models)
       #filter = [['creator=', fisher], ['kind=', PandoraNet::RQK_Fishing]]
       #filter << ['creator_key =', fisher_key] if fisher_key
@@ -5244,26 +5265,6 @@ module PandoraNet
       #  @fish_orders.add_block_to_queue(line, FishQueueSize)
       #  $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.queue.size.to_s)
       #end
-      $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.size.to_s)
-      info = ''
-      info << PandoraUtils.bytes_to_hex(fish) if fish
-      info << ', '+PandoraUtils.bytes_to_hex(fish_key) if fish_key
-      PandoraUtils.log_message(PandoraUtils::LM_Trace, _('Fish order is added')+ \
-        ' '+@fish_ind.to_s+':['+info+']')
-      res
-    end
-
-    def find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
-      res = @fish_orders.select do |fo|
-        ((fisher.nil? or (fo[PandoraNet::LO_Fisher] == fisher)) and \
-        (fisher_key.nil? or (fo[PandoraNet::LO_Fisher_key] == fisher_key)) and \
-        (fisher_baseid.nil? or (fo[PandoraNet::LO_Fisher_baseid] == fisher_baseid)) and \
-        (fish.nil? or (fo[PandoraNet::LO_Fish] == fish)) and \
-        (fish_key.nil? or (fo[PandoraNet::LO_Fish_key] == fish_key)))
-      end
-      #LO_Session
-      #res.uniq!
-      #res.compact!
       res
     end
 
