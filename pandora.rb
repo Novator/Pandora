@@ -1154,7 +1154,7 @@ module PandoraUtils
     NAME = "Сеанс подключения"
     attr_accessor :connected, :conn_param, :def_flds
     def initialize
-      @connected = FALSE
+      @connected = false
       @conn_param = ''
       @def_flds = {}
     end
@@ -1279,7 +1279,7 @@ module PandoraUtils
         #INSERT INTO t1(val1,val2) SELECT t2.val1, t2.val2 FROM t2 WHERE t2.id = @id
         #p 'ALTER TABLE OLD_COMPANY ADD COLUMN SEX char(1)'
         res = db.execute('CREATE TABLE '+table_name+' '+tab_def)
-        @exist[table_name] = TRUE
+        @exist[table_name] = true
       end
       exist[table_name]
     end
