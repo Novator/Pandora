@@ -9607,7 +9607,7 @@ module PandoraGtk
       :public_scale, :lang_entry, :last_sw, :rate_btn
 
     class BodyScrolledWindow < Gtk::ScrolledWindow
-      attr_accessor :field, :link_name, :text_view, :format, :view_buffer, :view_mode, :color_mode
+      attr_accessor :field, :link_name, :text_view, :format, :raw_buffer, :view_buffer, :view_mode, :color_mode
 
       RUBY_KEYWORDS = 'begin end module class def if then else elsif while unless do case when require yield rescue include'.split
       RUBY_KEYWORDS2 = 'self true false not and or nil '.split
@@ -9843,7 +9843,7 @@ module PandoraGtk
 
       def set_tags(buf, line1, line2, clean=nil)
         #p 'line1, line2, view_mode='+[line1, line2, view_mode].inspect
-        if (not view_mode) and color_mode
+        if (not @view_mode) and @color_mode
           buf.begin_user_action do
             line = line1
             iter1 = buf.get_iter_at_line(line)
@@ -9885,134 +9885,161 @@ module PandoraGtk
         @view_mode = true
         @color_mode = true
         @view_buffer = Gtk::TextBuffer.new
-
-        @view_buffer.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
-        @view_buffer.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
-        @view_buffer.create_tag('strike', 'strikethrough' => true)
-        @view_buffer.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
-        @view_buffer.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
-        @view_buffer.create_tag('link', {'foreground' => 'blue', 'underline' => Pango::AttrUnderline::SINGLE})
-        @view_buffer.create_tag('linked', {'foreground' => 'navy', 'underline' => Pango::AttrUnderline::SINGLE})
-        @view_buffer.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
-        @view_buffer.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
-        @view_buffer.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
-        @view_buffer.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
-
-        @view_buffer.create_tag('string', {'foreground' => '#00f000'})
-        @view_buffer.create_tag('symbol', {'foreground' => '#008020'})
-        @view_buffer.create_tag('comment', {'foreground' => '#8080e0'})
-        @view_buffer.create_tag('keyword', {'foreground' => '#ffffff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
-        @view_buffer.create_tag('keyword2', {'foreground' => '#ffffff'})
-        @view_buffer.create_tag('function', {'foreground' => '#f12111'})
-        @view_buffer.create_tag('number', {'foreground' => '#f050e0'})
-        @view_buffer.create_tag('hexadec', {'foreground' => '#e070e7'})
-        @view_buffer.create_tag('constant', {'foreground' => '#60eedd'})
-        @view_buffer.create_tag('big_constant', {'foreground' => '#d080e0'})
-        @view_buffer.create_tag('identifer', {'foreground' => '#ffff33'})
-        @view_buffer.create_tag('global', {'foreground' => '#ffa500'})
-        @view_buffer.create_tag('instvar', {'foreground' => '#ff85a2'})
-        @view_buffer.create_tag('classvar', {'foreground' => '#ff79ec'})
-        @view_buffer.create_tag('operator', {'foreground' => '#ffffff'})
-        @view_buffer.create_tag('class', {'foreground' => '#ff1100', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
-        @view_buffer.create_tag('module', {'foreground' => '#1111ff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
-        @view_buffer.create_tag('regex', {'foreground' => '#105090'})
-
-        @view_buffer.signal_connect('changed') do |buf|  #modified-changed
-          mark = buf.get_mark('insert')
-          iter = buf.get_iter_at_mark(mark)
-          line1 = iter.line
-          set_tags(buf, line1, line1, true)
-          false
-        end
-
-        @view_buffer.signal_connect('insert-text') do |buf, iter, text, len|
-          $view_buffer_off1 = iter.offset
-          false
-        end
-
-        @view_buffer.signal_connect('paste-done') do |buf|
-          if $view_buffer_off1
-            line1 = buf.get_iter_at_offset($view_buffer_off1).line
-            mark = buf.get_mark('insert')
-            iter = buf.get_iter_at_mark(mark)
-            line2 = iter.line
-            $view_buffer_off1 = iter.offset
-            set_tags(buf, line1, line2)
-
-            #tv = self.text_view
-            #tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0) if tv
-            #adj = tv.parent.vadjustment
-            #adj.value = adj.upper #- adj.page_size
-            #adj.value_changed       # bug: not scroll to end
-            #adj.value = adj.upper   # if add many lines
-            #mark = buf.create_mark(nil, buf.end_iter, false)
-            #tv.scroll_to_mark(mark, 0, true, 0.0, 1.0)
-            #tv.scroll_to_mark(buf.get_mark('insert'), 0.0, true, 0.0, 1.0)
-            #buf.delete_mark(mark)
-          end
-          false
-        end
-
       end
 
-      def raw_buffer
-        res = nil
-        res = text_view.buffer if text_view
-        res
+      def init_raw_buf(buf)
+        if (not @raw_buffer) and buf
+          @raw_buffer = buf
+          buf.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
+          buf.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
+          buf.create_tag('strike', 'strikethrough' => true)
+          buf.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
+          buf.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
+          buf.create_tag('link', {'foreground' => 'blue', 'underline' => Pango::AttrUnderline::SINGLE})
+          buf.create_tag('linked', {'foreground' => 'navy', 'underline' => Pango::AttrUnderline::SINGLE})
+          buf.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
+          buf.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
+          buf.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
+          buf.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
+
+          buf.create_tag('string', {'foreground' => '#00f000'})
+          buf.create_tag('symbol', {'foreground' => '#008020'})
+          buf.create_tag('comment', {'foreground' => '#8080e0'})
+          buf.create_tag('keyword', {'foreground' => '#ffffff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+          buf.create_tag('keyword2', {'foreground' => '#ffffff'})
+          buf.create_tag('function', {'foreground' => '#f12111'})
+          buf.create_tag('number', {'foreground' => '#f050e0'})
+          buf.create_tag('hexadec', {'foreground' => '#e070e7'})
+          buf.create_tag('constant', {'foreground' => '#60eedd'})
+          buf.create_tag('big_constant', {'foreground' => '#d080e0'})
+          buf.create_tag('identifer', {'foreground' => '#ffff33'})
+          buf.create_tag('global', {'foreground' => '#ffa500'})
+          buf.create_tag('instvar', {'foreground' => '#ff85a2'})
+          buf.create_tag('classvar', {'foreground' => '#ff79ec'})
+          buf.create_tag('operator', {'foreground' => '#ffffff'})
+          buf.create_tag('class', {'foreground' => '#ff1100', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+          buf.create_tag('module', {'foreground' => '#1111ff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+          buf.create_tag('regex', {'foreground' => '#105090'})
+
+          buf.signal_connect('changed') do |buf|  #modified-changed
+            mark = buf.get_mark('insert')
+            iter = buf.get_iter_at_mark(mark)
+            line1 = iter.line
+            set_tags(buf, line1, line1, true)
+            false
+          end
+
+          buf.signal_connect('insert-text') do |buf, iter, text, len|
+            $view_buffer_off1 = iter.offset
+            false
+          end
+
+          buf.signal_connect('paste-done') do |buf|
+            if $view_buffer_off1
+              line1 = buf.get_iter_at_offset($view_buffer_off1).line
+              mark = buf.get_mark('insert')
+              iter = buf.get_iter_at_mark(mark)
+              line2 = iter.line
+              $view_buffer_off1 = iter.offset
+              set_tags(buf, line1, line2)
+
+              #tv = self.text_view
+              #tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0) if tv
+              #adj = tv.parent.vadjustment
+              #adj.value = adj.upper #- adj.page_size
+              #adj.value_changed       # bug: not scroll to end
+              #adj.value = adj.upper   # if add many lines
+              #mark = buf.create_mark(nil, buf.end_iter, false)
+              #tv.scroll_to_mark(mark, 0, true, 0.0, 1.0)
+              #tv.scroll_to_mark(buf.get_mark('insert'), 0.0, true, 0.0, 1.0)
+              #buf.delete_mark(mark)
+            end
+            false
+          end
+        end
+      end
+
+      def convert_buffer(raw_buf, view_buf, to_view, format=nil)
+        format ||= 'orgmode'
+        if to_view
+          view_buf.text = ''
+          txt = raw_buf.text
+          p 'txt='+txt
+          i = 0
+          while i<txt.size
+            p j = txt.index('*')
+            if j
+              view_buf.insert(view_buf.end_iter, txt[0, j])
+              p txt = txt[j+1..-1]
+              p j = txt.index('*')
+              if j
+                p smile_name = txt[0..j-1]
+                p img_buf = $window.get_smile_buf(smile_name)
+                view_buf.insert(view_buf.end_iter, img_buf) if img_buf
+                p txt = txt[j+1..-1]
+              end
+            else
+              view_buf.insert(view_buf.end_iter, txt)
+              i = txt.size
+            end
+          end
+        else
+          txt = view_buf.text
+          p 'raw_txt='+txt
+          #raw_buf.text = txt
+        end
       end
 
       # Set buffers
       # RU: Задать буферы
       def set_buffers
         tv = text_view
-        bw = self
         text_changed = false
-        if bw.view_mode
-          if (tv.buffer != bw.view_buffer)
-            tv.buffer = bw.view_buffer
-            text_changed = true
-          end
-        elsif tv.buffer != bw.raw_buffer
-          tv.buffer = bw.raw_buffer
-          text_changed = true
-        end
 
-        if bw.view_mode
-          #tv.style = @tv_style
+        p '====set_buffers    view_mode='+view_mode.inspect
+
+        #if bw.view_mode
+        #  if (tv.buffer != bw.view_buffer)
+        #    tv.buffer = bw.view_buffer
+        #    text_changed = true
+        #  end
+        #elsif tv.buffer != bw.raw_buffer
+        #  tv.buffer = bw.raw_buffer
+        #  text_changed = true
+        #end
+
+        @tv_style ||= tv.modifier_style
+        if view_mode
           tv.modify_style(@tv_style)
           tv.modify_font(nil)
-          #tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
-          #tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
-          #tv.modify_cursor(Gdk::Color.parse('#111111'), Gdk::Color.parse('#111111'))
-          #tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#EEEEEE'))
-          #tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#111111'))
-          if text_changed
-            bw.raw_buffer.text = bw.view_buffer.text
-          else
-            buf = bw.raw_buffer
-            buf.remove_all_tags(buf.start_iter, buf.end_iter)
-          end
+          convert_buffer(raw_buffer, view_buffer, true)
+          #if text_changed
+          #  bw.raw_buffer.text = bw.view_buffer.text
+          #else
+          #  buf = bw.raw_buffer
+          #  buf.remove_all_tags(buf.start_iter, buf.end_iter)
+          #end
+          tv.buffer = view_buffer
+          tv.editable = false
         else
-          @tv_style ||= tv.modifier_style
           tv.modify_font($font_desc)
           tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
           tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
           tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
           tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
           tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
-          #style = tv.modifier_style
-          #p style.methods
-          #style.xthickness = 0
-          #style.ythickness = 0
-          #tv.modify_style(style)
-          buf = bw.view_buffer
-          if text_changed
-            bw.view_buffer.text = bw.raw_buffer.text
-          else
-            buf.remove_all_tags(buf.start_iter, buf.end_iter)
-          end
-          set_tags(buf, 0, buf.line_count)
-          #tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0)
+
+          convert_buffer(raw_buffer, view_buffer, false)
+          tv.buffer = raw_buffer
+          tv.editable = true
+          #if text_changed
+          #  bw.view_buffer.text = bw.raw_buffer.text
+          #else
+          #  buf = bw.view_buffer
+          #  buf.remove_all_tags(buf.start_iter, buf.end_iter)
+          #end
+          raw_buffer.remove_all_tags(raw_buffer.start_iter, raw_buffer.end_iter)
+          set_tags(raw_buffer, 0, raw_buffer.line_count)
         end
       end
 
@@ -10384,6 +10411,7 @@ module PandoraGtk
                 end
                 if bodywid.is_a? Gtk::TextView
                   bodywin.text_view = bodywid
+                  bodywin.init_raw_buf(bodywin.text_view.buffer)
                   bodywid.buffer.text = field[FI_Value].to_s
                   bodywin.set_buffers
                   toolbar.show
