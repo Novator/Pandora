@@ -9978,7 +9978,7 @@ module PandoraGtk
       # RU: Конвертировать буфер из исходника в представление (или наоборот)
       def convert_buffer(raw_buf, view_buf, to_view, format=nil)
         format ||= 'auto'
-        unless ['orgmode', 'bbcode'].include?(format)
+        unless ['orgmode', 'bbcode', 'ruby'].include?(format)
           format = 'orgmode'
           @format = format
           parent.parent.parent.format_btn.label = format
