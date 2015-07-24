@@ -9604,14 +9604,100 @@ module PandoraGtk
 
     attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
       :keep_btn, :rate_label, :vouch_btn, :follow_btn, :trust_scale, :trust0, :public_btn, \
-      :public_scale, :lang_entry, :last_sw, :rate_btn
+      :public_scale, :lang_entry, :last_sw, :rate_btn, :format_btn
 
+    # Window for view body (text or blob)
+    # RU: Окно просмотра тела (текста или блоба)
     class BodyScrolledWindow < Gtk::ScrolledWindow
       attr_accessor :field, :link_name, :text_view, :format, :raw_buffer, :view_buffer, :view_mode, :color_mode
 
+      def initialize(*args)
+        super(*args)
+        @format = nil
+        @view_mode = true
+        @color_mode = true
+        buf = Gtk::TextBuffer.new
+        @view_buffer = buf
+        buf.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
+        buf.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
+        buf.create_tag('strike', 'strikethrough' => true)
+        buf.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
+        buf.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
+        buf.create_tag('link', {'foreground' => 'blue', 'underline' => Pango::AttrUnderline::SINGLE})
+        buf.create_tag('linked', {'foreground' => 'navy', 'underline' => Pango::AttrUnderline::SINGLE})
+        buf.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
+        buf.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
+        buf.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
+        buf.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
+      end
+
+      def init_raw_buf(buf)
+        if (not @raw_buffer) and buf
+          @raw_buffer = buf
+          buf.create_tag('string', {'foreground' => '#00f000'})
+          buf.create_tag('symbol', {'foreground' => '#008020'})
+          buf.create_tag('comment', {'foreground' => '#8080e0'})
+          buf.create_tag('keyword', {'foreground' => '#ffffff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+          buf.create_tag('keyword2', {'foreground' => '#ffffff'})
+          buf.create_tag('function', {'foreground' => '#f12111'})
+          buf.create_tag('number', {'foreground' => '#f050e0'})
+          buf.create_tag('hexadec', {'foreground' => '#e070e7'})
+          buf.create_tag('constant', {'foreground' => '#60eedd'})
+          buf.create_tag('big_constant', {'foreground' => '#d080e0'})
+          buf.create_tag('identifer', {'foreground' => '#ffff33'})
+          buf.create_tag('global', {'foreground' => '#ffa500'})
+          buf.create_tag('instvar', {'foreground' => '#ff85a2'})
+          buf.create_tag('classvar', {'foreground' => '#ff79ec'})
+          buf.create_tag('operator', {'foreground' => '#ffffff'})
+          buf.create_tag('class', {'foreground' => '#ff1100', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+          buf.create_tag('module', {'foreground' => '#1111ff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+          buf.create_tag('regex', {'foreground' => '#105090'})
+
+          buf.signal_connect('changed') do |buf|  #modified-changed
+            mark = buf.get_mark('insert')
+            iter = buf.get_iter_at_mark(mark)
+            line1 = iter.line
+            set_tags(buf, line1, line1, true)
+            false
+          end
+
+          buf.signal_connect('insert-text') do |buf, iter, text, len|
+            $view_buffer_off1 = iter.offset
+            false
+          end
+
+          buf.signal_connect('paste-done') do |buf|
+            if $view_buffer_off1
+              line1 = buf.get_iter_at_offset($view_buffer_off1).line
+              mark = buf.get_mark('insert')
+              iter = buf.get_iter_at_mark(mark)
+              line2 = iter.line
+              $view_buffer_off1 = iter.offset
+              set_tags(buf, line1, line2)
+
+              #tv = self.text_view
+              #tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0) if tv
+              #adj = tv.parent.vadjustment
+              #adj.value = adj.upper #- adj.page_size
+              #adj.value_changed       # bug: not scroll to end
+              #adj.value = adj.upper   # if add many lines
+              #mark = buf.create_mark(nil, buf.end_iter, false)
+              #tv.scroll_to_mark(mark, 0, true, 0.0, 1.0)
+              #tv.scroll_to_mark(buf.get_mark('insert'), 0.0, true, 0.0, 1.0)
+              #buf.delete_mark(mark)
+            end
+            false
+          end
+        end
+      end
+
+      # Ruby key words
+      # Ключевые слова Ruby
       RUBY_KEYWORDS = 'begin end module class def if then else elsif while unless do case when require yield rescue include'.split
       RUBY_KEYWORDS2 = 'self true false not and or nil '.split
 
+      # Call a code block with the text
+      # RU: Вызвать блок кода по тексту
       def ruby_tag_line(str, index=0, mode=0)
 
         def ident_char?(c)
@@ -9841,6 +9927,8 @@ module PandoraGtk
         mode
       end
 
+      # Set tags for line range of TextView
+      # RU: Проставить теги для диапазона строк TextView
       def set_tags(buf, line1, line2, clean=nil)
         #p 'line1, line2, view_mode='+[line1, line2, view_mode].inspect
         if (not @view_mode) and @color_mode
@@ -9879,109 +9967,71 @@ module PandoraGtk
         end
       end
 
-      def initialize(*args)
-        super(*args)
-        @format = nil
-        @view_mode = true
-        @color_mode = true
-        @view_buffer = Gtk::TextBuffer.new
-      end
+      # Char mode
+      # RU: Режим символов
+      CM_Bold    = 1
+      CM_Italic  = 2
+      CM_Under   = 4
+      CM_Strike  = 8
 
-      def init_raw_buf(buf)
-        if (not @raw_buffer) and buf
-          @raw_buffer = buf
-          buf.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
-          buf.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
-          buf.create_tag('strike', 'strikethrough' => true)
-          buf.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
-          buf.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
-          buf.create_tag('link', {'foreground' => 'blue', 'underline' => Pango::AttrUnderline::SINGLE})
-          buf.create_tag('linked', {'foreground' => 'navy', 'underline' => Pango::AttrUnderline::SINGLE})
-          buf.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
-          buf.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
-          buf.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
-          buf.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
-
-          buf.create_tag('string', {'foreground' => '#00f000'})
-          buf.create_tag('symbol', {'foreground' => '#008020'})
-          buf.create_tag('comment', {'foreground' => '#8080e0'})
-          buf.create_tag('keyword', {'foreground' => '#ffffff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
-          buf.create_tag('keyword2', {'foreground' => '#ffffff'})
-          buf.create_tag('function', {'foreground' => '#f12111'})
-          buf.create_tag('number', {'foreground' => '#f050e0'})
-          buf.create_tag('hexadec', {'foreground' => '#e070e7'})
-          buf.create_tag('constant', {'foreground' => '#60eedd'})
-          buf.create_tag('big_constant', {'foreground' => '#d080e0'})
-          buf.create_tag('identifer', {'foreground' => '#ffff33'})
-          buf.create_tag('global', {'foreground' => '#ffa500'})
-          buf.create_tag('instvar', {'foreground' => '#ff85a2'})
-          buf.create_tag('classvar', {'foreground' => '#ff79ec'})
-          buf.create_tag('operator', {'foreground' => '#ffffff'})
-          buf.create_tag('class', {'foreground' => '#ff1100', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
-          buf.create_tag('module', {'foreground' => '#1111ff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
-          buf.create_tag('regex', {'foreground' => '#105090'})
-
-          buf.signal_connect('changed') do |buf|  #modified-changed
-            mark = buf.get_mark('insert')
-            iter = buf.get_iter_at_mark(mark)
-            line1 = iter.line
-            set_tags(buf, line1, line1, true)
-            false
-          end
-
-          buf.signal_connect('insert-text') do |buf, iter, text, len|
-            $view_buffer_off1 = iter.offset
-            false
-          end
-
-          buf.signal_connect('paste-done') do |buf|
-            if $view_buffer_off1
-              line1 = buf.get_iter_at_offset($view_buffer_off1).line
-              mark = buf.get_mark('insert')
-              iter = buf.get_iter_at_mark(mark)
-              line2 = iter.line
-              $view_buffer_off1 = iter.offset
-              set_tags(buf, line1, line2)
-
-              #tv = self.text_view
-              #tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0) if tv
-              #adj = tv.parent.vadjustment
-              #adj.value = adj.upper #- adj.page_size
-              #adj.value_changed       # bug: not scroll to end
-              #adj.value = adj.upper   # if add many lines
-              #mark = buf.create_mark(nil, buf.end_iter, false)
-              #tv.scroll_to_mark(mark, 0, true, 0.0, 1.0)
-              #tv.scroll_to_mark(buf.get_mark('insert'), 0.0, true, 0.0, 1.0)
-              #buf.delete_mark(mark)
-            end
-            false
-          end
-        end
-      end
-
+      # Conver buffer from raw to view (or back)
+      # RU: Конвертировать буфер из исходника в представление (или наоборот)
       def convert_buffer(raw_buf, view_buf, to_view, format=nil)
-        format ||= 'orgmode'
+        format ||= 'auto'
+        unless ['orgmode', 'bbcode'].include?(format)
+          format = 'orgmode'
+          @format = format
+          parent.parent.parent.format_btn.label = format
+        end
         if to_view
           view_buf.text = ''
           txt = raw_buf.text
           p 'txt='+txt
-          i = 0
-          while i<txt.size
-            p j = txt.index('*')
-            if j
-              view_buf.insert(view_buf.end_iter, txt[0, j])
-              p txt = txt[j+1..-1]
-              p j = txt.index('*')
-              if j
-                p smile_name = txt[0..j-1]
-                p img_buf = $window.get_smile_buf(smile_name)
-                view_buf.insert(view_buf.end_iter, img_buf) if img_buf
-                p txt = txt[j+1..-1]
+          case format
+            when 'orgmode'
+              i = 0
+              while i<txt.size
+                j = txt.index('*')
+                if j
+                  view_buf.insert(view_buf.end_iter, txt[0, j])
+                  txt = txt[j+1..-1]
+                  j = txt.index('*')
+                  if j
+                    tag_name = txt[0..j-1]
+                    img_buf = $window.get_smile_buf(tag_name)
+                    view_buf.insert(view_buf.end_iter, img_buf) if img_buf
+                    txt = txt[j+1..-1]
+                  end
+                else
+                  view_buf.insert(view_buf.end_iter, txt)
+                  i = txt.size
+                end
+              end
+            when 'bbcode'
+              i = 0
+              while i<txt.size
+                j = txt.index('[b]')
+                if j
+                  view_buf.insert(view_buf.end_iter, txt[0, j])
+                  txt = txt[j+3..-1]
+                  j = txt.index('[/b]')
+                  if j
+                    tag_name = txt[0..j-1]
+                    iter = view_buf.end_iter
+                    p1 = iter.offset
+                    view_buf.insert(iter, tag_name)
+                    p2 = view_buf.end_iter.offset
+                    view_buffer.apply_tag('bold', view_buffer.get_iter_at_offset(p1), \
+                      view_buffer.get_iter_at_offset(p2))
+                    txt = txt[j+4..-1]
+                  end
+                else
+                  view_buf.insert(view_buf.end_iter, txt)
+                  i = txt.size
+                end
               end
             else
-              view_buf.insert(view_buf.end_iter, txt)
-              i = txt.size
-            end
+              view_buf.text = txt
           end
         else
           txt = view_buf.text
@@ -10012,7 +10062,7 @@ module PandoraGtk
         if view_mode
           tv.modify_style(@tv_style)
           tv.modify_font(nil)
-          convert_buffer(raw_buffer, view_buffer, true)
+          convert_buffer(raw_buffer, view_buffer, true, @format)
           #if text_changed
           #  bw.raw_buffer.text = bw.view_buffer.text
           #else
@@ -10029,7 +10079,7 @@ module PandoraGtk
           tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
           tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
 
-          convert_buffer(raw_buffer, view_buffer, false)
+          convert_buffer(raw_buffer, view_buffer, false, @format)
           tv.buffer = raw_buffer
           tv.editable = true
           #if text_changed
@@ -10055,11 +10105,11 @@ module PandoraGtk
 
     # Add menu item
     # RU: Добавляет пункт меню
-    def add_menu_item(label, menu, text)
+    def add_menu_item(btn, menu, text)
       mi = Gtk::MenuItem.new(text)
       menu.append(mi)
       mi.signal_connect('activate') do |mi|
-        label.label = mi.label
+        btn.label = mi.label
         if bw = get_bodywin
           bw.format = mi.label.to_s
           p 'format changed to: '+bw.format.to_s
@@ -10225,6 +10275,7 @@ module PandoraGtk
       end
 
       btn = Gtk::MenuToolButton.new(nil, 'auto')
+      @format_btn = btn
       menu = Gtk::Menu.new
       btn.menu = menu
       add_menu_item(btn, menu, 'auto')
