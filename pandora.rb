@@ -5221,8 +5221,8 @@ module PandoraNet
         $window.set_status_field(PandoraGtk::SF_Fisher, @fish_orders.size.to_s)
         info = ''
         info << PandoraUtils.bytes_to_hex(fish) if fish
-        info << ', '+PandoraUtils.bytes_to_hex(fish_key) if fish_key
-        PandoraUtils.log_message(PandoraUtils::LM_Trace, _('Fish order is added')+ \
+        info << ', '+PandoraUtils.bytes_to_hex(fish_key) if fish_key.is_a? String
+        PandoraUtils.log_message(PandoraUtils::LM_Trace, _('Bob is generated')+ \
           ' '+@fish_ind.to_s+':['+info+']')
       end
       #model = PandoraUtils.get_model('Request', models)
@@ -5752,8 +5752,11 @@ module PandoraNet
 
         if sended == buf.bytesize
           res = index
-        elsif sended != -1
-          PandoraUtils.log_message(LM_Error, _('Not all data was sent')+' '+sended.to_s)
+        else
+          res = nil
+          if sended != -1
+            PandoraUtils.log_message(LM_Error, _('Not all data was sent')+' '+sended.to_s)
+          end
         end
         segindex = 0
         i = segdata
@@ -5795,9 +5798,11 @@ module PandoraNet
           if sended == buf.bytesize
             res = index
             #p log_mes+'SEND_ADD: ('+buf+')'
-          elsif sended != -1
+          else
             res = nil
-            PandoraUtils.log_message(LM_Error, _('Not all data was sent')+'2 '+sended.to_s)
+            if sended != -1
+              PandoraUtils.log_message(LM_Error, _('Not all data was sent')+'2 '+sended.to_s)
+            end
           end
           i += segdata
         end
@@ -8066,7 +8071,10 @@ module PandoraNet
                 if fish_order
                   p log_mes+'fish_order='+fish_order[LO_Fisher..LO_Fish_key].inspect
                   p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
-                  if fish_order and (fish_order[LO_Session] != self)
+                  if fish_order and (fish_order[LO_Session] != self) \
+                  and not((fish_order[LO_Fisher] == @to_person) \
+                  and (fish_order[LO_Fisher_key] == @to_key) \
+                  and (fish_order[LO_Fisher_baseid] == @to_base_id))
                     # fish order is not from me
                     line = fish_order[LO_Fisher..LO_Fish_key]
                     #if (fish_order[LO_Fisher] == mykeyhash) \
@@ -8076,10 +8084,11 @@ module PandoraNet
                       # fishing to me or neighbor
                     if init_line(line) == false
                       # fishing not to the session
-                      p log_mes+'New fish order: '+line.inspect
+                      p log_mes+'Fish order to send: '+line.inspect
                       #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                      PandoraUtils.log_message(LM_Trace, _('Fishing to')+': [fish,host,port]' \
+                      PandoraUtils.log_message(LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
                         +[PandoraUtils.bytes_to_hex(fish_order[LO_Fish]), \
+                        PandoraUtils.bytes_to_hex(fish_order[LO_Fish_key]), \
                         @host_ip, @port].inspect)
                       line_raw = PandoraUtils.rubyobj_to_pson(line)
                       add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish)
@@ -9974,68 +9983,205 @@ module PandoraGtk
       CM_Under   = 4
       CM_Strike  = 8
 
+      BBCODES = ['B', 'I', 'U', 'S', 'EM', 'STRIKE', 'STRONG', 'D', 'BR', 'FONT', \
+        'URL', 'A', 'HREF', 'LINK', 'ANCHOR', 'QUOTE', 'LIST', 'CUT', 'SPOILER', \
+        'CODE', 'INLINE', 'PRE', 'SOURCE', 'IMG', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', \
+        'SUB', 'SUP', 'ABBR', 'ACRONYM', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', \
+        'LEFT', 'CENTER', 'RIGHT', 'FILL']
+
       # Conver buffer from raw to view (or back)
       # RU: Конвертировать буфер из исходника в представление (или наоборот)
       def convert_buffer(raw_buf, view_buf, to_view, format=nil)
+
+        def shift_coms(shift)
+          @open_coms.each do |ocf|
+            ocf[1] += shift
+          end
+        end
+
         format ||= 'auto'
-        unless ['orgmode', 'bbcode', 'ruby'].include?(format)
-          format = 'orgmode'
+        unless ['orgmode', 'bbcode', 'html', 'ruby', 'plain'].include?(format)
+          format = 'orgmode'  #need autodetect here
           @format = format
           parent.parent.parent.format_btn.label = format
         end
         if to_view
           view_buf.text = ''
-          txt = raw_buf.text
-          p 'txt='+txt
+          str = raw_buf.text
+          p 'str='+str
           case format
             when 'orgmode'
               i = 0
-              while i<txt.size
-                j = txt.index('*')
+              while i<str.size
+                j = str.index('*')
                 if j
-                  view_buf.insert(view_buf.end_iter, txt[0, j])
-                  txt = txt[j+1..-1]
-                  j = txt.index('*')
+                  view_buf.insert(view_buf.end_iter, str[0, j])
+                  str = str[j+1..-1]
+                  j = str.index('*')
                   if j
                     tag_name = txt[0..j-1]
                     img_buf = $window.get_smile_buf(tag_name)
                     view_buf.insert(view_buf.end_iter, img_buf) if img_buf
-                    txt = txt[j+1..-1]
+                    str = str[j+1..-1]
                   end
                 else
-                  view_buf.insert(view_buf.end_iter, txt)
-                  i = txt.size
+                  view_buf.insert(view_buf.end_iter, str)
+                  i = str.size
                 end
               end
-            when 'bbcode'
+            when 'bbcode', 'html'
+              open_coms = Array.new
+              @open_coms = open_coms
+              open_brek = '['
+              close_brek = ']'
+              if format=='html'
+                open_brek = '<'
+                close_brek = '>'
+              end
+              i1 = nil
               i = 0
-              while i<txt.size
-                j = txt.index('[b]')
-                if j
-                  view_buf.insert(view_buf.end_iter, txt[0, j])
-                  txt = txt[j+3..-1]
-                  j = txt.index('[/b]')
-                  if j
-                    tag_name = txt[0..j-1]
-                    iter = view_buf.end_iter
-                    p1 = iter.offset
-                    view_buf.insert(iter, tag_name)
-                    p2 = view_buf.end_iter.offset
-                    view_buffer.apply_tag('bold', view_buffer.get_iter_at_offset(p1), \
-                      view_buffer.get_iter_at_offset(p2))
-                    txt = txt[j+4..-1]
+              ss = str.size
+              while i<ss
+                c = str[i]
+                if c==open_brek
+                  i1 = i
+                  i += 1
+                elsif i1 and (c==close_brek)
+                  view_buf.insert(view_buf.end_iter, str[0, i1])
+                  shift_coms(i1)
+                  com = str[i1+1, i-i1-1]
+                  p 'bbcode com='+com
+                  if com and (com.size>0)
+                    comu = nil
+                    if (com[0] == '/')
+                      # -- close bbcode
+                      comu = com[1..-1]
+                      p 'close comu='+comu.inspect
+                      comu = comu.strip.upcase if comu
+                      if BBCODES.include?(comu)
+                        k = open_coms.index{ |ocf| ocf[0]==comu }
+                        if k
+                          rec = open_coms[k]
+                          open_coms.delete_at(k)
+                          k = rec[1]
+                          params = rec[2]
+                          p 'view_buf.text='+view_buf.text
+                          p iter = view_buf.end_iter
+                          p2 = iter.offset
+                          p p1 = p2-k
+                          tv_tag = nil
+                          case comu
+                            when 'B', 'STRONG'
+                              tv_tag = 'bold'
+                            when 'I', 'EM'
+                              tv_tag = 'italic'
+                            when 'S', 'STRIKE'
+                              tv_tag = 'strike'
+                            when 'U'
+                              tv_tag = 'undline'
+                            when 'D'
+                              tv_tag = 'dundline'
+                            when 'FONT'
+                              tv_tag = nil
+                            when 'URL', 'A', 'HREF', 'LINK'
+                              tv_tag = nil
+                            when 'ANCHOR'
+                              tv_tag = nil
+                            when 'QUOTE'
+                              tv_tag = nil
+                            when 'LIST'
+                              tv_tag = nil
+                            when 'CUT', 'SPOILER'
+                              tv_tag = nil
+                            when 'CODE', 'INLINE', 'PRE', 'SOURCE'
+                              tv_tag = nil
+                            when 'IMG', 'IMAGE'
+                              tv_tag = nil
+                            when 'VIDEO', 'AUDIO', 'FILE'
+                              tv_tag = nil
+                            when 'SUB'
+                              tv_tag = nil
+                            when 'SUP'
+                              tv_tag = nil
+                            when 'ABBR', 'ACRONYM'
+                              tv_tag = nil
+                            when 'HR'
+                              tv_tag = nil
+                            when 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'
+                              tv_tag = nil
+                            when 'LEFT'
+                              tv_tag = 'left'
+                            when 'CENTER'
+                              tv_tag = 'center'
+                            when 'RIGHT'
+                              tv_tag = 'right'
+                            when 'FILL'
+                              tv_tag = 'fill'
+                            #end-case-when
+                          end
+                          if tv_tag
+                            view_buffer.apply_tag(tv_tag, \
+                              view_buffer.get_iter_at_offset(p1), \
+                              view_buffer.get_iter_at_offset(p2))
+                          end
+                        else
+                          comu = nil
+                        end
+                      else
+                        comu = nil
+                      end
+                    else
+                      # -- open bbcode
+                      j = 0
+                      cs = com.size
+                      j +=1 while (j<cs) and (not ' ='.index(com[j]))
+                      comu = nil
+                      params = nil
+                      if (j<cs)
+                        params = com[j..-1]
+                        comu = com[0, j]
+                      else
+                        comu = com
+                      end
+                      comu = comu.strip.upcase
+                      if BBCODES.include?(comu)
+                        k = open_coms.find{ |ocf| ocf[0]==comu }
+                        if k
+                          comu = nil
+                        else
+                          case comu
+                            when 'BR'
+                              view_buf.insert(view_buf.end_iter, "\n")
+                              shift_coms(1)
+                            else
+                              open_coms << [comu, 0, params]
+                          end
+                        end
+                      else
+                        comu = nil
+                      end
+                    end
+                    unless comu
+                      view_buf.insert(view_buf.end_iter, com)
+                      shift_coms(com.size)
+                    end
                   end
+                  str = str[i+1..-1]
+                  i = 0
+                  ss = str.size
+                  i1 = nil
                 else
-                  view_buf.insert(view_buf.end_iter, txt)
-                  i = txt.size
+                  i += 1
                 end
               end
+              view_buf.insert(view_buf.end_iter, str)
             else
-              view_buf.text = txt
+              view_buf.text = str
+            #end-case-when
           end
         else
-          txt = view_buf.text
-          p 'raw_txt='+txt
+          str = view_buf.text
+          p 'raw_txt='+str
           #raw_buf.text = txt
         end
       end
