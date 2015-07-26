@@ -9983,11 +9983,14 @@ module PandoraGtk
       CM_Under   = 4
       CM_Strike  = 8
 
-      BBCODES = ['B', 'I', 'U', 'S', 'EM', 'STRIKE', 'STRONG', 'D', 'BR', 'FONT', \
-        'URL', 'A', 'HREF', 'LINK', 'ANCHOR', 'QUOTE', 'LIST', 'CUT', 'SPOILER', \
-        'CODE', 'INLINE', 'PRE', 'SOURCE', 'IMG', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', \
-        'SUB', 'SUP', 'ABBR', 'ACRONYM', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', \
-        'LEFT', 'CENTER', 'RIGHT', 'FILL']
+      BBCODES = ['B', 'I', 'U', 'S', 'EM', 'STRIKE', 'STRONG', 'D', 'BR', \
+        'FONT', 'SIZE', 'COLOR', 'SPAN', 'DIV', 'P', \
+        'URL', 'A', 'HREF', 'LINK', 'ANCHOR', 'QUOTE', 'BLOCKQUOTE', 'LIST', \
+        'CUT', 'SPOILER', 'CODE', 'INLINE', 'PRE', 'SOURCE', \
+        'IMG', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'SUB', 'SUP', \
+        'ABBR', 'ACRONYM', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', \
+        'LEFT', 'CENTER', 'RIGHT', 'FILL', 'IMAGES', 'SLIDE', 'SLIDESHOW', \
+        'TABLE', 'TR', 'TD', 'TH']
 
       # Conver buffer from raw to view (or back)
       # RU: Конвертировать буфер из исходника в представление (или наоборот)
@@ -10053,18 +10056,39 @@ module PandoraGtk
                   p 'bbcode com='+com
                   if com and (com.size>0)
                     comu = nil
-                    if (com[0] == '/')
+                    close = (com[0] == '/')
+                    if close or (com[-1] == '/')
                       # -- close bbcode
-                      comu = com[1..-1]
-                      p 'close comu='+comu.inspect
+                      params = nil
+                      if close
+                        comu = com[1..-1]
+                      else
+                        com = com[0..-2]
+                        j = 0
+                        cs = com.size
+                        j +=1 while (j<cs) and (not ' ='.index(com[j]))
+                        comu = nil
+                        params = nil
+                        if (j<cs)
+                          params = com[j+1..-1].strip
+                          comu = com[0, j]
+                        else
+                          comu = com
+                        end
+                      end
+                      p 'close comu='+comu if comu
                       comu = comu.strip.upcase if comu
                       if BBCODES.include?(comu)
                         k = open_coms.index{ |ocf| ocf[0]==comu }
-                        if k
-                          rec = open_coms[k]
-                          open_coms.delete_at(k)
-                          k = rec[1]
-                          params = rec[2]
+                        if k or (not close)
+                          if k
+                            rec = open_coms[k]
+                            open_coms.delete_at(k)
+                            k = rec[1]
+                            params = rec[2]
+                          else
+                            k = 0
+                          end
                           p 'view_buf.text='+view_buf.text
                           p iter = view_buf.end_iter
                           p2 = iter.offset
@@ -10081,13 +10105,16 @@ module PandoraGtk
                               tv_tag = 'undline'
                             when 'D'
                               tv_tag = 'dundline'
+                            when 'BR', 'P'
+                              view_buf.insert(view_buf.end_iter, "\n")
+                              shift_coms(1)
                             when 'FONT'
                               tv_tag = nil
                             when 'URL', 'A', 'HREF', 'LINK'
-                              tv_tag = nil
+                              tv_tag = 'link'
                             when 'ANCHOR'
                               tv_tag = nil
-                            when 'QUOTE'
+                            when 'QUOTE', 'BLOCKQUOTE'
                               tv_tag = nil
                             when 'LIST'
                               tv_tag = nil
@@ -10096,6 +10123,9 @@ module PandoraGtk
                             when 'CODE', 'INLINE', 'PRE', 'SOURCE'
                               tv_tag = nil
                             when 'IMG', 'IMAGE'
+                              img_buf = $window.get_smile_buf(params)
+                              view_buf.insert(view_buf.end_iter, img_buf) if img_buf
+                            when 'IMAGES', 'SLIDE', 'SLIDESHOW'
                               tv_tag = nil
                             when 'VIDEO', 'AUDIO', 'FILE'
                               tv_tag = nil
@@ -10138,7 +10168,7 @@ module PandoraGtk
                       comu = nil
                       params = nil
                       if (j<cs)
-                        params = com[j..-1]
+                        params = com[j+1..-1].strip
                         comu = com[0, j]
                       else
                         comu = com
@@ -10150,11 +10180,19 @@ module PandoraGtk
                           comu = nil
                         else
                           case comu
-                            when 'BR'
+                            when 'BR', 'P'
                               view_buf.insert(view_buf.end_iter, "\n")
                               shift_coms(1)
                             else
+                              if params and (params.size>0)
+                                case comu
+                                  when 'IMG'
+                                    img_buf = $window.get_smile_buf(params)
+                                    view_buf.insert(view_buf.end_iter, img_buf) if img_buf
+                                end
+                              end
                               open_coms << [comu, 0, params]
+                            #end-case-when
                           end
                         end
                       else
