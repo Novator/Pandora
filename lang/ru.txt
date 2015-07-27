@@ -349,3 +349,4 @@ Add a new filter=>Добавить новый фильтр
 Idle timeout=>Таймаут бездействия
 Rate=>Рейтинг
 Send bob=>Шлю поплавок
+Expand=>Раскрыть

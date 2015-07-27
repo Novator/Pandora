@@ -9632,12 +9632,38 @@ module PandoraGtk
         buf.create_tag('strike', 'strikethrough' => true)
         buf.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
         buf.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
-        buf.create_tag('link', {'foreground' => 'blue', 'underline' => Pango::AttrUnderline::SINGLE})
-        buf.create_tag('linked', {'foreground' => 'navy', 'underline' => Pango::AttrUnderline::SINGLE})
+        buf.create_tag('link', 'foreground' => 'blue', 'underline' => Pango::AttrUnderline::SINGLE)
+        buf.create_tag('linked', 'foreground' => 'navy', 'underline' => Pango::AttrUnderline::SINGLE)
         buf.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
         buf.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
         buf.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
         buf.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
+        buf.create_tag('h1', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 24 * Pango::SCALE, 'justification' => Gtk::JUSTIFY_CENTER)
+        buf.create_tag('h2', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 21 * Pango::SCALE, 'justification' => Gtk::JUSTIFY_CENTER)
+        buf.create_tag('h3', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 18 * Pango::SCALE)
+        buf.create_tag('h4', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 15 * Pango::SCALE)
+        buf.create_tag('h5', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'style' => Pango::FontDescription::STYLE_ITALIC, 'size' => 12 * Pango::SCALE)
+        buf.create_tag('h6', 'style' => Pango::FontDescription::STYLE_ITALIC, 'size' => 12 * Pango::SCALE)
+        buf.create_tag('red', 'foreground' => 'red')
+        buf.create_tag('green', 'foreground' => 'green')
+        buf.create_tag('blue', 'foreground' => 'blue')
+        buf.create_tag('navy', 'foreground' => 'navy')
+        buf.create_tag('yellow', 'foreground' => 'yellow')
+        buf.create_tag('magenta', 'foreground' => 'magenta')
+        buf.create_tag('cyan', 'foreground' => 'cyan')
+        buf.create_tag('lime', 'foreground' =>   '#00FF00')
+        buf.create_tag('maroon', 'foreground' => 'maroon')
+        buf.create_tag('olive', 'foreground' =>  '#808000')
+        buf.create_tag('purple', 'foreground' => 'purple')
+        buf.create_tag('teal', 'foreground' =>   '#008080')
+        buf.create_tag('gray', 'foreground' => 'gray')
+        buf.create_tag('silver', 'foreground' =>   '#C0C0C0')
+        buf.create_tag('mono', 'family' => 'monospace', 'background' => '#EFEFEF')
+        buf.create_tag('sup', 'rise' => 7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
+        buf.create_tag('sub', 'rise' => -7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
+        buf.create_tag('small', 'scale' => Pango::AttrScale::XX_SMALL)
+        buf.create_tag('large', 'scale' => Pango::AttrScale::X_LARGE)
+        buf.create_tag('quote', 'left_margin' => 20, 'background' => '#EFEFEF', 'style' => Pango::FontDescription::STYLE_ITALIC)
       end
 
       def init_raw_buf(buf)
@@ -9984,13 +10010,18 @@ module PandoraGtk
       CM_Strike  = 8
 
       BBCODES = ['B', 'I', 'U', 'S', 'EM', 'STRIKE', 'STRONG', 'D', 'BR', \
-        'FONT', 'SIZE', 'COLOR', 'SPAN', 'DIV', 'P', \
+        'FONT', 'SIZE', 'COLOR', 'COLOUR', 'STYLE', 'BACK', 'BACKGROUND', 'BG', \
+        'FORE', 'FOREGROUND', 'FG', 'SPAN', 'DIV', 'P', \
+        'RED', 'GREEN', 'BLUE', 'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', \
+        'LIME', 'AQUA', 'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER', \
         'URL', 'A', 'HREF', 'LINK', 'ANCHOR', 'QUOTE', 'BLOCKQUOTE', 'LIST', \
-        'CUT', 'SPOILER', 'CODE', 'INLINE', 'PRE', 'SOURCE', \
+        'CUT', 'SPOILER', 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE' \
         'IMG', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'SUB', 'SUP', \
         'ABBR', 'ACRONYM', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', \
         'LEFT', 'CENTER', 'RIGHT', 'FILL', 'IMAGES', 'SLIDE', 'SLIDESHOW', \
-        'TABLE', 'TR', 'TD', 'TH']
+        'TABLE', 'TR', 'TD', 'TH', \
+        'SMALL', 'LITTLE', 'X-SMALL', 'XX-SMALL', 'LARGE', 'BIG', 'X-LARGE', 'XX-LARGE']
+
 
       # Conver buffer from raw to view (or back)
       # RU: Конвертировать буфер из исходника в представление (или наоборот)
@@ -10002,9 +10033,60 @@ module PandoraGtk
           end
         end
 
+        def get_param(params, type=:string)
+          res = nil
+          if (params.is_a? String) and (params.size>0) and params.index('=').nil?
+            res = params
+            if type==:integer
+              begin
+                res.gsub(/[^0-9\.]/, '')
+                res = res.to_i
+              rescue
+                res = nil
+              end
+            end
+          end
+          res
+        end
+
+        def detect_params(params)
+          res = {}
+          if (params.is_a? String) and (params.size>0)
+            i = params.index(' ')
+            i ||= params.size
+            while i
+              p 'params,i='+[params,i].inspect
+              param = params[0, i]
+              params = params[i+1..-1]
+              params.strip if params
+              if (param.is_a? String) and (param.size>0)
+                j = param.index('=')
+                if j and (j>0)
+                  n = param[0, j].strip.downcase
+                  if n and (n.size>0)
+                    v = param[j+1..-1]
+                    v.strip if v
+                    res[n] = v.strip if v and (v.size>0)
+                    p 'n,v='+[n,v].inspect
+                  end
+                end
+              end
+              if params
+                i = params.index(' ')
+                i ||= params.size
+                i = nil if (i<=0)
+              else
+                i = nil
+              end
+            end
+          end
+          p 'detect_params(params)res='+[params, res].inspect
+          res
+        end
+
         format ||= 'auto'
         unless ['orgmode', 'bbcode', 'html', 'ruby', 'plain'].include?(format)
-          format = 'orgmode'  #need autodetect here
+          format = 'bbcode'  #need autodetect here
           @format = format
           parent.parent.parent.format_btn.label = format
         end
@@ -10050,8 +10132,6 @@ module PandoraGtk
                   i1 = i
                   i += 1
                 elsif i1 and (c==close_brek)
-                  view_buf.insert(view_buf.end_iter, str[0, i1])
-                  shift_coms(i1)
                   com = str[i1+1, i-i1-1]
                   p 'bbcode com='+com
                   if com and (com.size>0)
@@ -10059,7 +10139,9 @@ module PandoraGtk
                     close = (com[0] == '/')
                     if close or (com[-1] == '/')
                       # -- close bbcode
+                      show_text = true
                       params = nil
+                      tv_tag = nil
                       if close
                         comu = com[1..-1]
                       else
@@ -10089,11 +10171,10 @@ module PandoraGtk
                           else
                             k = 0
                           end
-                          p 'view_buf.text='+view_buf.text
+                          p '[comu, view_buf.text]='+[comu, view_buf.text].inspect
                           p iter = view_buf.end_iter
                           p2 = iter.offset
                           p p1 = p2-k
-                          tv_tag = nil
                           case comu
                             when 'B', 'STRONG'
                               tv_tag = 'bold'
@@ -10108,51 +10189,143 @@ module PandoraGtk
                             when 'BR', 'P'
                               view_buf.insert(view_buf.end_iter, "\n")
                               shift_coms(1)
-                            when 'FONT'
-                              tv_tag = nil
                             when 'URL', 'A', 'HREF', 'LINK'
                               tv_tag = 'link'
                             when 'ANCHOR'
                               tv_tag = nil
                             when 'QUOTE', 'BLOCKQUOTE'
-                              tv_tag = nil
+                              tv_tag = 'quote'
                             when 'LIST'
-                              tv_tag = nil
+                              tv_tag = 'quote'
                             when 'CUT', 'SPOILER'
-                              tv_tag = nil
-                            when 'CODE', 'INLINE', 'PRE', 'SOURCE'
-                              tv_tag = nil
+                              capt = params
+                              capt ||= _('Expand')
+                              expander = Gtk::Expander.new(capt)
+                              etv = Gtk::TextView.new
+                              etv.buffer.text = str[0, i1]
+                              expander.add(etv)
+                              iter = view_buf.end_iter
+                              anchor = view_buf.create_child_anchor(iter)
+                              p 'CUT [text_view, expander, anchor]='+[text_view, expander, anchor].inspect
+                              text_view.add_child_at_anchor(expander, anchor)
+                              expander.show_all
+                              show_text = false
+                            when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE'
+                              tv_tag = 'mono'
                             when 'IMG', 'IMAGE'
                               img_buf = $window.get_smile_buf(params)
                               view_buf.insert(view_buf.end_iter, img_buf) if img_buf
                             when 'IMAGES', 'SLIDE', 'SLIDESHOW'
                               tv_tag = nil
-                            when 'VIDEO', 'AUDIO', 'FILE'
-                              tv_tag = nil
-                            when 'SUB'
-                              tv_tag = nil
-                            when 'SUP'
+                            when 'VIDEO', 'AUDIO', 'FILE', 'IMAGES', 'SLIDE', 'SLIDESHOW'
                               tv_tag = nil
                             when 'ABBR', 'ACRONYM'
                               tv_tag = nil
                             when 'HR'
+                              count = get_param(params, :integer)
+                              count = 50 unless count.is_a? Numeric and (count>0)
+                              view_buf.insert(view_buf.end_iter, ' '*count)
+                              shift_coms(count)
+                              p2 += count
+                              tv_tag = 'undline'
+                            when 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LEFT', 'CENTER', \
+                            'RIGHT', 'FILL', 'SUB', 'SUP', 'RED', 'GREEN', 'BLUE', \
+                            'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', 'LIME', 'AQUA', \
+                            'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER'
+                              comu = 'CYAN' if comu=='AQUA'
+                              tv_tag = comu.downcase
+                            when 'FONT', 'SIZE', 'COLOR', 'COLOUR','STYLE', 'BACK', \
+                            'BACKGROUND', 'BG', 'FORE', 'FOREGROUND', 'FG'
+                              #need parse 'params'
+
+                              fg = nil
+                              bg = nil
+                              sz = nil
+                              js = nil #left, right...
+                              wt = nil #bold, italic...
+
+                              case comu
+                                when 'COLOR', 'COLOUR', 'FORE', 'FOREGROUND', 'FG'
+                                  fg = get_param(params)
+                                when 'BACK', 'BACKGROUND', 'BG'
+                                  bg = get_param(params)
+                                else
+                                  sz = get_param(params, :integer)
+                                  unless sz
+                                    param_hash = detect_params(params)
+                                    sz = param_hash['size']
+                                    sz ||= param_hash['sz']
+                                    fg = param_hash['color']
+                                    fg ||= param_hash['colour']
+                                    fg ||= param_hash['fg']
+                                    fg ||= param_hash['fore']
+                                    fg ||= param_hash['foreground']
+                                    bg = param_hash['bg']
+                                    bg ||= param_hash['back']
+                                    bg ||= param_hash['background']
+                                    js = param_hash['js']
+                                    js ||= param_hash['justify']
+                                    js ||= param_hash['justification']
+                                  end
+                                #end-case-when
+                              end
+
+                              tag_params = {}
+
+                              tag_name = 'font'
+                              if fg
+                                tag_name << '_'+fg
+                                tag_params['foreground'] = fg
+                              end
+                              if bg
+                                tag_name << '_bg'+bg
+                                tag_params['background'] = bg
+                              end
+                              if sz
+                                sz.gsub(/[^0-9\.]/, '') if sz.is_a? String
+                                tag_name << '_sz'+sz.to_s
+                                tag_params['size'] = sz.to_i * Pango::SCALE
+                              end
+                              if js
+                                js = js.upcase
+                                jsv = nil
+                                if js=='LEFT'
+                                  jsv = Gtk::JUSTIFY_LEFT
+                                elsif js=='RIGHT'
+                                  jsv = Gtk::JUSTIFY_RIGHT
+                                elsif js=='CENTER'
+                                  jsv = Gtk::JUSTIFY_CENTER
+                                elsif js=='FILL'
+                                  jsv = Gtk::JUSTIFY_FILL
+                                end
+                                if jsv
+                                  tag_name << '_js'+js
+                                  tag_params['justification'] = jsv
+                                end
+                              end
+                              if wt
+                                #'style' => Pango::FontDescription::STYLE_ITALIC,
+                                #'weight' => Pango::FontDescription::WEIGHT_BOLD,
+                              end
+
+                              text_tag = view_buffer.tag_table.lookup(tag_name)
+                              p '[tag_name, tag_params]='+[tag_name, tag_params].inspect
+                              if text_tag
+                                tv_tag = text_tag.name
+                              elsif tag_params.size != {}
+                                if view_buffer.create_tag(tag_name, tag_params)
+                                  tv_tag = tag_name
+                                end
+                              end
+                            when 'SPAN', 'DIV',
+                              tv_tag = 'mono'
+                            when 'TABLE', 'TR', 'TD', 'TH'
                               tv_tag = nil
-                            when 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'
-                              tv_tag = nil
-                            when 'LEFT'
-                              tv_tag = 'left'
-                            when 'CENTER'
-                              tv_tag = 'center'
-                            when 'RIGHT'
-                              tv_tag = 'right'
-                            when 'FILL'
-                              tv_tag = 'fill'
+                            when 'SMALL', 'LITTLE', 'X-SMALL', 'XX-SMALL'
+                              tv_tag = 'small'
+                            when 'LARGE', 'BIG', 'X-LARGE', 'XX-LARGE'
+                              tv_tag = 'large'
                             #end-case-when
-                          end
-                          if tv_tag
-                            view_buffer.apply_tag(tv_tag, \
-                              view_buffer.get_iter_at_offset(p1), \
-                              view_buffer.get_iter_at_offset(p2))
                           end
                         else
                           comu = nil
@@ -10160,8 +10333,21 @@ module PandoraGtk
                       else
                         comu = nil
                       end
+                      if show_text
+                        view_buf.insert(view_buf.end_iter, str[0, i1])
+                        shift_coms(i1)
+                        p2 += i1
+                      end
+                      if tv_tag
+                        p 'apply_tag [tv_tag,p1,p2]='+[tv_tag,p1,p2].inspect
+                        view_buffer.apply_tag(tv_tag, \
+                          view_buffer.get_iter_at_offset(p1), \
+                          view_buffer.get_iter_at_offset(p2))
+                      end
                     else
                       # -- open bbcode
+                      view_buf.insert(view_buf.end_iter, str[0, i1])
+                      shift_coms(i1)
                       j = 0
                       cs = com.size
                       j +=1 while (j<cs) and (not ' ='.index(com[j]))
@@ -10183,6 +10369,14 @@ module PandoraGtk
                             when 'BR', 'P'
                               view_buf.insert(view_buf.end_iter, "\n")
                               shift_coms(1)
+                            when 'HR'
+                              p1 = view_buf.end_iter.offset
+                              count = get_param(params, :integer)
+                              count = 50 unless count.is_a? Numeric and (count>0)
+                              view_buf.insert(view_buf.end_iter, ' '*count)
+                              shift_coms(count)
+                              view_buffer.apply_tag('undline',
+                                view_buffer.get_iter_at_offset(p1), view_buf.end_iter)
                             else
                               if params and (params.size>0)
                                 case comu
@@ -10200,9 +10394,12 @@ module PandoraGtk
                       end
                     end
                     unless comu
-                      view_buf.insert(view_buf.end_iter, com)
-                      shift_coms(com.size)
+                      view_buf.insert(view_buf.end_iter, '['+com+']')
+                      shift_coms(com.size+2)
                     end
+                  else
+                    view_buf.insert(view_buf.end_iter, str[0, i1])
+                    shift_coms(i1)
                   end
                   str = str[i+1..-1]
                   i = 0
@@ -10246,6 +10443,7 @@ module PandoraGtk
         if view_mode
           tv.modify_style(@tv_style)
           tv.modify_font(nil)
+          tv.buffer = view_buffer
           convert_buffer(raw_buffer, view_buffer, true, @format)
           #if text_changed
           #  bw.raw_buffer.text = bw.view_buffer.text
@@ -10253,7 +10451,7 @@ module PandoraGtk
           #  buf = bw.raw_buffer
           #  buf.remove_all_tags(buf.start_iter, buf.end_iter)
           #end
-          tv.buffer = view_buffer
+          #tv.buffer = view_buffer
           tv.editable = false
         else
           tv.modify_font($font_desc)
@@ -10441,7 +10639,7 @@ module PandoraGtk
       toolbar2.toolbar_style = Gtk::Toolbar::Style::ICONS
       panelbox.pack_start(toolbar2, false, false, 0)
 
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Type', true) do |btn|
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Preview', true) do |btn|
         bw = get_bodywin
         if bw
           bw.view_mode = btn.active?
