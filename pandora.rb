@@ -9618,7 +9618,8 @@ module PandoraGtk
     # Window for view body (text or blob)
     # RU: Окно просмотра тела (текста или блоба)
     class BodyScrolledWindow < Gtk::ScrolledWindow
-      attr_accessor :field, :link_name, :text_view, :format, :raw_buffer, :view_buffer, :view_mode, :color_mode
+      attr_accessor :field, :link_name, :text_view, :format, :raw_buffer, :view_buffer, \
+        :view_mode, :color_mode
 
       def initialize(*args)
         super(*args)
@@ -10015,7 +10016,7 @@ module PandoraGtk
         'RED', 'GREEN', 'BLUE', 'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', \
         'LIME', 'AQUA', 'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER', \
         'URL', 'A', 'HREF', 'LINK', 'ANCHOR', 'QUOTE', 'BLOCKQUOTE', 'LIST', \
-        'CUT', 'SPOILER', 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE' \
+        'CUT', 'SPOILER', 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', \
         'IMG', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'SUB', 'SUP', \
         'ABBR', 'ACRONYM', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', \
         'LEFT', 'CENTER', 'RIGHT', 'FILL', 'IMAGES', 'SLIDE', 'SLIDESHOW', \
@@ -10158,8 +10159,10 @@ module PandoraGtk
                           comu = com
                         end
                       end
-                      p 'close comu='+comu if comu
                       comu = comu.strip.upcase if comu
+                      p '===closetag  [comu,params]='+[comu,params].inspect
+                      p1 = view_buf.end_iter.offset
+                      p2 = p1
                       if BBCODES.include?(comu)
                         k = open_coms.index{ |ocf| ocf[0]==comu }
                         if k or (not close)
@@ -10172,9 +10175,7 @@ module PandoraGtk
                             k = 0
                           end
                           p '[comu, view_buf.text]='+[comu, view_buf.text].inspect
-                          p iter = view_buf.end_iter
-                          p2 = iter.offset
-                          p p1 = p2-k
+                          p p1 -= k
                           case comu
                             when 'B', 'STRONG'
                               tv_tag = 'bold'
@@ -10203,18 +10204,25 @@ module PandoraGtk
                               expander = Gtk::Expander.new(capt)
                               etv = Gtk::TextView.new
                               etv.buffer.text = str[0, i1]
+                              show_text = false
                               expander.add(etv)
                               iter = view_buf.end_iter
                               anchor = view_buf.create_child_anchor(iter)
                               p 'CUT [text_view, expander, anchor]='+[text_view, expander, anchor].inspect
                               text_view.add_child_at_anchor(expander, anchor)
                               expander.show_all
-                              show_text = false
                             when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE'
                               tv_tag = 'mono'
                             when 'IMG', 'IMAGE'
-                              img_buf = $window.get_smile_buf(params)
-                              view_buf.insert(view_buf.end_iter, img_buf) if img_buf
+                              params = str[0, i1] unless params and (params.size>0)
+                              p 'IMG params='+params.inspect
+                              if params and (params.size>0)
+                                img_buf = $window.get_smile_buf(params)
+                                if img_buf
+                                  show_text = false
+                                  view_buf.insert(view_buf.end_iter, img_buf)
+                                end
+                              end
                             when 'IMAGES', 'SLIDE', 'SLIDESHOW'
                               tv_tag = nil
                             when 'VIDEO', 'AUDIO', 'FILE', 'IMAGES', 'SLIDE', 'SLIDESHOW'
@@ -10331,6 +10339,7 @@ module PandoraGtk
                           comu = nil
                         end
                       else
+                        p 'NO process'
                         comu = nil
                       end
                       if show_text
@@ -10360,8 +10369,10 @@ module PandoraGtk
                         comu = com
                       end
                       comu = comu.strip.upcase
+                      p '---opentag  [comu,params]='+[comu,params].inspect
                       if BBCODES.include?(comu)
                         k = open_coms.find{ |ocf| ocf[0]==comu }
+                        p 'opentag k='+k.inspect
                         if k
                           comu = nil
                         else
@@ -10380,12 +10391,16 @@ module PandoraGtk
                             else
                               if params and (params.size>0)
                                 case comu
-                                  when 'IMG'
+                                  when 'IMG', 'IMAGE'
                                     img_buf = $window.get_smile_buf(params)
-                                    view_buf.insert(view_buf.end_iter, img_buf) if img_buf
+                                    if img_buf
+                                      view_buf.insert(view_buf.end_iter, img_buf)
+                                    else
+                                      comu = nil
+                                    end
                                 end
                               end
-                              open_coms << [comu, 0, params]
+                              open_coms << [comu, 0, params] if comu
                             #end-case-when
                           end
                         end
@@ -10787,6 +10802,33 @@ module PandoraGtk
 
                 if not bodywid
                   textview = Gtk::TextView.new
+
+                  textview.signal_connect('key-press-event') do |widget, event|
+                    case event.keyval
+                      when Gdk::Keyval::GDK_F5, Gdk::Keyval::GDK_F9
+                        btn = PandoraGtk.find_tool_btn(toolbar, 'Preview')
+                        btn.active = (not btn.active?) if btn
+                      when Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769
+                        if event.state.control_mask?
+                          btn = PandoraGtk.find_tool_btn(toolbar, 'Bold')
+                          btn.clicked
+                        end
+                      when Gdk::Keyval::GDK_i, Gdk::Keyval::GDK_I, 1755, 1787
+                        if event.state.control_mask?
+                          btn = PandoraGtk.find_tool_btn(toolbar, 'Italic')
+                          btn.clicked
+                        end
+                      when Gdk::Keyval::GDK_u, Gdk::Keyval::GDK_U, 1735, 1767
+                        if event.state.control_mask?
+                          btn = PandoraGtk.find_tool_btn(toolbar, 'Underline')
+                          btn.clicked
+                        end
+                      else
+                        p event.keyval
+                    end
+                    false
+                  end
+
                   #textview = child.children[0]
                   #textview.wrap_mode = Gtk::TextTag::WRAP_WORD
                   textview.signal_connect('key-press-event') do |widget, event|
@@ -13938,6 +13980,17 @@ module PandoraGtk
     btn.tooltip_text = title
     btn.label = title
     btn
+  end
+
+  def self.find_tool_btn(toolbar, title)
+    res = nil
+    i = 0
+    while (i<toolbar.children.size) and (not res)
+      ch = toolbar.children[i]
+      res = ch if (ch.is_a? Gtk::ToolButton) and (ch.label == title)
+      i += 1
+    end
+    res
   end
 
   $update_interval = 30
