@@ -420,6 +420,8 @@ module PandoraUtils
     res
   end
 
+  # Convert hex string to bytes
+  # RU: Преобразует 16-ю строку в строку байт
   def self.hex_to_bytes(hexstr)
     bytes = AsciiString.new
     hexstr = '0'+hexstr if hexstr.size % 2 > 0
@@ -506,6 +508,18 @@ module PandoraUtils
     data = AsciiString.new(data)
     if data.size<size
       data = [0].pack('C')*(size-data.size) + data
+    end
+    #data.ljust(size, 0.chr)
+    data = AsciiString.new(data)
+  end
+
+  # Fill string by zeros from right to defined size
+  # RU: Заполнить строку нулями справа до нужного размера
+  def self.fill_zeros_from_right(data, size)
+    #data.force_encoding('ASCII-8BIT')
+    data = AsciiString.new(data)
+    if data.size<size
+      data << [0].pack('C')*(size-data.size)
     end
     #data.ljust(size, 0.chr)
     data = AsciiString.new(data)
@@ -2924,6 +2938,16 @@ module PandoraModel
 
   include PandoraUtils
 
+  # Panhash length
+  # RU: Длина панхэша
+  PanhashSize = 22
+
+  def self.hex_to_panhash(hexstr)
+    res = PandoraUtils.hex_to_bytes(hexstr)
+    res = PandoraUtils.fill_zeros_from_right(res, PanhashSize)
+    AsciiString.new(res)
+  end
+
   # Pandora's object
   # RU: Объект Пандоры
   class Panobject < PandoraUtils::BasePanobject
@@ -3474,6 +3498,100 @@ module PandoraModel
       end
     end
     sel
+  end
+
+  DefaultProto = 'pandora'
+
+  # Parse URL
+  # RU: Разбирает URL
+  def self.parse_url(url)
+    res = nil
+    proto, obj_type, way = nil
+    if (url.is_a? String) and (url.size>0)
+      i = url.index('://')
+      if i and (i>0)
+        proto = url[0, i].strip.downcase
+        url = url[i+3..-1]
+        proto = 'pandora' if (proto=='pan') or (proto=='pand')
+      else
+        proto = DefaultProto
+      end
+      #type detect
+      case proto
+        when 'pandora'
+          i = url.index('/')
+          if i and (i==0)
+            url = url[1..-1]
+            i = nil
+            i = url.index('/') if url
+          end
+          if i and (i>0)
+            obj_type = url[0, i].strip.downcase
+            url = url[i+1..-1]
+          end
+      end
+      way = url
+    end
+    res = [proto, obj_type, way] if proto and (proto.size>0) and way and (way.size>0)
+    p 'parse_url  [proto, obj_type, way]='+res.inspect
+    res
+  end
+
+  # Obtain image pixbuf from URL
+  # RU: Добывает pixbuf картинки по URL
+  def self.get_image_from_url(url, err_text=true, pixbuf_parent=nil)
+    res = parse_url(url)
+    if res
+      proto, obj_type, way = res
+      res = nil
+      body = nil
+      fn = nil
+      if way and (way.size>0)
+        if (proto=='pandora') and obj_type.nil?
+          panhash = PandoraModel.hex_to_panhash(way)
+          kind = PandoraUtils.kind_from_panhash(panhash)
+          sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'type,blob')
+          p 'get_image_from_url  panhash,sel='+[panhash,sel].inspect
+          if sel and (sel.size>0)
+            type = sel[0][0]
+            blob = sel[0][1]
+            if blob and (blob.size>0)
+              if blob[0]=='@'
+                fn = blob[1..-1]
+              else
+                body = blob
+              end
+            end
+          else
+            if (way.size<=PandoraGtk::MaxSmileName)
+              res = $window.get_smile_buf(way)
+            end
+            if (not res)
+              if err_text
+                res = _('Cannot find image')+': panhash='+PandoraUtils.bytes_to_hex(panhash)
+              else
+                res = $window.get_smile_buf('sad')
+              end
+            end
+          end
+        elsif ((proto=='http') or (proto=='https'))
+          fn = load_http_to_file(way)
+        elsif proto=='smile'
+          res = $window.get_smile_buf(way)
+        end
+      end
+      if body
+        pixbuf_loader = Gdk::PixbufLoader.new
+        pixbuf_loader.last_write(body)
+        #res = pixbuf_loader.pixbuf
+        res = pixbuf_loader.pixbuf
+        #res = Gdk::Pixbuf.new(res, Gdk::Pixbuf::COLORSPACE_RGB, true, 8, width, height, width*4)
+      elsif fn
+        res = PandoraGtk.start_image_loading(fn, pixbuf_parent)
+      end
+      res = Gtk::Image.new(res) if (not pixbuf_parent) and (res.is_a? Gdk::Pixbuf)
+    end
+    res
   end
 
   # Predefined Pandora's codes of languages and Alpha-2
@@ -4283,7 +4401,7 @@ module PandoraCrypto
                 getting = true
               else
                 key_vec = key_vec0
-                panhash = PandoraUtils.hex_to_bytes(key_entry.text)
+                panhash = PandoraModel.hex_to_panhash(key_entry.text)
                 passwd = pass_entry.text
                 if changebtn.active? and new_pass_entry
                   key_vec, cipher, passwd = recrypt_key(key_model, key_vec, cipher, panhash, \
@@ -4360,7 +4478,7 @@ module PandoraCrypto
 
           dialog.run2 do
             creator = PandoraUtils.hex_to_bytes(user_entry.text)
-            if creator.size==22
+            if creator.size==PandoraModel::PanhashSize
               #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
               passwd = pass_entry.text
               cipher_hash = 0
@@ -9604,6 +9722,59 @@ module PandoraGtk
     end
   end
 
+  ReadImagePortionSize = 1024*1024 # 1Mb
+
+  # Start loading image from file
+  # RU: Запускает загрузку картинки в файл
+  def self.start_image_loading(filename, pixbuf_parent=nil)
+    res = nil
+    p 'start_image_loading  filename='+filename.inspect
+    begin
+      file_stream = File.open(filename, 'rb')
+      res = Gtk::Image.new unless pixbuf_parent
+      Thread.new do
+        pixbuf_loader = Gdk::PixbufLoader.new
+        pixbuf_loader.signal_connect('area_prepared') do |loader|
+          pixbuf = loader.pixbuf
+          pixbuf.fill!(0xaaaaaaff)
+          if pixbuf_parent
+            res = pixbuf
+          else
+            res.pixbuf = pixbuf
+          end
+        end
+        pixbuf_loader.signal_connect('area_updated') do
+          if pixbuf_parent
+            pixbuf_parent.queue_draw
+          else
+            res.queue_draw
+          end
+        end
+        while file_stream
+          buf = file_stream.read(ReadImagePortionSize)
+          pixbuf_loader.write(buf)
+          if file_stream.eof?
+            file_stream.close
+            file_stream = nil
+            pixbuf_loader.close
+            pixbuf_loader = nil
+          end
+          sleep(0.005)
+        end
+      end
+      while pixbuf_parent and (not res)
+        sleep(0.01)
+      end
+    rescue => err
+      unless pixbuf_parent
+        err_text = _('Image loading error')+":\n"+err.message
+        label = Gtk::Label.new(err_text)
+        res = label
+      end
+    end
+    res
+  end
+
   $font_desc = nil
 
   # Dialog with enter fields
@@ -10138,9 +10309,9 @@ module PandoraGtk
                   if com and (com.size>0)
                     comu = nil
                     close = (com[0] == '/')
+                    show_text = true
                     if close or (com[-1] == '/')
                       # -- close bbcode
-                      show_text = true
                       params = nil
                       tv_tag = nil
                       if close
@@ -10210,6 +10381,7 @@ module PandoraGtk
                               anchor = view_buf.create_child_anchor(iter)
                               p 'CUT [text_view, expander, anchor]='+[text_view, expander, anchor].inspect
                               text_view.add_child_at_anchor(expander, anchor)
+                              shift_coms(1)
                               expander.show_all
                             when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE'
                               tv_tag = 'mono'
@@ -10221,6 +10393,7 @@ module PandoraGtk
                                 if img_buf
                                   show_text = false
                                   view_buf.insert(view_buf.end_iter, img_buf)
+                                  shift_coms(1)
                                 end
                               end
                             when 'IMAGES', 'SLIDE', 'SLIDESHOW'
@@ -10392,12 +10565,25 @@ module PandoraGtk
                               if params and (params.size>0)
                                 case comu
                                   when 'IMG', 'IMAGE'
-                                    img_buf = $window.get_smile_buf(params)
-                                    if img_buf
-                                      view_buf.insert(view_buf.end_iter, img_buf)
-                                    else
-                                      comu = nil
+                                    comu = nil
+                                    img_res = PandoraModel.get_image_from_url(params, true, text_view)
+                                    if img_res
+                                      iter = view_buf.end_iter
+                                      if img_res.is_a? Gdk::Pixbuf
+                                        view_buf.insert(iter, img_res)
+                                        shift_coms(1)
+                                        show_text = false
+                                      else
+                                        img_res ||= _('Unknown error')
+                                        view_buf.insert(iter, img_res)
+                                        shift_coms(img_res.size)
+                                      end
+                                      #anchor = view_buf.create_child_anchor(iter)
+                                      #p 'IMG [wid, anchor]='+[wid, anchor].inspect
+                                      #text_view.add_child_at_anchor(wid, anchor)
+                                      #wid.show_all
                                     end
+                                  #end-case-when
                                 end
                               end
                               open_coms << [comu, 0, params] if comu
@@ -10408,7 +10594,7 @@ module PandoraGtk
                         comu = nil
                       end
                     end
-                    unless comu
+                    if (not comu) and show_text
                       view_buf.insert(view_buf.end_iter, '['+com+']')
                       shift_coms(com.size+2)
                     end
@@ -10534,44 +10720,6 @@ module PandoraGtk
       count
     end
 
-    # Start loading image from file
-    # RU: Запускает загрузку картинки в файл
-    def start_image_loading(filename)
-      widget = nil
-      begin
-        image_stream = File.open(filename, 'rb')
-        image = Gtk::Image.new
-        widget = image
-        Thread.new do
-          pixbuf_loader = Gdk::PixbufLoader.new
-          pixbuf_loader.signal_connect('area_prepared') do |loader|
-            pixbuf = loader.pixbuf
-            pixbuf.fill!(0xaaaaaaff)
-            image.pixbuf = pixbuf
-          end
-          pixbuf_loader.signal_connect('area_updated') do
-            image.queue_draw
-          end
-          while image_stream
-            buf = image_stream.read(1024*1024)
-            pixbuf_loader.write(buf)
-            if image_stream.eof?
-              image_stream.close
-              image_stream = nil
-              pixbuf_loader.close
-              pixbuf_loader = nil
-            end
-            sleep(0.005)
-          end
-        end
-      rescue => err
-        err_text = _('Image loading error')+":\n"+err.message
-        label = Gtk::Label.new(err_text)
-        widget = label
-      end
-      widget
-    end
-
     # Set tag for selection
     # RU: Задать тэг для выделенного
     def set_tag(tag)
@@ -10588,7 +10736,7 @@ module PandoraGtk
             bounds = buffer.selection_bounds
             ltext = rtext = ''
             case bw.format
-              when 'bbcode'
+              when 'bbcode', 'html'
                 t = ''
                 case tag
                   when 'bold'
@@ -10599,9 +10747,18 @@ module PandoraGtk
                     t = 's'
                   when 'undline'
                     t = 'u'
+                  else
+                    t = tag
+                  #end-case-when
                 end
-                ltext = '['+t+']'
-                rtext = '[/'+t+']'
+                open_brek = '['
+                close_brek = ']'
+                if bw.format=='html'
+                  open_brek = '<'
+                  close_brek = '>'
+                end
+                ltext = open_brek+t+close_brek
+                rtext = open_brek+'/'+t+close_brek
               when 'orgmode'
                 case tag
                   when 'bold'
@@ -10773,8 +10930,7 @@ module PandoraGtk
                     ext_dc = ext.downcase
                     if ext
                       if (['.jpg','.gif','.png'].include? ext_dc)
-                        image = start_image_loading(link_name)
-                        bodywid = image
+                        bodywid = PandoraGtk.start_image_loading(link_name)
                         bodywin.link_name = link_name
                       elsif (['.txt','.rb','.xml','.py','.csv','.sh'].include? ext_dc)
                         if ext_dc=='.rb'
@@ -10802,6 +10958,7 @@ module PandoraGtk
 
                 if not bodywid
                   textview = Gtk::TextView.new
+                  textview.wrap_mode = Gtk::TextTag::WRAP_WORD
 
                   textview.signal_connect('key-press-event') do |widget, event|
                     case event.keyval
@@ -10828,9 +10985,6 @@ module PandoraGtk
                     end
                     false
                   end
-
-                  #textview = child.children[0]
-                  #textview.wrap_mode = Gtk::TextTag::WRAP_WORD
                   textview.signal_connect('key-press-event') do |widget, event|
                     if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
                       and event.state.control_mask?
@@ -10857,21 +11011,23 @@ module PandoraGtk
                     #  target = right_win
                     end
                     if type
-                      first_y = event.area.y
-                      last_y = first_y + event.area.height
-                      x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
-                      x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
-                      numbers = []
-                      pixels = []
-                      count = get_lines(tv, first_y, last_y, pixels, numbers)
-                      # Draw fully internationalized numbers!
-                      layout = widget.create_pango_layout("")
-                      count.times do |i|
-                        x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
-                        str = numbers[i].to_s
-                        layout.set_text(str)
-                        widget.style.paint_layout(target, widget.state, false,
-                          nil, widget, nil, 2, pos + 2, layout)
+                      unless tv.parent.view_mode
+                        first_y = event.area.y
+                        last_y = first_y + event.area.height
+                        x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
+                        x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
+                        numbers = []
+                        pixels = []
+                        count = get_lines(tv, first_y, last_y, pixels, numbers)
+                        # Draw fully internationalized numbers!
+                        layout = widget.create_pango_layout("")
+                        count.times do |i|
+                          x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
+                          str = numbers[i].to_s
+                          layout.set_text(str)
+                          widget.style.paint_layout(target, widget.state, false,
+                            nil, widget, nil, 2, pos + 2, layout)
+                        end
                       end
                     end
                     false
@@ -14518,8 +14674,11 @@ module PandoraGtk
             entry = field[FI_Widget]
             if entry.text == ''
               textview = field[FI_Widget2]
-              if textview and (not textview.destroyed?) and (textview.is_a? Gtk::TextView)
-                text = textview.buffer.text
+              scrolwin = nil
+              scrolwin = textview.parent if textview and (not textview.destroyed?)
+              if scrolwin and (not scrolwin.destroyed?) #and (textview.is_a? Gtk::TextView)
+                #text = textview.buffer.text
+                text = scrolwin.raw_buffer.text
                 if text and (text.size>0)
                   field[FI_Value] = text
                   flds_hash[field[FI_Id]] = field[FI_Value]
@@ -15961,6 +16120,10 @@ module PandoraGtk
       res
     end
   end  #--CaptchaHPaned
+
+  # Max smile name length
+  # RU: Максимальная длина имени смайла
+  MaxSmileName = 12
 
   # Main window
   # RU: Главное окно
