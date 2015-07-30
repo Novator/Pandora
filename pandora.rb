@@ -7120,8 +7120,7 @@ module PandoraNet
                       #talkview.show_all
                       #dialog.update_state(true)
 
-                      dialog.add_mes_to_view(text, @skey, myname, time_now, created)
-
+                      dialog.add_mes_to_view(text, nil, @skey, myname, time_now, created)
                     else
                       PandoraUtils.log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
                     end
@@ -9662,7 +9661,7 @@ module PandoraGtk
   # Extended TextView
   # RU: Расширенный TextView
   class ExtTextView < Gtk::TextView
-    attr_accessor :need_to_end, :middle_time, :middle_value
+    attr_accessor :need_to_end, :middle_time, :middle_value, :go_to_end
 
     def initialize
       super
@@ -9676,9 +9675,15 @@ module PandoraGtk
         res
       end
 
+      @go_to_end = false
+
       self.signal_connect('size-allocate') do |widget, step, arg2|
-        widget.parent.vadjustment.value = \
-        widget.parent.vadjustment.upper - widget.parent.vadjustment.page_size
+        if @go_to_end
+          @go_to_end = false
+          widget.parent.vadjustment.value = \
+          widget.parent.vadjustment.upper - widget.parent.vadjustment.page_size
+        end
+        false
       end
 
     end
@@ -9709,16 +9714,19 @@ module PandoraGtk
 
     # Do after addition
     # RU: Выполнить после добавления
-    def after_addition(go_to_end=nil)
-      go_to_end ||= @need_to_end
-      if go_to_end
+    def after_addition(go_end=nil)
+      go_end ||= @need_to_end
+      if go_end
+        @go_to_end = true
         adj = self.parent.vadjustment
-        adj.value = adj.upper
-        #adj.value_changed       # bug: not scroll to end
-        #adj.value = adj.upper   # if add many lines
-        scroll_to_iter(buffer.end_iter, 0, false, 0.0, 0.0)
+        adj.value = adj.upper - adj.page_size
+        #scroll_to_iter(buffer.end_iter, 0, true, 0.0, 1.0)
+        #mark = buffer.create_mark(nil, buffer.end_iter, false)
+        #scroll_to_mark(mark, 0, true, 0.0, 1.0)
+        #tv.scroll_to_mark(buf.get_mark('insert'), 0.0, true, 0.0, 1.0)
+        #buffer.delete_mark(mark)
       end
-      go_to_end
+      go_end
     end
   end
 
@@ -9797,61 +9805,50 @@ module PandoraGtk
         @format = nil
         @view_mode = true
         @color_mode = true
-        buf = Gtk::TextBuffer.new
-        @view_buffer = buf
-        buf.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
-        buf.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
-        buf.create_tag('strike', 'strikethrough' => true)
-        buf.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
-        buf.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
-        buf.create_tag('link', 'foreground' => 'blue', 'underline' => Pango::AttrUnderline::SINGLE)
-        buf.create_tag('linked', 'foreground' => 'navy', 'underline' => Pango::AttrUnderline::SINGLE)
-        buf.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
-        buf.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
-        buf.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
-        buf.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
-        buf.create_tag('h1', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 24 * Pango::SCALE, 'justification' => Gtk::JUSTIFY_CENTER)
-        buf.create_tag('h2', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 21 * Pango::SCALE, 'justification' => Gtk::JUSTIFY_CENTER)
-        buf.create_tag('h3', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 18 * Pango::SCALE)
-        buf.create_tag('h4', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 15 * Pango::SCALE)
-        buf.create_tag('h5', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'style' => Pango::FontDescription::STYLE_ITALIC, 'size' => 12 * Pango::SCALE)
-        buf.create_tag('h6', 'style' => Pango::FontDescription::STYLE_ITALIC, 'size' => 12 * Pango::SCALE)
-        buf.create_tag('red', 'foreground' => 'red')
-        buf.create_tag('green', 'foreground' => 'green')
-        buf.create_tag('blue', 'foreground' => 'blue')
-        buf.create_tag('navy', 'foreground' => 'navy')
-        buf.create_tag('yellow', 'foreground' => 'yellow')
-        buf.create_tag('magenta', 'foreground' => 'magenta')
-        buf.create_tag('cyan', 'foreground' => 'cyan')
-        buf.create_tag('lime', 'foreground' =>   '#00FF00')
-        buf.create_tag('maroon', 'foreground' => 'maroon')
-        buf.create_tag('olive', 'foreground' =>  '#808000')
-        buf.create_tag('purple', 'foreground' => 'purple')
-        buf.create_tag('teal', 'foreground' =>   '#008080')
-        buf.create_tag('gray', 'foreground' => 'gray')
-        buf.create_tag('silver', 'foreground' =>   '#C0C0C0')
-        buf.create_tag('mono', 'family' => 'monospace', 'background' => '#EFEFEF')
-        buf.create_tag('sup', 'rise' => 7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
-        buf.create_tag('sub', 'rise' => -7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
-        buf.create_tag('small', 'scale' => Pango::AttrScale::XX_SMALL)
-        buf.create_tag('large', 'scale' => Pango::AttrScale::X_LARGE)
-        buf.create_tag('quote', 'left_margin' => 20, 'background' => '#EFEFEF', 'style' => Pango::FontDescription::STYLE_ITALIC)
+      end
 
-        #signal_connect('scroll-child') do |*args|
-        #  p 'BODYSW+++scroll-child: '+args.inspect
-        #  false
-        #end
-
-        #signal_connect('event') do |*args|
-        #  p 'BODYSW---event: '+args.inspect
-        #  false
-        #end
-
-        #signal_connect('notify') do |*args|
-        #  p 'BODYSW===notify: '+args.inspect
-        #  false
-        #end
-
+      def init_view_buf(buf=nil)
+        if (not @view_buffer)
+          buf ||= Gtk::TextBuffer.new
+          @view_buffer = buf
+          buf.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
+          buf.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
+          buf.create_tag('strike', 'strikethrough' => true)
+          buf.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
+          buf.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
+          buf.create_tag('link', 'foreground' => 'blue', 'underline' => Pango::AttrUnderline::SINGLE)
+          buf.create_tag('linked', 'foreground' => 'navy', 'underline' => Pango::AttrUnderline::SINGLE)
+          buf.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
+          buf.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
+          buf.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
+          buf.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
+          buf.create_tag('h1', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 24 * Pango::SCALE, 'justification' => Gtk::JUSTIFY_CENTER)
+          buf.create_tag('h2', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 21 * Pango::SCALE, 'justification' => Gtk::JUSTIFY_CENTER)
+          buf.create_tag('h3', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 18 * Pango::SCALE)
+          buf.create_tag('h4', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'size' => 15 * Pango::SCALE)
+          buf.create_tag('h5', 'weight' => Pango::FontDescription::WEIGHT_BOLD, 'style' => Pango::FontDescription::STYLE_ITALIC, 'size' => 12 * Pango::SCALE)
+          buf.create_tag('h6', 'style' => Pango::FontDescription::STYLE_ITALIC, 'size' => 12 * Pango::SCALE)
+          buf.create_tag('red', 'foreground' => 'red')
+          buf.create_tag('green', 'foreground' => 'green')
+          buf.create_tag('blue', 'foreground' => 'blue')
+          buf.create_tag('navy', 'foreground' => 'navy')
+          buf.create_tag('yellow', 'foreground' => 'yellow')
+          buf.create_tag('magenta', 'foreground' => 'magenta')
+          buf.create_tag('cyan', 'foreground' => 'cyan')
+          buf.create_tag('lime', 'foreground' =>   '#00FF00')
+          buf.create_tag('maroon', 'foreground' => 'maroon')
+          buf.create_tag('olive', 'foreground' =>  '#808000')
+          buf.create_tag('purple', 'foreground' => 'purple')
+          buf.create_tag('teal', 'foreground' =>   '#008080')
+          buf.create_tag('gray', 'foreground' => 'gray')
+          buf.create_tag('silver', 'foreground' =>   '#C0C0C0')
+          buf.create_tag('mono', 'family' => 'monospace', 'background' => '#EFEFEF')
+          buf.create_tag('sup', 'rise' => 7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
+          buf.create_tag('sub', 'rise' => -7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
+          buf.create_tag('small', 'scale' => Pango::AttrScale::XX_SMALL)
+          buf.create_tag('large', 'scale' => Pango::AttrScale::X_LARGE)
+          buf.create_tag('quote', 'left_margin' => 20, 'background' => '#EFEFEF', 'style' => Pango::FontDescription::STYLE_ITALIC)
+        end
       end
 
       def init_raw_buf(buf)
@@ -9881,6 +9878,7 @@ module PandoraGtk
             iter = buf.get_iter_at_mark(mark)
             line1 = iter.line
             set_tags(buf, line1, line1, true)
+            p '====changed!!!!!!!!!!!!!!'
             false
           end
 
@@ -10177,7 +10175,7 @@ module PandoraGtk
           if mode>0
             # find close brek
             i = str.index(close_brek)
-            p 'close brek  [str,i,d]='+[str,i,d].inspect
+            #p 'close brek  [str,i,d]='+[str,i,d].inspect
             k = ss
             if i
               k = i
@@ -10214,7 +10212,7 @@ module PandoraGtk
           else
             # find open brek
             i = str.index(open_brek)
-            p 'open brek  [str,i,d]='+[str,i,d].inspect
+            #p 'open brek  [str,i,d]='+[str,i,d].inspect
             if i
               yield(:operator, index + d + i , index + d + i + 1)
               i += 1
@@ -10368,274 +10366,61 @@ module PandoraGtk
           parent.parent.parent.format_btn.label = format
         end
         if to_view
-          view_buf.begin_user_action do
-            view_buf.text = ''
-            str = raw_buf.text
-            p 'str='+str
-            case format
-              when 'orgmode'
-                i = 0
-                while i<str.size
+          view_buf.text = ''
+          str = raw_buf.text
+          #p 'str='+str
+          case format
+            when 'orgmode'
+              i = 0
+              while i<str.size
+                j = str.index('*')
+                if j
+                  view_buf.insert(view_buf.end_iter, str[0, j])
+                  str = str[j+1..-1]
                   j = str.index('*')
                   if j
-                    view_buf.insert(view_buf.end_iter, str[0, j])
+                    tag_name = str[0..j-1]
+                    img_buf = $window.get_smile_buf(tag_name)
+                    view_buf.insert(view_buf.end_iter, img_buf) if img_buf
                     str = str[j+1..-1]
-                    j = str.index('*')
-                    if j
-                      tag_name = str[0..j-1]
-                      img_buf = $window.get_smile_buf(tag_name)
-                      view_buf.insert(view_buf.end_iter, img_buf) if img_buf
-                      str = str[j+1..-1]
-                    end
-                  else
-                    view_buf.insert(view_buf.end_iter, str)
-                    i = str.size
                   end
+                else
+                  view_buf.insert(view_buf.end_iter, str)
+                  i = str.size
                 end
-              when 'bbcode', 'html'
-                open_coms = Array.new
-                @open_coms = open_coms
-                open_brek = '['
-                close_brek = ']'
-                if format=='html'
-                  open_brek = '<'
-                  close_brek = '>'
-                end
-                i1 = nil
-                i = 0
-                ss = str.size
-                while i<ss
-                  c = str[i]
-                  if c==open_brek
-                    i1 = i
-                    i += 1
-                  elsif i1 and (c==close_brek)
-                    com = str[i1+1, i-i1-1]
-                    p 'bbcode com='+com
-                    if com and (com.size>0)
-                      comu = nil
-                      close = (com[0] == '/')
-                      show_text = true
-                      if close or (com[-1] == '/')
-                        # -- close bbcode
-                        params = nil
-                        tv_tag = nil
-                        if close
-                          comu = com[1..-1]
-                        else
-                          com = com[0..-2]
-                          j = 0
-                          cs = com.size
-                          j +=1 while (j<cs) and (not ' ='.index(com[j]))
-                          comu = nil
-                          params = nil
-                          if (j<cs)
-                            params = com[j+1..-1].strip
-                            comu = com[0, j]
-                          else
-                            comu = com
-                          end
-                        end
-                        comu = comu.strip.upcase if comu
-                        p '===closetag  [comu,params]='+[comu,params].inspect
-                        p1 = view_buf.end_iter.offset
-                        p2 = p1
-                        if BBCODES.include?(comu)
-                          k = open_coms.index{ |ocf| ocf[0]==comu }
-                          if k or (not close)
-                            if k
-                              rec = open_coms[k]
-                              open_coms.delete_at(k)
-                              k = rec[1]
-                              params = rec[2]
-                            else
-                              k = 0
-                            end
-                            p '[comu, view_buf.text]='+[comu, view_buf.text].inspect
-                            p p1 -= k
-                            case comu
-                              when 'B', 'STRONG'
-                                tv_tag = 'bold'
-                              when 'I', 'EM'
-                                tv_tag = 'italic'
-                              when 'S', 'STRIKE'
-                                tv_tag = 'strike'
-                              when 'U'
-                                tv_tag = 'undline'
-                              when 'D'
-                                tv_tag = 'dundline'
-                              when 'BR', 'P'
-                                view_buf.insert(view_buf.end_iter, "\n")
-                                shift_coms(1)
-                              when 'URL', 'A', 'HREF', 'LINK'
-                                tv_tag = 'link'
-                              when 'ANCHOR'
-                                tv_tag = nil
-                              when 'QUOTE', 'BLOCKQUOTE'
-                                tv_tag = 'quote'
-                              when 'LIST'
-                                tv_tag = 'quote'
-                              when 'CUT', 'SPOILER'
-                                capt = params
-                                capt ||= _('Expand')
-                                expander = Gtk::Expander.new(capt)
-                                etv = Gtk::TextView.new
-                                etv.buffer.text = str[0, i1]
-                                show_text = false
-                                expander.add(etv)
-                                iter = view_buf.end_iter
-                                anchor = view_buf.create_child_anchor(iter)
-                                p 'CUT [text_view, expander, anchor]='+[text_view, expander, anchor].inspect
-                                text_view.add_child_at_anchor(expander, anchor)
-                                shift_coms(1)
-                                expander.show_all
-                              when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE'
-                                tv_tag = 'mono'
-                              when 'IMG', 'IMAGE'
-                                params = str[0, i1] unless params and (params.size>0)
-                                p 'IMG params='+params.inspect
-                                if params and (params.size>0)
-                                  img_buf = $window.get_smile_buf(params)
-                                  if img_buf
-                                    show_text = false
-                                    view_buf.insert(view_buf.end_iter, img_buf)
-                                    shift_coms(1)
-                                  end
-                                end
-                              when 'IMAGES', 'SLIDE', 'SLIDESHOW'
-                                tv_tag = nil
-                              when 'VIDEO', 'AUDIO', 'FILE', 'IMAGES', 'SLIDE', 'SLIDESHOW'
-                                tv_tag = nil
-                              when 'ABBR', 'ACRONYM'
-                                tv_tag = nil
-                              when 'HR'
-                                count = get_param(params, :integer)
-                                count = 50 unless count.is_a? Numeric and (count>0)
-                                view_buf.insert(view_buf.end_iter, ' '*count)
-                                shift_coms(count)
-                                p2 += count
-                                tv_tag = 'undline'
-                              when 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LEFT', 'CENTER', \
-                              'RIGHT', 'FILL', 'SUB', 'SUP', 'RED', 'GREEN', 'BLUE', \
-                              'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', 'LIME', 'AQUA', \
-                              'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER'
-                                comu = 'CYAN' if comu=='AQUA'
-                                tv_tag = comu.downcase
-                              when 'FONT', 'SIZE', 'COLOR', 'COLOUR','STYLE', 'BACK', \
-                              'BACKGROUND', 'BG', 'FORE', 'FOREGROUND', 'FG'
-                                #need parse 'params'
-
-                                fg = nil
-                                bg = nil
-                                sz = nil
-                                js = nil #left, right...
-                                wt = nil #bold, italic...
-
-                                case comu
-                                  when 'COLOR', 'COLOUR', 'FORE', 'FOREGROUND', 'FG'
-                                    fg = get_param(params)
-                                  when 'BACK', 'BACKGROUND', 'BG'
-                                    bg = get_param(params)
-                                  else
-                                    sz = get_param(params, :integer)
-                                    unless sz
-                                      param_hash = detect_params(params)
-                                      sz = param_hash['size']
-                                      sz ||= param_hash['sz']
-                                      fg = param_hash['color']
-                                      fg ||= param_hash['colour']
-                                      fg ||= param_hash['fg']
-                                      fg ||= param_hash['fore']
-                                      fg ||= param_hash['foreground']
-                                      bg = param_hash['bg']
-                                      bg ||= param_hash['back']
-                                      bg ||= param_hash['background']
-                                      js = param_hash['js']
-                                      js ||= param_hash['justify']
-                                      js ||= param_hash['justification']
-                                    end
-                                  #end-case-when
-                                end
-
-                                tag_params = {}
-
-                                tag_name = 'font'
-                                if fg
-                                  tag_name << '_'+fg
-                                  tag_params['foreground'] = fg
-                                end
-                                if bg
-                                  tag_name << '_bg'+bg
-                                  tag_params['background'] = bg
-                                end
-                                if sz
-                                  sz.gsub(/[^0-9\.]/, '') if sz.is_a? String
-                                  tag_name << '_sz'+sz.to_s
-                                  tag_params['size'] = sz.to_i * Pango::SCALE
-                                end
-                                if js
-                                  js = js.upcase
-                                  jsv = nil
-                                  if js=='LEFT'
-                                    jsv = Gtk::JUSTIFY_LEFT
-                                  elsif js=='RIGHT'
-                                    jsv = Gtk::JUSTIFY_RIGHT
-                                  elsif js=='CENTER'
-                                    jsv = Gtk::JUSTIFY_CENTER
-                                  elsif js=='FILL'
-                                    jsv = Gtk::JUSTIFY_FILL
-                                  end
-                                  if jsv
-                                    tag_name << '_js'+js
-                                    tag_params['justification'] = jsv
-                                  end
-                                end
-                                if wt
-                                  #'style' => Pango::FontDescription::STYLE_ITALIC,
-                                  #'weight' => Pango::FontDescription::WEIGHT_BOLD,
-                                end
-
-                                text_tag = view_buffer.tag_table.lookup(tag_name)
-                                p '[tag_name, tag_params]='+[tag_name, tag_params].inspect
-                                if text_tag
-                                  tv_tag = text_tag.name
-                                elsif tag_params.size != {}
-                                  if view_buffer.create_tag(tag_name, tag_params)
-                                    tv_tag = tag_name
-                                  end
-                                end
-                              when 'SPAN', 'DIV',
-                                tv_tag = 'mono'
-                              when 'TABLE', 'TR', 'TD', 'TH'
-                                tv_tag = nil
-                              when 'SMALL', 'LITTLE', 'X-SMALL', 'XX-SMALL'
-                                tv_tag = 'small'
-                              when 'LARGE', 'BIG', 'X-LARGE', 'XX-LARGE'
-                                tv_tag = 'large'
-                              #end-case-when
-                            end
-                          else
-                            comu = nil
-                          end
-                        else
-                          p 'NO process'
-                          comu = nil
-                        end
-                        if show_text
-                          view_buf.insert(view_buf.end_iter, str[0, i1])
-                          shift_coms(i1)
-                          p2 += i1
-                        end
-                        if tv_tag
-                          p 'apply_tag [tv_tag,p1,p2]='+[tv_tag,p1,p2].inspect
-                          view_buffer.apply_tag(tv_tag, \
-                            view_buffer.get_iter_at_offset(p1), \
-                            view_buffer.get_iter_at_offset(p2))
-                        end
+              end
+            when 'bbcode', 'html'
+              open_coms = Array.new
+              @open_coms = open_coms
+              open_brek = '['
+              close_brek = ']'
+              if format=='html'
+                open_brek = '<'
+                close_brek = '>'
+              end
+              i1 = nil
+              i = 0
+              ss = str.size
+              while i<ss
+                c = str[i]
+                if c==open_brek
+                  i1 = i
+                  i += 1
+                elsif i1 and (c==close_brek)
+                  com = str[i1+1, i-i1-1]
+                  p 'bbcode com='+com
+                  if com and (com.size>0)
+                    comu = nil
+                    close = (com[0] == '/')
+                    show_text = true
+                    if close or (com[-1] == '/')
+                      # -- close bbcode
+                      params = nil
+                      tv_tag = nil
+                      if close
+                        comu = com[1..-1]
                       else
-                        # -- open bbcode
-                        view_buf.insert(view_buf.end_iter, str[0, i1])
-                        shift_coms(i1)
+                        com = com[0..-2]
                         j = 0
                         cs = com.size
                         j +=1 while (j<cs) and (not ' ='.index(com[j]))
@@ -10647,80 +10432,291 @@ module PandoraGtk
                         else
                           comu = com
                         end
-                        comu = comu.strip.upcase
-                        p '---opentag  [comu,params]='+[comu,params].inspect
-                        if BBCODES.include?(comu)
-                          k = open_coms.find{ |ocf| ocf[0]==comu }
-                          p 'opentag k='+k.inspect
+                      end
+                      comu = comu.strip.upcase if comu
+                      p '===closetag  [comu,params]='+[comu,params].inspect
+                      p1 = view_buf.end_iter.offset
+                      p2 = p1
+                      if BBCODES.include?(comu)
+                        k = open_coms.index{ |ocf| ocf[0]==comu }
+                        if k or (not close)
                           if k
-                            comu = nil
+                            rec = open_coms[k]
+                            open_coms.delete_at(k)
+                            k = rec[1]
+                            params = rec[2]
                           else
-                            case comu
-                              when 'BR', 'P'
-                                view_buf.insert(view_buf.end_iter, "\n")
-                                shift_coms(1)
-                              when 'HR'
-                                p1 = view_buf.end_iter.offset
-                                count = get_param(params, :integer)
-                                count = 50 unless count.is_a? Numeric and (count>0)
-                                view_buf.insert(view_buf.end_iter, ' '*count)
-                                shift_coms(count)
-                                view_buffer.apply_tag('undline',
-                                  view_buffer.get_iter_at_offset(p1), view_buf.end_iter)
-                              else
-                                if params and (params.size>0)
-                                  case comu
-                                    when 'IMG', 'IMAGE'
-                                      comu = nil
-                                      img_res = PandoraModel.get_image_from_url(params, true, text_view)
-                                      if img_res
-                                        iter = view_buf.end_iter
-                                        if img_res.is_a? Gdk::Pixbuf
-                                          view_buf.insert(iter, img_res)
-                                          shift_coms(1)
-                                          show_text = false
-                                        else
-                                          img_res ||= _('Unknown error')
-                                          view_buf.insert(iter, img_res)
-                                          shift_coms(img_res.size)
-                                        end
-                                        #anchor = view_buf.create_child_anchor(iter)
-                                        #p 'IMG [wid, anchor]='+[wid, anchor].inspect
-                                        #text_view.add_child_at_anchor(wid, anchor)
-                                        #wid.show_all
-                                      end
-                                    #end-case-when
-                                  end
+                            k = 0
+                          end
+                          #p '[comu, view_buf.text]='+[comu, view_buf.text].inspect
+                          p p1 -= k
+                          case comu
+                            when 'B', 'STRONG'
+                              tv_tag = 'bold'
+                            when 'I', 'EM'
+                              tv_tag = 'italic'
+                            when 'S', 'STRIKE'
+                              tv_tag = 'strike'
+                            when 'U'
+                              tv_tag = 'undline'
+                            when 'D'
+                              tv_tag = 'dundline'
+                            when 'BR', 'P'
+                              view_buf.insert(view_buf.end_iter, "\n")
+                              shift_coms(1)
+                            when 'URL', 'A', 'HREF', 'LINK'
+                              tv_tag = 'link'
+                            when 'ANCHOR'
+                              tv_tag = nil
+                            when 'QUOTE', 'BLOCKQUOTE'
+                              tv_tag = 'quote'
+                            when 'LIST'
+                              tv_tag = 'quote'
+                            when 'CUT', 'SPOILER'
+                              capt = params
+                              capt ||= _('Expand')
+                              expander = Gtk::Expander.new(capt)
+                              etv = Gtk::TextView.new
+                              etv.buffer.text = str[0, i1]
+                              show_text = false
+                              expander.add(etv)
+                              iter = view_buf.end_iter
+                              anchor = view_buf.create_child_anchor(iter)
+                              p 'CUT [text_view, expander, anchor]='+[text_view, expander, anchor].inspect
+                              text_view.add_child_at_anchor(expander, anchor)
+                              shift_coms(1)
+                              expander.show_all
+                            when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE'
+                              tv_tag = 'mono'
+                            when 'IMG', 'IMAGE'
+                              params = str[0, i1] unless params and (params.size>0)
+                              p 'IMG params='+params.inspect
+                              if params and (params.size>0)
+                                img_buf = $window.get_smile_buf(params)
+                                if img_buf
+                                  show_text = false
+                                  view_buf.insert(view_buf.end_iter, img_buf)
+                                  shift_coms(1)
                                 end
-                                open_coms << [comu, 0, params] if comu
-                              #end-case-when
-                            end
+                              end
+                            when 'IMAGES', 'SLIDE', 'SLIDESHOW'
+                              tv_tag = nil
+                            when 'VIDEO', 'AUDIO', 'FILE', 'IMAGES', 'SLIDE', 'SLIDESHOW'
+                              tv_tag = nil
+                            when 'ABBR', 'ACRONYM'
+                              tv_tag = nil
+                            when 'HR'
+                              count = get_param(params, :integer)
+                              count = 50 unless count.is_a? Numeric and (count>0)
+                              view_buf.insert(view_buf.end_iter, ' '*count)
+                              shift_coms(count)
+                              p2 += count
+                              tv_tag = 'undline'
+                            when 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LEFT', 'CENTER', \
+                            'RIGHT', 'FILL', 'SUB', 'SUP', 'RED', 'GREEN', 'BLUE', \
+                            'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', 'LIME', 'AQUA', \
+                            'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER'
+                              comu = 'CYAN' if comu=='AQUA'
+                              tv_tag = comu.downcase
+                            when 'FONT', 'SIZE', 'COLOR', 'COLOUR','STYLE', 'BACK', \
+                            'BACKGROUND', 'BG', 'FORE', 'FOREGROUND', 'FG'
+                              #need parse 'params'
+
+                              fg = nil
+                              bg = nil
+                              sz = nil
+                              js = nil #left, right...
+                              wt = nil #bold, italic...
+
+                              case comu
+                                when 'COLOR', 'COLOUR', 'FORE', 'FOREGROUND', 'FG'
+                                  fg = get_param(params)
+                                when 'BACK', 'BACKGROUND', 'BG'
+                                  bg = get_param(params)
+                                else
+                                  sz = get_param(params, :integer)
+                                  unless sz
+                                    param_hash = detect_params(params)
+                                    sz = param_hash['size']
+                                    sz ||= param_hash['sz']
+                                    fg = param_hash['color']
+                                    fg ||= param_hash['colour']
+                                    fg ||= param_hash['fg']
+                                    fg ||= param_hash['fore']
+                                    fg ||= param_hash['foreground']
+                                    bg = param_hash['bg']
+                                    bg ||= param_hash['back']
+                                    bg ||= param_hash['background']
+                                    js = param_hash['js']
+                                    js ||= param_hash['justify']
+                                    js ||= param_hash['justification']
+                                  end
+                                #end-case-when
+                              end
+
+                              tag_params = {}
+
+                              tag_name = 'font'
+                              if fg
+                                tag_name << '_'+fg
+                                tag_params['foreground'] = fg
+                              end
+                              if bg
+                                tag_name << '_bg'+bg
+                                tag_params['background'] = bg
+                              end
+                              if sz
+                                sz.gsub(/[^0-9\.]/, '') if sz.is_a? String
+                                tag_name << '_sz'+sz.to_s
+                                tag_params['size'] = sz.to_i * Pango::SCALE
+                              end
+                              if js
+                                js = js.upcase
+                                jsv = nil
+                                if js=='LEFT'
+                                  jsv = Gtk::JUSTIFY_LEFT
+                                elsif js=='RIGHT'
+                                  jsv = Gtk::JUSTIFY_RIGHT
+                                elsif js=='CENTER'
+                                  jsv = Gtk::JUSTIFY_CENTER
+                                elsif js=='FILL'
+                                  jsv = Gtk::JUSTIFY_FILL
+                                end
+                                if jsv
+                                  tag_name << '_js'+js
+                                  tag_params['justification'] = jsv
+                                end
+                              end
+                              if wt
+                                #'style' => Pango::FontDescription::STYLE_ITALIC,
+                                #'weight' => Pango::FontDescription::WEIGHT_BOLD,
+                              end
+
+                              text_tag = view_buffer.tag_table.lookup(tag_name)
+                              p '[tag_name, tag_params]='+[tag_name, tag_params].inspect
+                              if text_tag
+                                tv_tag = text_tag.name
+                              elsif tag_params.size != {}
+                                if view_buffer.create_tag(tag_name, tag_params)
+                                  tv_tag = tag_name
+                                end
+                              end
+                            when 'SPAN', 'DIV',
+                              tv_tag = 'mono'
+                            when 'TABLE', 'TR', 'TD', 'TH'
+                              tv_tag = nil
+                            when 'SMALL', 'LITTLE', 'X-SMALL', 'XX-SMALL'
+                              tv_tag = 'small'
+                            when 'LARGE', 'BIG', 'X-LARGE', 'XX-LARGE'
+                              tv_tag = 'large'
+                            #end-case-when
                           end
                         else
                           comu = nil
                         end
+                      else
+                        p 'NO process'
+                        comu = nil
                       end
-                      if (not comu) and show_text
-                        view_buf.insert(view_buf.end_iter, open_brek+com+close_brek)
-                        shift_coms(com.size+2)
+                      if show_text
+                        view_buf.insert(view_buf.end_iter, str[0, i1])
+                        shift_coms(i1)
+                        p2 += i1
+                      end
+                      if tv_tag
+                        p 'apply_tag [tv_tag,p1,p2]='+[tv_tag,p1,p2].inspect
+                        view_buffer.apply_tag(tv_tag, \
+                          view_buffer.get_iter_at_offset(p1), \
+                          view_buffer.get_iter_at_offset(p2))
                       end
                     else
+                      # -- open bbcode
                       view_buf.insert(view_buf.end_iter, str[0, i1])
                       shift_coms(i1)
+                      j = 0
+                      cs = com.size
+                      j +=1 while (j<cs) and (not ' ='.index(com[j]))
+                      comu = nil
+                      params = nil
+                      if (j<cs)
+                        params = com[j+1..-1].strip
+                        comu = com[0, j]
+                      else
+                        comu = com
+                      end
+                      comu = comu.strip.upcase
+                      p '---opentag  [comu,params]='+[comu,params].inspect
+                      if BBCODES.include?(comu)
+                        k = open_coms.find{ |ocf| ocf[0]==comu }
+                        p 'opentag k='+k.inspect
+                        if k
+                          comu = nil
+                        else
+                          case comu
+                            when 'BR', 'P'
+                              view_buf.insert(view_buf.end_iter, "\n")
+                              shift_coms(1)
+                            when 'HR'
+                              p1 = view_buf.end_iter.offset
+                              count = get_param(params, :integer)
+                              count = 50 unless count.is_a? Numeric and (count>0)
+                              view_buf.insert(view_buf.end_iter, ' '*count)
+                              shift_coms(count)
+                              view_buffer.apply_tag('undline',
+                                view_buffer.get_iter_at_offset(p1), view_buf.end_iter)
+                            else
+                              if params and (params.size>0)
+                                case comu
+                                  when 'IMG', 'IMAGE'
+                                    comu = nil
+                                    img_res = PandoraModel.get_image_from_url(params, true, text_view)
+                                    if img_res
+                                      iter = view_buf.end_iter
+                                      if img_res.is_a? Gdk::Pixbuf
+                                        view_buf.insert(iter, img_res)
+                                        shift_coms(1)
+                                        show_text = false
+                                      else
+                                        img_res ||= _('Unknown error')
+                                        view_buf.insert(iter, img_res)
+                                        shift_coms(img_res.size)
+                                      end
+                                      #anchor = view_buf.create_child_anchor(iter)
+                                      #p 'IMG [wid, anchor]='+[wid, anchor].inspect
+                                      #text_view.add_child_at_anchor(wid, anchor)
+                                      #wid.show_all
+                                    end
+                                  #end-case-when
+                                end
+                              end
+                              open_coms << [comu, 0, params] if comu
+                            #end-case-when
+                          end
+                        end
+                      else
+                        comu = nil
+                      end
                     end
-                    str = str[i+1..-1]
-                    i = 0
-                    ss = str.size
-                    i1 = nil
+                    if (not comu) and show_text
+                      view_buf.insert(view_buf.end_iter, open_brek+com+close_brek)
+                      shift_coms(com.size+2)
+                    end
                   else
-                    i += 1
+                    view_buf.insert(view_buf.end_iter, str[0, i1])
+                    shift_coms(i1)
                   end
+                  str = str[i+1..-1]
+                  i = 0
+                  ss = str.size
+                  i1 = nil
+                else
+                  i += 1
                 end
-                view_buf.insert(view_buf.end_iter, str)
-              else
-                view_buf.text = str
-              #end-case-when
-            end
+              end
+              view_buf.insert(view_buf.end_iter, str)
+            else
+              view_buf.text = str
+            #end-case-when
           end
         else
           str = view_buf.text
@@ -10754,8 +10750,10 @@ module PandoraGtk
         if view_mode
           tv.modify_style(@tv_style)
           tv.modify_font(nil)
-          tv.buffer = view_buffer
+          tv.hide
           convert_buffer(raw_buffer, view_buffer, true, @format)
+          tv.buffer = view_buffer
+          tv.show
           #if text_changed
           #  bw.raw_buffer.text = bw.view_buffer.text
           #else
@@ -10772,8 +10770,10 @@ module PandoraGtk
           tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
           tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
 
+          tv.hide
           convert_buffer(raw_buffer, view_buffer, false, @format)
           tv.buffer = raw_buffer
+          tv.show
           tv.editable = true
           #if text_changed
           #  bw.view_buffer.text = bw.raw_buffer.text
@@ -10941,13 +10941,6 @@ module PandoraGtk
           bw.color_mode = btn.active?
           p 'Color  @color_mode='+bw.view_mode.inspect
           bw.set_buffers
-          #if btn.active?
-          #  bw.text_view.buffer.text = ''
-          #  #bw.text_view.show
-          #else
-          #  bw.text_view.buffer.text = "sd sdgf dsfgds sd fsd ывап ываыв аыв аыва ываыв аыв ыва ываыв аыв аыв \n"*300
-          #  #bw.text_view.hide
-          #end
         end
       end
 
@@ -11084,6 +11077,7 @@ module PandoraGtk
                   textview.wrap_mode = Gtk::TextTag::WRAP_WORD
 
                   textview.signal_connect('key-press-event') do |widget, event|
+                    res = false
                     case event.keyval
                       when Gdk::Keyval::GDK_F5, Gdk::Keyval::GDK_F9
                         btn = PandoraGtk.find_tool_btn(toolbar, 'Preview')
@@ -11103,22 +11097,28 @@ module PandoraGtk
                           btn = PandoraGtk.find_tool_btn(toolbar, 'Underline')
                           btn.clicked
                         end
-                      else
-                        p event.keyval
+                      when Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter
+                        if event.state.control_mask?
+                          res = true
+                        end
                     end
-                    false
+                    res
                   end
-                  textview.signal_connect('key-press-event') do |widget, event|
-                    if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
-                      and event.state.control_mask?
-                    then
-                      true
-                    end
-                  end
-                  textview.signal_connect('size-allocate') do |widget, step, arg2|
-                    widget.parent.vadjustment.value = \
-                      widget.parent.vadjustment.upper - widget.parent.vadjustment.page_size
-                  end
+
+                  #signal_connect('scroll-child') do |*args|
+                  #  p 'BODYSW+++scroll-child: '+args.inspect
+                  #  false
+                  #end
+
+                  #signal_connect('event') do |*args|
+                  #  p 'BODYSW---event: '+args.inspect
+                  #  false
+                  #end
+
+                  #textview.signal_connect('size-allocate') do |widget, step, arg2|
+                  #  widget.parent.vadjustment.value = \
+                  #    widget.parent.vadjustment.upper - widget.parent.vadjustment.page_size
+                  #end
                   textview.set_border_window_size(Gtk::TextView::WINDOW_LEFT, 54)
                   $font_desc ||= Pango::FontDescription.new('Monospace 11')
                   textview.signal_connect('expose-event') do |widget, event|
@@ -11165,6 +11165,7 @@ module PandoraGtk
                 end
                 if bodywid.is_a? Gtk::TextView
                   bodywin.text_view = bodywid
+                  bodywin.init_view_buf
                   bodywin.init_raw_buf(bodywin.text_view.buffer)
                   bodywid.buffer.text = field[FI_Value].to_s
                   bodywin.set_buffers
@@ -11396,7 +11397,8 @@ module PandoraGtk
         aview = field[FI_View]
         if (aview=='blob') or (aview=='text')
           bodywin = BodyScrolledWindow.new(nil, nil)
-          bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+          #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+          bodywin.set_policy(Gtk::POLICY_ALWAYS, Gtk::POLICY_ALWAYS)
 
           image = Gtk::Image.new(Gtk::Stock::DND, Gtk::IconSize::MENU)
           image.set_padding(2, 0)
@@ -11469,7 +11471,7 @@ module PandoraGtk
       max_entry_height = 0
       @def_widget = nil
       @fields.each do |field|
-        p 'field='+field.inspect
+        #p 'field='+field.inspect
         max_size = 0
         fld_size = 0
         aview = field[FI_View]
@@ -12048,7 +12050,7 @@ module PandoraGtk
             mes = editbox.buffer.text
             sended = add_and_send_mes(mes)
             if sended
-              add_mes_to_view(mes)
+              add_mes_to_view(mes, true)
               editbox.buffer.text = ''
             end
           end
@@ -12251,8 +12253,8 @@ module PandoraGtk
 
     # Put message to dialog
     # RU: Добавляет сообщение в диалог
-    def add_mes_to_view(mes, key_or_panhash=nil, myname=nil, modified=nil, \
-    created=nil, to_end=nil)
+    def add_mes_to_view(mes, to_end=nil, key_or_panhash=nil, myname=nil, \
+    modified=nil, created=nil)
 
       if mes
         notice = false
@@ -12322,12 +12324,11 @@ module PandoraGtk
           time_str << '('+PandoraUtils.time_to_dialog_str(modified, time_now)+')'
         end
 
-        talkview.before_addition(time_now) if to_end.nil?
+        talkview.before_addition(time_now) if (not to_end.is_a? FalseClass)
         talkview.buffer.insert(talkview.buffer.end_iter, "\n") if (talkview.buffer.char_count>0)
         talkview.buffer.insert(talkview.buffer.end_iter, time_str+' ', time_style)
         talkview.buffer.insert(talkview.buffer.end_iter, user_name+':', name_style)
         talkview.buffer.insert(talkview.buffer.end_iter, ' '+mes)
-
         talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
         talkview.show_all
 
@@ -12403,13 +12404,15 @@ module PandoraGtk
           key_or_panhash = nil
           key_or_panhash = creator if (creator != mypanhash)
 
-          add_mes_to_view(mes, key_or_panhash, myname, modified, created, false)
-
+          add_mes_to_view(mes, false, key_or_panhash, myname, modified, created)
           i += 1
         end
-        talkview.after_addition
-
+        talkview.after_addition(true)
         talkview.show_all
+        # Scroll because of the unknown gtk bug
+        mark = talkview.buffer.create_mark(nil, talkview.buffer.end_iter, false)
+        talkview.scroll_to_mark(mark, 0, true, 0.0, 1.0)
+        talkview.buffer.delete_mark(mark)
       end
     end
 
@@ -12529,6 +12532,7 @@ module PandoraGtk
               sleep(0.3)
               if (not curpage.destroyed?) and (not curpage.editbox.destroyed?)
                 curpage.editbox.grab_focus
+                curpage.talkview.after_addition(true)
               end
               if $window.visible? and $window.has_toplevel_focus?
                 read_sec = $read_time-0.3
@@ -14592,7 +14596,7 @@ module PandoraGtk
       if (tree_view.is_a? SubjTreeView)
         panobject = tree_view.panobject
       end
-      p 'panobject='+panobject.inspect
+      #p 'panobject='+panobject.inspect
       store = tree_view.model
       iter = nil
       sel = nil
