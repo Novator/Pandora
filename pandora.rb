@@ -9785,6 +9785,175 @@ module PandoraGtk
 
   $font_desc = nil
 
+  # Window for view body (text or blob)
+  # RU: Окно просмотра тела (текста или блоба)
+  class SuperTextView < Gtk::TextView
+    attr_accessor :format
+
+    def initialize(*args)
+      super(*args)
+      wrap_mode = Gtk::TextTag::WRAP_WORD
+
+      @hand_cursor = Gdk::Cursor.new(Gdk::Cursor::HAND2)
+      @regular_cursor = Gdk::Cursor.new(Gdk::Cursor::XTERM)
+      @hovering = false
+
+      signal_connect('key-press-event') do |widget, event|
+        res = false
+        case event.keyval
+          when Gdk::Keyval::GDK_F5, Gdk::Keyval::GDK_F9
+            btn = PandoraGtk.find_tool_btn(toolbar, 'Preview')
+            btn.active = (not btn.active?) if btn
+          when Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769
+            if event.state.control_mask?
+              btn = PandoraGtk.find_tool_btn(toolbar, 'Bold')
+              btn.clicked
+            end
+          when Gdk::Keyval::GDK_i, Gdk::Keyval::GDK_I, 1755, 1787
+            if event.state.control_mask?
+              btn = PandoraGtk.find_tool_btn(toolbar, 'Italic')
+              btn.clicked
+            end
+          when Gdk::Keyval::GDK_u, Gdk::Keyval::GDK_U, 1735, 1767
+            if event.state.control_mask?
+              btn = PandoraGtk.find_tool_btn(toolbar, 'Underline')
+              btn.clicked
+            end
+          when Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter
+            if event.state.control_mask?
+              res = true
+            end
+        end
+        res
+      end
+
+      set_border_window_size(Gtk::TextView::WINDOW_LEFT, 54)
+      $font_desc ||= Pango::FontDescription.new('Monospace 11')
+      signal_connect('expose-event') do |widget, event|
+        tv = widget
+        left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
+        #right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
+        type = nil
+        if event.window == left_win
+          type = Gtk::TextView::WINDOW_LEFT
+          target = left_win
+        #elsif event.window == right_win
+        #  type = Gtk::TextView::WINDOW_RIGHT
+        #  target = right_win
+        end
+        if type
+          unless tv.parent.view_mode
+            first_y = event.area.y
+            last_y = first_y + event.area.height
+            x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
+            x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
+            numbers = []
+            pixels = []
+            count = get_lines(tv, first_y, last_y, pixels, numbers)
+            # Draw fully internationalized numbers!
+            layout = widget.create_pango_layout("")
+            count.times do |i|
+              x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
+              str = numbers[i].to_s
+              layout.set_text(str)
+              widget.style.paint_layout(target, widget.state, false,
+                nil, widget, nil, 2, pos + 2, layout)
+            end
+          end
+        end
+        false
+      end
+
+      signal_connect('event-after') do |text_view, event|
+        if event.kind_of?(Gdk::EventButton) and (event.button == 1)
+          buffer = text_view.buffer
+          # we shouldn't follow a link if the user has selected something
+          range = buffer.selection_bounds
+          if range and (range[0].offset == range[1].offset)
+            x, y = text_view.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, event.x, event.y)
+            iter = text_view.get_iter_at_location(x, y)
+            follow_if_link(text_view, iter)
+          end
+        end
+        false
+      end
+
+      signal_connect('motion-notify-event') do |text_view, event|
+        x, y = text_view.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, event.x, event.y)
+        set_cursor_if_appropriate(text_view, x, y)
+        text_view.window.pointer
+        false
+      end
+
+      signal_connect('visibility-notify-event') do |text_view, event|
+        window, wx, wy = text_view.window.pointer
+        bx, by = text_view.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, wx, wy)
+        set_cursor_if_appropriate(text_view, bx, by)
+        false
+      end
+    end
+
+    def set_cursor_if_appropriate(text_view, x, y)
+      buffer = text_view.buffer
+      iter = text_view.get_iter_at_location(x, y)
+      hovering = false
+      tags = iter.tags
+      tags.each do |t|
+        if t.name=='link'
+          hovering = true
+          break
+        end
+      end
+      if hovering != @hovering
+        @hovering = hovering
+        window = text_view.get_window(Gtk::TextView::WINDOW_TEXT)
+        if @hovering
+          window.cursor = @hand_cursor
+        else
+          window.cursor = @regular_cursor
+        end
+      end
+    end
+
+    def insert_link(buffer, iter, text, page)
+      tag = buffer.create_tag(nil, {'foreground' => 'blue',
+        'underline' => Pango::AttrUnderline::SINGLE})
+      tag.page = page
+      buffer.insert(iter, text, tag)
+      print("Insert #{tag}:#{page}\n")
+    end
+
+    def follow_if_link(text_view, iter)
+      tags = iter.tags
+      tags.each do |tag|
+        if tag.name=='link'
+          p 'Go to link!'
+        end
+      end
+    end
+
+    def get_lines(tv, first_y, last_y, buffer_coords, numbers)
+      # Get iter at first y
+      iter, top = tv.get_line_at_y(first_y)
+      # For each iter, get its location and add it to the arrays.
+      # Stop when we pass last_y
+      count = 0
+      size = 0
+      while not iter.end?
+        y, height = tv.get_line_yrange(iter)
+        buffer_coords << y
+        line_num = iter.line+1
+        numbers << line_num
+        count += 1
+        break if (y + height) >= last_y
+        iter.forward_line
+      end
+      count
+    end
+
+  end
+
+
   # Dialog with enter fields
   # RU: Диалог с полями ввода
   class FieldsDialog < AdvancedDialog
@@ -10398,6 +10567,7 @@ module PandoraGtk
                 open_brek = '<'
                 close_brek = '>'
               end
+              strict_close_tag = nil
               i1 = nil
               i = 0
               ss = str.size
@@ -10437,7 +10607,9 @@ module PandoraGtk
                       p '===closetag  [comu,params]='+[comu,params].inspect
                       p1 = view_buf.end_iter.offset
                       p2 = p1
-                      if BBCODES.include?(comu)
+                      if ((strict_close_tag.nil? and BBCODES.include?(comu)) \
+                      or ((not strict_close_tag.nil?) and (comu==strict_close_tag)))
+                        strict_close_tag = nil
                         k = open_coms.index{ |ocf| ocf[0]==comu }
                         if k or (not close)
                           if k
@@ -10466,6 +10638,7 @@ module PandoraGtk
                               shift_coms(1)
                             when 'URL', 'A', 'HREF', 'LINK'
                               tv_tag = 'link'
+                              #insert_link(buffer, iter, 'Go back', 1)
                             when 'ANCHOR'
                               tv_tag = nil
                             when 'QUOTE', 'BLOCKQUOTE'
@@ -10646,12 +10819,13 @@ module PandoraGtk
                       end
                       comu = comu.strip.upcase
                       p '---opentag  [comu,params]='+[comu,params].inspect
-                      if BBCODES.include?(comu)
+                      if strict_close_tag.nil? and BBCODES.include?(comu)
                         k = open_coms.find{ |ocf| ocf[0]==comu }
                         p 'opentag k='+k.inspect
                         if k
                           comu = nil
                         else
+                          strict_close_tag = comu if comu=='CODE'
                           case comu
                             when 'BR', 'P'
                               view_buf.insert(view_buf.end_iter, "\n")
@@ -10815,25 +10989,6 @@ module PandoraGtk
           bw.set_buffers
         end
       end
-    end
-
-    def get_lines(tv, first_y, last_y, buffer_coords, numbers)
-      # Get iter at first y
-      iter, top = tv.get_line_at_y(first_y)
-      # For each iter, get its location and add it to the arrays.
-      # Stop when we pass last_y
-      count = 0
-      size = 0
-      while not iter.end?
-        y, height = tv.get_line_yrange(iter)
-        buffer_coords << y
-        line_num = iter.line+1
-        numbers << line_num
-        count += 1
-        break if (y + height) >= last_y
-        iter.forward_line
-      end
-      count
     end
 
     # Set tag for selection
@@ -11072,91 +11227,7 @@ module PandoraGtk
                   link_name = nil
                 end
 
-                if not bodywid
-                  textview = Gtk::TextView.new
-                  textview.wrap_mode = Gtk::TextTag::WRAP_WORD
-
-                  textview.signal_connect('key-press-event') do |widget, event|
-                    res = false
-                    case event.keyval
-                      when Gdk::Keyval::GDK_F5, Gdk::Keyval::GDK_F9
-                        btn = PandoraGtk.find_tool_btn(toolbar, 'Preview')
-                        btn.active = (not btn.active?) if btn
-                      when Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769
-                        if event.state.control_mask?
-                          btn = PandoraGtk.find_tool_btn(toolbar, 'Bold')
-                          btn.clicked
-                        end
-                      when Gdk::Keyval::GDK_i, Gdk::Keyval::GDK_I, 1755, 1787
-                        if event.state.control_mask?
-                          btn = PandoraGtk.find_tool_btn(toolbar, 'Italic')
-                          btn.clicked
-                        end
-                      when Gdk::Keyval::GDK_u, Gdk::Keyval::GDK_U, 1735, 1767
-                        if event.state.control_mask?
-                          btn = PandoraGtk.find_tool_btn(toolbar, 'Underline')
-                          btn.clicked
-                        end
-                      when Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter
-                        if event.state.control_mask?
-                          res = true
-                        end
-                    end
-                    res
-                  end
-
-                  #signal_connect('scroll-child') do |*args|
-                  #  p 'BODYSW+++scroll-child: '+args.inspect
-                  #  false
-                  #end
-
-                  #signal_connect('event') do |*args|
-                  #  p 'BODYSW---event: '+args.inspect
-                  #  false
-                  #end
-
-                  #textview.signal_connect('size-allocate') do |widget, step, arg2|
-                  #  widget.parent.vadjustment.value = \
-                  #    widget.parent.vadjustment.upper - widget.parent.vadjustment.page_size
-                  #end
-                  textview.set_border_window_size(Gtk::TextView::WINDOW_LEFT, 54)
-                  $font_desc ||= Pango::FontDescription.new('Monospace 11')
-                  textview.signal_connect('expose-event') do |widget, event|
-                    tv = widget
-                    left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
-                    #right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
-                    type = nil
-                    if event.window == left_win
-                      type = Gtk::TextView::WINDOW_LEFT
-                      target = left_win
-                    #elsif event.window == right_win
-                    #  type = Gtk::TextView::WINDOW_RIGHT
-                    #  target = right_win
-                    end
-                    if type
-                      unless tv.parent.view_mode
-                        first_y = event.area.y
-                        last_y = first_y + event.area.height
-                        x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
-                        x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
-                        numbers = []
-                        pixels = []
-                        count = get_lines(tv, first_y, last_y, pixels, numbers)
-                        # Draw fully internationalized numbers!
-                        layout = widget.create_pango_layout("")
-                        count.times do |i|
-                          x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
-                          str = numbers[i].to_s
-                          layout.set_text(str)
-                          widget.style.paint_layout(target, widget.state, false,
-                            nil, widget, nil, 2, pos + 2, layout)
-                        end
-                      end
-                    end
-                    false
-                  end
-                  bodywid = textview
-                end
+                bodywid ||= PandoraGtk::SuperTextView.new
 
                 if not field[FI_Widget2]
                   field[FI_Widget2] = bodywid
