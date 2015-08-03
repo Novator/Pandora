@@ -4956,6 +4956,7 @@ module PandoraNet
   EC_Lure      = 8     # Запрос рыбака (наживка)
   EC_Bite      = 9     # Ответ рыбки (поклевка)
   EC_Sync      = 10    # Последняя команда в серии, или индикация "живости"
+  EC_Berry     = 11    # Кусок длинной записи (ягода)
   EC_Wait      = 254   # Временно недоступен
   EC_Bye       = 255   # Рассоединение
   # signs only
@@ -4977,6 +4978,8 @@ module PandoraNet
   ECC_Query_Record     = 1
   ECC_Query_Fish       = 2
   ECC_Query_Search     = 3
+  ECC_Query_Berry      = 4
+  ECC_Query_BerryHash  = 5
 
   ECC_News_Panhash      = 0
   ECC_News_Record       = 1
@@ -4984,6 +4987,8 @@ module PandoraNet
   ECC_News_Notice       = 3
   ECC_News_SessMode     = 4
   ECC_News_Answer       = 5
+  ECC_News_TooBig       = 6
+  ECC_News_Punnet       = 7
 
   ECC_Channel0_Open     = 0
   ECC_Channel1_Opened   = 1
@@ -6670,6 +6675,9 @@ module PandoraNet
         res
       end
 
+      def record_berry(berry, piece)
+      end
+
       case rcmd
         when EC_Auth
           if @stage<=ES_Greeting
@@ -7000,12 +7008,15 @@ module PandoraNet
           else
             err_scmd('Records came on wrong stage')
           end
+        when EC_Berry
+          p log_mes+'EC_Berry'
+          record_berry(rcode, rdata)
         when EC_Lure
-          p 'EC_Lure'
+          p log_mes+'EC_Lure'
           send_segment_to_fish(rcode, rdata, true)
           #sleep 2
         when EC_Bite
-          p 'EC_Bite'
+          p log_mes+'EC_Bite'
           send_segment_to_fish(rcode, rdata)
           #sleep 2
         when EC_Sync
@@ -7226,6 +7237,22 @@ module PandoraNet
                         pool.add_search_request(search_req[SR_Request], search_req[SR_Kind], abase_id, self)
                       end
                     end
+                  when ECC_Query_Berry
+                    # запрос ягоды для корзины
+                    p log_mes+'ECC_Query_Berry'
+                    reqber, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    reqber.each do |rec|
+                      punnet,berry = rec
+                      p 'punnet,berry='+[punnet,berry].inspect
+                    end
+                  when ECC_Query_BerryHash
+                    # запрос хэша ягоды
+                    p log_mes+'ECC_Query_BerryHash'
+                    berhashs, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    berhashs.each do |rec|
+                      punnet,berry,sha1 = rec
+                      p 'punnet,berry,sha1='+[punnet,berry,sha1].inspect
+                    end
                 end
               when EC_News
                 case rcode
@@ -7376,6 +7403,22 @@ module PandoraNet
                     reqs = find_search_request(req[0], req[1])
                     reqs.each do |sr|
                       sr[SR_Answer] = answ
+                    end
+                  when ECC_News_TooBig
+                    # есть запись, но она слишком большая
+                    p log_mes+'ECC_News_TooBig'
+                    toobig, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    toobig.each do |rec|
+                      panhash,size,fill = rec
+                      p 'panhash,size,fill='+[panhash,size,fill].inspect
+                    end
+                  when ECC_News_Punnet
+                    # есть козина (для сборки ягод)
+                    p log_mes+'ECC_News_Punnet'
+                    punnets, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    punnets.each do |rec|
+                      panhash,size,sha1,blocksize,punnet = rec
+                      p 'panhash,size,sha1,blocksize,punnet='+[panhash,size,sha1,blocksize,punnet].inspect
                     end
                   else
                     p "news more!!!!"
