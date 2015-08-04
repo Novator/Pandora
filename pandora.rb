@@ -3850,8 +3850,23 @@ module PandoraCrypto
     res
   end
 
-  # Convert Pandora type of hash to OpenSSL name
-  # RU: Преобразует тип хэша Пандоры в имя OpenSSL
+  # Calc file hash
+  # RU: Вычислить хэш файла
+  def self.file_hash(file_fn, chash=nil)
+    res = nil
+    chash ||= KH_Sha1
+    hash = pan_kh_to_openssl_hash(chash)
+    if hash
+      file = file_fn
+      file = File.open(file_fn) if file_fn.is_a? String
+      hash << file.read
+      res = hash.digest
+    end
+    res
+  end
+
+  # Convert Pandora type of cifer to OpenSSL name
+  # RU: Преобразует тип шифра Пандоры в имя OpenSSL
   def self.pankt_to_openssl(type)
     res = nil
     case type
@@ -3869,8 +3884,8 @@ module PandoraCrypto
     res
   end
 
-  # Convert Pandora type of hash to OpenSSL string
-  # RU: Преобразует тип хэша Пандоры в строку OpenSSL
+  # Convert Pandora type of cifer to OpenSSL string
+  # RU: Преобразует тип шифра Пандоры в строку OpenSSL
   def self.pankt_len_to_full_openssl(type, len, mode=nil)
     res = pankt_to_openssl(type)
     res += '-'+len.to_s if len
@@ -5133,7 +5148,7 @@ module PandoraNet
   class Pool
     attr_accessor :window, :sessions, :white_list, :fish_orders, :fish_ind, \
       :notice_list, :notice_ind, :time_now, :search_requests, :search_answers, \
-      :search_ind, :found_ind
+      :search_ind, :found_ind, :punnets
 
     MaxWhiteSize = 500
     FishQueueSize = 100
@@ -5152,6 +5167,7 @@ module PandoraNet
       @notice_list = Array.new
       @search_requests = Array.new
       @search_answers = Array.new
+      @punnets = Array.new
     end
 
     def base_id
@@ -6675,7 +6691,9 @@ module PandoraNet
         res
       end
 
-      def record_berry(berry, piece)
+      def record_berry(punnet, berry_data_pson)
+        berry_data, len = PandoraUtils.pson_to_rubyobj(berry_data_pson)
+        berry,data = berry_data
       end
 
       case rcmd
