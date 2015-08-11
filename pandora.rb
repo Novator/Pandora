@@ -3531,10 +3531,33 @@ module PandoraModel
           end
       end
       way = url
+      #p 'parse_url  [url, proto, obj_type, way]='+[url, proto, obj_type, way].inspect
     end
     res = [proto, obj_type, way] if proto and (proto.size>0) and way and (way.size>0)
-    p 'parse_url  [proto, obj_type, way]='+res.inspect
     res
+  end
+
+  ImageCacheSize = 100
+  $image_cache = {}
+
+  # Get pixbuf from cache by a way
+  # RU: Взять pixbuf из кэша по пути
+  def self.get_image_from_cache(proto, obj_type, way)
+    ind = [proto, obj_type, way]
+    res = $image_cache[ind]
+  end
+
+  # Save pixbuf to cache with a way
+  # RU: Сохранить pixbuf в кэша по пути
+  def self.save_image_to_cache(pixbuf, proto, obj_type, way)
+    res = get_image_from_cache(proto, obj_type, way)
+    if (not res) and (pixbuf.is_a? Gdk::Pixbuf)
+      while $image_cache.size >= ImageCacheSize do
+        $image_cache.delete_at(0)
+      end
+      ind = [proto, obj_type, way]
+      $image_cache[ind] = pixbuf
+    end
   end
 
   # Obtain image pixbuf from URL
@@ -3543,51 +3566,60 @@ module PandoraModel
     res = parse_url(url)
     if res
       proto, obj_type, way = res
-      res = nil
-      body = nil
-      fn = nil
-      if way and (way.size>0)
-        if (proto=='pandora') and obj_type.nil?
-          panhash = PandoraModel.hex_to_panhash(way)
-          kind = PandoraUtils.kind_from_panhash(panhash)
-          sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'type,blob')
-          p 'get_image_from_url  panhash,sel='+[panhash,sel].inspect
-          if sel and (sel.size>0)
-            type = sel[0][0]
-            blob = sel[0][1]
-            if blob and (blob.size>0)
-              if blob[0]=='@'
-                fn = blob[1..-1]
-              else
-                body = blob
+      res = get_image_from_cache(proto, obj_type, way)
+      unless res
+        body = nil
+        fn = nil
+        if way and (way.size>0)
+          if (proto=='pandora') and obj_type.nil?
+            panhash = PandoraModel.hex_to_panhash(way)
+            kind = PandoraUtils.kind_from_panhash(panhash)
+            sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'type,blob')
+            p 'get_image_from_url.pandora/panhash='+panhash.inspect
+            if sel and (sel.size>0)
+              type = sel[0][0]
+              blob = sel[0][1]
+              if blob and (blob.size>0)
+                if blob[0]=='@'
+                  fn = blob[1..-1]
+                  ext = nil
+                  ext = File.extname(fn) if fn
+                  unless ext and (['.jpg','.gif','.png'].include? ext.downcase)
+                    fn = nil
+                  end
+                else
+                  #body = blob
+                  #need to search an image!
+                end
+              end
+            else
+              if (way.size<=PandoraGtk::MaxSmileName)
+                res = $window.get_smile_buf(way)
+              end
+              if (not res)
+                if err_text
+                  res = _('Cannot find image')+': panhash='+PandoraUtils.bytes_to_hex(panhash)
+                elsif err_text.is_a? FalseClass
+                  res = $window.get_smile_buf('sad')
+                end
               end
             end
-          else
-            if (way.size<=PandoraGtk::MaxSmileName)
-              res = $window.get_smile_buf(way)
-            end
-            if (not res)
-              if err_text
-                res = _('Cannot find image')+': panhash='+PandoraUtils.bytes_to_hex(panhash)
-              else
-                res = $window.get_smile_buf('sad')
-              end
-            end
+          elsif ((proto=='http') or (proto=='https'))
+            fn = load_http_to_file(way)
+          elsif proto=='smile'
+            res = $window.get_smile_buf(way)
           end
-        elsif ((proto=='http') or (proto=='https'))
-          fn = load_http_to_file(way)
-        elsif proto=='smile'
-          res = $window.get_smile_buf(way)
         end
-      end
-      if body
-        pixbuf_loader = Gdk::PixbufLoader.new
-        pixbuf_loader.last_write(body)
-        #res = pixbuf_loader.pixbuf
-        res = pixbuf_loader.pixbuf
-        #res = Gdk::Pixbuf.new(res, Gdk::Pixbuf::COLORSPACE_RGB, true, 8, width, height, width*4)
-      elsif fn
-        res = PandoraGtk.start_image_loading(fn, pixbuf_parent)
+        if body
+          pixbuf_loader = Gdk::PixbufLoader.new
+          pixbuf_loader.last_write(body)
+          #res = pixbuf_loader.pixbuf
+          res = pixbuf_loader.pixbuf
+          #res = Gdk::Pixbuf.new(res, Gdk::Pixbuf::COLORSPACE_RGB, true, 8, width, height, width*4)
+        elsif fn
+          res = PandoraGtk.start_image_loading(fn, pixbuf_parent)
+        end
+        save_image_to_cache(res, proto, obj_type, way)
       end
       res = Gtk::Image.new(res) if (not pixbuf_parent) and (res.is_a? Gdk::Pixbuf)
     end
@@ -3632,7 +3664,7 @@ module PandoraModel
   RK_Follow   = 6
   RK_Ignore   = 7
   RK_CameFrom = 8
-  RK_Avatar   = 9
+  RK_AvatarOf  = 9
   RK_MinPublic = 235
   RK_MaxPublic = 255
 
@@ -3710,6 +3742,32 @@ module PandoraModel
           end
         end
       end
+    end
+    res
+  end
+
+  # Find relation with the kind with highest rate
+  # RU: Ищет связь для сорта с максимальным рейтингом
+  def self.find_relation(panhash, rel_kind=nil, obj_kind=nil, models=nil)
+    res = nil
+    relation_model = PandoraUtils.get_model('Relation', models)
+    if relation_model
+      rel_kind ||= RK_AvatarOf
+      filter = [['first=', panhash], ['kind=', rel_kind]]
+      filter2 = nil
+      if relation_is_symmetric?(rel_kind)
+        filter = [['second=', panhash], ['kind=', rel_kind]]
+      end
+      flds = 'id,second'
+      sel = relation_model.select(filter, false, flds, 'modified DESC', 1)
+      exist = (sel and (sel.size>0))
+      if (not exist) and filter2
+        flds = 'id,first'
+        sel = relation_model.select(filter2, false, flds, 'modified DESC', 1)
+        exist = (sel and (sel.size>0))
+      end
+      res = exist
+      res = sel[0][1] if exist
     end
     res
   end
@@ -15256,6 +15314,63 @@ module PandoraGtk
 
     tab_flds = panobject.tab_fields
     def_flds = panobject.def_fields
+
+    its_blob = (panobject.is_a? PandoraModel::Blob)
+    if its_blob or (panobject.is_a? PandoraModel::Person)
+      renderer = Gtk::CellRendererPixbuf.new
+      #renderer.pixbuf = $window.get_smile_buf('smile')
+      column = SubjTreeViewColumn.new(_('View'), renderer)
+      column.resizable = true
+      column.reorderable = true
+      column.clickable = true
+      column.fixed_width = 45
+      column.tab_ind = tab_flds.index{ |tf| tf[0] == 'panhash' }
+      p 'column.tab_ind='+column.tab_ind.inspect
+      treeview.append_column(column)
+
+      column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
+        row = nil
+        begin
+          if model.iter_is_valid?(iter) and iter and iter.path
+            row = tvc.tree_view.sel[iter.path.indices[0]]
+          end
+        rescue
+        end
+        val = nil
+        if row
+          col = tvc.tab_ind
+          val = row[col] if col
+        end
+        if val
+          #p '---------------panhash_='+val.inspect
+          ava_hash = val
+          ava_hash = PandoraModel.find_relation(val) unless its_blob
+          pixbuf = nil
+          if ava_hash
+            #p 'ava_hash='+ava_hash.inspect
+            ava_url = 'pandora://'+PandoraUtils.bytes_to_hex(ava_hash)
+            pixbuf = PandoraModel.get_image_from_url(ava_url, nil, tvc.tree_view)
+            #p 'pixbuf='+pixbuf.inspect
+            if pixbuf
+              w = pixbuf.width
+              h = pixbuf.height
+              #p 'w,h='+[w,h].inspect
+              w2, h2 = 45, 45
+              if (h>h2) and (h >= w)
+                w2 = w*h2/h
+                pixbuf = pixbuf.scale(w2, h2)
+              elsif w>w2
+                h2 = h*w2/w
+                pixbuf = pixbuf.scale(w2, h2)
+              end
+            end
+          end
+          renderer.pixbuf = pixbuf
+        end
+      end
+
+    end
+
     def_flds.each do |df|
       id = df[FI_Id]
       tab_ind = tab_flds.index{ |tf| tf[0] == id }
@@ -15319,8 +15434,11 @@ module PandoraGtk
           val ||= ''
           renderer.text = val
         end
+      else
+        p 'Field ['+id.inspect+'] is not found in table ['+panobject.ider+']'
       end
     end
+
     treeview.signal_connect('row_activated') do |tree_view, path, column|
       if single
         act_panobject(tree_view, 'Edit')
