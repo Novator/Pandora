@@ -9961,7 +9961,7 @@ module PandoraGtk
         #  target = right_win
         end
         if type
-          unless tv.parent.view_mode
+          unless tv.parent.parent.view_mode
             first_y = event.area.y
             last_y = first_y + event.area.height
             x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
@@ -11350,8 +11350,8 @@ module PandoraGtk
 
                 if not field[FI_Widget2]
                   field[FI_Widget2] = bodywid
-                  #bodywin.add_with_viewport(bodywid)
-                  bodywin.add(bodywid)
+                  bodywin.add_with_viewport(bodywid)
+                  #bodywin.add(bodywid)
                 end
                 if bodywid.is_a? Gtk::TextView
                   bodywin.text_view = bodywid
@@ -11360,8 +11360,12 @@ module PandoraGtk
                   bodywid.buffer.text = field[FI_Value].to_s
                   bodywin.set_buffers
                   toolbar.show
+                else
+                  toolbar2.show
                 end
                 bodywin.show_all
+              else
+                toolbar2.show
               end
             end
           else
@@ -11587,8 +11591,8 @@ module PandoraGtk
         aview = field[FI_View]
         if (aview=='blob') or (aview=='text')
           bodywin = BodyScrolledWindow.new(nil, nil)
-          #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-          bodywin.set_policy(Gtk::POLICY_ALWAYS, Gtk::POLICY_ALWAYS)
+          bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+          #bodywin.set_policy(Gtk::POLICY_ALWAYS, Gtk::POLICY_ALWAYS)
 
           image = Gtk::Image.new(Gtk::Stock::DND, Gtk::IconSize::MENU)
           image.set_padding(2, 0)
