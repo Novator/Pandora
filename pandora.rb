@@ -3594,20 +3594,20 @@ module PandoraModel
               end
             else
               if (way.size<=PandoraGtk::MaxSmileName)
-                res = $window.get_smile_buf(way)
+                res = $window.get_icon_buf(way)
               end
               if (not res)
                 if err_text
                   res = _('Cannot find image')+': panhash='+PandoraUtils.bytes_to_hex(panhash)
                 elsif err_text.is_a? FalseClass
-                  res = $window.get_smile_buf('sad')
+                  res = $window.get_icon_buf('sad')
                 end
               end
             end
           elsif ((proto=='http') or (proto=='https'))
             fn = load_http_to_file(way)
           elsif proto=='smile'
-            res = $window.get_smile_buf(way)
+            res = $window.get_icon_buf(way)
           end
         end
         if body
@@ -10668,7 +10668,7 @@ module PandoraGtk
                   j = str.index('*')
                   if j
                     tag_name = str[0..j-1]
-                    img_buf = $window.get_smile_buf(tag_name)
+                    img_buf = $window.get_icon_buf(tag_name)
                     view_buf.insert(view_buf.end_iter, img_buf) if img_buf
                     str = str[j+1..-1]
                   end
@@ -10784,7 +10784,7 @@ module PandoraGtk
                               params = str[0, i1] unless params and (params.size>0)
                               p 'IMG params='+params.inspect
                               if params and (params.size>0)
-                                img_buf = $window.get_smile_buf(params)
+                                img_buf = $window.get_icon_buf(params)
                                 if img_buf
                                   show_text = false
                                   view_buf.insert(view_buf.end_iter, img_buf)
@@ -14008,19 +14008,32 @@ module PandoraGtk
       #  label = menuitem.children[0]
       #  #label.set_text(mi[2], true)
       if mi[1]
-        menuitem = Gtk::ImageMenuItem.new(mi[1])
-        label = menuitem.children[0]
-        label.set_text(text, true)
+        stock = mi[1]
+        stock, opts = PandoraGtk.detect_icon_opts(stock)
+        if stock and opts.index('m')
+          if stock.is_a? String
+            image = $window.get_preset_image(stock)
+            if image
+              menuitem = Gtk::ImageMenuItem.new(text)
+              menuitem.image = image
+            end
+          else
+            menuitem = Gtk::ImageMenuItem.new(stock)
+            label = menuitem.children[0]
+            label.set_text(text, true)
+          end
+        end
       else
         menuitem = Gtk::MenuItem.new(text)
       end
-      #if mi[3]
-      if (not treeview) and mi[3]
-        key, mod = Gtk::Accelerator.parse(mi[3])
-        menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE) if key
+      if menuitem
+        if (not treeview) and mi[3]
+          key, mod = Gtk::Accelerator.parse(mi[3])
+          menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE) if key
+        end
+        menuitem.name = mi[0]
+        menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget, treeview) }
       end
-      menuitem.name = mi[0]
-      menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget, treeview) }
     end
     menuitem
   end
@@ -14443,7 +14456,16 @@ module PandoraGtk
       end
       btn.active = toggle if toggle
     else
-      image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
+      p stock
+      if stock.is_a? String
+        image = $window.get_preset_image(stock)
+        #p buf = $window.get_icon_buf(stock, 'pan')
+        #iconset = Gtk::IconSet.new(buf)
+        #image = Gtk::Image.new(iconset, Gtk::IconSize::MENU)
+      else
+        image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
+      end
+      #btn = Gtk::ToolButton.new(iconset, _(title))
       btn = Gtk::ToolButton.new(image, _(title))
       #btn = Gtk::ToolButton.new(stock)
       btn.signal_connect('clicked') do |*args|
@@ -14770,7 +14792,13 @@ module PandoraGtk
           first_lab_widget = $window.notebook.get_tab_label($window.notebook.children[ind]).children[0]
           if first_lab_widget.is_a? Gtk::Image
             image = first_lab_widget
-            panobj_icon = $window.render_icon(image.stock, Gtk::IconSize::MENU).dup
+            if image.stock
+              panobj_icon = $window.render_icon(image.stock, Gtk::IconSize::MENU).dup
+            else
+              p iconset = image.icon_set
+              style = Gtk::Widget.default_style  #Gtk::Style.new
+              panobj_icon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
+            end
           end
         end
       end
@@ -15322,7 +15350,7 @@ module PandoraGtk
     its_blob = (panobject.is_a? PandoraModel::Blob)
     if its_blob or (panobject.is_a? PandoraModel::Person)
       renderer = Gtk::CellRendererPixbuf.new
-      #renderer.pixbuf = $window.get_smile_buf('smile')
+      #renderer.pixbuf = $window.get_icon_buf('smile')
       column = SubjTreeViewColumn.new(_('View'), renderer)
       column.resizable = true
       column.reorderable = true
@@ -15522,8 +15550,13 @@ module PandoraGtk
       end
       image = nil
       if animage
-        image = Gtk::Image.new(animage.stock, Gtk::IconSize::MENU)
-        image.set_padding(2, 0)
+        if animage.stock
+          image = Gtk::Image.new(animage.stock, Gtk::IconSize::MENU)
+          image.set_padding(2, 0)
+        else
+          image = Gtk::Image.new(animage.icon_set, Gtk::IconSize::MENU)
+          image.set_padding(2, 0)
+        end
       end
 
       label_box = TabLabelBox.new(image, panobject.pname, pbox, false, 0) do
@@ -16502,6 +16535,19 @@ module PandoraGtk
     end
   end  #--CaptchaHPaned
 
+  def self.detect_icon_opts(stock)
+    res = stock
+    opts = 'mt'
+    if res.is_a? String
+      i = res.index(':')
+      if i
+        opts = res[i+1..-1]
+        res = res[0, i]
+      end
+    end
+    [res, opts]
+  end
+
   # Max smile name length
   # RU: Максимальная длина имени смайла
   MaxSmileName = 12
@@ -16642,33 +16688,33 @@ module PandoraGtk
       $status_fields[index]
     end
 
-    # Return Pixbuf with smile picture
-    # RU: Возвращает Pixbuf с изображением смайла
-    def get_smile_buf(emot='smile', preset='qip')
+    # Return Pixbuf with icon picture
+    # RU: Возвращает Pixbuf с изображением иконки
+    def get_icon_buf(emot='smile', preset='qip')
       buf = nil
       if not preset
         @def_smiles ||= PandoraUtils.get_param('def_smiles')
         preset = @def_smiles
       end
-      buf = @smile_bufs[preset][emot] if @smile_bufs and @smile_bufs[preset]
-      smile_preset = nil
+      buf = @icon_bufs[preset][emot] if @icon_bufs and @icon_bufs[preset]
+      icon_preset = nil
       if buf.nil?
-        @smile_presets ||= Hash.new
-        smile_preset = @smile_presets[preset]
-        if smile_preset.nil?
-          smile_desc = PandoraUtils.get_param('smiles_'+preset)
-          smile_params = smile_desc.split('|')
-          smile_file_desc = smile_params[0]
-          smile_params.delete_at(0)
-          smile_file_params = smile_file_desc.split(':')
-          smile_file_name = smile_file_params[0]
-          numXs, numYs = smile_file_params[1].split('x')
-          bord_s = smile_file_params[2]
+        @icon_presets ||= Hash.new
+        icon_preset = @icon_presets[preset]
+        if icon_preset.nil?
+          smile_desc = PandoraUtils.get_param('icons_'+preset)
+          icon_params = smile_desc.split('|')
+          icon_file_desc = icon_params[0]
+          icon_params.delete_at(0)
+          icon_file_params = icon_file_desc.split(':')
+          icon_file_name = icon_file_params[0]
+          numXs, numYs = icon_file_params[1].split('x')
+          bord_s = icon_file_params[2]
           bord_s.delete!('p')
-          padd_s = smile_file_params[3]
+          padd_s = icon_file_params[3]
           padd_s.delete!('p')
           begin
-            smile_fn = File.join($pandora_view_dir, smile_file_name)
+            smile_fn = File.join($pandora_view_dir, icon_file_name)
             preset_buf = Gdk::Pixbuf.new(smile_fn)
             if preset_buf
               big_width = preset_buf.width
@@ -16681,18 +16727,18 @@ module PandoraGtk
               cellX = (big_width - 2*bord - (numX-1)*padd)/numX
               cellY = (big_height - 2*bord - (numY-1)*padd)/numY
 
-              smile_preset = Hash.new
-              smile_preset[:names]      = smile_params
-              smile_preset[:big_width]  = big_width
-              smile_preset[:big_height] = big_height
-              smile_preset[:bord]       = bord
-              smile_preset[:padd]       = padd
-              smile_preset[:numX]       = numX
-              smile_preset[:numY]       = numY
-              smile_preset[:cellX]      = cellX
-              smile_preset[:cellY]      = cellY
-              smile_preset[:buf]        = preset_buf
-              @smile_presets[preset] = smile_preset
+              icon_preset = Hash.new
+              icon_preset[:names]      = icon_params
+              icon_preset[:big_width]  = big_width
+              icon_preset[:big_height] = big_height
+              icon_preset[:bord]       = bord
+              icon_preset[:padd]       = padd
+              icon_preset[:numX]       = numX
+              icon_preset[:numY]       = numY
+              icon_preset[:cellX]      = cellX
+              icon_preset[:cellY]      = cellY
+              icon_preset[:buf]        = preset_buf
+              @icon_presets[preset] = icon_preset
             end
           rescue
             p 'Error while load smile file: ['+smile_fn+']'
@@ -16700,18 +16746,19 @@ module PandoraGtk
         end
       end
 
-      if buf.nil? and smile_preset
-        index = smile_preset[:names].index(emot)
+      if buf.nil? and icon_preset
+        index = icon_preset[:names].index(emot)
+        index ||= 0
         if index
-          big_width  = smile_preset[:big_width]
-          big_height = smile_preset[:big_height]
-          bord       = smile_preset[:bord]
-          padd       = smile_preset[:padd]
-          numX       = smile_preset[:numX]
-          numY       = smile_preset[:numY]
-          cellX      = smile_preset[:cellX]
-          cellY      = smile_preset[:cellY]
-          preset_buf = smile_preset[:buf]
+          big_width  = icon_preset[:big_width]
+          big_height = icon_preset[:big_height]
+          bord       = icon_preset[:bord]
+          padd       = icon_preset[:padd]
+          numX       = icon_preset[:numX]
+          numY       = icon_preset[:numY]
+          cellX      = icon_preset[:cellX]
+          cellY      = icon_preset[:cellY]
+          preset_buf = icon_preset[:buf]
 
           iY = index.div(numX)
           iX = index - (iY*numX)
@@ -16801,9 +16848,9 @@ module PandoraGtk
           else
             buf = draft_buf
           end
-          @smile_bufs ||= Hash.new
-          @smile_bufs[preset] ||= Hash.new
-          @smile_bufs[preset][emot] = buf
+          @icon_bufs ||= Hash.new
+          @icon_bufs[preset] ||= Hash.new
+          @icon_bufs[preset][emot] = buf
         else
           p 'No emotion ['+emot+'] in the preset ['+preset+']'
         end
@@ -16811,6 +16858,13 @@ module PandoraGtk
       buf
     end
 
+    # Return Image with defined icon size
+    # RU: Возвращает Image с заданным размером иконки
+    def get_preset_image(iname, isize=Gtk::IconSize::MENU, preset='pan')
+      buf = get_icon_buf(iname, preset)
+      iconset = Gtk::IconSet.new(buf)
+      image = Gtk::Image.new(iconset, isize)
+    end
 
     TV_Name    = 0
     TV_NameF   = 1
@@ -17108,33 +17162,33 @@ module PandoraGtk
     # RU: Структура меню
     MENU_ITEMS =
       [[nil, nil, '_World'],
-      ['Person', Gtk::Stock::ORIENTATION_PORTRAIT, 'People', '<control>E'],
-      ['Community', nil, 'Communities'],
-      ['Blob', Gtk::Stock::HARDDISK, 'Files', '<control>J'], #Gtk::Stock::FILE
+      ['Person', 'person', 'People', '<control>E'], #Gtk::Stock::ORIENTATION_PORTRAIT
+      ['Community', 'community:m', 'Communities'],
+      ['Blob', 'blob', 'Files', '<control>J'], #Gtk::Stock::FILE Gtk::Stock::HARDDISK
       ['-', nil, '-'],
-      ['City', nil, 'Towns'],
-      ['Street', nil, 'Streets'],
-      ['Address', nil, 'Addresses'],
-      ['Contact', nil, 'Contacts'],
-      ['Country', nil, 'States'],
-      ['Language', nil, 'Languages'],
-      ['Word', Gtk::Stock::SPELL_CHECK, 'Words'],
-      ['Relation', nil, 'Relations'],
+      ['City', 'city:m', 'Towns'],
+      ['Street', 'street:m', 'Streets'],
+      ['Address', 'address:m', 'Addresses'],
+      ['Contact', 'contact:m', 'Contacts'],
+      ['Country', 'country:m', 'States'],
+      ['Language', 'lang:m', 'Languages'],
+      ['Word', 'word', 'Words'], #Gtk::Stock::SPELL_CHECK
+      ['Relation', 'relation:m', 'Relations'],
       ['-', nil, '-'],
-      ['Opinion', nil, 'Opinions'],
-      ['Task', nil, 'Tasks'],
-      ['Message', nil, 'Messages'],
+      ['Opinion', 'opinion:m', 'Opinions'],
+      ['Task', 'task:m', 'Tasks'],
+      ['Message', 'message:m', 'Messages'],
       [nil, nil, '_Business'],
-      ['Advertisement', nil, 'Advertisements'],
-      ['Transfer', nil, 'Transfers'],
+      ['Advertisement', 'ad:m', 'Advertisements'],
+      ['Transfer', 'transfer:m', 'Transfers'],
       ['-', nil, '-'],
-      ['Order', nil, 'Orders'],
-      ['Deal', nil, 'Deals'],
-      ['Waybill', nil, 'Waybills'],
+      ['Order', 'order:m', 'Orders'],
+      ['Deal', 'deal:m', 'Deals'],
+      ['Waybill', 'waybill:m', 'Waybills'],
       ['-', nil, '-'],
-      ['Debenture', nil, 'Debentures'],
-      ['Deposit', nil, 'Deposits'],
-      ['Guarantee', nil, 'Guarantees'],
+      ['Debenture', 'debenture:m', 'Debentures'],
+      ['Deposit', 'deposit:m', 'Deposits'],
+      ['Guarantee', 'guarantee:m', 'Guarantees'],
       ['Insurer', nil, 'Insurers'],
       ['-', nil, '-'],
       ['Product', nil, 'Products'],
@@ -17206,7 +17260,8 @@ module PandoraGtk
     def fill_main_toolbar(toolbar)
       MENU_ITEMS.each do |mi|
         stock = mi[1]
-        if stock
+        stock, opts = PandoraGtk.detect_icon_opts(stock)
+        if stock and opts.index('t')
           command = mi[0]
           label = mi[2]
           if command and (command != '-') and label and (label != '-')

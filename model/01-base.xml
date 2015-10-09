@@ -351,8 +351,9 @@
     <load_history_count desc="Load message history count" type="Integer" section="view" setting="6" />
     <sort_history_mode desc="Sort history mode (0-receive, 1-create)" type="Integer" section="view" setting="0" />
     <def_smiles desc="Default smiles" type="String" section="view" setting="qip" />
-    <smiles_qip desc="Qip smile file" type="String" section="view" setting="smiles-qip.png:8x5:1p:1p|smile|sad|wink|cry|lol|shock|halo|kiss|glass|angry|tong|annoy|shame|thumb|ok|dance|music|stop|rose|kissed|sos|secret|hug|heart|cool|gun|work|dead|bomb|vomit|pardon|crazy|drink|fight|hurt|confuse|discontent|joy|fall|bingo" />
-    <smiles_utf8 desc="UTF8 smile codes" type="String" section="view" setting="|smile:0x263A|sad:0x2639|wink:0x1F609|cry:0x1F622|lol:0x1F606|shock:0x1F632|halo:0x1F607|kiss:0x1F618|glass:0x1F60E|angry:0x1F620|tong:0x1F61D|annoy:0x1F615|shame:0x1F633|heart:0x1F60D" />
+    <icons_qip desc="Qip smile file" type="String" section="view" setting="smiles-qip.png:8x5:1p:1p|smile|sad|wink|cry|lol|shock|halo|kiss|glass|angry|tong|annoy|shame|thumb|ok|dance|music|stop|rose|kissed|sos|secret|hug|heart|cool|gun|work|dead|bomb|vomit|pardon|crazy|drink|fight|hurt|confuse|discontent|joy|fall|bingo" />
+    <icons_utf8 desc="UTF8 smile codes" type="String" section="view" setting="|smile:0x263A|sad:0x2639|wink:0x1F609|cry:0x1F622|lol:0x1F606|shock:0x1F632|halo:0x1F607|kiss:0x1F618|glass:0x1F60E|angry:0x1F620|tong:0x1F61D|annoy:0x1F615|shame:0x1F633|heart:0x1F60D" />
+    <icons_pan desc="Pandora icon file" type="String" section="view" setting="icons-pan.png:8x8:1p:1p|person|community|blob|city|street|address|contact|country|lang|word|relation|opinion|task|message|ad|transfer|order|deal|waybill|debenture|deposit|guarantee|" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
     <check_interval desc="Сheck interval (days)" type="Integer" section="update" setting="0" />
