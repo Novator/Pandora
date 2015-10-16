@@ -14449,22 +14449,24 @@ module PandoraGtk
   # RU: Добавить кнопку на панель инструментов
   def self.add_tool_btn(toolbar, stock, title, toggle=nil)
     btn = nil
+    p 'stock='+stock.inspect
+    if stock.is_a? String
+      image = $window.get_preset_image(stock)
+      #p buf = $window.get_icon_buf(stock, 'pan')
+      #iconset = Gtk::IconSet.new(buf)
+      #image = Gtk::Image.new(iconset, Gtk::IconSize::MENU)
+    else
+      image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
+    end
     if toggle != nil
       btn = SafeToggleToolButton.new(stock)
+      #btn = Gtk::ToolButton.new(image, _(title))
       btn.safe_signal_clicked do |*args|
+      #btn.signal_connect('clicked') do |*args|
         yield(*args) if block_given?
       end
       btn.active = toggle if toggle
     else
-      p stock
-      if stock.is_a? String
-        image = $window.get_preset_image(stock)
-        #p buf = $window.get_icon_buf(stock, 'pan')
-        #iconset = Gtk::IconSet.new(buf)
-        #image = Gtk::Image.new(iconset, Gtk::IconSize::MENU)
-      else
-        image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
-      end
       #btn = Gtk::ToolButton.new(iconset, _(title))
       btn = Gtk::ToolButton.new(image, _(title))
       #btn = Gtk::ToolButton.new(stock)
@@ -15867,7 +15869,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.41'
+    dlg.version = '0.42'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
@@ -16583,7 +16585,7 @@ module PandoraGtk
       tool_btn = $toggle_buttons[PandoraGtk::SF_Listen]
       if tool_btn
         lis_act = ($tcp_listen_thread != nil) or ($udp_listen_thread != nil)
-        tool_btn.safe_set_active(lis_act)
+        tool_btn.safe_set_active(lis_act) if tool_btn.is_a? SafeToggleToolButton
       end
     end
 
@@ -16593,7 +16595,7 @@ module PandoraGtk
       tool_btn = $toggle_buttons[SF_Hunt]
       pushed = ($hunter_thread and $hunter_thread[:active] and (not $hunter_thread[:paused]))
       p 'pushed='+pushed.inspect
-      tool_btn.safe_set_active(pushed) if tool_btn
+      tool_btn.safe_set_active(pushed) if tool_btn.is_a? SafeToggleToolButton
       if pushed
         $window.set_status_field(PandoraGtk::SF_Hunt, 'Hunting', nil, true)
       else
@@ -16677,7 +16679,7 @@ module PandoraGtk
         end
         if (toggle != nil)
           btn.safe_set_active(toggle) if btn.is_a? SafeToggleButton
-          $toggle_buttons[index].safe_set_active(toggle) if $toggle_buttons[index]
+          $toggle_buttons[index].safe_set_active(toggle) if $toggle_buttons[index] and ($toggle_buttons[index].is_a? SafeToggleToolButton)
         end
       end
     end
@@ -16703,6 +16705,8 @@ module PandoraGtk
         icon_preset = @icon_presets[preset]
         if icon_preset.nil?
           smile_desc = PandoraUtils.get_param('icons_'+preset)
+          p 'smile_desc='+smile_desc.inspect
+          p 'smile_desc.size='+smile_desc.size.inspect
           icon_params = smile_desc.split('|')
           icon_file_desc = icon_params[0]
           icon_params.delete_at(0)
@@ -16836,12 +16840,14 @@ module PandoraGtk
 
           left = left/pix_size
           right = right/pix_size
-          p '====[top,bottom,left,right]='+[top,bottom,left,right].inspect
+          #p '====[top,bottom,left,right]='+[top,bottom,left,right].inspect
 
           width2 = right-left+1
           height2 = bottom-top+1
+          #p '  ---[width2,height2]='+[width2,height2].inspect
 
-          if (left>0) or (top>0) or (width2<width) or (height2<height)
+          if (width2>0) and (height2>0) \
+          and ((left>0) or (top>0) or (width2<width) or (height2<height))
             # Crop borders
             buf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, width2, height2)
             draft_buf.copy_area(left, top, width2, height2, buf, 0, 0)
@@ -17189,45 +17195,45 @@ module PandoraGtk
       ['Debenture', 'debenture:m', 'Debentures'],
       ['Deposit', 'deposit:m', 'Deposits'],
       ['Guarantee', 'guarantee:m', 'Guarantees'],
-      ['Insurer', nil, 'Insurers'],
+      ['Insurer', 'insurer:m', 'Insurers'],
       ['-', nil, '-'],
-      ['Product', nil, 'Products'],
-      ['Service', nil, 'Services'],
-      ['Currency', nil, 'Currency'],
-      ['Storage', nil, 'Storages'],
-      ['Estimate', nil, 'Estimates'],
-      ['Contract', nil, 'Contracts'],
-      ['Report', nil, 'Reports'],
+      ['Product', 'product:m', 'Products'],
+      ['Service', 'service:m', 'Services'],
+      ['Currency', 'currency:m', 'Currency'],
+      ['Storage', 'storage:m', 'Storages'],
+      ['Estimate', 'estimate:m', 'Estimates'],
+      ['Contract', 'contract:m', 'Contracts'],
+      ['Report', 'report:m', 'Reports'],
       [nil, nil, '_Region'],
-      ['Project', nil, 'Projects'],
-      ['Resolution', nil, 'Resolutions'],
-      ['Law', nil, 'Laws'],
+      ['Project', 'project:m', 'Projects'],
+      ['Resolution', 'resolution:m', 'Resolutions'],
+      ['Law', 'law:m', 'Laws'],
       ['-', nil, '-'],
-      ['Contribution', nil, 'Contributions'],
-      ['Expenditure', nil, 'Expenditures'],
+      ['Contribution', 'contribution:m', 'Contributions'],
+      ['Expenditure', 'expenditure:m', 'Expenditures'],
       ['-', nil, '-'],
-      ['Offense', nil, 'Offenses'],
-      ['Punishment', nil, 'Punishments'],
+      ['Offense', 'offense:m', 'Offenses'],
+      ['Punishment', 'punishment:m', 'Punishments'],
       ['-', nil, '-'],
-      ['Resource', nil, 'Resources'],
-      ['Delegation', nil, 'Delegations'],
-      ['Registry', nil, 'Registry'],
+      ['Resource', 'resource:m', 'Resources'],
+      ['Delegation', 'delegation:m', 'Delegations'],
+      ['Registry', 'registry:m', 'Registry'],
       [nil, nil, '_Node'],
       ['Parameter', Gtk::Stock::PROPERTIES, 'Parameters'],
       ['-', nil, '-'],
-      ['Key', Gtk::Stock::GOTO_BOTTOM, 'Keys'],
-      ['Sign', nil, 'Signs'],
-      ['Node', Gtk::Stock::NETWORK, 'Nodes'],
-      ['Event', nil, 'Events'],
-      ['Request', Gtk::Stock::SELECT_COLOR, 'Requests'],
-      ['Session', Gtk::Stock::JUSTIFY_FILL, 'Sessions', '<control>S'],
+      ['Key', 'key', 'Keys'],
+      ['Sign', 'sign', 'Signs'],
+      ['Node', 'node', 'Nodes'],
+      ['Event', 'event:m', 'Events'],
+      ['Request', 'request:m', 'Requests'],
+      ['Session', 'session:m', 'Sessions', '<control>S'],
       ['-', nil, '-'],
       ['Authorize', Gtk::Stock::DIALOG_AUTHENTICATION, 'Authorize', '<control>U'],
       ['Listen', Gtk::Stock::CONNECT, 'Listen', '<control>L', :check],
-      ['Hunt', Gtk::Stock::REFRESH, 'Hunt', '<control>H', :check],
-      ['Fish', Gtk::Stock::GO_FORWARD, 'Neighbors', '<control>N', :check],
+      ['Hunt', Gtk::Stock::REFRESH, 'Hunt', '<control>H', :check],   #Gtk::Stock::REFRESH
+      ['Fish', Gtk::Stock::GO_FORWARD, 'Neighbors', '<control>N', :check],  #Gtk::Stock::GO_FORWARD
       ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
-      ['Exchange', nil, 'Exchange'],
+      ['Exchange', 'exchange:m', 'Exchange'],
       ['-', nil, '-'],
       ['Profile', Gtk::Stock::HOME, 'Profile'],
       ['Wizard', Gtk::Stock::PREFERENCES, 'Wizards'],

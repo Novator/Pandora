@@ -33,7 +33,7 @@
 
 ## Push files from local to repository
 #git add --all
-git commit -a -m "version 0.41 alpha"
+git commit -a -m "version 0.42 alpha"
 git push -u bitbuc master
 git push -u github master
 #git push -u bitbuc develop
