@@ -6749,6 +6749,8 @@ module PandoraNet
         res
       end
 
+      # Record berry and data to the punnet
+      # RU: Записать ягоду и данные в козинку
       def record_berry(punnet, berry_data_pson)
         berry_data, len = PandoraUtils.pson_to_rubyobj(berry_data_pson)
         berry,data = berry_data
@@ -17185,7 +17187,7 @@ module PandoraGtk
       ['Task', 'task:m', 'Tasks'],
       ['Message', 'message:m', 'Messages'],
       [nil, nil, '_Business'],
-      ['Advertisement', 'ad:m', 'Advertisements'],
+      ['Advertisement', 'ad', 'Advertisements'],
       ['Transfer', 'transfer:m', 'Transfers'],
       ['-', nil, '-'],
       ['Order', 'order:m', 'Orders'],
@@ -17205,7 +17207,7 @@ module PandoraGtk
       ['Contract', 'contract:m', 'Contracts'],
       ['Report', 'report:m', 'Reports'],
       [nil, nil, '_Region'],
-      ['Project', 'project:m', 'Projects'],
+      ['Project', 'project', 'Projects'],
       ['Resolution', 'resolution:m', 'Resolutions'],
       ['Law', 'law:m', 'Laws'],
       ['-', nil, '-'],
@@ -17221,12 +17223,12 @@ module PandoraGtk
       [nil, nil, '_Node'],
       ['Parameter', Gtk::Stock::PROPERTIES, 'Parameters'],
       ['-', nil, '-'],
-      ['Key', 'key', 'Keys'],
-      ['Sign', 'sign', 'Signs'],
-      ['Node', 'node', 'Nodes'],
+      ['Key', 'key', 'Keys'],   #Gtk::Stock::GOTO_BOTTOM
+      ['Sign', 'sign:m', 'Signs'],
+      ['Node', 'node', 'Nodes'],  #Gtk::Stock::NETWORK
       ['Event', 'event:m', 'Events'],
-      ['Request', 'request:m', 'Requests'],
-      ['Session', 'session:m', 'Sessions', '<control>S'],
+      ['Request', 'request:m', 'Requests'],  #Gtk::Stock::SELECT_COLOR
+      ['Session', 'session:m', 'Sessions', '<control>S'],   #Gtk::Stock::JUSTIFY_FILL
       ['-', nil, '-'],
       ['Authorize', Gtk::Stock::DIALOG_AUTHENTICATION, 'Authorize', '<control>U'],
       ['Listen', Gtk::Stock::CONNECT, 'Listen', '<control>L', :check],

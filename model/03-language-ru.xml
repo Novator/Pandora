@@ -181,9 +181,27 @@
   </Business>
   <Region name.ru="Регион">
 
+    <Project name.ru="Проект">
+    </Project>
+
+    <Resolution name.ru="Постановление">
+    </Resolution>
+
     <Law name.ru="Закон|Законы">
       <number name.ru="Номер" />
     </Law>
+
+    <Contribution name.ru="Взнос">
+    </Contribution>
+
+    <Expenditure name.ru="Расход">
+    </Expenditure>
+
+    <Offense name.ru="Преступление">
+    </Offense>
+
+    <Punishment name.ru="Наказание">
+    </Punishment>
 
     <Delegation name.ru="Делегирование|Делегирования">
       <delegate name.ru="Делегат" />
