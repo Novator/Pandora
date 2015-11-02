@@ -408,7 +408,7 @@ module PandoraUtils
   end
 
   # Convert string of bytes to hex string
-  # RU: Преобрзует строку байт в 16-й формат
+  # RU: Преобразует строку байт в 16-й формат
   def self.bytes_to_hex(bytes)
     res = AsciiString.new
     #res.force_encoding('ASCII-8BIT')
@@ -432,7 +432,7 @@ module PandoraUtils
   end
 
   # Convert big integer to string of bytes
-  # RU: Преобрзует большое целое в строку байт
+  # RU: Преобразует большое целое в строку байт
   def self.bigint_to_bytes(bigint)
     bytes = AsciiString.new
     if (bigint>=0) and (bigint<=0xFF)
@@ -459,7 +459,7 @@ module PandoraUtils
   end
 
   # Convert string of bytes to integer
-  # RU: Преобрзует строку байт в целое
+  # RU: Преобразует строку байт в целое
   def self.bytes_to_int(bytes)
     res = 0
     i = bytes.size
@@ -471,7 +471,7 @@ module PandoraUtils
   end
 
   # Convert string to bytes
-  # RU: Преобрзует строку в строку байт
+  # RU: Преобразует строку в строку байт
   def self.str_to_bytes(str)
     if str.is_a? String
       res = []
@@ -484,7 +484,7 @@ module PandoraUtils
   end
 
   # Convert ruby date to string
-  # RU: Преобрзует ruby-дату в строку
+  # RU: Преобразует ruby-дату в строку
   def self.date_to_str(date)
     res = date.strftime('%d.%m.%Y')
   end
@@ -11611,21 +11611,24 @@ module PandoraGtk
         end
       end
 
-      image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
+      #image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
+      image = $window.get_preset_image('relation')
       image.set_padding(2, 0)
       label_box2 = TabLabelBox.new(image, _('Relations'), nil, false, 0)
       pbox = PandoraGtk::PanobjBox.new
       page = notebook.append_page(pbox, label_box2)
       PandoraGtk.show_panobject_list(PandoraModel::Relation, nil, pbox)
 
-      image = Gtk::Image.new(Gtk::Stock::DIALOG_AUTHENTICATION, Gtk::IconSize::MENU)
+      #image = Gtk::Image.new(Gtk::Stock::DIALOG_AUTHENTICATION, Gtk::IconSize::MENU)
+      image = $window.get_preset_image('sign')
       image.set_padding(2, 0)
       label_box2 = TabLabelBox.new(image, _('Signs'), nil, false, 0)
       pbox = PandoraGtk::PanobjBox.new
       page = notebook.append_page(pbox, label_box2)
       PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox)
 
-      image = Gtk::Image.new(Gtk::Stock::DIALOG_INFO, Gtk::IconSize::MENU)
+      #image = Gtk::Image.new(Gtk::Stock::DIALOG_INFO, Gtk::IconSize::MENU)
+      image = $window.get_preset_image('opinion')
       image.set_padding(2, 0)
       label_box2 = TabLabelBox.new(image, _('Opinions'), nil, false, 0)
       pbox = PandoraGtk::PanobjBox.new
