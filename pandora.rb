@@ -3626,6 +3626,33 @@ module PandoraModel
     res
   end
 
+  # Obtain avatar icon by panhash
+  # RU: Добыть иконку-аватар по панхэшу
+  def self.get_avatar_icon(panhash, pixbuf_parent, its_blob=false, icon_size=16)
+    pixbuf = nil
+    avatar_hash = PandoraModel.find_relation(panhash, RK_AvatarOf) unless its_blob
+    if avatar_hash
+      #p 'avatar_hash='+avatar_hash.inspect
+      ava_url = 'pandora://'+PandoraUtils.bytes_to_hex(avatar_hash)
+      pixbuf = PandoraModel.get_image_from_url(ava_url, nil, pixbuf_parent)
+      #p 'pixbuf='+pixbuf.inspect
+      if pixbuf
+        w = pixbuf.width
+        h = pixbuf.height
+        #p 'w,h='+[w,h].inspect
+        w2, h2 = icon_size, icon_size
+        if (h>h2) and (h >= w)
+          w2 = w*h2/h
+          pixbuf = pixbuf.scale(w2, h2)
+        elsif w>w2
+          h2 = h*w2/w
+          pixbuf = pixbuf.scale(w2, h2)
+        end
+      end
+    end
+    pixbuf
+  end
+
   # Predefined Pandora's codes of languages and Alpha-2
   # RU: Предустановленные коды языков Пандоры и Альфа-2
   Languages = {0=>'all', 1=>'en', 2=>'zh', 3=>'es', 4=>'hi', 5=>'ru', 6=>'ar', \
@@ -6088,7 +6115,7 @@ module PandoraNet
             mode = 0
             mode |= CM_GetNotice if $get_notice
             mode |= CM_Captcha if (@conn_mode & CM_Captcha)>0
-            hparams = {:version=>0, :mode=>mode, :mykey=>key_hash, :tokey=>param, \
+            hparams = {:version=>'pandora0', :mode=>mode, :mykey=>key_hash, :tokey=>param, \
               :notice=>(($notice_depth << 8) | $notice_trust)}
             hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
             asbuf = PandoraUtils.hash_to_namepson(hparams)
@@ -6764,7 +6791,7 @@ module PandoraNet
                 recognize_params
                 if scmd != EC_Bye
                   vers = params['version']
-                  if vers==0
+                  if vers=='pandora0'
                     addr = params['addr']
                     p log_mes+'addr='+addr.inspect
                     # need to change an ip checking
@@ -12128,9 +12155,6 @@ module PandoraGtk
       #sw.add(treeview)
       border_width = 0
 
-      image = Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU)
-      image.set_padding(2, 0)
-
       hpaned = Gtk::HPaned.new
       add_with_viewport(hpaned)
 
@@ -12269,12 +12293,16 @@ module PandoraGtk
       area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
       hpaned2.pack1(area_send, false, true)
 
-
       option_box = Gtk::HBox.new
 
       sender_box = Gtk::VBox.new
       sender_box.pack_start(option_box, false, true, 0)
       sender_box.pack_start(editbox, true, true, 0)
+
+      image = $window.get_preset_image('smile')
+      smile_btn = Gtk::ToolButton.new(image, _('smile'))
+      smile_btn.tooltip_text = _('smile')
+      option_box.pack_start(smile_btn, false, false, 2)
 
       vouch_btn = SafeCheckButton.new(_('vouch'), true)
       vouch_btn.safe_signal_clicked do |widget|
@@ -12292,16 +12320,16 @@ module PandoraGtk
       trust_scale.value_pos = Gtk::POS_RIGHT
       option_box.pack_start(trust_scale, false, false, 0)
 
-      smile_btn = Gtk::Button.new(_('smile'))
-      option_box.pack_start(smile_btn, false, false, 4)
-      game_btn = Gtk::Button.new(_('game'))
-      option_box.pack_start(game_btn, false, false, 4)
-
       require_sign_btn = SafeCheckButton.new(_('require sign'), true)
       require_sign_btn.safe_signal_clicked do |widget|
         #update_btn.clicked
       end
       option_box.pack_start(require_sign_btn, false, false, 0)
+
+      image = $window.get_preset_image('game')
+      game_btn = Gtk::ToolButton.new(image, _('game'))
+      game_btn.tooltip_text = _('game')
+      option_box.pack_start(game_btn, false, false, 2)
 
       hpaned2.pack2(sender_box, true, true)
 
@@ -12422,6 +12450,15 @@ module PandoraGtk
       end
 
       title = 'unknown'
+      image = nil
+      if targets[CSI_Persons] and (targets[CSI_Persons].size>0)
+        panhash = targets[CSI_Persons][0]
+        pixbuf = PandoraModel.get_avatar_icon(panhash, self, false)
+        image = Gtk::Image.new(pixbuf) if pixbuf
+      end
+      image ||= $window.get_preset_image('dialog')
+      image ||= Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU)
+      image.set_padding(2, 0)
       label_box = TabLabelBox.new(image, title, self, false, 0) do
         #init_video_sender(false)
         #init_video_receiver(false, false)
@@ -14199,7 +14236,7 @@ module PandoraGtk
       menu.append(PandoraGtk.create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], list_tree))
       menu.append(PandoraGtk.create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], list_tree))
       menu.append(PandoraGtk.create_menu_item(['-', nil, nil], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Dialog', Gtk::Stock::MEDIA_PLAY, _('Dialog'), '<control>D'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Dialog', 'dialog', _('Dialog'), '<control>D'], list_tree))
       menu.append(PandoraGtk.create_menu_item(['Opinion', Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace'], list_tree))
       menu.append(PandoraGtk.create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], list_tree))
       menu.append(PandoraGtk.create_menu_item(['Relate', Gtk::Stock::INDEX, _('Relate'), '<control>R'], list_tree))
@@ -15381,29 +15418,7 @@ module PandoraGtk
           val = row[col] if col
         end
         if val
-          #p '---------------panhash_='+val.inspect
-          ava_hash = val
-          ava_hash = PandoraModel.find_relation(val) unless its_blob
-          pixbuf = nil
-          if ava_hash
-            #p 'ava_hash='+ava_hash.inspect
-            ava_url = 'pandora://'+PandoraUtils.bytes_to_hex(ava_hash)
-            pixbuf = PandoraModel.get_image_from_url(ava_url, nil, tvc.tree_view)
-            #p 'pixbuf='+pixbuf.inspect
-            if pixbuf
-              w = pixbuf.width
-              h = pixbuf.height
-              #p 'w,h='+[w,h].inspect
-              w2, h2 = 45, 45
-              if (h>h2) and (h >= w)
-                w2 = w*h2/h
-                pixbuf = pixbuf.scale(w2, h2)
-              elsif w>w2
-                h2 = h*w2/w
-                pixbuf = pixbuf.scale(w2, h2)
-              end
-            end
-          end
+          pixbuf = PandoraModel.get_avatar_icon(val, tvc.tree_view, its_blob, 45)
           renderer.pixbuf = pixbuf
         end
       end
@@ -15587,7 +15602,7 @@ module PandoraGtk
     menu.append(create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], treeview))
     menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], treeview))
     menu.append(create_menu_item(['-', nil, nil], treeview))
-    menu.append(create_menu_item(['Dialog', Gtk::Stock::MEDIA_PLAY, _('Dialog'), '<control>D'], treeview))
+    menu.append(create_menu_item(['Dialog', 'dialog', _('Dialog'), '<control>D'], treeview))
     menu.append(create_menu_item(['Opinion', Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace'], treeview))
     menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], treeview))
     menu.append(create_menu_item(['Relate', Gtk::Stock::INDEX, _('Relate'), '<control>R'], treeview))
