@@ -9979,15 +9979,18 @@ module PandoraGtk
       $font_desc ||= Pango::FontDescription.new('Monospace 11')
       signal_connect('expose-event') do |widget, event|
         tv = widget
-        left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
-        #right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
         type = nil
-        if event.window == left_win
+        event_win = nil
+        begin
+          left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
+          #right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
+          event_win = event.window
+        rescue Exception
+          event_win = nil
+        end
+        if event_win and left_win and (event_win == left_win)
           type = Gtk::TextView::WINDOW_LEFT
           target = left_win
-        #elsif event.window == right_win
-        #  type = Gtk::TextView::WINDOW_RIGHT
-        #  target = right_win
         end
         if type
           unless tv.parent.parent.view_mode
