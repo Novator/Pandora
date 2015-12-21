@@ -8643,10 +8643,10 @@ module PandoraNet
         end
         if (not host)
           host = ''
-        elsif ((host=='any') or (host=='any4') or (host=='all'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
+        elsif ((host=='any') or (host=='any4') or (host=='all') or (host=='ip4') or (host=='IP4'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
           host = Socket::INADDR_ANY
           p "ipv4 all"
-        elsif ((host=='any6') or (host=='all6'))
+        elsif ((host=='any6') or (host=='all6') or (host=='ip6') or (host=='IP6'))
           host = '::'
           p "ipv6 all"
         end
