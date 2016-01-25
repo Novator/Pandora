@@ -5056,7 +5056,7 @@ module PandoraNet
   EC_Lure      = 8     # Запрос рыбака (наживка)
   EC_Bite      = 9     # Ответ рыбки (поклевка)
   EC_Sync      = 10    # Последняя команда в серии, или индикация "живости"
-  EC_Berry     = 11    # Кусок длинной записи (ягода)
+  EC_Fragment  = 11    # Кусок длинной записи
   EC_Wait      = 254   # Временно недоступен
   EC_Bye       = 255   # Рассоединение
   # signs only
@@ -5078,8 +5078,7 @@ module PandoraNet
   ECC_Query_Record     = 1
   ECC_Query_Fish       = 2
   ECC_Query_Search     = 3
-  ECC_Query_Berry      = 4
-  ECC_Query_BerryHash  = 5
+  ECC_Query_Fragment   = 4
 
   ECC_News_Panhash      = 0
   ECC_News_Record       = 1
@@ -6776,10 +6775,10 @@ module PandoraNet
         res
       end
 
-      # Record berry and data to the punnet
-      # RU: Записать ягоду и данные в козинку
-      def record_berry(punnet, berry_data_pson)
-        berry_data, len = PandoraUtils.pson_to_rubyobj(berry_data_pson)
+      # Save fragment and update punnet
+      # RU: Записать фрагмент и обновить козину
+      def save_fragment(punnet, frag_data_pson)
+        frag_data, len = PandoraUtils.pson_to_rubyobj(frag_data_pson)
         berry,data = berry_data
       end
 
@@ -7113,9 +7112,6 @@ module PandoraNet
           else
             err_scmd('Records came on wrong stage')
           end
-        when EC_Berry
-          p log_mes+'EC_Berry'
-          record_berry(rcode, rdata)
         when EC_Lure
           p log_mes+'EC_Lure'
           send_segment_to_fish(rcode, rdata, true)
@@ -7342,22 +7338,22 @@ module PandoraNet
                         pool.add_search_request(search_req[SR_Request], search_req[SR_Kind], abase_id, self)
                       end
                     end
-                  when ECC_Query_Berry
-                    # запрос ягоды для корзины
-                    p log_mes+'ECC_Query_Berry'
-                    reqber, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    reqber.each do |rec|
+                  when ECC_Query_Fragment
+                    # запрос фрагмента для корзины
+                    p log_mes+'ECC_Query_Fragment'
+                    req, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    req.each do |rec|
                       punnet,berry = rec
                       p 'punnet,berry='+[punnet,berry].inspect
                     end
-                  when ECC_Query_BerryHash
-                    # запрос хэша ягоды
-                    p log_mes+'ECC_Query_BerryHash'
-                    berhashs, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    berhashs.each do |rec|
-                      punnet,berry,sha1 = rec
-                      p 'punnet,berry,sha1='+[punnet,berry,sha1].inspect
-                    end
+                  #when ECC_Query_FragHash
+                  #  # запрос хэша фрагмента
+                  #  p log_mes+'ECC_Query_FragHash'
+                  #  berhashs, len = PandoraUtils.pson_to_rubyobj(rdata)
+                  #  berhashs.each do |rec|
+                  #    punnet,berry,sha1 = rec
+                  #    p 'punnet,berry,sha1='+[punnet,berry,sha1].inspect
+                  #  end
                 end
               when EC_News
                 case rcode
@@ -7518,12 +7514,12 @@ module PandoraNet
                       p 'panhash,size,fill='+[panhash,size,fill].inspect
                     end
                   when ECC_News_Punnet
-                    # есть козина (для сборки ягод)
+                    # есть козина (для сборки фрагментов)
                     p log_mes+'ECC_News_Punnet'
                     punnets, len = PandoraUtils.pson_to_rubyobj(rdata)
                     punnets.each do |rec|
                       panhash,size,sha1,blocksize,punnet = rec
-                      p 'panhash,size,sha1,blocksize,punnet='+[panhash,size,sha1,blocksize,punnet].inspect
+                      p 'panhash,size,sha1,blocksize,fragments='+[panhash,size,sha1,blocksize,fragments].inspect
                     end
                   else
                     p "news more!!!!"
@@ -7533,6 +7529,9 @@ module PandoraNet
                     @scode = 0
                     @sbuf = ''
                 end
+              when EC_Fragment
+                p log_mes+'EC_Fragment'
+                save_fragment(rcode, rdata)
               else
                 err_scmd('Unknown command is recieved', ECC_Bye_Unknown)
                 @conn_state = CS_Stoping
