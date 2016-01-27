@@ -1162,6 +1162,21 @@ module PandoraUtils
     hash
   end
 
+  # Detect file type
+  # RU: Определить тип файла
+  def self.detect_file_type(file_name)
+    res = nil
+    if (file_name.is_a? String) and (file_name.size>0)
+      ext = File.extname(file_name)
+      if ext
+        ext.upcase!
+        res = ext[1..-1]
+        res = 'JPG' if res=='JPEG'
+      end
+   end
+    res
+  end
+
   # Abstract database adapter
   # RU:Абстрактный адаптер к БД
   class DatabaseSession
@@ -5281,6 +5296,11 @@ module PandoraNet
       false
     end
 
+    # RU: Нужны фрагменты?
+    def need_fragments?
+      false
+    end
+
     # Add a session to list
     # RU: Добавляет сессию в список
     def add_session(conn)
@@ -7510,10 +7530,26 @@ module PandoraNet
                     p log_mes+'ECC_News_TooBig'
                     toobig, len = PandoraUtils.pson_to_rubyobj(rdata)
                     toobig.each do |rec|
-                      panhash,size,fill = rec
-                      p 'panhash,size,fill='+[panhash,size,fill].inspect
+                      panhash,sha1,size,fill = rec
+                      p 'panhash,sha1,size,fill='+[panhash,sha1,size,fill].inspect
+                      pun_tit = [panhash,sha1,size]
+                      frags = init_punnet(pun_tit)
+                      if frags or frags.nil?
+                        @scmd = EC_News
+                        @scode = ECC_News_Punnet
+                        pun_tit << frags if not frags.nil?
+                        @sbuf = PandoraUtils.rubyobj_to_pson(pun_tit)
+                      end
                     end
                   when ECC_News_Punnet
+                    # есть козина (для сборки фрагментов)
+                    p log_mes+'ECC_News_Punnet'
+                    punnets, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    punnets.each do |rec|
+                      panhash,size,sha1,blocksize,punnet = rec
+                      p 'panhash,size,sha1,blocksize,fragments='+[panhash,size,sha1,blocksize,fragments].inspect
+                    end
+                  when ECC_News_Fragments
                     # есть козина (для сборки фрагментов)
                     p log_mes+'ECC_News_Punnet'
                     punnets, len = PandoraUtils.pson_to_rubyobj(rdata)
@@ -7605,6 +7641,9 @@ module PandoraNet
     # Number of search requests per cicle
     # RU: Число поисковых запросов за цикл
     $search_block_count = 2
+    # Number of fragment requests per cicle
+    # RU: Число запросов фрагментов за цикл
+    $frag_block_count = 2
     # Reconnection period in sec
     # RU: Период переподключения в сек
     $conn_period       = 5
@@ -7636,6 +7675,8 @@ module PandoraNet
       @fish_ind       = 0
       @notice_ind     = 0
       @search_ind   = 0
+      @punnet_ind   = 0
+      @frag_ind     = 0
       #@fishes         = Array.new
       @hooks          = Array.new
       @read_queue     = PandoraUtils::RoundQueue.new
@@ -8294,8 +8335,8 @@ module PandoraNet
                 end
               end
 
+              # проверка новых уведомлений
               if (@sess_mode.is_a? Integer) and ((@sess_mode & CM_GetNotice)>0)
-                # проверка новых уведомлений
                 processed = 0
                 while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
                 and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
@@ -8393,9 +8434,41 @@ module PandoraNet
                 @search_ind += 1
               end
 
+              # проверка незаполненных корзин
+              processed = 0
+              while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
+              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
+              and (processed>0) and (processed<$frag_block_count) \
+              and (pool.need_fragments?)
+                next_frag = pool.get_next_frag(@to_base_id, @punnet_ind, @frag_ind)
+                p '***!!pool.get_next_frag='+next_frag.inspect
+                if next_frag
+                  punn, frag = next_frag
+                  #req = search_req[SR_Request..SR_BaseId]
+                  #p log_mes+'search_req2='+req.inspect
+                  #p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
+                  #if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
+                    # search request is not from this session/node, need resend
+                    #res = search_in_bases(search_req[SR_Request], search_req[SR_Kind])
+                    #if res and (res.size>0)
+                  #  p log_mes+'Send search request: '+req.inspect
+                    #mykeyhash = PandoraCrypto.current_user_or_key(false)
+                    #PandoraUtils.log_message(LM_Trace, _('Fishing to')+': [fish,host,port]' \
+                    #    +[PandoraUtils.bytes_to_hex(fish_order[LO_Fish]), \
+                    #    @host_ip, @port].inspect)
+                  #  req_raw = PandoraUtils.rubyobj_to_pson(req)
+                  #  add_send_segment(EC_Query, true, req_raw, ECC_Query_Search)
+                  #end
+                  processed += 1
+                else
+                  processed = -1
+                end
+              end
+
               #p '---@conn_state='+@conn_state.inspect
               #sleep 0.5
 
+              # проверка флагов соединения и состояния сокета
               if (socket and socket.closed?) or (@conn_state == CS_StopRead) \
               and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Empty)
                 @conn_state = CS_Disconnected
@@ -10679,11 +10752,13 @@ module PandoraGtk
         end
 
         format ||= 'auto'
+        fmt_btn = parent.parent.parent.format_btn
         unless ['orgmode', 'bbcode', 'html', 'ruby', 'plain'].include?(format)
-          format = 'bbcode'  #need autodetect here
+          #format = fmt_btn.label
+          format = 'bbcode' #if format=='auto' #need autodetect here
           @format = format
-          parent.parent.parent.format_btn.label = format
         end
+        fmt_btn.label = format if (fmt_btn.label != format)
         if to_view
           view_buf.text = ''
           str = raw_buf.text
@@ -11058,7 +11133,7 @@ module PandoraGtk
         #freeze_child_notify
         text_changed = false
 
-        p '====set_buffers    view_mode='+view_mode.inspect
+        p '====set_buffers    view_mode,format='+[view_mode, @format].inspect
 
         #if bw.view_mode
         #  if (tv.buffer != bw.view_buffer)
@@ -11383,6 +11458,12 @@ module PandoraGtk
                   field[FI_Widget2] = bodywid
                   bodywin.add_with_viewport(bodywid)
                   #bodywin.add(bodywid)
+                  #format_btn.label
+                  type_fld = @fields.detect{ |f| (f[FI_Id].to_s == 'type') }
+                  if type_fld.is_a? Array
+                    fmt = type_fld[FI_Value]
+                    bodywin.format = fmt.downcase if fmt.is_a? String
+                  end
                 end
                 if bodywid.is_a? Gtk::TextView
                   bodywin.text_view = bodywid
@@ -15044,6 +15125,7 @@ module PandoraGtk
 
           # fill hash of values
           flds_hash = {}
+          file_way = nil
           dialog.fields.each do |field|
             type = field[FI_Type]
             view = field[FI_View]
@@ -15055,11 +15137,26 @@ module PandoraGtk
               ps = PandoraUtils.decode_param_setting(setting)
               view = ps['view']
               view ||= PandoraUtils.pantype_to_view(par_type)
+            elsif file_way
+              if (field[FI_Id]=='type')
+                val = PandoraUtils.detect_file_type(file_way) if (not val) or (val.size==0)
+              elsif (field[FI_Id]=='sha1')
+                sha1 = Digest::SHA1.file(file_way)
+                val = sha1.hexdigest
+              elsif (field[FI_Id]=='md5')
+                md5 = Digest::MD5.file(file_way)
+                val = md5.hexdigest
+              elsif (field[FI_Id]=='size')
+                val = File.size(file_way)
+              end
             end
-            p 'val.view, type, view='+[val, type, view].inspect
+            p 'fld, val, type, view='+[field[FI_Id], val, type, view].inspect
             val = PandoraUtils.view_to_val(val, type, view)
             if (view=='blob') or (view=='text')
-              val = '@'+val if val and (val != '')
+              if val and (val != '')
+                file_way = val
+                val = '@'+val
+              end
             end
             flds_hash[field[FI_Id]] = val
           end
@@ -15071,20 +15168,27 @@ module PandoraGtk
               textview = field[FI_Widget2]
               scrolwin = nil
               scrolwin = textview.parent if textview and (not textview.destroyed?)
+              scrolwin = scrolwin.parent if scrolwin and (not scrolwin.destroyed?) \
+                and not (scrolwin.is_a? FieldsDialog::BodyScrolledWindow)
+              text = nil
               if scrolwin and (not scrolwin.destroyed?) #and (textview.is_a? Gtk::TextView)
                 #text = textview.buffer.text
                 text = scrolwin.raw_buffer.text
                 if text and (text.size>0)
                   field[FI_Value] = text
-                  flds_hash[field[FI_Id]] = field[FI_Value]
+                  flds_hash[field[FI_Id]] = text
                 end
               end
-
+              text ||= ''
               sha1_fld = panobject.field_des('sha1')
+              flds_hash['sha1'] = Digest::SHA1.digest(text) if sha1_fld
               md5_fld = panobject.field_des('md5')
-              if sha1_fld or md5_fld
-                p 'need to calc hashs'
-              end
+              flds_hash['md5'] = Digest::MD5.digest(text) if md5_fld
+
+              size_fld = panobject.field_des('size')
+              flds_hash['size'] = text.size if size_fld
+              type_fld = panobject.field_des('type')
+              flds_hash['type'] = dialog.format_btn.label.upcase if type_fld
             end
           end
 
