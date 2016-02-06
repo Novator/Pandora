@@ -379,7 +379,7 @@ module PandoraUtils
         i += 1
       end
     elsif panhash.is_a? Integer
-      res = (panhash == 0)
+      res = (panhash < 255)
     end
     res
   end
@@ -5266,7 +5266,7 @@ module PandoraNet
       @notice_list = Array.new
       @search_requests = Array.new
       @search_answers = Array.new
-      @punnets = Array.new
+      @punnets = Hash.new
     end
 
     def base_id
@@ -5294,6 +5294,44 @@ module PandoraNet
     # RU: Ip в черном списке?
     def is_black?(ip)
       false
+    end
+
+    $fragment_size = 1024
+
+    def init_punnet(panhash,sha1,size,fn)
+      frags = @punnets[sha1]
+      if not((frags.is_a? String) and (frags.bytesize*16*$fragment_size >= size))
+        pun_size = ((size / $fragment_size).div(16)).round
+        pun_size = 1 if pun_size < 1
+        frags = 0.chr * pun_size
+        @punnets[sha1] = frags
+      end
+      sha1_name = PandoraUtils.bytes_to_hex(sha1)
+      sha1_name = File.join($pandora_files_dir, sha1_name+'.pnt')
+      file = nil
+      if File.exist?(sha1_name)
+        file = File.open(sha1_name, 'rb+')
+      else
+        file = File.new(sha1_name, 'wb+')
+      end
+      if file
+        begin
+          #file.flock(File::LOCK_UN)
+          frags0 = file.read
+          p 'frags0='+frags0.inspect
+          if frags0.size != frags.size
+            #file.rewind
+            file.seek(0)
+            file.write(frags)
+            p 'frags='+frags.inspect
+            file.close
+            file = nil
+            File.truncate(sha1_name, frags.size)
+          end
+        ensure
+          file.close if file
+        end
+      end
     end
 
     # RU: Нужны фрагменты?
@@ -6795,6 +6833,16 @@ module PandoraNet
         res
       end
 
+      def load_fragment(punnet, offset)
+        res = nil
+        file = punnet.get_file
+        if file
+          file.seek(offset)
+          res = file.read(punnet.frag_size)
+        end
+        res
+      end
+
       # Save fragment and update punnet
       # RU: Записать фрагмент и обновить козину
       def save_fragment(punnet, frag_data_pson)
@@ -7533,7 +7581,7 @@ module PandoraNet
                       panhash,sha1,size,fill = rec
                       p 'panhash,sha1,size,fill='+[panhash,sha1,size,fill].inspect
                       pun_tit = [panhash,sha1,size]
-                      frags = init_punnet(pun_tit)
+                      frags = init_punnet(*pun_tit)
                       if frags or frags.nil?
                         @scmd = EC_News
                         @scode = ECC_News_Punnet
@@ -7550,10 +7598,10 @@ module PandoraNet
                       p 'panhash,size,sha1,blocksize,fragments='+[panhash,size,sha1,blocksize,fragments].inspect
                     end
                   when ECC_News_Fragments
-                    # есть козина (для сборки фрагментов)
-                    p log_mes+'ECC_News_Punnet'
-                    punnets, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    punnets.each do |rec|
+                    # есть новые фрагменты
+                    p log_mes+'ECC_News_Fragments'
+                    frags, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    frags.each do |rec|
                       panhash,size,sha1,blocksize,punnet = rec
                       p 'panhash,size,sha1,blocksize,fragments='+[panhash,size,sha1,blocksize,fragments].inspect
                     end
@@ -10753,7 +10801,7 @@ module PandoraGtk
 
         format ||= 'auto'
         fmt_btn = parent.parent.parent.format_btn
-        unless ['orgmode', 'bbcode', 'html', 'ruby', 'plain'].include?(format)
+        unless ['markdown', 'bbcode', 'html', 'ruby', 'plain'].include?(format)
           #format = fmt_btn.label
           format = 'bbcode' #if format=='auto' #need autodetect here
           @format = format
@@ -10764,7 +10812,7 @@ module PandoraGtk
           str = raw_buf.text
           #p 'str='+str
           case format
-            when 'orgmode'
+            when 'markdown'
               i = 0
               while i<str.size
                 j = str.index('*')
@@ -11255,7 +11303,7 @@ module PandoraGtk
                 end
                 ltext = open_brek+t+close_brek
                 rtext = open_brek+'/'+t+close_brek
-              when 'orgmode'
+              when 'markdown'
                 case tag
                   when 'bold'
                     ltext = rtext = '*'
@@ -11330,7 +11378,7 @@ module PandoraGtk
       btn.menu = menu
       add_menu_item(btn, menu, 'auto')
       add_menu_item(btn, menu, 'plain')
-      add_menu_item(btn, menu, 'orgmode')
+      add_menu_item(btn, menu, 'markdown')
       add_menu_item(btn, menu, 'bbcode')
       add_menu_item(btn, menu, 'wiki')
       add_menu_item(btn, menu, 'html')
@@ -17200,14 +17248,18 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
-          from_time = Time.now.to_i - 5*24*3600
-          trust = 0.5
+          $window.pool.init_punnet('3231','56654',2230,'some_file.txt')
+
+          return
+
+
+          #from_time = Time.now.to_i - 5*24*3600
+          #trust = 0.5
           #list = PandoraModel.public_records(nil, nil, nil, 1.chr)
           #list = PandoraModel.follow_records
           #list = PandoraModel.get_panhashes_by_kinds([1,11], from_time)
-          list = PandoraModel.created_records(nil, nil, nil, nil)
-          p 'list='+list.inspect
-
+          #list = PandoraModel.created_records(nil, nil, nil, nil)
+          #p 'list='+list.inspect
           #if list
           #  list.each do |panhash|
           #    p '----------------'
@@ -17216,9 +17268,6 @@ module PandoraGtk
           #    p res = PandoraModel.get_record_by_panhash(kind, panhash, true)
           #  end
           #end
-
-
-          return
 
 
           p res44 = OpenSSL::Digest::RIPEMD160.new
@@ -17575,7 +17624,8 @@ module PandoraGtk
                   sessions.compact!
                   sessions.each do |sess|
                     if sess.active?
-                      sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, PandoraNet::ECC_News_Answer)
+                      sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
+                        PandoraNet::ECC_News_Answer)
                     end
                   end
                 end
