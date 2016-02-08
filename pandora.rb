@@ -5298,39 +5298,145 @@ module PandoraNet
 
     $fragment_size = 1024
 
-    def init_punnet(panhash,sha1,size,fn)
-      frags = @punnets[sha1]
-      if not((frags.is_a? String) and (frags.bytesize*16*$fragment_size >= size))
-        pun_size = ((size / $fragment_size).div(16)).round
-        pun_size = 1 if pun_size < 1
-        frags = 0.chr * pun_size
-        @punnets[sha1] = frags
-      end
-      sha1_name = PandoraUtils.bytes_to_hex(sha1)
-      sha1_name = File.join($pandora_files_dir, sha1_name+'.pnt')
-      file = nil
-      if File.exist?(sha1_name)
-        file = File.open(sha1_name, 'rb+')
-      else
-        file = File.new(sha1_name, 'wb+')
-      end
-      if file
-        begin
-          #file.flock(File::LOCK_UN)
-          frags0 = file.read
-          p 'frags0='+frags0.inspect
-          if frags0.size != frags.size
-            #file.rewind
-            file.seek(0)
-            file.write(frags)
-            p 'frags='+frags.inspect
-            file.close
-            file = nil
-            File.truncate(sha1_name, frags.size)
+    PI_FragsFile   = 0
+    PI_Frags       = 1
+    PI_FileName    = 2
+    PI_File        = 3
+    PI_FragFN      = 4
+
+    def frags_complite?(frags)
+      res = (frags.is_a? String) and (frags.bytesize>0)
+      if res
+        i = 0
+        while res and (i<frags.bytesize)
+          if frags[i] != 255.chr
+            res = false
           end
-        ensure
-          file.close if file
+          i += 1
         end
+      end
+      res
+    end
+
+    # Initialize the punnet
+    # RU: Инициализирует корзинку
+    def init_punnet(sha1,filesize,initfilename=nil)
+      punnet = @punnets[sha1]
+      if not punnet.is_a? Array
+        punnet = Array.new
+      end
+      fragfile, frags, filename, datafile, frag_fn = punnet
+      sha1_name = PandoraUtils.bytes_to_hex(sha1)
+      sha1_fn = File.join($pandora_files_dir, sha1_name)
+
+      if (not datafile) and (not fragfile)
+        filename ||= initfilename
+        if filename
+          dir = File.dirname(filename)
+          p 'dir='+dir.inspect
+          if (not dir) or (dir=='.') or (dir=='/')
+            filename = File.join($pandora_files_dir, filename)
+          end
+        else
+          filename = sha1_fn+'.dat'
+        end
+        p 'filename='+filename.inspect
+
+        frag_fn = File.join(File.dirname(filename), File.basename(filename, '.*')+'.frs')
+        punnet[PI_FragFN] = frag_fn
+        p 'frag_fn='+frag_fn.inspect
+
+        file_size = File.size?(filename)
+        p 'file_size='+file_size.inspect
+        filename_ex = (File.exist?(filename) and (not file_size.nil?) and (file_size>=0))
+        p 'filename_ex='+filename_ex.inspect
+        frag_fn_ex = File.exist?(frag_fn)
+
+        fragfile = nil
+        if frag_fn_ex
+          fragfile = File.open(frag_fn, 'rb+')
+        elsif not filename_ex
+          fragfile = File.new(frag_fn, 'wb+')
+        end
+
+        if fragfile
+          punnet[PI_FragsFile] = fragfile
+          frags = fragfile.read
+          #frag_com = frags_complite?(frags)
+          p 'frags='+frags.inspect
+          sym_count = (filesize.fdiv($fragment_size*16)).ceil
+          sym_count = 1 if sym_count < 1
+          if frags.bytesize != sym_count
+            if sym_count>frags.bytesize
+              frags += 0.chr * (sym_count-frags.bytesize)
+              punnet[PI_Frags] = frags
+              fragfile.seek(0)
+              fragfile.write(frags)
+              p 'set frags='+frags.inspect
+            end
+            File.truncate(frag_fn, frags.bytesize)
+          end
+        end
+
+        if filename_ex
+          if fragfile
+            datafile = File.open(filename, 'rb+')
+          else
+            datafile = File.open(filename, 'rb')
+          end
+        else
+          datafile = File.new(filename, 'wb+')
+        end
+        punnet[PI_FileName] = filename
+        punnet[PI_File] = datafile
+      end
+      @punnets[sha1] = punnet
+    end
+
+    # Load fragment
+    # RU: Загрузить фрагмент
+    def load_fragment(punnet, frag_number)
+      res = nil
+      datafile = punnet[PI_File]
+      if datafile
+        datafile.seek(frag_number*$fragment_size)
+        res = datafile.read($fragment_size)
+      end
+      res
+    end
+
+    # Save fragment and update punnet
+    # RU: Записать фрагмент и обновить козину
+    def save_fragment(punnet, frag_number, frag_data)
+      res = nil
+      datafile = punnet[PI_File]
+      fragfile = punnet[PI_FragsFile]
+      frags = punnet[PI_Frags]
+      if datafile and fragfile and frags
+        datafile.seek(frag_number*$fragment_size)
+        res = datafile.write(frag_data)
+        sym_num = (frag_number.fdiv(16)).floor
+        bit_num = frag_number - sym_num*16
+        bit_mask = 1 >> bit_num if bit_num>1
+        p '[sym_num, bit_num, bit_mask]='+[sym_num, bit_num, bit_mask].inspect
+        frags[sym_num] = (frags[sym_num] | bit_mask)
+        punnet[PI_Frags] = frags
+        fragfile.seek(sym_num)
+        res2 = fragfile.write(frags[sym_num])
+      end
+      res
+    end
+
+    # Close punnet
+    # RU: Закрывает корзинку
+    def close_punnet(sha1)
+      punnet = @punnets[sha1]
+      if punnet.is_a? Array
+        fragfile, frags, filename, datafile, frag_fn = punnet
+        fragfile.close if fragfile
+        datafile.close if datafile
+        frag_com = frags_complite?(frags)
+        File.delete(frag_fn) if frag_com
       end
     end
 
@@ -6831,23 +6937,6 @@ module PandoraNet
           @scbuf = nil
         end
         res
-      end
-
-      def load_fragment(punnet, offset)
-        res = nil
-        file = punnet.get_file
-        if file
-          file.seek(offset)
-          res = file.read(punnet.frag_size)
-        end
-        res
-      end
-
-      # Save fragment and update punnet
-      # RU: Записать фрагмент и обновить козину
-      def save_fragment(punnet, frag_data_pson)
-        frag_data, len = PandoraUtils.pson_to_rubyobj(frag_data_pson)
-        berry,data = berry_data
       end
 
       case rcmd
@@ -17248,7 +17337,11 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
-          $window.pool.init_punnet('3231','56654',2230,'some_file.txt')
+          sha1 = '.,zbmrt'
+          punnet = $window.pool.init_punnet(sha1,81274,'sony_vaio_3-500x500-55.jpg')
+          frag = $window.pool.load_fragment(punnet, 0)
+          p 'frag='+frag.inspect
+          $window.pool.close_punnet(sha1)
 
           return
 
