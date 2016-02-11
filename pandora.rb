@@ -5242,6 +5242,17 @@ module PandoraNet
   SR_Session   = 5
   SR_Answer    = 6
 
+  # Punnet indexes
+  # RU: Индексы в корзине
+  PI_FragsFile   = 0
+  PI_Frags       = 1
+  PI_FileName    = 2
+  PI_File        = 3
+  PI_FragFN      = 4
+  PI_FragCount   = 5
+  PI_FileSize    = 6
+  PI_SymCount    = 7
+
   # Pool
   # RU: Пул
   class Pool
@@ -5298,19 +5309,22 @@ module PandoraNet
 
     $fragment_size = 1024
 
-    PI_FragsFile   = 0
-    PI_Frags       = 1
-    PI_FileName    = 2
-    PI_File        = 3
-    PI_FragFN      = 4
-
-    def frags_complite?(frags)
+    def frags_complite?(frags, frag_count)
       res = (frags.is_a? String) and (frags.bytesize>0)
       if res
         i = 0
-        while res and (i<frags.bytesize)
+        sym_count = frags.bytesize
+        while res and (i<sym_count)
           if frags[i] != 255.chr
-            res = false
+            if i<sym_count-1
+              res = false
+            else
+              bit_tail_sh = 8 - (frag_count - i*8)
+              bit_tail = 255 >> bit_tail_sh
+              p '[bit_tail_sh, bit_tail, frag_count, frags[i].ord]='+[bit_tail_sh, \
+                bit_tail, frag_count, frags[i].ord].inspect
+              res = ((bit_tail & frags[i].ord) == bit_tail)
+            end
           end
           i += 1
         end
@@ -5349,33 +5363,44 @@ module PandoraNet
         file_size = File.size?(filename)
         p 'file_size='+file_size.inspect
         filename_ex = (File.exist?(filename) and (not file_size.nil?) and (file_size>=0))
+        filesize ||= file_size if filename_ex
+        punnet[PI_FileSize] = filesize
         p 'filename_ex='+filename_ex.inspect
         frag_fn_ex = File.exist?(frag_fn)
+        p 'frag_fn_ex='+frag_fn_ex.inspect
 
         fragfile = nil
         if frag_fn_ex
           fragfile = File.open(frag_fn, 'rb+')
+          p "fragfile = File.open(frag_fn, 'rb+')"
         elsif not filename_ex
           fragfile = File.new(frag_fn, 'wb+')
+          p "fragfile = File.new(frag_fn, 'wb+')"
         end
+
+        frag_count = (filesize.fdiv($fragment_size)).ceil
+        sym_count = (frag_count.fdiv(8)).ceil
+        p '[frag_count, sym_count]='+[frag_count, sym_count].inspect
+        punnet[PI_FragCount] = frag_count
+        punnet[PI_SymCount] = sym_count
+
 
         if fragfile
           punnet[PI_FragsFile] = fragfile
           frags = fragfile.read
           #frag_com = frags_complite?(frags)
           p 'frags='+frags.inspect
-          sym_count = (filesize.fdiv($fragment_size*16)).ceil
           sym_count = 1 if sym_count < 1
           if frags.bytesize != sym_count
             if sym_count>frags.bytesize
               frags += 0.chr * (sym_count-frags.bytesize)
-              punnet[PI_Frags] = frags
               fragfile.seek(0)
               fragfile.write(frags)
               p 'set frags='+frags.inspect
             end
             File.truncate(frag_fn, frags.bytesize)
           end
+          punnet[PI_Frags] = frags
         end
 
         if filename_ex
@@ -5412,14 +5437,16 @@ module PandoraNet
       datafile = punnet[PI_File]
       fragfile = punnet[PI_FragsFile]
       frags = punnet[PI_Frags]
+      p 'save_frag [datafile, fragfile, frags]='+[datafile, fragfile, frags].inspect
       if datafile and fragfile and frags
         datafile.seek(frag_number*$fragment_size)
         res = datafile.write(frag_data)
-        sym_num = (frag_number.fdiv(16)).floor
-        bit_num = frag_number - sym_num*16
-        bit_mask = 1 >> bit_num if bit_num>1
-        p '[sym_num, bit_num, bit_mask]='+[sym_num, bit_num, bit_mask].inspect
-        frags[sym_num] = (frags[sym_num] | bit_mask)
+        sym_num = (frag_number.fdiv(8)).floor
+        bit_num = frag_number - sym_num*8
+        bit_mask = 1
+        bit_mask = 1 << bit_num if bit_num>0
+        p 'sf [sym_num, bit_num, bit_mask]='+[sym_num, bit_num, bit_mask].inspect
+        frags[sym_num] = (frags[sym_num].ord | bit_mask).chr
         punnet[PI_Frags] = frags
         fragfile.seek(sym_num)
         res2 = fragfile.write(frags[sym_num])
@@ -5432,11 +5459,13 @@ module PandoraNet
     def close_punnet(sha1)
       punnet = @punnets[sha1]
       if punnet.is_a? Array
-        fragfile, frags, filename, datafile, frag_fn = punnet
+        fragfile, frags, filename, datafile, frag_fn, frag_count, filesize = punnet[0, 7]
         fragfile.close if fragfile
         datafile.close if datafile
-        frag_com = frags_complite?(frags)
-        File.delete(frag_fn) if frag_com
+        frag_com = frags_complite?(frags, frag_count)
+        file_size = File.size?(filename)
+        p 'closepun [frag_com, file_size, filesize]='+[frag_com, file_size, filesize].inspect
+        File.delete(frag_fn) if frag_com and file_size and (filesize==file_size)
       end
     end
 
@@ -17337,11 +17366,24 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
-          sha1 = '.,zbmrt'
-          punnet = $window.pool.init_punnet(sha1,81274,'sony_vaio_3-500x500-55.jpg')
-          frag = $window.pool.load_fragment(punnet, 0)
-          p 'frag='+frag.inspect
-          $window.pool.close_punnet(sha1)
+          sha1_1 = '.,zbmrt'
+          sha1_2 = '.,zbmrt2'
+          #punnet = $window.pool.init_punnet(sha1_1,81274,'sony_vaio_3-500x500.jpg')
+          punnet = $window.pool.init_punnet(sha1_1,94703,'sony_vaio_4-500x500.jpg')
+          #punnet2 = $window.pool.init_punnet(sha1_2,81274,'sony_vaio_3-500x500-new.jpg')
+          punnet2 = $window.pool.init_punnet(sha1_2,94703,'sony_vaio_4-500x500-new.jpg')
+
+          frag_count = punnet[PandoraNet::PI_FragCount]
+          frag_count.times do |frag_ind|
+            frag = $window.pool.load_fragment(punnet, frag_ind)
+            if frag
+              p 'ind   frag[1,3]  size='+[frag_ind, frag[1,3], frag.bytesize].inspect
+              frag2 = $window.pool.save_fragment(punnet2, frag_ind, frag)
+              p 'frag2='+frag2.inspect
+            end
+          end
+          $window.pool.close_punnet(sha1_1)
+          $window.pool.close_punnet(sha1_2)
 
           return
 
