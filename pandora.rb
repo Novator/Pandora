@@ -5101,7 +5101,7 @@ module PandoraNet
   ECC_News_Notice       = 3
   ECC_News_SessMode     = 4
   ECC_News_Answer       = 5
-  ECC_News_TooBig       = 6
+  ECC_News_BigBlob       = 6
   ECC_News_Punnet       = 7
 
   ECC_Channel0_Open     = 0
@@ -7691,9 +7691,9 @@ module PandoraNet
                     reqs.each do |sr|
                       sr[SR_Answer] = answ
                     end
-                  when ECC_News_TooBig
+                  when ECC_News_BigBlob
                     # есть запись, но она слишком большая
-                    p log_mes+'ECC_News_TooBig'
+                    p log_mes+'ECC_News_BigBlob'
                     toobig, len = PandoraUtils.pson_to_rubyobj(rdata)
                     toobig.each do |rec|
                       panhash,sha1,size,fill = rec
@@ -16884,7 +16884,7 @@ module PandoraGtk
     # Change hunter button state
     # RU: Изменить состояние кнопки охотника
     def correct_hunt_btn_state
-      tool_btn = $toggle_buttons[SF_Hunt]
+      tool_btn = $toggle_buttons[PandoraGtk::SF_Hunt]
       pushed = ($hunter_thread and $hunter_thread[:active] and (not $hunter_thread[:paused]))
       p 'pushed='+pushed.inspect
       tool_btn.safe_set_active(pushed) if tool_btn.is_a? SafeToggleToolButton
@@ -16959,19 +16959,20 @@ module PandoraGtk
     # Set properties of fiels in statusbar
     # RU: Задаёт свойства поля в статусбаре
     def set_status_field(index, text, enabled=nil, toggle=nil)
-      btn = $status_fields[index]
-      if btn
+      fld = $status_fields[index]
+      if fld
         if text
           str = _(text)
           str = _('Version') + ': ' + str if (index==SF_Update)
-          btn.label = str
+          fld.label = str
         end
         if (enabled != nil)
-          btn.sensitive = enabled
+          fld.sensitive = enabled
         end
         if (toggle != nil)
-          btn.safe_set_active(toggle) if btn.is_a? SafeToggleButton
-          $toggle_buttons[index].safe_set_active(toggle) if $toggle_buttons[index] and ($toggle_buttons[index].is_a? SafeToggleToolButton)
+          fld.safe_set_active(toggle) if fld.is_a? SafeToggleButton
+          btn = $toggle_buttons[index]
+          btn.safe_set_active(toggle) if btn and (btn.is_a? SafeToggleToolButton)
         end
       end
     end
@@ -17538,7 +17539,7 @@ module PandoraGtk
       ['Request', 'request:m', 'Requests'],  #Gtk::Stock::SELECT_COLOR
       ['Session', 'session:m', 'Sessions', '<control>S'],   #Gtk::Stock::JUSTIFY_FILL
       ['-', nil, '-'],
-      ['Authorize', Gtk::Stock::DIALOG_AUTHENTICATION, 'Authorize', '<control>U'],
+      ['Authorize', Gtk::Stock::DIALOG_AUTHENTICATION, 'Authorize', '<control>U', :check],
       ['Listen', Gtk::Stock::CONNECT, 'Listen', '<control>L', :check],
       ['Hunt', Gtk::Stock::REFRESH, 'Hunt', '<control>H', :check],   #Gtk::Stock::REFRESH
       ['Fish', Gtk::Stock::GO_FORWARD, 'Neighbors', '<control>N', :check],  #Gtk::Stock::GO_FORWARD
@@ -17590,6 +17591,8 @@ module PandoraGtk
             if (toggle != nil)
               index = nil
               case command
+                when 'Authorize'
+                  index = SF_Auth
                 when 'Listen'
                   index = SF_Listen
                 when 'Hunt'
