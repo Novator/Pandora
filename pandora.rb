@@ -739,7 +739,7 @@ module PandoraUtils
     val = nil if val==''
     if val and view
       case view
-        when 'byte', 'word', 'integer', 'coord'
+        when 'byte', 'word', 'integer', 'coord', 'bytelist'
           val = val.to_i
         when 'real'
           val = val.to_f
@@ -1940,7 +1940,7 @@ module PandoraUtils
                 hash = dhash if (not hash) or (hash=='')
                 if len<=0
                   case hash
-                    when 'byte', 'lang'
+                    when 'byte', 'lang', 'bytelist'
                       len = 1
                     when 'date'
                       len = 3
@@ -2253,7 +2253,7 @@ module PandoraUtils
         #p 'fval='+fval.inspect+'  hfor='+hfor.inspect
         hfor = 'integer' if (not hfor or hfor=='') and (fval.is_a? Integer)
         hfor = 'hash' if ((hfor=='') or (hfor=='text')) and (fval.is_a? String) and (fval.size>20)
-        if ['integer', 'word', 'byte', 'lang', 'coord'].include? hfor
+        if ['integer', 'word', 'byte', 'lang', 'coord', 'bytelist'].include? hfor
           if hfor == 'coord'
             if fval.is_a? String
               fval = PandoraUtils.bytes_to_bigint(fval[2,4])
@@ -3533,7 +3533,7 @@ module PandoraModel
       end
       #type detect
       case proto
-        when 'pandora'
+        when 'pandora', 'smile'
           i = url.index('/')
           if i and (i==0)
             url = url[1..-1]
@@ -3586,7 +3586,7 @@ module PandoraModel
         body = nil
         fn = nil
         if way and (way.size>0)
-          if (proto=='pandora') and obj_type.nil?
+          if (proto=='pandora') #and obj_type.nil?
             panhash = PandoraModel.hex_to_panhash(way)
             kind = PandoraUtils.kind_from_panhash(panhash)
             sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'type,blob')
@@ -3609,7 +3609,7 @@ module PandoraModel
               end
             else
               if (way.size<=PandoraGtk::MaxSmileName)
-                res = $window.get_icon_buf(way)
+                res = $window.get_icon_buf(way, obj_type)
               end
               if (not res)
                 if err_text
@@ -3622,7 +3622,7 @@ module PandoraModel
           elsif ((proto=='http') or (proto=='https'))
             fn = load_http_to_file(way)
           elsif proto=='smile'
-            res = $window.get_icon_buf(way)
+            res = $window.get_icon_buf(way, obj_type)
           end
         end
         if body
@@ -3645,7 +3645,7 @@ module PandoraModel
   # RU: Добыть иконку-аватар по панхэшу
   def self.get_avatar_icon(panhash, pixbuf_parent, its_blob=false, icon_size=16)
     pixbuf = nil
-    avatar_hash = PandoraModel.find_relation(panhash, RK_AvatarOf) unless its_blob
+    avatar_hash = PandoraModel.find_relation(panhash, RK_AvatarFor, true) unless its_blob
     if avatar_hash
       #p 'avatar_hash='+avatar_hash.inspect
       ava_url = 'pandora://'+PandoraUtils.bytes_to_hex(avatar_hash)
@@ -3706,9 +3706,25 @@ module PandoraModel
   RK_Follow   = 6
   RK_Ignore   = 7
   RK_CameFrom = 8
-  RK_AvatarOf  = 9
+  RK_AvatarFor  = 9
   RK_MinPublic = 235
   RK_MaxPublic = 255
+
+  # Relation kind names
+  # RU: Имена видов связей
+  RelationNames = [
+    [RK_Unknown,    'Unknown'],
+    [RK_Equal,      'Equal'],
+    [RK_Similar,    'Similar'],
+    [RK_Antipod,    'Antipod'],
+    [RK_PartOf,     'Part of'],
+    [RK_Cause,      'Cause'],
+    [RK_Follow,     'Follow'],
+    [RK_Ignore,     'Ignore'],
+    [RK_CameFrom,   'Came from'],
+    [RK_AvatarFor,  'Avatar for'],
+    [RK_MinPublic,  'Public']
+  ]
 
   # Relation is symmetric
   # RU: Связь симметрична
@@ -3790,22 +3806,22 @@ module PandoraModel
 
   # Find relation with the kind with highest rate
   # RU: Ищет связь для сорта с максимальным рейтингом
-  def self.find_relation(panhash, rel_kind=nil, obj_kind=nil, models=nil)
+  def self.find_relation(panhash, rel_kind=nil, second=nil, models=nil)
     res = nil
     relation_model = PandoraUtils.get_model('Relation', models)
     if relation_model
-      rel_kind ||= RK_AvatarOf
-      filter = [['first=', panhash], ['kind=', rel_kind]]
-      filter2 = nil
-      if relation_is_symmetric?(rel_kind)
-        filter = [['second=', panhash], ['kind=', rel_kind]]
+      sel = nil
+      exist = nil
+      if not second
+        filter = [['first=', panhash], ['kind=', rel_kind]]
+        flds = 'id,second'
+        sel = relation_model.select(filter, false, flds, 'modified DESC', 1)
+        exist = (sel and (sel.size>0))
       end
-      flds = 'id,second'
-      sel = relation_model.select(filter, false, flds, 'modified DESC', 1)
-      exist = (sel and (sel.size>0))
-      if (not exist) and filter2
+      if (not exist) and (second or relation_is_symmetric?(rel_kind))
+        filter = [['second=', panhash], ['kind=', rel_kind]]
         flds = 'id,first'
-        sel = relation_model.select(filter2, false, flds, 'modified DESC', 1)
+        sel = relation_model.select(filter, false, flds, 'modified DESC', 1)
         exist = (sel and (sel.size>0))
       end
       res = exist
@@ -5101,8 +5117,9 @@ module PandoraNet
   ECC_News_Notice       = 3
   ECC_News_SessMode     = 4
   ECC_News_Answer       = 5
-  ECC_News_BigBlob       = 6
+  ECC_News_BigBlob      = 6
   ECC_News_Punnet       = 7
+  ECC_News_Fragments    = 8
 
   ECC_Channel0_Open     = 0
   ECC_Channel1_Opened   = 1
@@ -5723,6 +5740,7 @@ module PandoraNet
       model = nil
       fields, sort, word1, word2, word3, words, word1dup, filter1, filter2 = nil
       bases = 'Person' if (bases == 'auto')
+
       if bases == 'Person'
         model = PandoraUtils.get_model('Person')
         fields = 'first_name, last_name, birth_day'
@@ -6410,6 +6428,10 @@ module PandoraNet
       res
     end
 
+    def active?
+      res = (conn_state == CS_Connected)
+    end
+
     # Accept received segment
     # RU: Принять полученный сегмент
     def accept_segment
@@ -6717,10 +6739,6 @@ module PandoraNet
           end
         end
         password
-      end
-
-      def active?
-        res = (conn_state == CS_Connected)
       end
 
       # Get hook for line
@@ -9574,9 +9592,9 @@ module PandoraGtk
 
       button.signal_connect('clicked') do |*args|
         @entry.grab_focus
-        if @calwin and (not @calwin.destroyed?)
-          @calwin.destroy
-          @calwin = nil
+        if @popwin and (not @popwin.destroyed?)
+          @popwin.destroy
+          @popwin = nil
         else
           @cal = Gtk::Calendar.new
           cal = @cal
@@ -9596,8 +9614,8 @@ module PandoraGtk
             year, month, day = @cal.date
             if (@month==month) and (@year==year)
               @entry.text = PandoraUtils.date_to_str(Time.local(year, month, day))
-              @calwin.destroy
-              @calwin = nil
+              @popwin.destroy
+              @popwin = nil
             else
               @month=month
               @year=year
@@ -9610,14 +9628,14 @@ module PandoraGtk
             elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
               ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
             then
-              @calwin.destroy
-              @calwin = nil
+              @popwin.destroy
+              @popwin = nil
               false
             elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
               ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
             then
-              @calwin.destroy
-              @calwin = nil
+              @popwin.destroy
+              @popwin = nil
               $window.destroy
               false
             elsif (event.keyval>=65360) and (event.keyval<=65367)
@@ -9659,26 +9677,28 @@ module PandoraGtk
           #menu.popup(nil, nil, 0, Gdk::Event::CURRENT_TIME)
 
 
-          @calwin = Gtk::Window.new #(Gtk::Window::POPUP)
-          calwin = @calwin
-          calwin.transient_for = $window
-          calwin.modal = true
-          calwin.decorated = false
+          @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
+          popwin = @popwin
+          popwin.transient_for = $window
+          popwin.modal = true
+          popwin.decorated = false
 
-          calwin.add(cal)
-          calwin.signal_connect('delete_event') { @calwin.destroy; @calwin=nil }
+          popwin.add(cal)
+          popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
 
-          calwin.signal_connect('focus-out-event') do |win, event|
-            @calwin.destroy
-            @calwin = nil
+          popwin.signal_connect('focus-out-event') do |win, event|
+            GLib::Timeout.add(100) do
+              @popwin.destroy
+              @popwin = nil
+            end
             false
           end
 
           pos = @button.window.origin
           all = @button.allocation.to_a
-          calwin.move(pos[0]+all[0], pos[1]+all[1]+all[3]+1)
+          popwin.move(pos[0]+all[0], pos[1]+all[1]+all[3]+1)
 
-          calwin.show_all
+          popwin.show_all
         end
       end
     end
@@ -9707,6 +9727,160 @@ module PandoraGtk
       esize = entry.size_request
       res = button.size_request
       res[0] = esize[0]+1+res[0]
+      res
+    end
+  end
+
+  # Entry for relation kind
+  # RU: Поле ввода типа связи
+  class ByteListEntry < Gtk::HBox
+    attr_accessor :entry, :button
+
+    def initialize(code_name_list, *args)
+      super(*args)
+      @code_name_list = code_name_list
+      @entry = MaskEntry.new
+      @entry.mask = '0123456789'
+      @entry.max_length = 3
+      @entry.tooltip_text = 'NNN'
+
+      @button = Gtk::Button.new('L')
+      @button.can_focus = false
+
+      @entry.instance_variable_set('@button', @button)
+      def @entry.key_event(widget, event)
+        res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
+          and (event.keyval==65364)))
+        @button.activate if res
+        false
+      end
+      self.pack_start(entry, true, true, 0)
+      align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+      align.add(@button)
+      self.pack_start(align, false, false, 1)
+      esize = entry.size_request
+      h = esize[1]-2
+      @button.set_size_request(h, h)
+
+      button.signal_connect('clicked') do |*args|
+        @entry.grab_focus
+        if @popwin and (not @popwin.destroyed?)
+          @popwin.destroy
+          @popwin = nil
+        else
+          store = Gtk::ListStore.new(Integer, String)
+          @code_name_list.each do |kind,name|
+            iter = store.append
+            iter[0] = kind
+            iter[1] = _(name)
+          end
+
+          @treeview = Gtk::TreeView.new(store)
+          treeview = @treeview
+          treeview.rules_hint = true
+          treeview.search_column = 0
+          treeview.border_width = 10
+
+          renderer = Gtk::CellRendererText.new
+          column = Gtk::TreeViewColumn.new(_('Code'), renderer, 'text' => 0)
+          column.set_sort_column_id(0)
+          treeview.append_column(column)
+
+          renderer = Gtk::CellRendererText.new
+          column = Gtk::TreeViewColumn.new(_('Description'), renderer, 'text' => 1)
+          column.set_sort_column_id(1)
+          treeview.append_column(column)
+
+          treeview.signal_connect('row_activated') do |tree_view, path, column|
+            path, column = tree_view.cursor
+            if path
+              store = tree_view.model
+              iter = store.get_iter(path)
+              if iter and iter[0]
+                @entry.text = iter[0].to_s
+                @popwin.destroy
+                @popwin = nil
+              end
+            end
+            false
+          end
+
+          treeview.signal_connect('key-press-event') do |widget, event|
+            if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+              @treeview.signal_emit('row_activated', nil, nil)
+            elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+              ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
+            then
+              @popwin.destroy
+              @popwin = nil
+              false
+            elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
+              ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
+            then
+              @popwin.destroy
+              @popwin = nil
+              $window.destroy
+              false
+            else
+              false
+            end
+          end
+
+          frame = Gtk::Frame.new
+          frame.shadow_type = Gtk::SHADOW_OUT
+          frame.add(treeview)
+
+          @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
+          popwin = @popwin
+          popwin.transient_for = $window
+          popwin.modal = true
+          popwin.decorated = false
+
+          popwin.add(frame)
+          popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
+
+          popwin.signal_connect('focus-out-event') do |win, event|
+            GLib::Timeout.add(100) do
+              @popwin.destroy
+              @popwin = nil
+            end
+            false
+          end
+
+          pos = @button.window.origin
+          all = @button.allocation.to_a
+          popwin.move(pos[0]+all[0], pos[1]+all[1]+all[3]+1)
+
+          popwin.show_all
+        end
+      end
+    end
+
+    def max_length=(maxlen)
+      entry.max_length = maxlen
+    end
+
+    def text=(text)
+      entry.text = text
+    end
+
+    def text
+      entry.text
+    end
+
+    def width_request=(wr)
+      entry.set_width_request(wr)
+    end
+
+    def modify_text(*args)
+      entry.modify_text(*args)
+    end
+
+    def size_request
+      esize = entry.size_request
+      res = button.size_request
+      res[0] = esize[0]+1+res[0]
+      size_request = res
       res
     end
   end
@@ -9899,7 +10073,7 @@ module PandoraGtk
         end
 
         scr = Gdk::Screen.default
-        if (scr.height > 700)
+        if (scr.height > 500)
           frame = Gtk::Frame.new
           frame.shadow_type = Gtk::SHADOW_IN
           align = Gtk::Alignment.new(0.5, 0.5, 0, 0)
@@ -11453,6 +11627,8 @@ module PandoraGtk
       end
     end
 
+    SexList = [[1, _('man')], [0, _('woman')], [2, _('trans')], [3, _('gay')], [4, _('lesbo')]]
+
     # Create fields dialog
     # RU: Создать форму с полями
     def initialize(apanobject, afields=[], *args)
@@ -11980,6 +12156,12 @@ module PandoraGtk
               #entry.editable = false
             else
               entry = PanhashBox.new(atype)
+            end
+          when 'bytelist'
+            if field[FI_Id]=='sex'
+              entry = ByteListEntry.new(SexList)
+            else
+              entry = ByteListEntry.new(PandoraModel::RelationNames)
             end
           else
             entry = Gtk::Entry.new
@@ -17367,6 +17549,11 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
+
+          p PandoraUtils.bytes_to_hex(Digest::MD5.digest('123456'))
+
+          return
+
           sha1_1 = '.,zbmrt'
           sha1_2 = '.,zbmrt2'
           #punnet = $window.pool.init_punnet(sha1_1,81274,'sony_vaio_3-500x500.jpg')

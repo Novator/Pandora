@@ -9,7 +9,7 @@
       <birth_place pos="+0.10up" />
       <father_name pos="|up+0.3" />
       <mother_name pos="up+0.1" />
-      <sex pos="|left" />
+      <sex pos="|left" view="bytelist" />
       <exit_day pos="left,hide" />
     </Person>
 
@@ -33,7 +33,7 @@
     <Relation>
       <first view="panhash" />
       <second view="panhash" />
-      <kind view="byte" />
+      <kind view="bytelist" />
     </Relation>
 
   </World>
