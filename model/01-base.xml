@@ -25,7 +25,7 @@
       <father_name name="Father name" type="String" size="35" hash="5:hash(2)" />
       <mother_name name="Mother name" type="String" size="35" hash="6:hash(2)" />
       <sex name="Sex" type="Byte" />
-      <exit_day name="Exit day" type="Date" optional="yes" />
+      <exit_day name="Exit day" type="Date" />
     </Person>
 
     <Community parent="Created" name="Community|Communities" table="communities" kind="11">

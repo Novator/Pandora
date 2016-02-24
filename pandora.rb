@@ -9556,19 +9556,16 @@ module PandoraGtk
     end
   end
 
-  # Entry for date
-  # RU: Поле ввода даты
-  class DateEntry < Gtk::HBox
+  # Entry with popup widget
+  # RU: Поле с всплывающим виджетом
+  class BtnEntry < Gtk::HBox
     attr_accessor :entry, :button
 
-    def initialize(*args)
+    def initialize(entry_class, popup=true, *args)
       super(*args)
-      @entry = MaskEntry.new
-      @entry.mask = '0123456789.'
-      @entry.max_length = 10
-      @entry.tooltip_text = 'DD.MM.YYYY'
+      @entry = entry_class.new
 
-      @button = Gtk::Button.new('D')
+      @button = Gtk::Button.new('...')
       @button.can_focus = false
 
       @entry.instance_variable_set('@button', @button)
@@ -9586,124 +9583,55 @@ module PandoraGtk
       h = esize[1]-2
       @button.set_size_request(h, h)
 
-      #if panclasses==[]
-      #  panclasses = $panobject_list
-      #end
+      if popup
+        button.signal_connect('clicked') do |*args|
+          @entry.grab_focus
+          if @popwin and (not @popwin.destroyed?)
+            @popwin.destroy
+            @popwin = nil
+          else
+            @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
+            popwin = @popwin
+            popwin.transient_for = $window
+            popwin.modal = true
+            popwin.decorated = false
+            popwin.skip_taskbar_hint = true
 
-      button.signal_connect('clicked') do |*args|
-        @entry.grab_focus
-        if @popwin and (not @popwin.destroyed?)
-          @popwin.destroy
-          @popwin = nil
-        else
-          @cal = Gtk::Calendar.new
-          cal = @cal
+            popwidget = get_popwidget
+            popwin.add(popwidget)
+            popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
 
-          date = PandoraUtils.str_to_date(@entry.text)
-          date ||= Time.new
-          @month = date.month
-          @year = date.year
-
-          cal.select_month(date.month, date.year)
-          cal.select_day(date.day)
-          #cal.mark_day(date.day)
-          cal.display_options = Gtk::Calendar::SHOW_HEADING | \
-            Gtk::Calendar::SHOW_DAY_NAMES | Gtk::Calendar::WEEK_START_MONDAY
-
-          cal.signal_connect('day_selected') do
-            year, month, day = @cal.date
-            if (@month==month) and (@year==year)
-              @entry.text = PandoraUtils.date_to_str(Time.local(year, month, day))
-              @popwin.destroy
-              @popwin = nil
-            else
-              @month=month
-              @year=year
-            end
-          end
-
-          cal.signal_connect('key-press-event') do |widget, event|
-            if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-              @cal.signal_emit('day-selected')
-            elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
-              ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
-            then
-              @popwin.destroy
-              @popwin = nil
-              false
-            elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
-              ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
-            then
-              @popwin.destroy
-              @popwin = nil
-              $window.destroy
-              false
-            elsif (event.keyval>=65360) and (event.keyval<=65367)
-              if event.keyval==65360
-                if @cal.month>0
-                  @cal.month = @cal.month-1
-                else
-                  @cal.month = 11
-                  @cal.year = @cal.year-1
-                end
-              elsif event.keyval==65367
-                if @cal.month<11
-                  @cal.month = @cal.month+1
-                else
-                  @cal.month = 0
-                  @cal.year = @cal.year+1
-                end
-              elsif event.keyval==65365
-                @cal.year = @cal.year-1
-              elsif event.keyval==65366
-                @cal.year = @cal.year+1
+            popwin.signal_connect('focus-out-event') do |win, event|
+              GLib::Timeout.add(100) do
+                @popwin.destroy
+                @popwin = nil
               end
-              year, month, day = @cal.date
-              @month=month
-              @year=year
-              false
-            else
               false
             end
+
+            pos = @entry.window.origin
+            all = @entry.allocation.to_a
+            popwin.move(pos[0], pos[1]+all[3]+1)
+
+            popwin.show_all
           end
-
-          #menuitem = Gtk::ImageMenuItem.new
-          #menuitem.add(cal)
-          #menuitem.show_all
-
-          #menu = Gtk::Menu.new
-          #menu.append(menuitem)
-          #menu.show_all
-          #menu.popup(nil, nil, 0, Gdk::Event::CURRENT_TIME)
-
-
-          @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
-          popwin = @popwin
-          popwin.transient_for = $window
-          popwin.modal = true
-          popwin.decorated = false
-
-          popwin.add(cal)
-          popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
-
-          popwin.signal_connect('focus-out-event') do |win, event|
-            GLib::Timeout.add(100) do
-              @popwin.destroy
-              @popwin = nil
-            end
-            false
-          end
-
-          pos = @button.window.origin
-          all = @button.allocation.to_a
-          popwin.move(pos[0]+all[0], pos[1]+all[1]+all[3]+1)
-
-          popwin.show_all
+          false
         end
       end
     end
 
+    def get_popwidget   # Example widget
+      wid = Gtk::Button.new('Here must be a popup widget')
+      wid.signal_connect('clicked') do |*args|
+        @entry.text = 'AValue'
+        @popwin.destroy
+        @popwin = nil
+      end
+      wid
+    end
+
     def max_length=(maxlen)
+      maxlen = 512 if maxlen<512
       entry.max_length = maxlen
     end
 
@@ -9731,157 +9659,173 @@ module PandoraGtk
     end
   end
 
-  # Entry for relation kind
-  # RU: Поле ввода типа связи
-  class ByteListEntry < Gtk::HBox
-    attr_accessor :entry, :button
+  # Entry for date
+  # RU: Поле ввода даты
+  class DateEntry < BtnEntry
 
-    def initialize(code_name_list, *args)
-      super(*args)
-      @code_name_list = code_name_list
-      @entry = MaskEntry.new
-      @entry.mask = '0123456789'
-      @entry.max_length = 3
-      @entry.tooltip_text = 'NNN'
+    def initialize(*args)
+      super(MaskEntry, true, *args)
+      @entry.mask = '0123456789.'
+      @entry.max_length = 10
+      @entry.tooltip_text = 'DD.MM.YYYY'
+      @button.label = 'D'
+    end
 
-      @button = Gtk::Button.new('L')
-      @button.can_focus = false
+    def get_popwidget
+      @cal = Gtk::Calendar.new
+      cal = @cal
 
-      @entry.instance_variable_set('@button', @button)
-      def @entry.key_event(widget, event)
-        res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
-          and (event.keyval==65364)))
-        @button.activate if res
-        false
-      end
-      self.pack_start(entry, true, true, 0)
-      align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
-      align.add(@button)
-      self.pack_start(align, false, false, 1)
-      esize = entry.size_request
-      h = esize[1]-2
-      @button.set_size_request(h, h)
+      date = PandoraUtils.str_to_date(@entry.text)
+      date ||= Time.new
+      @month = date.month
+      @year = date.year
 
-      button.signal_connect('clicked') do |*args|
-        @entry.grab_focus
-        if @popwin and (not @popwin.destroyed?)
+      cal.select_month(date.month, date.year)
+      cal.select_day(date.day)
+      #cal.mark_day(date.day)
+      cal.display_options = Gtk::Calendar::SHOW_HEADING | \
+        Gtk::Calendar::SHOW_DAY_NAMES | Gtk::Calendar::WEEK_START_MONDAY
+
+      cal.signal_connect('day_selected') do
+        year, month, day = @cal.date
+        if (@month==month) and (@year==year)
+          @entry.text = PandoraUtils.date_to_str(Time.local(year, month, day))
           @popwin.destroy
           @popwin = nil
         else
-          store = Gtk::ListStore.new(Integer, String)
-          @code_name_list.each do |kind,name|
-            iter = store.append
-            iter[0] = kind
-            iter[1] = _(name)
-          end
-
-          @treeview = Gtk::TreeView.new(store)
-          treeview = @treeview
-          treeview.rules_hint = true
-          treeview.search_column = 0
-          treeview.border_width = 10
-
-          renderer = Gtk::CellRendererText.new
-          column = Gtk::TreeViewColumn.new(_('Code'), renderer, 'text' => 0)
-          column.set_sort_column_id(0)
-          treeview.append_column(column)
-
-          renderer = Gtk::CellRendererText.new
-          column = Gtk::TreeViewColumn.new(_('Description'), renderer, 'text' => 1)
-          column.set_sort_column_id(1)
-          treeview.append_column(column)
-
-          treeview.signal_connect('row_activated') do |tree_view, path, column|
-            path, column = tree_view.cursor
-            if path
-              store = tree_view.model
-              iter = store.get_iter(path)
-              if iter and iter[0]
-                @entry.text = iter[0].to_s
-                @popwin.destroy
-                @popwin = nil
-              end
-            end
-            false
-          end
-
-          treeview.signal_connect('key-press-event') do |widget, event|
-            if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-              @treeview.signal_emit('row_activated', nil, nil)
-            elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
-              ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
-            then
-              @popwin.destroy
-              @popwin = nil
-              false
-            elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
-              ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
-            then
-              @popwin.destroy
-              @popwin = nil
-              $window.destroy
-              false
-            else
-              false
-            end
-          end
-
-          frame = Gtk::Frame.new
-          frame.shadow_type = Gtk::SHADOW_OUT
-          frame.add(treeview)
-
-          @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
-          popwin = @popwin
-          popwin.transient_for = $window
-          popwin.modal = true
-          popwin.decorated = false
-
-          popwin.add(frame)
-          popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
-
-          popwin.signal_connect('focus-out-event') do |win, event|
-            GLib::Timeout.add(100) do
-              @popwin.destroy
-              @popwin = nil
-            end
-            false
-          end
-
-          pos = @button.window.origin
-          all = @button.allocation.to_a
-          popwin.move(pos[0]+all[0], pos[1]+all[1]+all[3]+1)
-
-          popwin.show_all
+          @month=month
+          @year=year
         end
       end
+
+      cal.signal_connect('key-press-event') do |widget, event|
+        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+          @cal.signal_emit('day-selected')
+        elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+          ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) \
+          and event.state.control_mask?) #w, W, ц, Ц
+        then
+          @popwin.destroy
+          @popwin = nil
+          false
+        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
+          and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
+          1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
+        then
+          @popwin.destroy
+          @popwin = nil
+          $window.destroy
+          false
+        elsif (event.keyval>=65360) and (event.keyval<=65367)
+          if event.keyval==65360
+            if @cal.month>0
+              @cal.month = @cal.month-1
+            else
+              @cal.month = 11
+              @cal.year = @cal.year-1
+            end
+          elsif event.keyval==65367
+            if @cal.month<11
+              @cal.month = @cal.month+1
+            else
+              @cal.month = 0
+              @cal.year = @cal.year+1
+            end
+          elsif event.keyval==65365
+            @cal.year = @cal.year-1
+          elsif event.keyval==65366
+            @cal.year = @cal.year+1
+          end
+          year, month, day = @cal.date
+          @month=month
+          @year=year
+          false
+        else
+          false
+        end
+      end
+
+      cal
+    end
+  end
+
+  # Entry for relation kind
+  # RU: Поле ввода типа связи
+  class ByteListEntry < BtnEntry
+
+    def initialize(code_name_list, *args)
+      super(MaskEntry, true, *args)
+      @code_name_list = code_name_list
+      @entry.mask = '0123456789'
+      @entry.max_length = 3
+      @entry.tooltip_text = 'NNN'
+      @button.label = 'L'
     end
 
-    def max_length=(maxlen)
-      entry.max_length = maxlen
-    end
+    def get_popwidget
+      store = Gtk::ListStore.new(Integer, String)
+      @code_name_list.each do |kind,name|
+        iter = store.append
+        iter[0] = kind
+        iter[1] = _(name)
+      end
 
-    def text=(text)
-      entry.text = text
-    end
+      @treeview = Gtk::TreeView.new(store)
+      treeview = @treeview
+      treeview.rules_hint = true
+      treeview.search_column = 0
+      treeview.border_width = 10
 
-    def text
-      entry.text
-    end
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Code'), renderer, 'text' => 0)
+      column.set_sort_column_id(0)
+      treeview.append_column(column)
 
-    def width_request=(wr)
-      entry.set_width_request(wr)
-    end
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Description'), renderer, 'text' => 1)
+      column.set_sort_column_id(1)
+      treeview.append_column(column)
 
-    def modify_text(*args)
-      entry.modify_text(*args)
-    end
+      treeview.signal_connect('row_activated') do |tree_view, path, column|
+        path, column = tree_view.cursor
+        if path
+          store = tree_view.model
+          iter = store.get_iter(path)
+          if iter and iter[0]
+            @entry.text = iter[0].to_s
+            @popwin.destroy
+            @popwin = nil
+          end
+        end
+        false
+      end
 
-    def size_request
-      esize = entry.size_request
-      res = button.size_request
-      res[0] = esize[0]+1+res[0]
-      size_request = res
-      res
+      treeview.signal_connect('key-press-event') do |widget, event|
+        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+          @treeview.signal_emit('row_activated', nil, nil)
+        elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+          ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
+        then
+          @popwin.destroy
+          @popwin = nil
+          false
+        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
+          ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
+        then
+          @popwin.destroy
+          @popwin = nil
+          $window.destroy
+          false
+        else
+          false
+        end
+      end
+
+      frame = Gtk::Frame.new
+      frame.shadow_type = Gtk::SHADOW_OUT
+      frame.add(treeview)
+
+      frame
     end
   end
 
@@ -9889,38 +9833,18 @@ module PandoraGtk
 
   # Entry for panhash
   # RU: Поле ввода панхэша
-  class PanhashBox < Gtk::HBox
-    attr_accessor :types, :panclasses, :entry, :button
+  class PanhashBox < BtnEntry
+    attr_accessor :types, :panclasses
 
     def initialize(panhash_type, *args)
-      super(*args)
+      super(HexEntry, false, *args)
       @types = panhash_type
-      @entry = HexEntry.new
-      @button = Gtk::Button.new('...')
-      @button.can_focus = false
-      @entry.instance_variable_set('@button', @button)
-      def @entry.key_event(widget, event)
-        res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
-          and (event.keyval==65364)))
-        @button.activate if res
-        false
-      end
-      self.pack_start(entry, true, true, 0)
-      align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
-      align.add(@button)
-      self.pack_start(align, false, false, 1)
-      esize = entry.size_request
-      h = esize[1]-2
-      @button.set_size_request(h, h)
 
-      #if panclasses==[]
-      #  panclasses = $panobject_list
-      #end
-
-      button.signal_connect('clicked') do |*args|
+      @button.signal_connect('clicked') do |*args|
         @entry.grab_focus
         set_classes
         dialog = PandoraGtk::AdvancedDialog.new(_('Choose object'))
+        dialog.skip_taskbar_hint = true
         dialog.set_default_size(600, 400)
         auto_create = true
         panclasses.each_with_index do |panclass, i|
@@ -9958,7 +9882,7 @@ module PandoraGtk
             @entry.text = PandoraUtils.bytes_to_hex(panhash) if (panhash.is_a? String)
           end
         end
-        #yield if block_given?
+        true
       end
     end
 
@@ -9984,61 +9908,18 @@ module PandoraGtk
       end
     end
 
-    def max_length=(maxlen)
-      entry.max_length = maxlen
-    end
-
-    def text=(text)
-      entry.text = text
-    end
-
-    def text
-      entry.text
-    end
-
-    def width_request=(wr)
-      entry.set_width_request(wr)
-    end
-
-    def modify_text(*args)
-      entry.modify_text(*args)
-    end
-
-    def size_request
-      esize = entry.size_request
-      res = button.size_request
-      res[0] = esize[0]+1+res[0]
-      res
-    end
   end
 
   # Entry for filename
   # RU: Поле выбора имени файла
-  class FilenameBox < Gtk::HBox
-    attr_accessor :entry, :button, :window
+  class FilenameBox < BtnEntry
+    attr_accessor :window
 
     def initialize(parent, *args)
-      super(*args)
-      @entry = Gtk::Entry.new
-      @button = Gtk::Button.new('...')
-      @button.can_focus = false
-      @entry.instance_variable_set('@button', @button)
-      def @entry.key_event(widget, event)
-        res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
-          and (event.keyval==65364)))
-        @button.activate if res
-        false
-      end
-      @window = parent
-      self.pack_start(entry, true, true, 0)
-      align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
-      align.add(@button)
-      self.pack_start(align, false, false, 1)
-      esize = entry.size_request
-      h = esize[1]-2
-      @button.set_size_request(h, h)
+      super(Gtk::Entry, false, *args)
 
-      button.signal_connect('clicked') do |*args|
+      @window = parent
+      @button.signal_connect('clicked') do |*args|
         @entry.grab_focus
         dialog =  Gtk::FileChooserDialog.new(_('Choose a file'), @window,
           Gtk::FileChooser::ACTION_OPEN, 'gnome-vfs',
@@ -10107,20 +9988,8 @@ module PandoraGtk
           yield(@entry.text, @entry, @button) if block_given?
         end
         dialog.destroy
+        true
       end
-    end
-
-    def max_length=(maxlen)
-      maxlen = 512 if maxlen<512
-      entry.max_length = maxlen
-    end
-
-    def text=(text)
-      entry.text = text
-    end
-
-    def text
-      entry.text
     end
 
     def width_request=(wr)
@@ -10131,16 +10000,6 @@ module PandoraGtk
       entry.set_width_request(wr)
     end
 
-    def modify_text(*args)
-      entry.modify_text(*args)
-    end
-
-    def size_request
-      esize = entry.size_request
-      res = button.size_request
-      res[0] = esize[0]+1+res[0]
-      res
-    end
   end
 
   # Entry for coordinate
@@ -16343,7 +16202,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.44'
+    dlg.version = '0.45'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
