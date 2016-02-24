@@ -12488,8 +12488,16 @@ module PandoraGtk
           widget.safe_set_active(false)
           widget.inconsistent = true
           targets[CSI_Persons].each_with_index do |person, i|
-            $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-              person, targets[CSI_Keys], nil, PandoraNet::CM_Captcha)
+            keys = targets[CSI_Keys]
+            if keys.is_a? Array
+              keys.each do |key|
+                $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
+                  person, key, nil, PandoraNet::CM_Captcha)
+              end
+            else
+              $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
+                person, keys, nil, PandoraNet::CM_Captcha)
+            end
           end
         else
           widget.safe_set_active(false)
