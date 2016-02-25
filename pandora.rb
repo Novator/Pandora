@@ -6419,7 +6419,7 @@ module PandoraNet
       @conn_mode ||= 0
       buf = (@conn_mode & 255).chr
       p 'send_conn_mode  buf='+buf.inspect
-      add_send_segment(EC_News, true, AsciiString.new(), ECC_News_SessMode)
+      add_send_segment(EC_News, true, AsciiString.new(buf), ECC_News_SessMode)
     end
 
     def skey_trust
@@ -7421,30 +7421,6 @@ module PandoraNet
                         +[id].pack('N'))
                     end
 
-                    if (text.is_a? String) and (text.size>1) and (text[0]=='!')
-                      i = text.index(' ')
-                      i = text.size if not i
-                      chat_com = text[1..i-1]
-                      chat_par = text[i+1..-1]
-                      p '===>Chat command: '+[chat_com, chat_par].inspect
-                      chat_com_par = chat_com
-                      chat_com_par += ' '+chat_par if chat_par
-                      if chat_par and ($prev_chat_com_par != chat_com_par)
-                        $prev_chat_com_par = chat_com_par
-                        PandoraUtils.log_message(LM_Info, _('Chat command')+': '+Utf8String.new(chat_com_par))
-                        case chat_com
-                          when 'echo'
-                            add_send_segment(EC_Message, true, chat_par)
-                          when 'menu'
-                            $window.do_menu_act(chat_par)
-                          when 'sound'
-                            PandoraUtils.play_mp3(chat_par, nil, true)
-                          else
-                            PandoraUtils.log_message(LM_Info, _('Unknown chat command')+': '+chat_com)
-                        end
-                      end
-                    end
-
                     talkview = nil
                     talkview = dialog.talkview if dialog
                     if talkview
@@ -7461,6 +7437,34 @@ module PandoraNet
                       dialog.add_mes_to_view(text, nil, @skey, myname, time_now, created)
                     else
                       PandoraUtils.log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
+                    end
+
+                    if (text.is_a? String) and (text.size>1) and (text[0]=='!')
+                      i = text.index(' ')
+                      i = text.size if not i
+                      chat_com = text[1..i-1]
+                      chat_par = text[i+1..-1]
+                      p '===>Chat command: '+[chat_com, chat_par].inspect
+                      chat_com_par = chat_com
+                      chat_com_par += ' '+chat_par if chat_par
+                      if chat_par and ($prev_chat_com_par != chat_com_par)
+                        $prev_chat_com_par = chat_com_par
+                        PandoraUtils.log_message(LM_Info, _('Chat command')+': '+Utf8String.new(chat_com_par))
+                        case chat_com
+                          when 'echo'
+                            if dialog and (not dialog.destroyed?)
+                              dialog.add_and_send_mes(chat_par)
+                            else
+                              add_send_segment(EC_Message, true, chat_par)
+                            end
+                          when 'menu'
+                            $window.do_menu_act(chat_par)
+                          when 'sound'
+                            PandoraUtils.play_mp3(chat_par, nil, true)
+                          else
+                            PandoraUtils.log_message(LM_Info, _('Unknown chat command')+': '+chat_com)
+                        end
+                      end
                     end
                   end
                 else #EC_Channel
@@ -12591,11 +12595,8 @@ module PandoraGtk
         and (not event.state.control_mask?) and (not event.state.shift_mask?) and (not event.state.mod1_mask?)
           if editbox.buffer.text != ''
             mes = editbox.buffer.text
-            sended = add_and_send_mes(mes)
-            if sended
-              add_mes_to_view(mes, true)
-              editbox.buffer.text = ''
-            end
+            res = add_and_send_mes(mes)
+            editbox.buffer.text = '' if res
           end
           true
         elsif (Gdk::Keyval::GDK_Escape==event.keyval)
@@ -13044,6 +13045,7 @@ module PandoraGtk
           values['panhash'] = panhash
           res1 = model.update(values, nil, nil)
           res = (res or res1)
+          add_mes_to_view(text, true) if res
         end
         dlg_sessions = $window.pool.sessions_on_dialog(self)
         dlg_sessions.each do |session|
