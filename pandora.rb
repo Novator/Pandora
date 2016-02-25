@@ -2883,17 +2883,17 @@ module PandoraUtils
 
   # Play mp3
   # RU: Проиграть mp3
-  def self.play_mp3(filename, path=nil)
-    if ($poly_play or (not $play_thread)) \
-    and $statusicon and (not $statusicon.destroyed?) \
-    and $statusicon.play_sounds and (filename.is_a? String) and (filename.size>0)
+  def self.play_mp3(filename, path=nil, anyway=nil)
+    if ($poly_play or (not $play_thread)) and (anyway \
+    or ($statusicon and (not $statusicon.destroyed?) \
+    and $statusicon.play_sounds and (filename.is_a? String) and (filename.size>0)))
       $play_thread = Thread.new do
         begin
           path ||= $pandora_view_dir
           filename ||= Default_Mp3
           filename += '.mp3' unless filename.index('.')
-          filename = File.join(path, filename) unless filename.index('/') or filename.index("\\")
-          filename = File.join(path, Default_Mp3) unless File.exist?(filename)
+          filename = File.join(path, filename) unless (filename.index('/') or filename.index("\\"))
+          filename = File.join(path, Default_Mp3+'.mp3') unless File.exist?(filename)
           cmd = $mp3_player+' "'+filename+'"'
           if PandoraUtils.os_family=='windows'
             win_exec(cmd)
@@ -7391,11 +7391,10 @@ module PandoraNet
                   row = @rdata
                   if row.is_a? String
                     row, len = PandoraUtils.pson_to_rubyobj(row)
-                    t = Time.now
+                    time_now = Time.now.to_i
                     id = nil
-                    time_now = t.to_i
-                    creator = @skey[PandoraCrypto::KV_Creator]
-                    created = time_now
+                    creator = nil
+                    created = nil
                     destination = @rkey[PandoraCrypto::KV_Creator]
                     text = nil
                     if row.is_a? Array
@@ -7404,9 +7403,10 @@ module PandoraNet
                       created = row[2]
                       text = row[3]
                     else
+                      creator = @skey[PandoraCrypto::KV_Creator]
+                      created = time_now
                       text = row
                     end
-
                     values = {:destination=>destination, :text=>text, :state=>2, \
                       :creator=>creator, :created=>created, :modified=>time_now}
                     model = PandoraUtils.get_model('Message', @recv_models)
@@ -7421,10 +7421,33 @@ module PandoraNet
                         +[id].pack('N'))
                     end
 
+                    if (text.is_a? String) and (text.size>1) and (text[0]=='!')
+                      i = text.index(' ')
+                      i = text.size if not i
+                      chat_com = text[1..i-1]
+                      chat_par = text[i+1..-1]
+                      p '===>Chat command: '+[chat_com, chat_par].inspect
+                      chat_com_par = chat_com
+                      chat_com_par += ' '+chat_par if chat_par
+                      if chat_par and ($prev_chat_com_par != chat_com_par)
+                        $prev_chat_com_par = chat_com_par
+                        PandoraUtils.log_message(LM_Info, _('Chat command')+': '+Utf8String.new(chat_com_par))
+                        case chat_com
+                          when 'echo'
+                            add_send_segment(EC_Message, true, chat_par)
+                          when 'menu'
+                            $window.do_menu_act(chat_par)
+                          when 'sound'
+                            PandoraUtils.play_mp3(chat_par, nil, true)
+                          else
+                            PandoraUtils.log_message(LM_Info, _('Unknown chat command')+': '+chat_com)
+                        end
+                      end
+                    end
+
                     talkview = nil
                     talkview = dialog.talkview if dialog
                     if talkview
-
                       #talkview.before_addition(t)
                       #talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
                       #talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
@@ -7435,7 +7458,6 @@ module PandoraNet
                       #talkview.after_addition
                       #talkview.show_all
                       #dialog.update_state(true)
-
                       dialog.add_mes_to_view(text, nil, @skey, myname, time_now, created)
                     else
                       PandoraUtils.log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
@@ -18309,6 +18331,9 @@ while (ARGV.length>0) or next_arg
         $autodetect_lang = false
         p 'setted language '+$lang.inspect
       end
+    when '-b', '--base'
+      $pandora_sqlite_db = val if val
+      p 'base='+$pandora_sqlite_db.inspect
     when '-pl', '--poly', '--poly-launch'
       $poly_launch = true
     when '--shell', '--help', '/?', '-?'

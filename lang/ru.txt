@@ -369,3 +369,4 @@ gay=>гей
 lesbo=>лесби
 Code=>Код
 Description=>Описание
+Chat command=>Команда чата
