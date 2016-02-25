@@ -5834,6 +5834,7 @@ module PandoraNet
       if (sessions.is_a? Array) and (sessions.size>0)
         sessions.each_with_index do |session, i|
           session.send_state = (session.send_state | send_state_add)
+          #session.conn_mode = (session.conn_mode | aconn_mode)
           session.dialog = nil if (session.dialog and session.dialog.destroyed?)
           session.dialog = dialog if dialog and (i==0)
           if session.dialog and (not session.dialog.destroyed?) \
@@ -5893,8 +5894,9 @@ module PandoraNet
               if (not $window.cvpaned.csw)
                 aconn_mode = (aconn_mode | PandoraNet::CM_Captcha)
               end
+              aconn_mode = (CM_Hunter | aconn_mode)
               session = Session.new(nil, host, addr, port, proto, \
-                (CM_Hunter | aconn_mode), node_id_i, dialog, send_state_add, nodehash, \
+                aconn_mode, node_id_i, dialog, send_state_add, nodehash, \
                 person, key_hash_i, base_id)
               res = true
             end
@@ -7725,7 +7727,7 @@ module PandoraNet
                     pool.add_notice_order(self, *notic)
                   when ECC_News_SessMode
                     p log_mes + 'ECC_News_SessMode'
-                    @conn_mode2 = rdata[1].ord if rdata.bytesize>0
+                    @conn_mode2 = rdata[0].ord if rdata.bytesize>0
                   when ECC_News_Answer
                     p log_mes + 'ECC_News_Answer'
                     req_answer, len = PandoraUtils.pson_to_rubyobj(rdata)
@@ -8052,6 +8054,7 @@ module PandoraNet
             @stage          = ES_Protocol  #ES_IpCheck
             #@conn_mode      = aconn_mode
             @conn_state     = CS_Connected
+            @last_conn_mode = 0
             @read_state     = 0
             @send_state     = send_state_add
             @sindex         = 0
@@ -12404,8 +12407,8 @@ module PandoraGtk
     end
   end
 
-  $you_color = 'blue'
-  $dude_color = 'red'
+  $you_color = 'red'
+  $dude_color = 'blue'
   $tab_color = 'blue'
   $read_time = 1.5
   $last_page = nil
