@@ -2173,7 +2173,7 @@ module PandoraUtils
     def field_val(fld_name, values)
       res = nil
       if values.is_a? Array
-        i = tab_fields.index{ |tf| tf[0]==fld_name}
+        i = tab_fields.index{ |tf| tf[0]==fld_name }
         res = values[i] if i
       end
       res
@@ -3176,6 +3176,7 @@ module PandoraModel
   # Pandora record kind
   # RU: Тип записей Пандоры
   PK_Person  = 1
+  PK_Blob    = 12
   PK_Key     = 221
   PK_Sign    = 222
   PK_Message = 227
@@ -3236,9 +3237,14 @@ module PandoraModel
     panhash = model.panhash(values, lang)
     p 'panhash='+panhash.inspect
     if (not require_panhash) or (panhash==require_panhash)
+      harvest_blob = nil
       filter = {'panhash'=>panhash}
       if kind==PK_Key
-        filter['kind'] = 0x81
+        filter['kind'] = 0x81  #search public key only
+      elsif kind==PK_Blob
+        sha1 = values['sha1']
+        sha1 ||= values['sha1']
+        harvest_blob = $window.pool.harvest_blob_with_sha1?(sha1, models) if sha1
       end
       sel = model.select(filter, true, nil, nil, 1)
       if sel and (sel.size>0)
@@ -3256,6 +3262,9 @@ module PandoraModel
         panstate = 0
         if support==:yes
           panstate = (panstate | PandoraModel::PSF_Support)
+        end
+        if harvest_blob
+          panstate = (panstate | PandoraModel::PSF_Harvest)
         end
         values['panstate'] = panstate
         values['panhash'] = panhash
@@ -3833,8 +3842,8 @@ module PandoraModel
   # Panobject state flags
   # RU: Флаги состояния объекта/записи
   PSF_Support    = 1      # must keep on this node (else will be deleted by GC)
-  PSF_Harvest    = 2      # download by pieces in progress
-  PSF_Verified   = 4      # signature was verified
+  PSF_Verified   = 2      # signature was verified
+  PSF_Harvest    = 64     # download by pieces in progress
   PSF_Deleted    = 128    # marked to delete
 
 end
@@ -5259,6 +5268,16 @@ module PandoraNet
   SR_Session   = 5
   SR_Answer    = 6
 
+  # Harvest blob indexes
+  # RU: Индексы добычи блоба
+  HB_Sha1        = 1
+  HB_Asker       = 2
+  HB_Index       = 2
+  HB_Time        = 3
+  HB_Requested   = 4
+  HB_Answered    = 5
+  HB_Punnet      = 6
+
   # Punnet indexes
   # RU: Индексы в корзине
   PI_FragsFile   = 0
@@ -5289,11 +5308,13 @@ module PandoraNet
       @fish_ind = -1
       @notice_ind = -1
       @search_ind = -1
+      @harvest_ind = -1
       @found_ind = 0
       @fish_orders = Array.new #PandoraUtils::RoundQueue.new(true)
       @notice_list = Array.new
       @search_requests = Array.new
       @search_answers = Array.new
+      @harvest_blobs = Array.new
       @punnets = Hash.new
     end
 
@@ -5322,6 +5343,30 @@ module PandoraNet
     # RU: Ip в черном списке?
     def is_black?(ip)
       false
+    end
+
+    def harvest_blob_with_sha1?(sha1, models=nil)
+      res = nil
+      if (sha1.is_a? String) and (sha1.bytesize>0)
+        i = @harvest_blobs.index{ |hb| hb[HB_Sha1]==sha1 }
+        if i
+          res = true
+        else
+          model = PandoraUtils.get_model('Blob', models)
+          if model
+            filter = [['sha1=', sha1], ['IFNULL(panstate,0)<?', PandoraModel::PSF_Harvest]]
+            sel = model.select(filter, pson, getfields, nil, 1)
+            if sel and (sel.size>0)
+              res = false  #it means file is exist
+            else
+              time = Time.now.to_i
+              @harvest_blobs << [sha1, @harvest_ind+1, time]
+              @harvest_ind += 1
+              $window.set_status_field(PandoraGtk::SF_Harvest, @harvest_blobs.size.to_s)
+            end
+          end
+        end
+      end
     end
 
     $fragment_size = 1024
@@ -7567,7 +7612,8 @@ module PandoraNet
                       abase_id ||= @to_base_id
                       if true #abase_id != pool.base_id
                         p log_mes+'ADD search req to pool list'
-                        pool.add_search_request(search_req[SR_Request], search_req[SR_Kind], abase_id, self)
+                        pool.add_search_request(search_req[SR_Request], \
+                          search_req[SR_Kind], abase_id, self)
                       end
                     end
                   when ECC_Query_Fragment
@@ -7853,6 +7899,9 @@ module PandoraNet
     # Number of search requests per cicle
     # RU: Число поисковых запросов за цикл
     $search_block_count = 2
+    # Number of harvest requests per cicle
+    # RU: Число запросов на добычу за цикл
+    $harvest_block_count = 2
     # Number of fragment requests per cicle
     # RU: Число запросов фрагментов за цикл
     $frag_block_count = 2
@@ -8647,6 +8696,24 @@ module PandoraNet
                 @search_ind += 1
               end
 
+              # проверка новых блоб запросов
+              processed = 0
+              while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
+              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
+              and (processed<$harvest_block_count) \
+              and (@search_ind <= pool.search_ind)
+                harvest_req = pool.harvest_blobs[@harvest_ind]
+                p '**** pool.harvest_blobs[size, @search_ind, obj_id]=' \
+                  +[pool.harvest_blobs.size, @harvest_ind, harvest_req.object_id].inspect
+                if harvest_req
+                  sha1 = harvest_req[HB_Sha1]
+                  p log_mes+'sha1, to_person, to_key='+[sha1, @to_person, @to_key].inspect
+                  add_send_segment(EC_Query, true, sha1, ECC_Query_Search)
+                  processed += 1
+                end
+                @search_ind += 1
+              end
+
               # проверка незаполненных корзин
               processed = 0
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
@@ -8920,7 +8987,7 @@ module PandoraNet
       $window.show_notice(false)
       user = PandoraCrypto.current_user_or_key(true)
       if user
-        $window.set_status_field(PandoraGtk::SF_Listen, 'Listening', nil, true)
+        $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, true)
         host = $host
         if not host
           host = PandoraUtils.get_param('listen_host')
@@ -8981,7 +9048,7 @@ module PandoraNet
           end
           server.close if server and (not server.closed?)
           PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
-          $window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
+          $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
           $tcp_listen_thread = nil
           $window.correct_lis_btn_state
         end
@@ -9247,16 +9314,17 @@ module PandoraGtk
 
   # Statusbar fields
   # RU: Поля в статусбаре
-  SF_Update = 0
-  SF_Lang   = 1
-  SF_Auth   = 2
-  SF_Listen = 3
-  SF_Hunt   = 4
-  SF_Notice = 5
-  SF_Conn   = 6
-  SF_Fish   = 7
-  SF_Fisher = 8
-  SF_Search = 9
+  SF_Update  = 0
+  SF_Lang    = 1
+  SF_Auth    = 2
+  SF_Listen  = 3
+  SF_Hunt    = 4
+  SF_Notice  = 5
+  SF_Conn    = 6
+  SF_Fish    = 7
+  SF_Fisher  = 8
+  SF_Search  = 9
+  SF_Harvest = 10
 
   # Advanced dialog window
   # RU: Продвинутое окно диалога
@@ -15683,7 +15751,7 @@ module PandoraGtk
           end
         elsif (entry.text != '<no filter>') and (entry.text != '')
           @oper_com = Gtk::Combo.new
-          oper_com.set_popdown_strings(['==','><','>','<'])
+          oper_com.set_popdown_strings(['=','==','<>','>','<'])
           oper_com.set_size_request(56, -1)
           filter_box.pack_start(oper_com, false, false, 0)
 
@@ -16965,9 +17033,9 @@ module PandoraGtk
       p 'pushed='+pushed.inspect
       tool_btn.safe_set_active(pushed) if tool_btn.is_a? SafeToggleToolButton
       if pushed
-        $window.set_status_field(PandoraGtk::SF_Hunt, 'Hunting', nil, true)
+        $window.set_status_field(PandoraGtk::SF_Hunt, nil, nil, true)
       else
-        $window.set_status_field(PandoraGtk::SF_Hunt, 'No hunt', nil, false)
+        $window.set_status_field(PandoraGtk::SF_Hunt, nil, nil, false)
       end
     end
 
@@ -17007,6 +17075,7 @@ module PandoraGtk
       if toggle.nil?
         btn = Gtk::Button.new(text)
       else
+        text ||= ''
         btn = SafeToggleButton.new(text)
       end
       if stock
@@ -17827,7 +17896,8 @@ module PandoraGtk
               if search_req and (not search_req[PandoraNet::SR_Answer])
                 req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
                 p 'search_req3='+req.inspect
-                answ,bases = pool.search_in_local_bases(search_req[PandoraNet::SR_Request], search_req[PandoraNet::SR_Kind])
+                answ,bases = pool.search_in_local_bases(search_req[PandoraNet::SR_Request], \
+                  search_req[PandoraNet::SR_Kind])
                 p 'answ='+answ.inspect
                 if answ and (answ.size>0)
                   search_req[PandoraNet::SR_Answer] = answ
@@ -18038,10 +18108,10 @@ module PandoraGtk
       add_status_field(SF_Auth, _('Not logged'), Gtk::Stock::DIALOG_AUTHENTICATION, false) do
         do_menu_act('Authorize')
       end
-      add_status_field(SF_Listen, _('Not listen'), Gtk::Stock::CONNECT, false) do
+      add_status_field(SF_Listen, nil, Gtk::Stock::CONNECT, false) do
         do_menu_act('Listen')
       end
-      add_status_field(SF_Hunt, _('No hunt'), Gtk::Stock::REFRESH, false) do
+      add_status_field(SF_Hunt, nil, Gtk::Stock::REFRESH, false) do
         do_menu_act('Hunt')
       end
       add_status_field(SF_Notice, '-', Gtk::Stock::PROPERTIES) do
@@ -18058,6 +18128,9 @@ module PandoraGtk
       end
       add_status_field(SF_Search, '0', Gtk::Stock::FIND) do
         do_menu_act('Search')
+      end
+      add_status_field(SF_Harvest, '0', Gtk::Stock::FILE) do
+        do_menu_act('Blob')
       end
 
       vbox = Gtk::VBox.new
