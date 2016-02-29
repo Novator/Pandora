@@ -311,7 +311,7 @@
     <Task parent="Created" kind="90">
       <executor name="Executor" type="Panhash(Person)" />
       <time name="Time" type="Time" />
-      <mode name="Mode" type="Integer" />
+      <mode name="Mode" type="Byte" />
       <message name="Message" type="Text" />
     </Task>
 

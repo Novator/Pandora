@@ -36,6 +36,11 @@
       <kind view="bytelist" />
     </Relation>
 
+    <Task>
+      <time view="datetime" />
+      <mode view="bytelist" />
+    </Task>
+
   </World>
 
   <Business>

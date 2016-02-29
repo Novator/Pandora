@@ -667,7 +667,7 @@ module PandoraUtils
           end
           color = '#551111'
         end
-      elsif view=='time'
+      elsif view=='time' or view=='datetime'
         if val.is_a? Integer
           val = Time.at(val)
           if can_edit
@@ -743,7 +743,7 @@ module PandoraUtils
           val = val.to_i
         when 'real'
           val = val.to_f
-        when 'date', 'time'
+        when 'date', 'time', 'datetime'
           begin
             val = Time.parse(val)  #Time.strptime(defval, '%d.%m.%Y')
             val = val.to_i
@@ -1946,7 +1946,7 @@ module PandoraUtils
                       len = 3
                     when 'crc16', 'word'
                       len = 2
-                    when 'crc32', 'integer', 'time', 'real', 'coord'
+                    when 'crc32', 'integer', 'time', 'real', 'coord', 'datetime'
                       len = 4
                   end
                 end
@@ -3724,6 +3724,13 @@ module PandoraModel
     [RK_CameFrom,   'Came from'],
     [RK_AvatarFor,  'Avatar for'],
     [RK_MinPublic,  'Public']
+  ]
+
+  # Task Mode Names
+  # RU: Имена режимов задачника
+  TaskModeNames = [
+    [0,      'Off'],
+    [1,      'On']
   ]
 
   # Relation is symmetric
@@ -9576,12 +9583,23 @@ module PandoraGtk
 
   # Entry for date and time
   # RU: Поле ввода даты и времени
-  class TimeEntry < DateEntrySimple
+  class TimeEntrySimple < DateEntrySimple
     def init_mask
       super
-      @mask += ' :'
+      @mask = '0123456789:'
+      self.max_length = 8
+      self.tooltip_text = 'hh:mm:ss'
+    end
+  end
+
+  # Entry for date and time
+  # RU: Поле ввода даты и времени
+  class DateTimeEntry < DateEntrySimple
+    def init_mask
+      super
+      @mask += ': '
       self.max_length = 19
-      self.tooltip_text = 'DD.MM.YYYY hh:mm:ss'
+      self.tooltip_text = 'hh:mm:ss'
     end
   end
 
@@ -9776,6 +9794,60 @@ module PandoraGtk
 
       cal
     end
+  end
+
+  # Entry for time
+  # RU: Поле ввода времени
+  class TimeEntry < BtnEntry
+
+    def initialize(*args)
+      super(MaskEntry, true, *args)
+      @entry.mask = '0123456789:'
+      @entry.max_length = 8
+      @entry.tooltip_text = 'hh:mm:ss'
+      @button.label = 'T'
+    end
+
+    def get_popwidget
+      vbox = Gtk::VBox.new
+      btn1 = Gtk::Button.new(_'Current time')
+      btn1.signal_connect('clicked') do |widget|
+        @entry.text = Time.now.strftime('%H:%M:%S')
+        @popwin.destroy
+        @popwin = nil
+      end
+      vbox.pack_start(btn1, false, false, 0)
+      btn2 = Gtk::Button.new('09:30')
+      btn2.signal_connect('clicked') do |widget|
+        @entry.text = '09:30:00'
+        @popwin.destroy
+        @popwin = nil
+      end
+      vbox.pack_start(btn2, false, false, 0)
+      btn3 = Gtk::Button.new('14:15')
+      btn3.signal_connect('clicked') do |widget|
+        @entry.text = '14:15:00'
+        @popwin.destroy
+        @popwin = nil
+      end
+      vbox.pack_start(btn3, false, false, 0)
+      btn4 = Gtk::Button.new('17:45')
+      btn4.signal_connect('clicked') do |widget|
+        @entry.text = '17:45:00'
+        @popwin.destroy
+        @popwin = nil
+      end
+      vbox.pack_start(btn4, false, false, 0)
+      btn5 = Gtk::Button.new('20:00')
+      btn5.signal_connect('clicked') do |widget|
+        @entry.text = '20:00:00'
+        @popwin.destroy
+        @popwin = nil
+      end
+      vbox.pack_start(btn5, false, false, 0)
+      vbox
+    end
+
   end
 
   # Entry for relation kind
@@ -10099,6 +10171,65 @@ module PandoraGtk
     def size_request
       size1 = latitude.size_request
       res = longitude.size_request
+      res[0] = size1[0]+1+res[0]
+      res
+    end
+  end
+
+  # Entry for date and time
+  # RU: Поле ввода даты и времени
+  class DateTimeBox < Gtk::HBox
+    attr_accessor :date, :time
+
+    def initialize
+      super
+      @date   = DateEntry.new
+      @time   = TimeEntry.new
+      #date.width_request = CoordWidth
+      #time.width_request = CoordWidth
+      self.pack_start(date, false, false, 0)
+      self.pack_start(time, false, false, 1)
+    end
+
+    def max_length=(maxlen)
+      ml = maxlen / 2
+      date.max_length = ml
+      time.max_length = ml
+    end
+
+    def text=(text)
+      date_str = nil
+      time_str = nil
+      if (text.is_a? String) and (text.size>0)
+        i = text.index(' ')
+        i ||= text.size
+        date_str = text[0, i]
+        time_str = text[i+1..-1]
+      end
+      date_str ||= ''
+      time_str ||= ''
+      date.text = date_str
+      time.text = time_str
+    end
+
+    def text
+      res = date.text + ' ' + time.text
+    end
+
+    def width_request=(wr)
+      w = wr / 2
+      date.set_width_request(w+10)
+      time.set_width_request(w)
+    end
+
+    def modify_text(*args)
+      date.modify_text(*args)
+      time.modify_text(*args)
+    end
+
+    def size_request
+      size1 = date.size_request
+      res = time.size_request
       res[0] = size1[0]+1+res[0]
       res
     end
@@ -12024,7 +12155,9 @@ module PandoraGtk
           when 'real'
             entry = FloatEntry.new
           when 'time'
-            entry = TimeEntry.new
+            entry = DateTimeEntry.new
+          when 'datetime'
+            entry = DateTimeBox.new
           when 'date'
             entry = DateEntry.new
           when 'coord'
@@ -12048,8 +12181,12 @@ module PandoraGtk
           when 'bytelist'
             if field[FI_Id]=='sex'
               entry = ByteListEntry.new(SexList)
-            else
+            elsif field[FI_Id]=='kind'
               entry = ByteListEntry.new(PandoraModel::RelationNames)
+            elsif field[FI_Id]=='mode'
+              entry = ByteListEntry.new(PandoraModel::TaskModeNames)
+            else
+              entry = IntegerEntry.new
             end
           else
             entry = Gtk::Entry.new
@@ -15166,7 +15303,8 @@ module PandoraGtk
             else
               p iconset = image.icon_set
               style = Gtk::Widget.default_style  #Gtk::Style.new
-              panobj_icon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
+              panobj_icon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
+                Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
             end
           end
         end
@@ -17696,9 +17834,11 @@ module PandoraGtk
       end
     end
 
+    $show_task_notif = true
+
     # Scheduler parameters (sec)
     # RU: Параметры планировщика (сек)
-    CheckTaskPeriod = 5*60   #5 min
+    CheckTaskPeriod = 1*60   #5 min
     CheckBasePeriod = 60*60  #60 min
     CheckBaseStep   = 10     #10 sec
     # Size of bundle processed at one cycle
@@ -17724,6 +17864,7 @@ module PandoraGtk
         @task_offset = nil
         @task_model = nil
         @task_list = nil
+        @task_dialog = nil
         @hunt_node_id = nil
         @base_garb_mode = :arch
         @base_garb_model = nil
@@ -17737,63 +17878,44 @@ module PandoraGtk
             pool.time_now = Time.now.to_i
 
             # Task executer
-            if (not @task_offset) or (@task_offset >= CheckTaskPeriod)
+            if (not @task_dialog) and ((not @task_offset) \
+            or (@task_offset >= CheckTaskPeriod))
               @task_offset = 0.0
               user ||= PandoraCrypto.current_user_or_key(true, false)
               if user
                 @task_model ||= PandoraUtils.get_model('Task', @shed_models)
                 cur_time = Time.now.to_i
-                filter = [['executor=', user], ['mode>', 0], ['time<=', cur_time+5*(CheckTaskPeriod/1000)]]
+                filter = [['executor=', user], ['mode>', 0], ['time<=', cur_time]]
                 fields = 'id, time, mode, message'
                 @task_list = @task_model.select(filter, false, fields, 'time ASC')
-                #p '@task_list='+@task_list.inspect
                 Thread.pass
-              end
-            end
-            if @task_list and (@task_list.size>0)
-              cur_time = Time.now.to_i
-              @task_list.each do |row|
-                time = row[1]
-                if time and (time <= cur_time)
-                  id = row[0]
-                  mode = row[2]
-                  message = Utf8String.new(row[3])
-                  message = _('Task') + ' ' + Time.at(time).strftime('%d.%m.%Y %H:%M:%S') + ': ' + message
+                if @task_list and (@task_list.size>0)
+                  p 'TTTTTTTTTT @task_list='+@task_list.inspect
 
-                  viewed = false
-                  if false and $window.visible? and $window.has_toplevel_focus?
-                    dialog = PandoraGtk::AdvancedDialog.new(_('Tasks'))
-                    dialog.set_default_size(420, 250)
-                    vbox = Gtk::VBox.new
-                    dialog.viewport.add(vbox)
-
-                    label = Gtk::Label.new(_('Message'))
-                    vbox.pack_start(label, false, false, 2)
-                    user_entry = Gtk::Entry.new
-                    user_entry.text = message
-                    vbox.pack_start(user_entry, false, false, 2)
-
-                    label = Gtk::Label.new(_('Here'))
-                    vbox.pack_start(label, false, false, 2)
-                    pass_entry = Gtk::Entry.new
-                    pass_entry.width_request = 250
-                    align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
-                    align.add(pass_entry)
-                    vbox.pack_start(align, false, false, 2)
-                    vbox.pack_start(pass_entry, false, false, 2)
-
-                    dialog.def_widget = user_entry
-
-                    dialog.run2(true) do
-                      viewed = true
+                  message = ''
+                  store = nil
+                  if $show_task_notif and $window.visible? #and $window.has_toplevel_focus?
+                    store = Gtk::ListStore.new(String, String, String)
+                  end
+                  @task_list.each do |row|
+                    time = Time.at(row[1]).strftime('%d.%m.%Y %H:%M:%S')
+                    mode = row[2]
+                    text = Utf8String.new(row[3])
+                    if message.size>0
+                      message += '; '
+                    else
+                      message += _('Tasks')+'> '
                     end
-                  else
-                    PandoraUtils.log_message(LM_Warning, message)
-                    viewed = true
+                    message +=  '"' + text + '"('+time+')'
+                    if store
+                      iter = store.append
+                      iter[0] = time
+                      iter[1] = mode.to_s
+                      iter[2] = text
+                    end
                   end
-                  if viewed
-                    @task_model.update({:mode=>0}, nil, {:id=>id})
-                  end
+
+                  PandoraUtils.log_message(LM_Warning, message)
                   PandoraUtils.play_mp3('message')
                   if $statusicon.message.nil?
                     $statusicon.set_message(message)
@@ -17802,10 +17924,62 @@ module PandoraGtk
                       $statusicon.set_message(nil)
                     end
                   end
-                  row[1] = nil
+
+                  viewed = false
+                  if store
+                    @task_dialog = PandoraGtk::AdvancedDialog.new(_('Tasks'))
+                    dialog = @task_dialog
+                    image = $window.get_preset_image('task')
+                    iconset = image.icon_set
+                    style = Gtk::Widget.default_style  #Gtk::Style.new
+                    task_icon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
+                      Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
+                    dialog.icon = task_icon
+
+
+                    dialog.set_default_size(500, 350)
+                    vbox = Gtk::VBox.new
+                    dialog.viewport.add(vbox)
+
+                    treeview = Gtk::TreeView.new(store)
+                    treeview.rules_hint = true
+                    treeview.search_column = 0
+                    treeview.border_width = 10
+
+                    renderer = Gtk::CellRendererText.new
+                    column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 0)
+                    column.set_sort_column_id(0)
+                    treeview.append_column(column)
+
+                    renderer = Gtk::CellRendererText.new
+                    column = Gtk::TreeViewColumn.new(_('Mode'), renderer, 'text' => 1)
+                    column.set_sort_column_id(1)
+                    treeview.append_column(column)
+
+                    renderer = Gtk::CellRendererText.new
+                    column = Gtk::TreeViewColumn.new(_('Text'), renderer, 'text' => 2)
+                    column.set_sort_column_id(2)
+                    treeview.append_column(column)
+
+                    vbox.pack_start(treeview, false, false, 2)
+
+                    dialog.def_widget = treeview
+
+                    dialog.run2(true) do
+                      viewed = true
+                    end
+                    @task_dialog = nil
+                  end
+                  if (not store) or viewed
+                    @task_list.each do |row|
+                      id = row[0]
+                      @task_model.update({:mode=>0}, nil, {:id=>id})
+                    end
+                  end
+
+                  Thread.pass
                 end
               end
-              Thread.pass
             end
             @task_offset += @scheduler_step if @task_offset
 
