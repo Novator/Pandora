@@ -2145,6 +2145,8 @@ module PandoraUtils
       res
     end
 
+    # Do procedure when update database
+    # RU: Выполнить процедуру при обновлении базы
     def do_update_trigger
       case ider
         when 'Task'
@@ -3249,7 +3251,7 @@ module PandoraModel
         filter['kind'] = 0x81  #search public key only
       elsif kind==PK_Blob
         sha1 = values['sha1']
-        sha1 ||= values['sha1']
+        sha1 ||= values[:sha1]
         harvest_blob = $window.pool.harvest_blob?(sha1, models) if sha1
       end
       sel = model.select(filter, true, nil, nil, 1)
@@ -5369,11 +5371,12 @@ module PandoraNet
         else
           model = PandoraUtils.get_model('Blob', models)
           if model
-            filter = [['sha1=', sha1], ['IFNULL(panstate,0)<?', PandoraModel::PSF_Harvest]]
+            filter = [['sha1=', sha1], ['IFNULL(panstate,0) & ? == 0', \
+              PandoraModel::PSF_Harvest]]
             sel = model.select(filter, pson, getfields, nil, 1)
             if sel and (sel.size>0)
-              res = false  #file exists, no need to harvest
-            else
+              res = false  #whole file exists, no need to harvest
+            else  #no whole file
               time = Time.now.to_i
               #init_punnet(sha1)
               @harvest_blobs << [sha1, @harvest_ind+1, time]
@@ -9736,6 +9739,27 @@ module PandoraGtk
               false
             end
 
+            popwin.signal_connect('key-press-event') do |widget, event|
+              if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+                @treeview.signal_emit('row_activated', nil, nil)
+              elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+                ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
+              then
+                @popwin.destroy
+                @popwin = nil
+                false
+              elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
+                ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
+              then
+                @popwin.destroy
+                @popwin = nil
+                $window.destroy
+                false
+              else
+                false
+              end
+            end
+
             pos = @entry.window.origin
             all = @entry.allocation.to_a
             popwin.move(pos[0], pos[1]+all[3]+1)
@@ -9828,21 +9852,6 @@ module PandoraGtk
       cal.signal_connect('key-press-event') do |widget, event|
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
           @cal.signal_emit('day-selected')
-        elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
-          ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) \
-          and event.state.control_mask?) #w, W, ц, Ц
-        then
-          @popwin.destroy
-          @popwin = nil
-          false
-        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
-          and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
-          1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
-        then
-          @popwin.destroy
-          @popwin = nil
-          $window.destroy
-          false
         elsif (event.keyval>=65360) and (event.keyval<=65367)
           if event.keyval==65360
             if @cal.month>0
@@ -9890,10 +9899,14 @@ module PandoraGtk
     end
 
     def get_time(update_spin=nil)
-      @entry.text
-      time = Time.parse(@entry.text)
-      vals = time.to_a
-      res = [vals[2], vals[1], vals[0]]  #hh,mm,ss
+      res = nil
+      time = PandoraUtils.str_to_date(@entry.text)
+      if time
+        vals = time.to_a
+        res = [vals[2], vals[1], vals[0]]  #hh,mm,ss
+      else
+        res = [0, 0, 0]
+      end
       if update_spin
         hh_spin.value = res[0] if hh_spin
         mm_spin.value = res[1] if mm_spin
@@ -9988,6 +10001,8 @@ module PandoraGtk
       end
       vbox.pack_start(btn, false, false, 0)
 
+      hh_spin.grab_focus
+
       vbox
     end
 
@@ -10047,19 +10062,6 @@ module PandoraGtk
       treeview.signal_connect('key-press-event') do |widget, event|
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
           @treeview.signal_emit('row_activated', nil, nil)
-        elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
-          ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
-        then
-          @popwin.destroy
-          @popwin = nil
-          false
-        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
-          ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
-        then
-          @popwin.destroy
-          @popwin = nil
-          $window.destroy
-          false
         else
           false
         end
@@ -15862,7 +15864,6 @@ module PandoraGtk
           panobject.class.modified = false if panobject.class.modified
           filter = nil
           filter = ['IFNULL(panstate,0)<?', PandoraModel::PSF_Deleted] if (not arch_btn.active?)
-          p filter
           sel = panobject.select(filter, false, nil, panobject.sort)
           treeview.sel = sel
           treeview.param_view_col = nil
