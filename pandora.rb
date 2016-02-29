@@ -9687,10 +9687,11 @@ module PandoraGtk
   # Entry with popup widget
   # RU: Поле с всплывающим виджетом
   class BtnEntry < Gtk::HBox
-    attr_accessor :entry, :button
+    attr_accessor :entry, :button, :close_on_enter
 
     def initialize(entry_class, popup=true, *args)
       super(*args)
+      @close_on_enter = true
       @entry = entry_class.new
 
       @button = Gtk::Button.new('...')
@@ -9741,7 +9742,11 @@ module PandoraGtk
 
             popwin.signal_connect('key-press-event') do |widget, event|
               if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-                @treeview.signal_emit('row_activated', nil, nil)
+                if @close_on_enter
+                  @popwin.destroy
+                  @popwin = nil
+                end
+                false
               elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
                 ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
               then
@@ -9816,10 +9821,17 @@ module PandoraGtk
 
     def initialize(*args)
       super(MaskEntry, true, *args)
+      @close_on_enter = false
       @entry.mask = '0123456789.'
       @entry.max_length = 10
       @entry.tooltip_text = 'DD.MM.YYYY'
       @button.label = 'D'
+    end
+
+    def update_mark(month, year, time_now=nil)
+      time_now ||= Time.now
+      @cal.clear_marks
+      @cal.mark_day(time_now.day) if ((time_now.month==month) and (time_now.year==year))
     end
 
     def get_popwidget
@@ -9827,9 +9839,11 @@ module PandoraGtk
       cal = @cal
 
       date = PandoraUtils.str_to_date(@entry.text)
-      date ||= Time.new
+      time_now = Time.now
+      date ||= time_now
       @month = date.month
       @year = date.year
+      update_mark(date.month, date.year, time_now)
 
       cal.select_month(date.month, date.year)
       cal.select_day(date.day)
@@ -9837,8 +9851,9 @@ module PandoraGtk
       cal.display_options = Gtk::Calendar::SHOW_HEADING | \
         Gtk::Calendar::SHOW_DAY_NAMES | Gtk::Calendar::WEEK_START_MONDAY
 
-      cal.signal_connect('day_selected') do
+      cal.signal_connect('day-selected') do
         year, month, day = @cal.date
+        p 'day-selected: [year, month, day]='+[year, month, day].inspect
         if (@month==month) and (@year==year)
           @entry.text = PandoraUtils.date_to_str(Time.local(year, month, day))
           @popwin.destroy
@@ -9846,12 +9861,21 @@ module PandoraGtk
         else
           @month=month
           @year=year
+          update_mark(month, year)
         end
+      end
+
+      cal.signal_connect('month-changed') do
+        year, month, day = @cal.date
+        @month=month
+        @year=year
+        update_mark(month, year)
       end
 
       cal.signal_connect('key-press-event') do |widget, event|
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
           @cal.signal_emit('day-selected')
+          true
         elsif (event.keyval>=65360) and (event.keyval<=65367)
           if event.keyval==65360
             if @cal.month>0
@@ -10014,6 +10038,7 @@ module PandoraGtk
 
     def initialize(code_name_list, *args)
       super(MaskEntry, true, *args)
+      @close_on_enter = false
       @code_name_list = code_name_list
       @entry.mask = '0123456789'
       @entry.max_length = 3
@@ -10062,6 +10087,7 @@ module PandoraGtk
       treeview.signal_connect('key-press-event') do |widget, event|
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
           @treeview.signal_emit('row_activated', nil, nil)
+          true
         else
           false
         end
