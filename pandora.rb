@@ -535,6 +535,12 @@ module PandoraUtils
     end
   end
 
+  # Integer to str with leading zero
+  # RU: Целое в строку с ведущими нулями
+  def self.int_to_str_zero(int, num=nil)
+    res = int.to_s.rjust(num, '0') if (num.is_a? Integer)
+  end
+
   # Codes of data types in PSON
   # RU: Коды типов данных в PSON
   PT_Int   = 0
@@ -3244,7 +3250,7 @@ module PandoraModel
       elsif kind==PK_Blob
         sha1 = values['sha1']
         sha1 ||= values['sha1']
-        harvest_blob = $window.pool.harvest_blob_with_sha1?(sha1, models) if sha1
+        harvest_blob = $window.pool.harvest_blob?(sha1, models) if sha1
       end
       sel = model.select(filter, true, nil, nil, 1)
       if sel and (sel.size>0)
@@ -5352,24 +5358,28 @@ module PandoraNet
       false
     end
 
-    def harvest_blob_with_sha1?(sha1, models=nil)
+    # Check blob and, if it does not exist, init harvest
+    # RU: Проверить блоб и, если он не существует, зарегать запрос
+    def harvest_blob?(sha1, models=nil)
       res = nil
       if (sha1.is_a? String) and (sha1.bytesize>0)
         i = @harvest_blobs.index{ |hb| hb[HB_Sha1]==sha1 }
         if i
-          res = true
+          res = true  #file is harvesting now
         else
           model = PandoraUtils.get_model('Blob', models)
           if model
             filter = [['sha1=', sha1], ['IFNULL(panstate,0)<?', PandoraModel::PSF_Harvest]]
             sel = model.select(filter, pson, getfields, nil, 1)
             if sel and (sel.size>0)
-              res = false  #it means file is exist
+              res = false  #file exists, no need to harvest
             else
               time = Time.now.to_i
+              #init_punnet(sha1)
               @harvest_blobs << [sha1, @harvest_ind+1, time]
               @harvest_ind += 1
               $window.set_status_field(PandoraGtk::SF_Harvest, @harvest_blobs.size.to_s)
+              res = true  #file is starting to harvest
             end
           end
         end
@@ -9718,8 +9728,10 @@ module PandoraGtk
 
             popwin.signal_connect('focus-out-event') do |win, event|
               GLib::Timeout.add(100) do
-                @popwin.destroy
-                @popwin = nil
+                if not popwin.destroyed?
+                  @popwin.destroy
+                  @popwin = nil
+                end
               end
               false
             end
@@ -9867,6 +9879,7 @@ module PandoraGtk
   # Entry for time
   # RU: Поле ввода времени
   class TimeEntry < BtnEntry
+    attr_accessor :hh_spin, :mm_spin, :ss_spin
 
     def initialize(*args)
       super(MaskEntry, true, *args)
@@ -9876,43 +9889,105 @@ module PandoraGtk
       @button.label = 'T'
     end
 
+    def get_time(update_spin=nil)
+      @entry.text
+      time = Time.parse(@entry.text)
+      vals = time.to_a
+      res = [vals[2], vals[1], vals[0]]  #hh,mm,ss
+      if update_spin
+        hh_spin.value = res[0] if hh_spin
+        mm_spin.value = res[1] if mm_spin
+        ss_spin.value = res[2] if ss_spin
+      end
+      res
+    end
+
+    def set_time(hh, mm=nil, ss=nil)
+      hh0, mm0, ss0 = get_time
+      hh ||= hh0
+      mm ||= mm0
+      ss ||= ss0
+      shh = PandoraUtils.int_to_str_zero(hh, 2)
+      smm = PandoraUtils.int_to_str_zero(mm, 2)
+      sss = PandoraUtils.int_to_str_zero(ss, 2)
+      @entry.text = shh + ':' + smm + ':' + sss
+    end
+
     def get_popwidget
       vbox = Gtk::VBox.new
       btn1 = Gtk::Button.new(_'Current time')
       btn1.signal_connect('clicked') do |widget|
         @entry.text = Time.now.strftime('%H:%M:%S')
-        @popwin.destroy
-        @popwin = nil
+        get_time(true)
       end
       vbox.pack_start(btn1, false, false, 0)
       btn2 = Gtk::Button.new('09:30')
       btn2.signal_connect('clicked') do |widget|
         @entry.text = '09:30:00'
-        @popwin.destroy
-        @popwin = nil
+        get_time(true)
       end
       vbox.pack_start(btn2, false, false, 0)
       btn3 = Gtk::Button.new('14:15')
       btn3.signal_connect('clicked') do |widget|
         @entry.text = '14:15:00'
-        @popwin.destroy
-        @popwin = nil
+        get_time(true)
       end
       vbox.pack_start(btn3, false, false, 0)
       btn4 = Gtk::Button.new('17:45')
       btn4.signal_connect('clicked') do |widget|
         @entry.text = '17:45:00'
-        @popwin.destroy
-        @popwin = nil
+        get_time(true)
       end
       vbox.pack_start(btn4, false, false, 0)
       btn5 = Gtk::Button.new('20:00')
       btn5.signal_connect('clicked') do |widget|
         @entry.text = '20:00:00'
+        get_time(true)
+      end
+      vbox.pack_start(btn5, false, false, 0)
+
+      hbox = Gtk::HBox.new
+
+      adj = Gtk::Adjustment.new(0, 0, 23, 1, 5, 0)
+      @hh_spin = Gtk::SpinButton.new(adj, 0, 0)
+      hh_spin.max_length = 2
+      hh_spin.numeric = true
+      hh_spin.wrap = true
+      hh_spin.signal_connect('value-changed') do |widget|
+        set_time(widget.value_as_int)
+      end
+      hbox.pack_start(hh_spin, false, true, 0)
+
+      adj = Gtk::Adjustment.new(0, 0, 59, 1, 5, 0)
+      @mm_spin = Gtk::SpinButton.new(adj, 0, 0)
+      mm_spin.max_length = 2
+      mm_spin.numeric = true
+      mm_spin.wrap = true
+      mm_spin.signal_connect('value-changed') do |widget|
+        set_time(nil, widget.value_as_int)
+      end
+      hbox.pack_start(mm_spin, false, true, 0)
+
+      adj = Gtk::Adjustment.new(0, 0, 59, 1, 5, 0)
+      @ss_spin = Gtk::SpinButton.new(adj, 0, 0)
+      ss_spin.max_length = 2
+      ss_spin.numeric = true
+      ss_spin.wrap = true
+      ss_spin.signal_connect('value-changed') do |widget|
+        set_time(nil, nil, widget.value_as_int)
+      end
+      hbox.pack_start(ss_spin, false, true, 0)
+
+      get_time(true)
+      vbox.pack_start(hbox, false, false, 0)
+
+      btn = Gtk::Button.new(Gtk::Stock::OK)
+      btn.signal_connect('clicked') do |widget|
         @popwin.destroy
         @popwin = nil
       end
-      vbox.pack_start(btn5, false, false, 0)
+      vbox.pack_start(btn, false, false, 0)
+
       vbox
     end
 
