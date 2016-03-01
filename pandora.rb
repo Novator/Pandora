@@ -84,6 +84,8 @@ module PandoraUtils
   # RU: Уровень логирования по умолчанию
   $show_log_level = LM_Trace
 
+  $window = nil
+
   # Add the message to log
   # RU: Добавить сообщение в лог
   def self.log_message(level, mes)
@@ -5284,16 +5286,6 @@ module PandoraNet
   SR_Session   = 5
   SR_Answer    = 6
 
-  # Harvest blob indexes
-  # RU: Индексы добычи блоба
-  HB_Sha1        = 1
-  HB_BaseId      = 2
-  HB_Index       = 3
-  HB_Time        = 4
-  HB_Requested   = 5
-  HB_Answered    = 6
-  HB_Punnet      = 7
-
   # Punnet indexes
   # RU: Индексы в корзине
   PI_FragsFile   = 0
@@ -7504,9 +7496,9 @@ module PandoraNet
                       PandoraUtils.log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
                     end
 
-                    if (text.is_a? String) and (text.size>1) and (text[0]=='!')
+                    if (text.is_a? String) and (text.size>1) and ((text[0]=='!') or (text[0]=='/'))
                       i = text.index(' ')
-                      i = text.size if not i
+                      i ||= text.size
                       chat_com = text[1..i-1]
                       chat_par = text[i+1..-1]
                       p '===>Chat command: '+[chat_com, chat_par].inspect
@@ -17728,7 +17720,7 @@ module PandoraGtk
     # RU: Обработчик события меню
     def do_menu_act(command, treeview=nil)
       widget = nil
-      if not command.is_a? String
+      if not (command.is_a? String)
         widget = command
         command = widget.name
       end
@@ -17757,7 +17749,7 @@ module PandoraGtk
             sw = notebook.get_nth_page(notebook.page)
             treeview = sw.children[0]
           end
-          if treeview
+          if treeview.is_a? SubjTreeView
             if command=='Convert'
               panobject = treeview.panobject
               panobject.update(nil, nil, nil)
@@ -17890,11 +17882,13 @@ module PandoraGtk
           PandoraGtk.show_fisher_panel
         else
           panobj_id = command
-          if PandoraModel.const_defined? panobj_id
+          if (panobj_id.is_a? String) and (panobj_id.size>0) \
+          and (panobj_id[0].upcase==panobj_id[0]) and PandoraModel.const_defined?(panobj_id)
             panobject_class = PandoraModel.const_get(panobj_id)
             PandoraGtk.show_panobject_list(panobject_class, widget)
           else
-            PandoraUtils.log_message(LM_Warning, _('Menu handler is not defined yet')+' "'+panobj_id+'"')
+            PandoraUtils.log_message(LM_Warning, _('Menu handler is not defined yet') + \
+              ' "'+panobj_id+'"')
           end
       end
     end
