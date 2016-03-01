@@ -3183,11 +3183,12 @@ module PandoraModel
 
   # Pandora record kind
   # RU: Тип записей Пандоры
-  PK_Person  = 1
-  PK_Blob    = 12
-  PK_Key     = 221
-  PK_Sign    = 222
-  PK_Message = 227
+  PK_Person   = 1
+  PK_Blob     = 12
+  PK_Key      = 221
+  PK_Sign     = 222
+  PK_Message  = 227
+  PK_BlobBody = 255
 
   # Read record by panhash
   # RU: Читает запись по панхэшу
@@ -5133,8 +5134,7 @@ module PandoraNet
   ECC_Query_Record     = 1
   ECC_Query_Fish       = 2
   ECC_Query_Search     = 3
-  ECC_Query_Harvest    = 4
-  ECC_Query_Fragment   = 5
+  ECC_Query_Fragment   = 4
 
   ECC_News_Panhash      = 0
   ECC_News_Record       = 1
@@ -5324,13 +5324,11 @@ module PandoraNet
       @fish_ind = -1
       @notice_ind = -1
       @search_ind = -1
-      @harvest_ind = -1
       @found_ind = 0
       @fish_orders = Array.new #PandoraUtils::RoundQueue.new(true)
       @notice_list = Array.new
       @search_requests = Array.new
       @search_answers = Array.new
-      @harvest_blobs = Array.new
       @punnets = Hash.new
     end
 
@@ -5361,28 +5359,56 @@ module PandoraNet
       false
     end
 
+    # Find search request in queue
+    # RU: Найти поисковый запрос в очереди
+    def find_search_request(request, kind)
+      res = @search_requests.select do |sr|
+        (sr[SR_Request] == request) and (sr[SR_Kind] == kind)
+      end
+      res
+    end
+
+    # Add request to search queue
+    # RU: Добавить запрос в поисковую очередь
+    def add_search_request(request, kind, abase_id=nil, sess=nil, hunt=true)
+      request = AsciiString.new(request)
+      p '===add_search_request(request, kind, abase_id, sess)='+[request, kind, abase_id, sess.object_id].inspect
+      res = find_search_request(request, kind)
+      if res and (res.size>0)
+        p '---add_search_request already exist'
+      else
+        p '---add_search_request  NEW REQUEST'
+        abase_id ||= pool.base_id
+        time = Time.now.to_i
+        @search_requests << [request, kind, abase_id, @search_ind+1, time, sess]
+        @search_ind += 1
+        $window.set_status_field(PandoraGtk::SF_Search, @search_requests.size.to_s)
+        res = find_search_request(request, kind)
+      end
+      PandoraNet.start_hunt if hunt
+      res
+    end
+
     # Check blob and, if it does not exist, init harvest
     # RU: Проверить блоб и, если он не существует, зарегать запрос
     def harvest_blob?(sha1, models=nil)
       res = nil
       if (sha1.is_a? String) and (sha1.bytesize>0)
-        i = @harvest_blobs.index{ |hb| hb[HB_Sha1]==sha1 }
-        if i
-          res = true  #file is harvesting now
-        else
-          model = PandoraUtils.get_model('Blob', models)
-          if model
-            filter = [['sha1=', sha1], ['IFNULL(panstate,0) & ? == 0', \
-              PandoraModel::PSF_Harvest]]
-            sel = model.select(filter, false, 'id', nil, 1)
-            if sel and (sel.size>0)
-              res = false  #whole file exists, no need to harvest
-            else  #no whole file
-              time = Time.now.to_i
+        model = PandoraUtils.get_model('Blob', models)
+        if model
+          filter = [['sha1=', sha1], ['IFNULL(panstate,0) & ? == 0', \
+            PandoraModel::PSF_Harvest]]
+          sel = model.select(filter, false, 'id', nil, 1)
+          if sel and (sel.size>0)
+            res = false  #whole file exists, no need to harvest
+          else
+            reqs = find_search_request(sha1, PK_BlobBody)
+            if (reqs.is_a? Array) and (reqs.size>0)
+              res = true  #file is harvesting now
+            else
               #init_punnet(sha1)
-              @harvest_blobs << [sha1, pool.base_id, @harvest_ind+1, time]
-              @harvest_ind += 1
-              $window.set_status_field(PandoraGtk::SF_Harvest, @harvest_blobs.size.to_s)
+              reqs = add_search_request(sha1, PK_BlobBody)
+              #$window.set_status_field(PandoraGtk::SF_Harvest, @harvest_blobs.size.to_s)
               res = true  #file is starting to harvest
             end
           end
@@ -5851,35 +5877,6 @@ module PandoraNet
       [res, bases]
     end
 
-    # Find search request in queue
-    # RU: Найти поисковый запрос в очереди
-    def find_search_request(request, kind)
-      res = @search_requests.select do |sr|
-        (sr[SR_Request] == request) and (sr[SR_Kind] == kind)
-      end
-      res
-    end
-
-    # Add request to search queue
-    # RU: Добавить запрос в поисковую очередь
-    def add_search_request(request, kind, abase_id=nil, sess=nil, hunt=true)
-      request = AsciiString.new(request)
-      p '===add_search_request(request, kind, abase_id, sess)='+[request, kind, abase_id, sess.object_id].inspect
-      res = find_search_request(request, kind)
-      if res and (res.size>0)
-        p '---add_search_request already exist'
-      else
-        p '---add_search_request  NEW REQUEST'
-        time = Time.now.to_i
-        @search_requests << [request, kind, abase_id, @search_ind+1, time, sess]
-        @search_ind += 1
-        $window.set_status_field(PandoraGtk::SF_Search, @search_requests.size.to_s)
-        res = find_search_request(request, kind)
-      end
-      PandoraNet.start_hunt if hunt
-      res
-    end
-
     # Find or create session with necessary node
     # RU: Находит или создает соединение с нужным узлом
     def init_session(addr=nil, nodehash=nil, send_state_add=nil, dialog=nil, \
@@ -6075,7 +6072,7 @@ module PandoraNet
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
       :entered_captcha, :captcha_sw, :hooks, :fish_ind, :notice_ind, \
-      :sess_trust, :notice, :activity, :search_ind, :harvest_ind
+      :sess_trust, :notice, :activity, :search_ind
 
     # Set socket options
     # RU: Установить опции сокета
@@ -7637,20 +7634,6 @@ module PandoraNet
                           search_req[SR_Kind], abase_id, self)
                       end
                     end
-                  when ECC_Query_Harvest
-                    # пришёл запрос на блоб
-                    harvest_req_raw = rdata
-                    harvest_req, len = PandoraUtils.pson_to_rubyobj(harvest_req_raw)
-                    p '--ECC_Query_Harvest  harvest_req_raw='+harvest_req.inspect
-                    if (harvest_req.is_a? Array) and (harvest_req.size>=2)
-                      abase_id = harvest_req[SR_BaseId]
-                      abase_id ||= @to_base_id
-                      if abase_id != pool.base_id
-                        p log_mes+'ADD blob req to pool list'
-                        pool.add_search_request(search_req[SR_Request], \
-                          search_req[SR_Kind], abase_id, self)
-                      end
-                    end
                   when ECC_Query_Fragment
                     # запрос фрагмента для корзины
                     p log_mes+'ECC_Query_Fragment'
@@ -7934,9 +7917,6 @@ module PandoraNet
     # Number of search requests per cicle
     # RU: Число поисковых запросов за цикл
     $search_block_count = 2
-    # Number of harvest requests per cicle
-    # RU: Число запросов на добычу за цикл
-    $harvest_block_count = 2
     # Number of fragment requests per cicle
     # RU: Число запросов фрагментов за цикл
     $frag_block_count = 2
@@ -7971,7 +7951,6 @@ module PandoraNet
       @fish_ind       = 0
       @notice_ind     = 0
       @search_ind   = 0
-      @harvest_ind  = 0
       @punnet_ind   = 0
       @frag_ind     = 0
       #@fishes         = Array.new
@@ -8730,25 +8709,6 @@ module PandoraNet
                   processed += 1
                 end
                 @search_ind += 1
-              end
-
-              # проверка новых блоб запросов
-              processed = 0
-              while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
-              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
-              and (processed<$harvest_block_count) \
-              and (@harvest_ind <= pool.harvest_ind)
-                harvest_req = pool.harvest_blobs[@harvest_ind]
-                p '**** pool.harvest_blobs[size, @harvest_ind, obj_id]=' \
-                  +[pool.harvest_blobs.size, @harvest_ind, harvest_req.object_id].inspect
-                if harvest_req and (harvest_req[HR_Session] != self) and (harvest_req[HR_BaseId] != @to_base_id)
-                  req = harvest_req[HB_Sha1..HB_Time]
-                  p log_mes+'harvest_req: req, to_person, to_key='+[req, @to_person, @to_key].inspect
-                  req_raw = PandoraUtils.rubyobj_to_pson(req)
-                  add_send_segment(EC_Query, true, req_raw, ECC_Query_Harvest)
-                  processed += 1
-                end
-                @harvest_ind += 1
               end
 
               # проверка незаполненных корзин
@@ -9697,7 +9657,7 @@ module PandoraGtk
       super
       @mask += ': '
       self.max_length = 19
-      self.tooltip_text = 'hh:mm:ss'
+      self.tooltip_text = 'DD.MM.YYYY hh:mm:ss'
     end
   end
 
