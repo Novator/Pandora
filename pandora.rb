@@ -5133,7 +5133,8 @@ module PandoraNet
   ECC_Query_Record     = 1
   ECC_Query_Fish       = 2
   ECC_Query_Search     = 3
-  ECC_Query_Fragment   = 4
+  ECC_Query_Harvest    = 4
+  ECC_Query_Fragment   = 5
 
   ECC_News_Panhash      = 0
   ECC_News_Record       = 1
@@ -5286,12 +5287,12 @@ module PandoraNet
   # Harvest blob indexes
   # RU: Индексы добычи блоба
   HB_Sha1        = 1
-  HB_Asker       = 2
-  HB_Index       = 2
-  HB_Time        = 3
-  HB_Requested   = 4
-  HB_Answered    = 5
-  HB_Punnet      = 6
+  HB_BaseId      = 2
+  HB_Index       = 3
+  HB_Time        = 4
+  HB_Requested   = 5
+  HB_Answered    = 6
+  HB_Punnet      = 7
 
   # Punnet indexes
   # RU: Индексы в корзине
@@ -5373,13 +5374,13 @@ module PandoraNet
           if model
             filter = [['sha1=', sha1], ['IFNULL(panstate,0) & ? == 0', \
               PandoraModel::PSF_Harvest]]
-            sel = model.select(filter, pson, getfields, nil, 1)
+            sel = model.select(filter, false, 'id', nil, 1)
             if sel and (sel.size>0)
               res = false  #whole file exists, no need to harvest
             else  #no whole file
               time = Time.now.to_i
               #init_punnet(sha1)
-              @harvest_blobs << [sha1, @harvest_ind+1, time]
+              @harvest_blobs << [sha1, pool.base_id, @harvest_ind+1, time]
               @harvest_ind += 1
               $window.set_status_field(PandoraGtk::SF_Harvest, @harvest_blobs.size.to_s)
               res = true  #file is starting to harvest
@@ -6074,7 +6075,7 @@ module PandoraNet
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
       :entered_captcha, :captcha_sw, :hooks, :fish_ind, :notice_ind, \
-      :sess_trust, :notice, :activity, :search_ind
+      :sess_trust, :notice, :activity, :search_ind, :harvest_ind
 
     # Set socket options
     # RU: Установить опции сокета
@@ -7630,8 +7631,22 @@ module PandoraNet
                     if (search_req.is_a? Array) and (search_req.size>=2)
                       abase_id = search_req[SR_BaseId]
                       abase_id ||= @to_base_id
-                      if true #abase_id != pool.base_id
+                      if abase_id != pool.base_id
                         p log_mes+'ADD search req to pool list'
+                        pool.add_search_request(search_req[SR_Request], \
+                          search_req[SR_Kind], abase_id, self)
+                      end
+                    end
+                  when ECC_Query_Harvest
+                    # пришёл запрос на блоб
+                    harvest_req_raw = rdata
+                    harvest_req, len = PandoraUtils.pson_to_rubyobj(harvest_req_raw)
+                    p '--ECC_Query_Harvest  harvest_req_raw='+harvest_req.inspect
+                    if (harvest_req.is_a? Array) and (harvest_req.size>=2)
+                      abase_id = harvest_req[SR_BaseId]
+                      abase_id ||= @to_base_id
+                      if abase_id != pool.base_id
+                        p log_mes+'ADD blob req to pool list'
                         pool.add_search_request(search_req[SR_Request], \
                           search_req[SR_Kind], abase_id, self)
                       end
@@ -7956,6 +7971,7 @@ module PandoraNet
       @fish_ind       = 0
       @notice_ind     = 0
       @search_ind   = 0
+      @harvest_ind  = 0
       @punnet_ind   = 0
       @frag_ind     = 0
       #@fishes         = Array.new
@@ -8721,17 +8737,18 @@ module PandoraNet
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
               and (processed<$harvest_block_count) \
-              and (@search_ind <= pool.search_ind)
+              and (@harvest_ind <= pool.harvest_ind)
                 harvest_req = pool.harvest_blobs[@harvest_ind]
-                p '**** pool.harvest_blobs[size, @search_ind, obj_id]=' \
+                p '**** pool.harvest_blobs[size, @harvest_ind, obj_id]=' \
                   +[pool.harvest_blobs.size, @harvest_ind, harvest_req.object_id].inspect
-                if harvest_req
-                  sha1 = harvest_req[HB_Sha1]
-                  p log_mes+'sha1, to_person, to_key='+[sha1, @to_person, @to_key].inspect
-                  add_send_segment(EC_Query, true, sha1, ECC_Query_Search)
+                if harvest_req and (harvest_req[HR_Session] != self) and (harvest_req[HR_BaseId] != @to_base_id)
+                  req = harvest_req[HB_Sha1..HB_Time]
+                  p log_mes+'harvest_req: req, to_person, to_key='+[req, @to_person, @to_key].inspect
+                  req_raw = PandoraUtils.rubyobj_to_pson(req)
+                  add_send_segment(EC_Query, true, req_raw, ECC_Query_Harvest)
                   processed += 1
                 end
-                @search_ind += 1
+                @harvest_ind += 1
               end
 
               # проверка незаполненных корзин
@@ -9748,13 +9765,16 @@ module PandoraGtk
                 end
                 false
               elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
-                ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) and event.state.control_mask?) #w, W, ц, Ц
+                ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
+                event.keyval) and event.state.control_mask?) #w, W, ц, Ц
               then
                 @popwin.destroy
                 @popwin = nil
                 false
-              elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
-                ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
+              elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
+                event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
+                Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
+                and event.state.control_mask?) #q, Q, й, Й
               then
                 @popwin.destroy
                 @popwin = nil
@@ -9818,6 +9838,7 @@ module PandoraGtk
   # Entry for date
   # RU: Поле ввода даты
   class DateEntry < BtnEntry
+    attr_accessor :cal
 
     def initialize(*args)
       super(MaskEntry, true, *args)
@@ -9835,18 +9856,31 @@ module PandoraGtk
     end
 
     def get_popwidget
-      @cal = Gtk::Calendar.new
-      cal = @cal
+      vbox = Gtk::VBox.new
 
+      btn1 = Gtk::Button.new(_'Current time')
+      btn1.signal_connect('clicked') do |widget|
+        time_now = Time.now
+        if (@month == time_now.month) and (@year == time_now.year)
+          cal.select_day(time_now.day)
+        else
+          cal.select_month(time_now.month, time_now.year)
+          @month = time_now.month
+          @year = time_now.year
+        end
+      end
+      vbox.pack_start(btn1, false, false, 0)
+
+      @cal = Gtk::Calendar.new
       date = PandoraUtils.str_to_date(@entry.text)
       time_now = Time.now
       date ||= time_now
       @month = date.month
       @year = date.year
-      update_mark(date.month, date.year, time_now)
 
       cal.select_month(date.month, date.year)
       cal.select_day(date.day)
+      update_mark(date.month, date.year, time_now)
       #cal.mark_day(date.day)
       cal.display_options = Gtk::Calendar::SHOW_HEADING | \
         Gtk::Calendar::SHOW_DAY_NAMES | Gtk::Calendar::WEEK_START_MONDAY
@@ -9867,8 +9901,7 @@ module PandoraGtk
 
       cal.signal_connect('month-changed') do
         year, month, day = @cal.date
-        @month=month
-        @year=year
+        p 'month-changed: [year, month, day]='+[year, month, day].inspect
         update_mark(month, year)
       end
 
@@ -9904,8 +9937,13 @@ module PandoraGtk
           false
         end
       end
+      vbox.pack_start(cal, false, false, 0)
 
-      cal
+      cal.can_default = true
+      cal.grab_default
+      cal.grab_focus
+
+      vbox
     end
   end
 
@@ -10059,6 +10097,8 @@ module PandoraGtk
       treeview.rules_hint = true
       treeview.search_column = 0
       treeview.border_width = 10
+      #treeview.hover_selection = false
+      #treeview.selection.mode = Gtk::SELECTION_BROWSE
 
       renderer = Gtk::CellRendererText.new
       column = Gtk::TreeViewColumn.new(_('Code'), renderer, 'text' => 0)
@@ -10070,15 +10110,46 @@ module PandoraGtk
       column.set_sort_column_id(1)
       treeview.append_column(column)
 
-      treeview.signal_connect('row_activated') do |tree_view, path, column|
+      treeview.signal_connect('row-activated') do |tree_view, path, column|
         path, column = tree_view.cursor
         if path
           store = tree_view.model
           iter = store.get_iter(path)
           if iter and iter[0]
             @entry.text = iter[0].to_s
-            @popwin.destroy
-            @popwin = nil
+            if not @popwin.destroyed?
+              @popwin.destroy
+              @popwin = nil
+            end
+          end
+        end
+        false
+      end
+
+      # Make choose only when click to selected
+      #treeview.add_events(Gdk::Event::BUTTON_PRESS_MASK)
+      #treeview.signal_connect('button-press-event') do |widget, event|
+      #  @iter = widget.selection.selected if (event.button == 1)
+      #  false
+      #end
+      #treeview.signal_connect('button-release-event') do |widget, event|
+      #  if (event.button == 1) and @iter
+      #    path, column = widget.cursor
+      #    if path and (@iter.path == path)
+      #      widget.signal_emit('row-activated', nil, nil)
+      #    end
+      #  end
+      #  false
+      #end
+
+      treeview.signal_connect('event-after') do |widget, event|
+        if event.kind_of?(Gdk::EventButton) and (event.button == 1)
+          iter = widget.selection.selected
+          if iter
+            path, column = widget.cursor
+            if path and (iter.path == path)
+              widget.signal_emit('row-activated', nil, nil)
+            end
           end
         end
         false
@@ -10086,7 +10157,7 @@ module PandoraGtk
 
       treeview.signal_connect('key-press-event') do |widget, event|
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-          @treeview.signal_emit('row_activated', nil, nil)
+          widget.signal_emit('row-activated', nil, nil)
           true
         else
           false
@@ -10096,6 +10167,9 @@ module PandoraGtk
       frame = Gtk::Frame.new
       frame.shadow_type = Gtk::SHADOW_OUT
       frame.add(treeview)
+
+      treeview.can_default = true
+      treeview.grab_focus
 
       frame
     end
@@ -11817,7 +11891,7 @@ module PandoraGtk
       end
     end
 
-    SexList = [[1, _('man')], [0, _('woman')], [2, _('trans')], [3, _('gay')], [4, _('lesbo')]]
+    SexList = [[1, _('man')], [0, _('woman')], [2, _('gay')], [3, _('trans')], [4, _('lesbo')]]
 
     # Create fields dialog
     # RU: Создать форму с полями
