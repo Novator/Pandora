@@ -371,7 +371,7 @@ module PandoraUtils
   end
 
   # Panhash is nil?
-  # RU: Панхэш не нулевой?
+  # RU: Панхэш нулевой?
   def self.panhash_nil?(panhash)
     res = true
     if panhash.is_a? String
@@ -5296,6 +5296,7 @@ module PandoraNet
   PI_FragCount   = 5
   PI_FileSize    = 6
   PI_SymCount    = 7
+  PI_HoldFrags   = 8
 
   # Pool
   # RU: Пул
@@ -5370,7 +5371,7 @@ module PandoraNet
         p '---add_search_request already exist'
       else
         p '---add_search_request  NEW REQUEST'
-        abase_id ||= pool.base_id
+        abase_id ||= base_id
         time = Time.now.to_i
         @search_requests << [request, kind, abase_id, @search_ind+1, time, sess]
         @search_ind += 1
@@ -5381,35 +5382,54 @@ module PandoraNet
       res
     end
 
-    # Check blob and, if it does not exist, init harvest
-    # RU: Проверить блоб и, если он не существует, зарегать запрос
-    def harvest_blob?(sha1, models=nil)
+    # Check is whole file exist
+    # RU: Проверяет целый файл на существование
+    def blob_exists?(sha1, models=nil, need_fn=nil)
       res = nil
       if (sha1.is_a? String) and (sha1.bytesize>0)
         model = PandoraUtils.get_model('Blob', models)
         if model
-          filter = [['sha1=', sha1], ['IFNULL(panstate,0) & ? == 0', \
-            PandoraModel::PSF_Harvest]]
-          sel = model.select(filter, false, 'id', nil, 1)
-          if sel and (sel.size>0)
-            res = false  #whole file exists, no need to harvest
-          else
-            reqs = find_search_request(sha1, PK_BlobBody)
-            if (reqs.is_a? Array) and (reqs.size>0)
-              res = true  #file is harvesting now
-            else
-              #init_punnet(sha1)
-              reqs = add_search_request(sha1, PK_BlobBody)
-              #$window.set_status_field(PandoraGtk::SF_Harvest, @harvest_blobs.size.to_s)
-              res = true  #file is starting to harvest
+          filter = ['sha1=? AND IFNULL(panstate,0)&?=0', sha1, PandoraModel::PSF_Harvest]
+          flds = 'id'
+          flds << ', blob' if need_fn
+          sel = model.select(filter, false, flds, nil, 1)
+          p 'blob_exists   sel='+sel.inspect
+          res = (sel and (sel.size>0))
+          if res and need_fn
+            fn = sel[0][1]
+            if (fn.is_a? String) and (fn.size>1) and (fn[0]=='@')
+              res = fn[1..-1]
             end
           end
         end
       end
+      res
+    end
+
+    # Check blob and, if it does not exist, init harvest
+    # RU: Проверить блоб и, если он не существует, зарегать запрос
+    def harvest_blob?(sha1, models=nil)
+      res = nil
+      if blob_exists?(sha1, models)
+        res = false
+      else
+        reqs = find_search_request(sha1, PK_BlobBody)
+        if (reqs.is_a? Array) and (reqs.size>0)
+          res = true  #file is harvesting now
+        else
+          #init_punnet(sha1)
+          reqs = add_search_request(sha1, PK_BlobBody)
+          #$window.set_status_field(PandoraGtk::SF_Harvest, @harvest_blobs.size.to_s)
+          res = true  #file is starting to harvest
+        end
+      end
+      res
     end
 
     $fragment_size = 1024
 
+    # Are all fragments assembled?
+    # RU: Все ли фрагменты собраны?
     def frags_complite?(frags, frag_count)
       res = (frags.is_a? String) and (frags.bytesize>0)
       if res
@@ -5436,6 +5456,7 @@ module PandoraNet
     # Initialize the punnet
     # RU: Инициализирует корзинку
     def init_punnet(sha1,filesize,initfilename=nil)
+      p 'init_punnet(sha1,filesize,initfilename)='+[sha1,filesize,initfilename].inspect
       punnet = @punnets[sha1]
       if not punnet.is_a? Array
         punnet = Array.new
@@ -5485,7 +5506,6 @@ module PandoraNet
         punnet[PI_FragCount] = frag_count
         punnet[PI_SymCount] = sym_count
 
-
         if fragfile
           punnet[PI_FragsFile] = fragfile
           frags = fragfile.read
@@ -5502,6 +5522,7 @@ module PandoraNet
             File.truncate(frag_fn, frags.bytesize)
           end
           punnet[PI_Frags] = frags
+          punnet[PI_HoldFrags] = 0.chr * frags.bytesize
         end
 
         if filename_ex
@@ -5551,6 +5572,67 @@ module PandoraNet
         punnet[PI_Frags] = frags
         fragfile.seek(sym_num)
         res2 = fragfile.write(frags[sym_num])
+      end
+      res
+    end
+
+    # Hold or unhold fragment
+    # RU: Удержать или освободить фрагмент
+    def hold_frag_number(punnet, frag_number, hold=true)
+      res = nil
+      hold_frags = punnet[PI_HoldFrags]
+      frag_count = punnet[PI_FragCount]
+      if (frag_number>0) and (frag_number<frag_count)
+        sym_num = (frag_number.fdiv(8)).floor
+        bit_num = frag_number - sym_num*8
+        bit_mask = 1
+        bit_mask = 1 << bit_num if bit_num>0
+        p 'hold_frag_number [sym_num, bit_num, bit_mask]='+[sym_num, bit_num, bit_mask].inspect
+        byte = hold_frags[sym_num].ord
+        if hold
+          byte = byte | bit_mask
+        else
+          byte = byte & (~bit_mask)
+        end
+        hold_frags[sym_num] = byte.chr
+        res = true
+      end
+      res
+    end
+
+    # Search an index of next needed fragment and hold it
+    # RU: Ищет индекс следующего нужного фрагмента и удерживает его
+    def hold_next_frag(punnet, from_ind=nil)
+      res = nil
+      fragfile = punnet[PI_FragsFile]
+      frags = punnet[PI_Frags]
+      hold_frags = punnet[PI_HoldFrags]
+      frag_count = punnet[PI_FragCount]
+      p 'hold_next_frag  [fragfile, frags, frag_count]='+[fragfile, frags, frag_count].inspect
+      if fragfile and (frags.is_a? String) and (frags.bytesize>0) \
+      and (not frags_complite?(frags, frag_count))
+        i = 0
+        sym_count = frags.bytesize
+        while i<sym_count
+          byte = frags[i].ord
+          if byte != 255
+            hold_byte = hold_frags[i].ord
+            j = 0
+            while (byte>0) and ((byte & 1) == 1) and (i*8+j<frag_count-1) \
+            and ((hold_byte & 1) == 0)
+              byte = byte >> 1
+              j += 1
+            end
+            p 'hold [frags[i].ord, i, j]='+[frags[i].ord, i, j].inspect
+            break
+          end
+          i += 1
+        end
+
+        frag_number = i*8 + j
+        if hold_frag_number(punnet, frag_number)
+          res = frag_number
+        end
       end
       res
     end
@@ -7629,10 +7711,16 @@ module PandoraNet
                   when ECC_Query_Fragment
                     # запрос фрагмента для корзины
                     p log_mes+'ECC_Query_Fragment'
-                    req, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    req.each do |rec|
-                      punnet,berry = rec
-                      p 'punnet,berry='+[punnet,berry].inspect
+                    sha1_frag, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    sha1, frag_ind = sha1_frag
+                    punnet = pool.init_punnet(sha1)
+                    if punnet
+                      frag = pool.load_fragment(punnet, frag_ind)
+                      if frag
+                        @scmd = EC_Fragment
+                        @scode = 0
+                        @sbuf = PandoraUtils.rubyobj_to_pson([sha1, frag_ind, frag])
+                      end
                     end
                   #when ECC_Query_FragHash
                   #  # запрос хэша фрагмента
@@ -7789,9 +7877,29 @@ module PandoraNet
                     req_answer, len = PandoraUtils.pson_to_rubyobj(rdata)
                     req,answ = req_answer
                     p log_mes+'req,answ='+[req,answ].inspect
-                    reqs = find_search_request(req[0], req[1])
-                    reqs.each do |sr|
-                      sr[SR_Answer] = answ
+                    request,kind = req
+                    if kind==PK_BlobBody
+                      PandoraUtils.log_message(LM_Trace, _('Answer: blob is found'))
+                      sha1 = request
+                      fsize = nil
+                      fn = nil
+                      punnet = pool.init_punnet(sha1,fsize,fn)
+                      if punnet
+                        frag_ind = pool.hold_next_frag(punnet)
+                        if frag_ind
+                          @scmd = EC_Query
+                          @scode = ECC_Query_Fragment
+                          @sbuf = PandoraUtils.rubyobj_to_pson([sha1, frag_ind])
+                        else
+                          pool.close_punnet(sha1)
+                        end
+                      end
+                    else
+                      PandoraUtils.log_message(LM_Trace, _('Answer: rec is found'))
+                      reqs = find_search_request(req[0], req[1])
+                      reqs.each do |sr|
+                        sr[SR_Answer] = answ
+                      end
                     end
                   when ECC_News_BigBlob
                     # есть запись, но она слишком большая
@@ -7835,7 +7943,20 @@ module PandoraNet
                 end
               when EC_Fragment
                 p log_mes+'EC_Fragment'
-                save_fragment(rcode, rdata)
+                sha1_ind_frag, len = PandoraUtils.pson_to_rubyobj(rdata)
+                sha1, frag_ind, frag = sha1_ind_frag
+                punnet = pool.init_punnet(sha1)
+                if punnet
+                  frag = pool.save_fragment(punnet, frag_ind, frag)
+                  frag_ind = pool.hold_next_frag(punnet)
+                  if frag_ind
+                    @scmd = EC_Query
+                    @scode = ECC_Query_Fragment
+                    @sbuf = PandoraUtils.rubyobj_to_pson([sha1, frag_ind])
+                  else
+                    pool.close_punnet(sha1)
+                  end
+                end
               else
                 err_scmd('Unknown command is recieved', ECC_Bye_Unknown)
                 @conn_state = CS_Stoping
@@ -9152,14 +9273,14 @@ module PandoraNet
   def self.start_or_stop_hunt(continue=true, delay=0)
     if $hunter_thread
       if $hunter_thread.alive?
-        if $hunter_thread[:active] and continue
-          $hunter_thread[:paused] = (not $hunter_thread[:paused])
-          if (not $hunter_thread[:paused]) and $hunter_thread.stop?
-            $hunter_thread.run
-          end
-          p '$hunter_thread[:paused]='+$hunter_thread[:paused].inspect
-        else
-          if $hunter_thread[:active]
+        if $hunter_thread[:active]
+          if continue
+            $hunter_thread[:paused] = (not $hunter_thread[:paused])
+            if (not $hunter_thread[:paused]) and $hunter_thread.stop?
+              $hunter_thread.run
+            end
+            p '$hunter_thread[:paused]='+$hunter_thread[:paused].inspect
+          else
             # need to exit thread
             $hunter_thread[:active] = false
             if $hunter_thread.stop?
@@ -9169,10 +9290,10 @@ module PandoraNet
               sleep(0.05)
             end
             sleep(0.2) if $hunter_thread and $hunter_thread.alive?
-          else
-            # need to restart thread
-            $hunter_thread[:active] = nil
           end
+        else
+          # need to restart thread
+          $hunter_thread[:active] = nil
         end
       end
       if $hunter_thread and ((not $hunter_thread.alive?) \
@@ -9188,7 +9309,7 @@ module PandoraNet
         filter = 'addr<>"" OR domain<>""'
         flds = 'id, addr, domain, key_hash, tport, panhash, base_id'
         sel = node_model.select(filter, false, flds)
-        if sel and sel.size>0
+        if sel and (sel.size>0)
           $hunter_thread = Thread.new do
             sleep(0.1) if delay>0
             Thread.current[:active] = true
@@ -9222,7 +9343,8 @@ module PandoraNet
                       if $window.pool.sessions.size<$max_session_count
                         sleep($hunt_step_pause)
                       else
-                        while Thread.current[:active] and ($window.pool.sessions.size>=$max_session_count)
+                        while Thread.current[:active] \
+                        and ($window.pool.sessions.size>=$max_session_count)
                           sleep($hunt_overflow_pause)
                           Thread.stop if Thread.current[:paused]
                         end
@@ -9246,8 +9368,8 @@ module PandoraNet
               end
             end
             $hunter_thread = nil
+            $window.correct_hunt_btn_state
           end
-          $window.correct_hunt_btn_state
         else
           $window.correct_hunt_btn_state
           dialog = Gtk::MessageDialog.new($window, \
@@ -14451,6 +14573,11 @@ module PandoraGtk
           PandoraGtk.set_readonly(widget, true)
           #bases = kind
           #local_btn.active?  active_btn.active?  hunt_btn.active?
+          if (kind=='Blob') and (/\h/ === request)
+            kind = PandoraModel::PK_BlobBody
+            request = PandoraUtils.hex_to_bytes(request)
+            p 'Search: Detect blob search  kind,sha1='+[kind,request].inspect
+          end
           reqs = $window.pool.add_search_request(request, kind)
           show_all_reqs(reqs)
           PandoraGtk.set_readonly(stop_btn, true)
@@ -15671,19 +15798,19 @@ module PandoraGtk
         st_text = st_text + ' [#'+panobject.panhash(sel[0], lang, true, true)+']' if sel and sel.size>0
         PandoraGtk.set_statusbar_text(dialog.statusbar, st_text)
 
-        if panobject.is_a? PandoraModel::Key
-          mi = Gtk::MenuItem.new("Действия")
-          menu = Gtk::MenuBar.new
-          menu.append(mi)
+        #if panobject.is_a? PandoraModel::Key
+        #  mi = Gtk::MenuItem.new("Действия")
+        #  menu = Gtk::MenuBar.new
+        #  menu.append(mi)
 
-          menu2 = Gtk::Menu.new
-          menuitem = Gtk::MenuItem.new("Генерировать")
-          menu2.append(menuitem)
-          mi.submenu = menu2
-          #p dialog.action_area
-          dialog.hbox.pack_end(menu, false, false)
-          #dialog.action_area.add(menu)
-        end
+        #  menu2 = Gtk::Menu.new
+        #  menuitem = Gtk::MenuItem.new("Генерировать")
+        #  menu2.append(menuitem)
+        #  mi.submenu = menu2
+        #  #p dialog.action_area
+        #  dialog.hbox.pack_end(menu, false, false)
+        #  #dialog.action_area.add(menu)
+        #end
 
         titadd = nil
         if not edit
@@ -16571,7 +16698,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.45'
+    dlg.version = '0.46'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
@@ -17295,14 +17422,12 @@ module PandoraGtk
     # RU: Изменить состояние кнопки охотника
     def correct_hunt_btn_state
       tool_btn = $toggle_buttons[PandoraGtk::SF_Hunt]
-      pushed = ($hunter_thread and $hunter_thread[:active] and (not $hunter_thread[:paused]))
-      p 'pushed='+pushed.inspect
+      pushed = ((not $hunter_thread.nil?) and $hunter_thread[:active] \
+        and (not $hunter_thread[:paused]))
+      #p 'correct_hunt_btn_state: pushed='+[tool_btn, pushed, $hunter_thread, \
+      #  $hunter_thread[:active], $hunter_thread[:paused]].inspect
       tool_btn.safe_set_active(pushed) if tool_btn.is_a? SafeToggleToolButton
-      if pushed
-        $window.set_status_field(PandoraGtk::SF_Hunt, nil, nil, true)
-      else
-        $window.set_status_field(PandoraGtk::SF_Hunt, nil, nil, false)
-      end
+      $window.set_status_field(PandoraGtk::SF_Hunt, nil, nil, pushed)
     end
 
     # Change listener button state
@@ -17781,8 +17906,6 @@ module PandoraGtk
 
           p PandoraUtils.bytes_to_hex(Digest::MD5.digest('123456'))
 
-          return
-
           sha1_1 = '.,zbmrt'
           sha1_2 = '.,zbmrt2'
           #punnet = $window.pool.init_punnet(sha1_1,81274,'sony_vaio_3-500x500.jpg')
@@ -17790,15 +17913,31 @@ module PandoraGtk
           #punnet2 = $window.pool.init_punnet(sha1_2,81274,'sony_vaio_3-500x500-new.jpg')
           punnet2 = $window.pool.init_punnet(sha1_2,94703,'sony_vaio_4-500x500-new.jpg')
 
-          frag_count = punnet[PandoraNet::PI_FragCount]
-          frag_count.times do |frag_ind|
-            frag = $window.pool.load_fragment(punnet, frag_ind)
-            if frag
-              p 'ind   frag[1,3]  size='+[frag_ind, frag[1,3], frag.bytesize].inspect
-              frag2 = $window.pool.save_fragment(punnet2, frag_ind, frag)
-              p 'frag2='+frag2.inspect
+          if false
+            frag_count = punnet[PandoraNet::PI_FragCount] / 2
+            frag_count.times do |frag_ind|
+              frag = $window.pool.load_fragment(punnet, frag_ind*2)
+              if frag
+                p 'ind   frag[1,3]  size='+[frag_ind, frag[1,3], frag.bytesize].inspect
+                frag2 = $window.pool.save_fragment(punnet2, frag_ind*2, frag)
+                p 'frag2='+frag2.inspect
+              end
             end
           end
+
+          if true
+            frag_ind = $window.pool.hold_next_frag(punnet2)
+            while frag_ind
+              frag = $window.pool.load_fragment(punnet, frag_ind)
+              if frag
+                p 'indNEXT frag[1,3]  size='+[frag_ind, frag[1,3], frag.bytesize].inspect
+                frag2 = $window.pool.save_fragment(punnet2, frag_ind, frag)
+                p 'frag2='+frag2.inspect
+              end
+              frag_ind = $window.pool.hold_next_frag(punnet2)
+            end
+          end
+
           $window.pool.close_punnet(sha1_1)
           $window.pool.close_punnet(sha1_2)
 
@@ -18200,8 +18339,19 @@ module PandoraGtk
               if search_req and (not search_req[PandoraNet::SR_Answer])
                 req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
                 p 'search_req3='+req.inspect
-                answ,bases = pool.search_in_local_bases(search_req[PandoraNet::SR_Request], \
-                  search_req[PandoraNet::SR_Kind])
+                answ = nil
+                if search_req[PandoraNet::SR_Kind]==PandoraModel::PK_BlobBody
+                  sha1 = search_req[PandoraNet::SR_Request]
+                  fn = $window.pool.blob_exists?(sha1, @shed_models, true)
+                  if fn.is_a? String
+                    answ = $window.pool.init_punnet(sha1, nil, fn+'.new')
+                  else
+                    answ = 'Blob in body'
+                  end
+                else
+                  answ,kind = pool.search_in_local_bases(search_req[PandoraNet::SR_Request], \
+                    search_req[PandoraNet::SR_Kind])
+                end
                 p 'answ='+answ.inspect
                 if answ and (answ.size>0)
                   search_req[PandoraNet::SR_Answer] = answ

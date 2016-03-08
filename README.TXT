@@ -35,10 +35,10 @@ https://github.com/Novator/Pandora/wiki/Install-and-first-run
 2. SYSTEM REQUIREMENTS
 
 Mandatory:
-- Linux or Windows OS (another also possible)
-- SQLite database (MySQL, Postgree, Firebird or another)
+- Linux or Windows OS
 - Ruby script engine
 - GTK2 graphical library
+- SQLite database library
 - OpenSSL crypto library
 Optional:
 - GStreamer media library
@@ -58,7 +58,6 @@ Do commands in terminal:
 Download an installation and run it with administrator:
 
   https://github.com/Novator/Pandora/releases/download/0.3-alpha/pandora_setup.exe
-  http://code.fosshub.com/Pandora/download/pandora_setup.exe
   http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe
 
 
@@ -67,7 +66,6 @@ Download an installation and run it with administrator:
 Download a package and install it with root:
 
   https://github.com/Novator/Pandora/releases/download/0.3-alpha/pandora-net_0.2-1ubuntu_all.deb
-  http://code.fosshub.com/Pandora/download/pandora-net_0.2-1ubuntu_all.deb
   http://sourceforge.net/projects/pandora-net/files/pandora-net_0.2-1ubuntu_all.deb
   dpkg -i pandora-net_0.2-1ubuntu_all.deb
   apt-get -f -y install
