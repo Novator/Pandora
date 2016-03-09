@@ -5113,8 +5113,9 @@ module PandoraNet
   EC_Record    = 7     # Выдача записи
   EC_Lure      = 8     # Запрос рыбака (наживка)
   EC_Bite      = 9     # Ответ рыбки (поклевка)
-  EC_Sync      = 10    # Последняя команда в серии, или индикация "живости"
-  EC_Fragment  = 11    # Кусок длинной записи
+  EC_Fragment  = 10    # Кусок длинной записи
+  EC_Sync      = 11    # !!! Последняя команда в серии, или индикация "живости"
+  # --------------------------- EC_Sync must be last
   EC_Wait      = 254   # Временно недоступен
   EC_Bye       = 255   # Рассоединение
   # signs only
@@ -5417,12 +5418,12 @@ module PandoraNet
       if blob_exists?(sha1, models)
         res = false
       else
-        reqs = find_search_request(sha1, PK_BlobBody)
+        reqs = find_search_request(sha1, PandoraModel::PK_BlobBody)
         if (reqs.is_a? Array) and (reqs.size>0)
           res = true  #file is harvesting now
         else
           #init_punnet(sha1)
-          reqs = add_search_request(sha1, PK_BlobBody)
+          reqs = add_search_request(sha1, PandoraModel::PK_BlobBody)
           #$window.set_status_field(PandoraGtk::SF_Harvest, @harvest_blobs.size.to_s)
           res = true  #file is starting to harvest
         end
@@ -5459,7 +5460,7 @@ module PandoraNet
 
     # Initialize the punnet
     # RU: Инициализирует корзинку
-    def init_punnet(sha1,filesize,initfilename=nil)
+    def init_punnet(sha1,filesize=nil,initfilename=nil)
       p 'init_punnet(sha1,filesize,initfilename)='+[sha1,filesize,initfilename].inspect
       punnet = @punnets[sha1]
       if not punnet.is_a? Array
@@ -5478,7 +5479,14 @@ module PandoraNet
             filename = File.join($pandora_files_dir, filename)
           end
         else
-          filename = sha1_fn+'.dat'
+          fn_fs = blob_exists?(sha1, nil, true)
+          if fn_fs
+            fn, fs = fn_fs
+            filename = fn
+            filesize ||= fs
+          else
+            filename = sha1_fn+'.dat'
+          end
         end
         p 'filename='+filename.inspect
 
@@ -5586,7 +5594,7 @@ module PandoraNet
       res = nil
       hold_frags = punnet[PI_HoldFrags]
       frag_count = punnet[PI_FragCount]
-      if (frag_number>0) and (frag_number<frag_count)
+      if (frag_number>=0) and (frag_number<frag_count)
         sym_num = (frag_number.fdiv(8)).floor
         bit_num = frag_number - sym_num*8
         bit_mask = 1
@@ -5621,10 +5629,12 @@ module PandoraNet
           byte = frags[i].ord
           if byte != 255
             hold_byte = hold_frags[i].ord
+            p 'hold_byte='+hold_byte.inspect
             j = 0
-            while (byte>0) and ((byte & 1) == 1) and (i*8+j<frag_count-1) \
-            and ((hold_byte & 1) == 0)
+            while (byte>0) and (i*8+j<frag_count-1) \
+            and (((byte & 1) == 1) or ((hold_byte & 1) == 1))
               byte = byte >> 1
+              hold_byte = hold_byte >> 1
               j += 1
             end
             p 'hold [frags[i].ord, i, j]='+[frags[i].ord, i, j].inspect
@@ -7714,16 +7724,19 @@ module PandoraNet
                     end
                   when ECC_Query_Fragment
                     # запрос фрагмента для корзины
-                    p log_mes+'ECC_Query_Fragment'
+                    p log_mes+'==ECC_Query_Fragment'
                     sha1_frag, len = PandoraUtils.pson_to_rubyobj(rdata)
                     sha1, frag_ind = sha1_frag
+                    p log_mes+'[sha1, frag_ind]='+[sha1, frag_ind].inspect
                     punnet = pool.init_punnet(sha1)
                     if punnet
                       frag = pool.load_fragment(punnet, frag_ind)
                       if frag
+                        buf = PandoraUtils.rubyobj_to_pson([sha1, frag_ind, frag])
+                        #@send_queue.add_block_to_queue([EC_Fragment, 0, buf])
                         @scmd = EC_Fragment
                         @scode = 0
-                        @sbuf = PandoraUtils.rubyobj_to_pson([sha1, frag_ind, frag])
+                        @sbuf = buf
                       end
                     end
                   #when ECC_Query_FragHash
@@ -7870,25 +7883,26 @@ module PandoraNet
                       #end
                     end
                   when ECC_News_Notice
-                    p log_mes+'ECC_News_Notice'
+                    p log_mes+'==ECC_News_Notice'
                     notic, len = PandoraUtils.pson_to_rubyobj(rdata)
                     pool.add_notice_order(self, *notic)
                   when ECC_News_SessMode
                     p log_mes + 'ECC_News_SessMode'
                     @conn_mode2 = rdata[0].ord if rdata.bytesize>0
                   when ECC_News_Answer
-                    p log_mes + 'ECC_News_Answer'
+                    p log_mes + '==ECC_News_Answer'
                     req_answer, len = PandoraUtils.pson_to_rubyobj(rdata)
                     req,answ = req_answer
                     p log_mes+'req,answ='+[req,answ].inspect
-                    request,kind = req
-                    if kind==PK_BlobBody
+                    request,kind,base_id = req
+                    if kind==PandoraModel::PK_BlobBody
                       PandoraUtils.log_message(LM_Trace, _('Answer: blob is found'))
                       sha1 = request
-                      fsize, fn = answ
-                      punnet = pool.init_punnet(sha1,fsize,fn+'.new')
+                      fn, fsize = answ
+                      punnet = pool.init_punnet(sha1, fsize, fn+'.new')
                       if punnet
                         frag_ind = pool.hold_next_frag(punnet)
+                        p log_mes+'--[frag_ind,punnet]='+[frag_ind, punnet].inspect
                         if frag_ind
                           @scmd = EC_Query
                           @scode = ECC_Query_Fragment
@@ -7906,7 +7920,7 @@ module PandoraNet
                     end
                   when ECC_News_BigBlob
                     # есть запись, но она слишком большая
-                    p log_mes+'ECC_News_BigBlob'
+                    p log_mes+'==ECC_News_BigBlob'
                     toobig, len = PandoraUtils.pson_to_rubyobj(rdata)
                     toobig.each do |rec|
                       panhash,sha1,size,fill = rec
@@ -7945,7 +7959,7 @@ module PandoraNet
                     @sbuf = ''
                 end
               when EC_Fragment
-                p log_mes+'EC_Fragment'
+                p log_mes+'====EC_Fragment'
                 sha1_ind_frag, len = PandoraUtils.pson_to_rubyobj(rdata)
                 sha1, frag_ind, frag = sha1_ind_frag
                 punnet = pool.init_punnet(sha1)
@@ -8289,7 +8303,7 @@ module PandoraNet
                 serrcode = nil
                 serrbuf = nil
 
-                p log_mes+"Цикл ЧТЕНИЯ сокета начало"
+                p log_mes+"Цикл ЧТЕНИЯ сокета. начало"
                 # Цикл обработки команд и блоков данных
                 while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
                 and (not socket.closed?)
@@ -8802,7 +8816,8 @@ module PandoraNet
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
               and (processed<$search_block_count) \
-              and (@search_ind <= pool.search_ind)
+              and (@search_ind <= pool.search_ind) \
+              and (questioner_step==QS_Finished)
                 search_req = pool.search_requests[@search_ind]
                 p '++++pool.search_requests[size, @search_ind, obj_id]='+[pool.search_requests.size, @search_ind, \
                   search_req.object_id].inspect
@@ -8832,7 +8847,8 @@ module PandoraNet
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
               and (processed>0) and (processed<$frag_block_count) \
-              and (pool.need_fragments?)
+              and (pool.need_fragments?) \
+              and false # OFFF !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 next_frag = pool.get_next_frag(@to_base_id, @punnet_ind, @frag_ind)
                 p '***!!pool.get_next_frag='+next_frag.inspect
                 if next_frag
@@ -18353,14 +18369,14 @@ module PandoraGtk
                   answ,kind = pool.search_in_local_bases(search_req[PandoraNet::SR_Request], \
                     search_req[PandoraNet::SR_Kind])
                 end
-                p 'answ='+answ.inspect
+                p 'SEARCH answ='+answ.inspect
                 if answ
                   search_req[PandoraNet::SR_Answer] = answ
                   answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
                   session = search_req[PandoraNet::SR_Session]
                   sessions = []
                   if pool.sessions.include?(session)
-                    sessions << sessions
+                    sessions << session
                   end
                   sessions.concat(pool.sessions_of_keybase(nil, search_req[PandoraNet::SR_BaseId]))
                   sessions.flatten!
