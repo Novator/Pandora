@@ -5398,7 +5398,11 @@ module PandoraNet
           if res and need_fn
             fn = sel[0][1]
             if (fn.is_a? String) and (fn.size>1) and (fn[0]=='@')
-              res = fn[1..-1]
+              fn = fn[1..-1]
+              if (fn.is_a? String) and (fn.size>0)
+                fs = File.size?(fn)
+                res = [fn, fs] if fs
+              end
             end
           end
         end
@@ -7881,9 +7885,8 @@ module PandoraNet
                     if kind==PK_BlobBody
                       PandoraUtils.log_message(LM_Trace, _('Answer: blob is found'))
                       sha1 = request
-                      fsize = nil
-                      fn = nil
-                      punnet = pool.init_punnet(sha1,fsize,fn)
+                      fsize, fn = answ
+                      punnet = pool.init_punnet(sha1,fsize,fn+'.new')
                       if punnet
                         frag_ind = pool.hold_next_frag(punnet)
                         if frag_ind
@@ -18342,18 +18345,16 @@ module PandoraGtk
                 answ = nil
                 if search_req[PandoraNet::SR_Kind]==PandoraModel::PK_BlobBody
                   sha1 = search_req[PandoraNet::SR_Request]
-                  fn = $window.pool.blob_exists?(sha1, @shed_models, true)
-                  if fn.is_a? String
-                    answ = $window.pool.init_punnet(sha1, nil, fn+'.new')
-                  else
-                    answ = 'Blob in body'
+                  fn_fs = $window.pool.blob_exists?(sha1, @shed_models, true)
+                  if fn_fs
+                    answ = fn_fs
                   end
                 else
                   answ,kind = pool.search_in_local_bases(search_req[PandoraNet::SR_Request], \
                     search_req[PandoraNet::SR_Kind])
                 end
                 p 'answ='+answ.inspect
-                if answ and (answ.size>0)
+                if answ
                   search_req[PandoraNet::SR_Answer] = answ
                   answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
                   session = search_req[PandoraNet::SR_Session]
