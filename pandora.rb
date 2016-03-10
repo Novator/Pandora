@@ -1203,7 +1203,7 @@ module PandoraUtils
   # Get path on needed depth
   # RU: Вернуть путь на нужной глубине
   def self.get_path_on_depth(filename, trans_depth=nil)
-    i = filename.index(File::SEPARATOR)
+    i = filename.rindex(File::SEPARATOR)
   end
 
   # Absolute file path
