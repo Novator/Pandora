@@ -44,17 +44,22 @@ end
 
 module PandoraUtils
 
+  $detected_os_family = nil
+
   # Platform detection
   # RU: Определение платформы
   def self.os_family
-    case RUBY_PLATFORM
-      when /ix/i, /ux/i, /gnu/i, /sysv/i, /solaris/i, /sunos/i, /bsd/i
-        'unix'
-      when /win/i, /ming/i
-        'windows'
-      else
-        'other'
+    if $detected_os_family.nil?
+      case RUBY_PLATFORM
+        when /ix/i, /ux/i, /gnu/i, /sysv/i, /solaris/i, /sunos/i, /bsd/i
+          $detected_os_family = 'unix'
+        when /win/i, /ming/i
+          $detected_os_family = 'windows'
+        else
+          $detected_os_family = 'other'
+      end
     end
+    $detected_os_family
   end
 
   # Log level constants
@@ -1170,6 +1175,16 @@ module PandoraUtils
     hash
   end
 
+  # Change file extention
+  # RU: Сменить расширение файла
+  def self.change_file_ext(filename, newext='new')
+    res = filename
+    if (res.is_a? String) and (res.size>0)
+      res = File.join(File.dirname(filename), File.basename(filename, '.*')+'.'+newext)
+    end
+    res
+  end
+
   # Detect file type
   # RU: Определить тип файла
   def self.detect_file_type(file_name)
@@ -1181,8 +1196,101 @@ module PandoraUtils
         res = ext[1..-1]
         res = 'JPG' if res=='JPEG'
       end
-   end
+    end
     res
+  end
+
+  # Get path on needed depth
+  # RU: Вернуть путь на нужной глубине
+  def self.get_path_on_depth(filename, trans_depth=nil)
+    i = filename.index(File::SEPARATOR)
+  end
+
+  # Absolute file path
+  # RU: Абсолютный путь файла
+  def self.absolute_path(filename, trans_depth=nil)
+    res = filename
+    if (res.is_a? String) and (res.size>0)
+      if (res[0]=='.')
+        res = File.join($pandora_files_dir, res[1..-1])
+      elsif (res[0]=='[')
+        i = res.index(']')
+        if i and (i>4)
+          func = res[1..i-1]
+          path = nil
+          case func
+            when 'files'
+              path = $pandora_files_dir
+            when 'root'
+              path = $pandora_root_dir
+            when 'lang'
+              path = $pandora_lang_dir
+            when 'view'
+              path = $pandora_view_dir
+            when 'base'
+              path = $pandora_base_dir
+            when 'util'
+              path = $pandora_util_dir
+            when 'model'
+              path = $pandora_model_dir
+          end
+          if path
+            if i<res.size-1
+              res = File.join(path, res[i+1..-1])
+            else
+              res = path
+            end
+          end
+        end
+      elsif trans_depth
+        res = File.expand_path(res, $pandora_files_dir)
+        res = File.join($pandora_files_dir, File.basename(res))
+      end
+    end
+    res
+  end
+
+  # Relative file path
+  # RU: Относительный путь файла
+  def self.relative_path(filename, trans_depth=nil)
+
+    change_path = Proc.new do |way,func|
+      res = false
+      prefix = filename[0, way.size]
+      if os_family=='windows'
+        prefix.upper!
+        way = way.upper
+      end
+      if way==prefix
+        func = '['+func+']' if func.size>1
+        filename = File.join(func, filename[way.size..-1])
+        res = true
+      end
+      res
+    end
+
+    filename = File.expand_path(filename, $pandora_files_dir)
+
+    if (filename.is_a? String) and (filename.size>0)
+      unless change_path.call($pandora_files_dir, '.')
+        unless change_path.call($pandora_lang_dir, 'lang')
+          unless change_path.call($pandora_view_dir, 'view')
+            unless change_path.call($pandora_base_dir, 'base')
+              unless change_path.call($pandora_util_dir, 'util')
+                unless change_path.call($pandora_model_dir, 'model')
+                  unless change_path.call($pandora_root_dir, 'root')
+                    if trans_depth
+                      filename = File.join('.', File.basename(filename))
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    filename
   end
 
   # Abstract database adapter
@@ -5422,7 +5530,6 @@ module PandoraNet
         if (reqs.is_a? Array) and (reqs.size>0)
           res = true  #file is harvesting now
         else
-          #init_punnet(sha1)
           reqs = add_search_request(sha1, PandoraModel::PK_BlobBody)
           #$window.set_status_field(PandoraGtk::SF_Harvest, @harvest_blobs.size.to_s)
           res = true  #file is starting to harvest
@@ -5435,7 +5542,13 @@ module PandoraNet
 
     # Are all fragments assembled?
     # RU: Все ли фрагменты собраны?
-    def frags_complite?(frags, frag_count)
+    def frags_complite?(punnet_frags, frag_count=nil)
+      frags = punnet_frags
+      if frags.is_a? Array
+        frag_count = frags[PI_FragCount]
+        frags = frags[PI_Frags]
+      end
+
       res = (frags.is_a? String) and (frags.bytesize>0)
       if res
         i = 0
@@ -5490,7 +5603,7 @@ module PandoraNet
         end
         p 'filename='+filename.inspect
 
-        frag_fn = File.join(File.dirname(filename), File.basename(filename, '.*')+'.frs')
+        frag_fn = PandoraUtils.change_file_ext(filename, 'frs')
         punnet[PI_FragFN] = frag_fn
         p 'frag_fn='+frag_fn.inspect
 
@@ -5625,27 +5738,29 @@ module PandoraNet
       and (not frags_complite?(frags, frag_count))
         i = 0
         sym_count = frags.bytesize
-        while i<sym_count
-          byte = frags[i].ord
-          if byte != 255
-            hold_byte = hold_frags[i].ord
-            p 'hold_byte='+hold_byte.inspect
-            j = 0
-            while (byte>0) and (i*8+j<frag_count-1) \
-            and (((byte & 1) == 1) or ((hold_byte & 1) == 1))
-              byte = byte >> 1
-              hold_byte = hold_byte >> 1
-              j += 1
-            end
-            p 'hold [frags[i].ord, i, j]='+[frags[i].ord, i, j].inspect
-            break
-          end
-          i += 1
-        end
 
-        frag_number = i*8 + j
-        if hold_frag_number(punnet, frag_number)
-          res = frag_number
+        $window.mutex.synchronize do
+          while i<sym_count
+            byte = frags[i].ord
+            if byte != 255
+              hold_byte = hold_frags[i].ord
+              p 'hold_byte='+hold_byte.inspect
+              j = 0
+              while (byte>0) and (i*8+j<frag_count-1) \
+              and (((byte & 1) == 1) or ((hold_byte & 1) == 1))
+                byte = byte >> 1
+                hold_byte = hold_byte >> 1
+                j += 1
+              end
+              p 'hold [frags[i].ord, i, j]='+[frags[i].ord, i, j].inspect
+              break
+            end
+            i += 1
+          end
+          frag_number = i*8 + j
+          if hold_frag_number(punnet, frag_number)
+            res = frag_number
+          end
         end
       end
       res
@@ -7899,8 +8014,8 @@ module PandoraNet
                       PandoraUtils.log_message(LM_Trace, _('Answer: blob is found'))
                       sha1 = request
                       fn, fsize = answ
-                      punnet = pool.init_punnet(sha1, fsize, fn+'.new')
-                      if punnet
+                      punnet = pool.init_punnet(sha1, fsize, fn)
+                      if punnet and punnet[PI_FragsFile] and (not pool.frags_complite?(punnet))
                         frag_ind = pool.hold_next_frag(punnet)
                         p log_mes+'--[frag_ind,punnet]='+[frag_ind, punnet].inspect
                         if frag_ind
@@ -7910,6 +8025,8 @@ module PandoraNet
                         else
                           pool.close_punnet(sha1)
                         end
+                      else
+                        p log_mes+'--File is already complete: '+fn.inspect
                       end
                     else
                       PandoraUtils.log_message(LM_Trace, _('Answer: rec is found'))
@@ -9567,7 +9684,7 @@ module PandoraGtk
         elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
           ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
         then
-          $window.destroy
+          $window.do_menu_act('Quit')
           @response=1
           false
         else
@@ -9871,7 +9988,7 @@ module PandoraGtk
               then
                 @popwin.destroy
                 @popwin = nil
-                $window.destroy
+                $window.do_menu_act('Quit')
                 false
               else
                 false
@@ -10349,49 +10466,70 @@ module PandoraGtk
 
   end
 
-  # Entry for filename
-  # RU: Поле выбора имени файла
-  class FilenameBox < BtnEntry
-    attr_accessor :window
+  # Good FileChooserDialog
+  # RU: Правильный FileChooserDialog
+  class GoodFileChooserDialog < Gtk::FileChooserDialog
+    def initialize(file_name, open=true, filters=nil, parent_win=nil, title=nil)
+      action = nil
+      act_btn = nil
+      stock_id = nil
+      if open
+        action = Gtk::FileChooser::ACTION_OPEN
+        stock_id = Gtk::Stock::OPEN
+        act_btn = [stock_id, Gtk::Dialog::RESPONSE_ACCEPT]
+      else
+        action = Gtk::FileChooser::ACTION_SAVE
+        stock_id = Gtk::Stock::SAVE
+        act_btn = [stock_id, Gtk::Dialog::RESPONSE_ACCEPT]
+        title ||= 'Save to file'
+      end
+      title ||= 'Choose a file'
+      parent_win ||= $window
+      super(_(title), parent_win, action, 'gnome-vfs',
+        [Gtk::Stock::CANCEL, Gtk::Dialog::RESPONSE_CANCEL], act_btn)
+      dialog = self
+      dialog.transient_for = parent_win
+      dialog.skip_taskbar_hint = true
+      dialog.default_response = Gtk::Dialog::RESPONSE_ACCEPT
+      #image = $window.get_preset_image('export')
+      #iconset = image.icon_set
+      iconset = Gtk::IconFactory.lookup_default(stock_id.to_s)
+      style = Gtk::Widget.default_style  #Gtk::Style.new
+      anicon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
+        Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
+      dialog.icon = anicon
+      dialog.add_shortcut_folder($pandora_files_dir)
 
-    def initialize(parent, *args)
-      super(Gtk::Entry, false, *args)
+      dialog.signal_connect('key-press-event') do |widget, event|
+        if [Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
+          event.keyval) and event.state.control_mask? #w, W, ц, Ц
+        then
+          dialog.response(Gtk::Dialog::RESPONSE_CANCEL)
+          false
+        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
+          event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
+          Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
+          and event.state.control_mask?) #q, Q, й, Й
+        then
+          dialog.destroy
+          $window.do_menu_act('Quit')
+          false
+        else
+          false
+        end
+      end
 
-      @window = parent
-      @button.signal_connect('clicked') do |*args|
-        @entry.grab_focus
-        dialog =  Gtk::FileChooserDialog.new(_('Choose a file'), @window,
-          Gtk::FileChooser::ACTION_OPEN, 'gnome-vfs',
-          [Gtk::Stock::OPEN, Gtk::Dialog::RESPONSE_ACCEPT],
-          [Gtk::Stock::CANCEL, Gtk::Dialog::RESPONSE_CANCEL])
+      filter = Gtk::FileFilter.new
+      filter.name = _('All files')+' (*.*)'
+      filter.add_pattern('*.*')
+      dialog.add_filter(filter)
 
-        filter = Gtk::FileFilter.new
-        filter.name = _('All files')+' (*.*)'
-        filter.add_pattern('*.*')
-        dialog.add_filter(filter)
-
-        filter = Gtk::FileFilter.new
-        filter.name = _('Pictures')+' (png,jpg,gif)'
-        filter.add_pattern('*.png')
-        filter.add_pattern('*.jpg')
-        filter.add_pattern('*.jpeg')
-        filter.add_pattern('*.gif')
-        dialog.add_filter(filter)
-
-        filter = Gtk::FileFilter.new
-        filter.name = _('Sounds')+' (mp3,wav)'
-        filter.add_pattern('*.mp3')
-        filter.add_pattern('*.wav')
-        dialog.add_filter(filter)
-
-        dialog.add_shortcut_folder($pandora_files_dir)
-        fn = @entry.text
-        if fn.nil? or (fn=='')
+      if open
+        if file_name.nil? or (file_name=='')
           dialog.current_folder = $pandora_files_dir
         else
-          dialog.filename = fn
+          dialog.filename = file_name
         end
-
         scr = Gdk::Screen.default
         if (scr.height > 500)
           frame = Gtk::Frame.new
@@ -10405,12 +10543,12 @@ module PandoraGtk
           dialog.preview_widget = align
           dialog.use_preview_label = false
           dialog.signal_connect('update-preview') do
-            filename = dialog.preview_filename
+            fn = dialog.preview_filename
             ext = nil
-            ext = File.extname(filename) if filename
+            ext = File.extname(fn) if fn
             if ext and (['.jpg','.gif','.png'].include? ext.downcase)
               begin
-                pixbuf = Gdk::Pixbuf.new(filename, 128, 128)
+                pixbuf = Gdk::Pixbuf.new(fn, 128, 128)
                 image.pixbuf = pixbuf
                 dialog.preview_widget_active = true
               rescue
@@ -10421,12 +10559,66 @@ module PandoraGtk
             end
           end
         end
+      else #save
+        if File.exist?(file_name)
+          dialog.filename = file_name
+        else
+          dialog.current_name = File.basename(file_name) if file_name
+          dialog.current_folder = $pandora_files_dir
+        end
+        dialog.signal_connect('notify::filter') do |widget, param|
+          aname = dialog.filter.name
+          i = aname.index('*.')
+          ext = nil
+          ext = aname[i+2..-2] if i
+          if ext
+            i = ext.index('*.')
+            ext = ext[0..i-2] if i
+          end
+          if ext.nil? or (ext != '*')
+            ext ||= ''
+            fn = PandoraUtils.change_file_ext(dialog.filename, ext)
+            dialog.current_name = File.basename(fn) if fn
+          end
+        end
+      end
+    end
+  end
+
+  # Entry for filename
+  # RU: Поле выбора имени файла
+  class FilenameBox < BtnEntry
+    attr_accessor :window
+
+    def initialize(parent, *args)
+      super(Gtk::Entry, false, *args)
+
+      @window = parent
+      @button.signal_connect('clicked') do |*args|
+        @entry.grab_focus
+        fn = @entry.text
+
+        dialog = GoodFileChooserDialog.new(fn, true, nil, @window)
+
+        filter = Gtk::FileFilter.new
+        filter.name = _('Pictures')+' (*.png,*.jpg,*.gif)'
+        filter.add_pattern('*.png')
+        filter.add_pattern('*.jpg')
+        filter.add_pattern('*.jpeg')
+        filter.add_pattern('*.gif')
+        dialog.add_filter(filter)
+
+        filter = Gtk::FileFilter.new
+        filter.name = _('Sounds')+' (*.mp3,*.wav)'
+        filter.add_pattern('*.mp3')
+        filter.add_pattern('*.wav')
+        dialog.add_filter(filter)
 
         if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
           @entry.text = dialog.filename
           yield(@entry.text, @entry, @button) if block_given?
         end
-        dialog.destroy
+        dialog.destroy if not dialog.destroyed?
         true
       end
     end
@@ -17819,14 +18011,14 @@ module PandoraGtk
 
     # Export table to file
     # RU: Выгрузить таблицу в файл
-    def export_table(panobject)
+    def export_table(panobject, filename=nil)
 
       ider = panobject.ider
-      filename = File.join($pandora_files_dir, ider+'.csv')
       separ = '|'
 
       File.open(filename, 'w') do |file|
         file.puts('# Export table ['+ider+']')
+        file.puts('# Code page: UTF-8')
 
         tab_flds = panobject.tab_fields
         #def_flds = panobject.def_fields
@@ -17901,7 +18093,35 @@ module PandoraGtk
             elsif command=='Import'
               p 'import'
             elsif command=='Export'
-              export_table(treeview.panobject)
+              panobject = treeview.panobject
+              ider = panobject.ider
+              filename = File.join($pandora_files_dir, ider+'.csv')
+
+              dialog = GoodFileChooserDialog.new(filename, false, nil, $window)
+
+              filter = Gtk::FileFilter.new
+              filter.name = _('Text tables')+' (*.csv,*.txt)'
+              filter.add_pattern('*.csv')
+              filter.add_pattern('*.txt')
+              dialog.add_filter(filter)
+
+              dialog.filter = filter
+
+              filter = Gtk::FileFilter.new
+              filter.name = _('JavaScript Object Notation')+' (*.json)'
+              filter.add_pattern('*.json')
+              dialog.add_filter(filter)
+
+              filter = Gtk::FileFilter.new
+              filter.name = _('Pandora Simple Object Notation')+' (*.pson)'
+              filter.add_pattern('*.pson')
+              dialog.add_filter(filter)
+
+              if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
+                filename = dialog.filename
+                export_table(panobject, filename)
+              end
+              dialog.destroy if not dialog.destroyed?
             else
               PandoraGtk.act_panobject(treeview, command)
             end
@@ -17922,6 +18142,12 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
+          fn = '/mnt/data/Галюк М.М./Картинки/Iron/robux.png'
+          rel = PandoraUtils.relative_path(fn, 2)
+          abs = PandoraUtils.absolute_path(rel, 1)
+          p '[fn, rel, abs]='+[fn, rel, abs].inspect
+
+          return
 
           p PandoraUtils.bytes_to_hex(Digest::MD5.digest('123456'))
 
@@ -18292,7 +18518,6 @@ module PandoraGtk
                     task_icon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
                       Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
                     dialog.icon = task_icon
-
 
                     dialog.set_default_size(500, 350)
                     vbox = Gtk::VBox.new

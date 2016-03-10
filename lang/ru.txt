@@ -305,6 +305,7 @@ Convert=>Пересоздать
 Import=>Загрузить
 Export=>Выгрузить
 Choose a file=>Выберите файл
+Save to file=>Сохранить в файл
 Pictures=>Картинки
 Sounds=>Звуки
 All files=>Все файлы
