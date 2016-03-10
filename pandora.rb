@@ -1185,6 +1185,17 @@ module PandoraUtils
     res
   end
 
+  # Change file extention
+  # RU: Сменить расширение файла
+  def self.create_path(fn)
+    dir = File.dirname(fn)
+    if not File.directory?(dir)
+      FileUtils.mkdir_p(dir)
+      unix = (PandoraUtils.os_family != 'windows')
+      File.chmod(0777, dir) if unix
+    end
+  end
+
   # Detect file type
   # RU: Определить тип файла
   def self.detect_file_type(file_name)
@@ -1202,8 +1213,28 @@ module PandoraUtils
 
   # Get path on needed depth
   # RU: Вернуть путь на нужной глубине
-  def self.get_path_on_depth(filename, trans_depth=nil)
-    i = filename.rindex(File::SEPARATOR)
+  def self.basename_path_depth(filename, depth=nil)
+    res = File.basename(filename)
+    path = File.dirname(filename)
+    if (depth.is_a? Integer)
+      sep = File::SEPARATOR
+      while (depth>0) and path and (path.size>0)
+        if path[-1]==sep
+          path = path[0..-2]
+        else
+          i = path.rindex(sep)
+          if i
+            res = File.join(path[i+1..-1], res)
+            path = path[0..i-1]
+          else
+            res = File.join(path, res)
+            path = nil
+          end
+          depth -= 1
+        end
+      end
+    end
+    res
   end
 
   # Absolute file path
@@ -1215,14 +1246,14 @@ module PandoraUtils
         res = File.join($pandora_files_dir, res[1..-1])
       elsif (res[0]=='[')
         i = res.index(']')
-        if i and (i>4)
+        if i and (i>3) and (i<7)
           func = res[1..i-1]
           path = nil
           case func
             when 'files'
               path = $pandora_files_dir
-            when 'root'
-              path = $pandora_root_dir
+            when 'app'
+              path = $pandora_app_dir
             when 'lang'
               path = $pandora_lang_dir
             when 'view'
@@ -1242,9 +1273,11 @@ module PandoraUtils
             end
           end
         end
-      elsif trans_depth
+      else
         res = File.expand_path(res, $pandora_files_dir)
-        res = File.join($pandora_files_dir, File.basename(res))
+        if trans_depth
+          res = File.join($pandora_files_dir, basename_path_depth(res, trans_depth))
+        end
       end
     end
     res
@@ -1278,9 +1311,9 @@ module PandoraUtils
             unless change_path.call($pandora_base_dir, 'base')
               unless change_path.call($pandora_util_dir, 'util')
                 unless change_path.call($pandora_model_dir, 'model')
-                  unless change_path.call($pandora_root_dir, 'root')
+                  unless change_path.call($pandora_app_dir, 'app')
                     if trans_depth
-                      filename = File.join('.', File.basename(filename))
+                      filename = File.join('.', basename_path_depth(filename, trans_depth))
                     end
                   end
                 end
@@ -3340,6 +3373,7 @@ module PandoraModel
   end
 
   $keep_for_trust  = 0.5
+  $max_relative_path_depth = 2
 
   # Save record
   # RU: Сохранить запись
@@ -3363,7 +3397,47 @@ module PandoraModel
       elsif kind==PK_Blob
         sha1 = values['sha1']
         sha1 ||= values[:sha1]
-        harvest_blob = $window.pool.harvest_blob?(sha1, models) if sha1
+        fn = values['blob']
+        str_blob = nil
+        if fn
+          str_blob = true
+        else
+          fn = values[:blob]
+          str_blob = false if fn
+        end
+        p '--- save_record1  fn='+fn.inspect
+        if (not str_blob.nil?) and (fn.is_a? String) and (fn.size>1) and (fn[0]=='@')
+          p '--- save_record2  fn='+fn.inspect
+          fn = PandoraUtils.absolute_path(fn[1..-1])
+          fn = '@'+PandoraUtils.relative_path(fn, $max_relative_path_depth)
+          p '--- save_record3  fn='+fn.inspect
+          if str_blob
+            values['blob'] = fn
+          else
+            values[:blob] = fn
+          end
+        end
+
+        # ! Здесь надо увязать куски выше и ниже:
+        # ! если файл уже есть, то переопределить поле 'blob'
+        # ! при этом отследить совпадение sha1
+
+        if sha1
+          fn_fs = $window.pool.blob_exists?(sha1, models, true)
+          if fn_fs
+            fn, fs = fn_fs
+            harvest_blob = (not File.exist?(fn))
+          else
+            harvest_blob = true
+          end
+
+          if harvest_blob
+            reqs = $window.pool.find_search_request(sha1, PandoraModel::PK_BlobBody)
+            unless (reqs.is_a? Array) and (reqs.size>0)
+              harvest_blob = sha1
+            end
+          end
+        end
       end
       sel = model.select(filter, true, nil, nil, 1)
       if sel and (sel.size>0)
@@ -3413,6 +3487,9 @@ module PandoraModel
         else
           PandoraUtils.log_message(LM_Warning, _('Cannot record')+' '+str)
         end
+      end
+      if (harvest_blob.is_a? String)
+        reqs = $window.pool.add_search_request(harvest_blob, PandoraModel::PK_BlobBody)
       end
     else
       PandoraUtils.log_message(LM_Warning, _('Non-equal panhashes ')+' '+ \
@@ -5495,44 +5572,31 @@ module PandoraNet
     # RU: Проверяет целый файл на существование
     def blob_exists?(sha1, models=nil, need_fn=nil)
       res = nil
+      p 'blob_exists1   sha1='+sha1.inspect
       if (sha1.is_a? String) and (sha1.bytesize>0)
         model = PandoraUtils.get_model('Blob', models)
         if model
-          filter = ['sha1=? AND IFNULL(panstate,0)&?=0', sha1, PandoraModel::PSF_Harvest]
+          mask = 0
+          mask = PandoraModel::PSF_Harvest if (not need_fn)
+          filter = ['sha1=? AND IFNULL(panstate,0)&?=0', sha1, mask]
           flds = 'id'
-          flds << ', blob' if need_fn
+          flds << ', blob, size' if need_fn
           sel = model.select(filter, false, flds, nil, 1)
-          p 'blob_exists   sel='+sel.inspect
+          p 'blob_exists2   sel='+sel.inspect
           res = (sel and (sel.size>0))
           if res and need_fn
             fn = sel[0][1]
+            fs = sel[0][2]
             if (fn.is_a? String) and (fn.size>1) and (fn[0]=='@')
               fn = fn[1..-1]
+              fn = PandoraUtils.absolute_path(fn)
               if (fn.is_a? String) and (fn.size>0)
-                fs = File.size?(fn)
+                fs_real = File.size?(fn)
+                fs ||= fs_real
                 res = [fn, fs] if fs
               end
             end
           end
-        end
-      end
-      res
-    end
-
-    # Check blob and, if it does not exist, init harvest
-    # RU: Проверить блоб и, если он не существует, зарегать запрос
-    def harvest_blob?(sha1, models=nil)
-      res = nil
-      if blob_exists?(sha1, models)
-        res = false
-      else
-        reqs = find_search_request(sha1, PandoraModel::PK_BlobBody)
-        if (reqs.is_a? Array) and (reqs.size>0)
-          res = true  #file is harvesting now
-        else
-          reqs = add_search_request(sha1, PandoraModel::PK_BlobBody)
-          #$window.set_status_field(PandoraGtk::SF_Harvest, @harvest_blobs.size.to_s)
-          res = true  #file is starting to harvest
         end
       end
       res
@@ -5621,6 +5685,7 @@ module PandoraNet
           fragfile = File.open(frag_fn, 'rb+')
           p "fragfile = File.open(frag_fn, 'rb+')"
         elsif not filename_ex
+          PandoraUtils.create_path(frag_fn)
           fragfile = File.new(frag_fn, 'wb+')
           p "fragfile = File.new(frag_fn, 'wb+')"
         end
@@ -5657,6 +5722,7 @@ module PandoraNet
             datafile = File.open(filename, 'rb')
           end
         else
+          PandoraUtils.create_path(filename)
           datafile = File.new(filename, 'wb+')
         end
         punnet[PI_FileName] = filename
@@ -8013,7 +8079,11 @@ module PandoraNet
                     if kind==PandoraModel::PK_BlobBody
                       PandoraUtils.log_message(LM_Trace, _('Answer: blob is found'))
                       sha1 = request
-                      fn, fsize = answ
+                      fn_fsize = pool.blob_exists?(sha1, @send_models, true)
+                      fn, fsize = fn_fsize if fn_fsize
+                      fn ||= answ[0]
+                      fsize ||= answ[1]
+                      fn = PandoraUtils.absolute_path(fn)
                       punnet = pool.init_punnet(sha1, fsize, fn)
                       if punnet and punnet[PI_FragsFile] and (not pool.frags_complite?(punnet))
                         frag_ind = pool.hold_next_frag(punnet)
@@ -10596,7 +10666,7 @@ module PandoraGtk
       @window = parent
       @button.signal_connect('clicked') do |*args|
         @entry.grab_focus
-        fn = @entry.text
+        fn = PandoraUtils.absolute_path(@entry.text)
 
         dialog = GoodFileChooserDialog.new(fn, true, nil, @window)
 
@@ -10615,7 +10685,7 @@ module PandoraGtk
         dialog.add_filter(filter)
 
         if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
-          @entry.text = dialog.filename
+          @entry.text = PandoraUtils.relative_path(dialog.filename)
           yield(@entry.text, @entry, @button) if block_given?
         end
         dialog.destroy if not dialog.destroyed?
@@ -12303,6 +12373,7 @@ module PandoraGtk
             if field
               link_name = field[FI_Widget].text
               link_name.chomp! if link_name
+              link_name = PandoraUtils.absolute_path(link_name)
               bodywid = field[FI_Widget2]
               if (not bodywid) or (link_name != bodywin.link_name)
                 @last_sw = child
@@ -15638,7 +15709,7 @@ module PandoraGtk
         sleep($update_interval) if not Thread.current[:all_step]
         $window.set_status_field(SF_Update, 'Checking')
 
-        main_script = File.join($pandora_root_dir, 'pandora.rb')
+        main_script = File.join($pandora_app_dir, 'pandora.rb')
         curr_size = File.size?(main_script)
         if curr_size
           if File.stat(main_script).writable?
@@ -15724,9 +15795,9 @@ module PandoraGtk
                               end
                               if unzip_path and Dir.exist?(unzip_path)
                                 begin
-                                  p 'Copy '+unzip_path+' to '+$pandora_root_dir
-                                  #FileUtils.copy_entry(unzip_path, $pandora_root_dir, true)
-                                  FileUtils.cp_r(unzip_path+'/.', $pandora_root_dir)
+                                  p 'Copy '+unzip_path+' to '+$pandora_app_dir
+                                  #FileUtils.copy_entry(unzip_path, $pandora_app_dir, true)
+                                  FileUtils.cp_r(unzip_path+'/.', $pandora_app_dir)
                                   PandoraUtils.log_message(LM_Info, _('Files are updated'))
                                 rescue => err
                                   res = false
@@ -15774,7 +15845,7 @@ module PandoraGtk
                     downloaded = update_file(http, main_uri.path, main_script, main_uri.host)
                     # updating other files
                     UPD_FileList.each do |fn|
-                      pfn = File.join($pandora_root_dir, fn)
+                      pfn = File.join($pandora_app_dir, fn)
                       if File.exist?(pfn) and (not File.stat(pfn).writable?)
                         downloaded = false
                         PandoraUtils.log_message(LM_Warning, \
@@ -16041,6 +16112,7 @@ module PandoraGtk
           # fill hash of values
           flds_hash = {}
           file_way = nil
+          file_way_exist = nil
           dialog.fields.each do |field|
             type = field[FI_Type]
             view = field[FI_View]
@@ -16053,23 +16125,34 @@ module PandoraGtk
               view = ps['view']
               view ||= PandoraUtils.pantype_to_view(par_type)
             elsif file_way
+              p 'file_way2='+file_way.inspect
               if (field[FI_Id]=='type')
                 val = PandoraUtils.detect_file_type(file_way) if (not val) or (val.size==0)
               elsif (field[FI_Id]=='sha1')
-                sha1 = Digest::SHA1.file(file_way)
-                val = sha1.hexdigest
+                if file_way_exist
+                  sha1 = Digest::SHA1.file(file_way)
+                  val = sha1.hexdigest
+                else
+                  val = nil
+                end
               elsif (field[FI_Id]=='md5')
-                md5 = Digest::MD5.file(file_way)
-                val = md5.hexdigest
+                if file_way_exist
+                  md5 = Digest::MD5.file(file_way)
+                  val = md5.hexdigest
+                else
+                  val = nil
+                end
               elsif (field[FI_Id]=='size')
-                val = File.size(file_way)
+                val = File.size?(file_way)
               end
             end
             p 'fld, val, type, view='+[field[FI_Id], val, type, view].inspect
             val = PandoraUtils.view_to_val(val, type, view)
             if (view=='blob') or (view=='text')
               if val and (val != '')
-                file_way = val
+                file_way = PandoraUtils.absolute_path(val)
+                file_way_exist = File.exist?(file_way)
+                p 'file_way1='+file_way.inspect
                 val = '@'+val
               end
             end
@@ -16916,7 +16999,7 @@ module PandoraGtk
     dlg.comments = _('P2P folk network')
     dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
     begin
-      file = File.open(File.join($pandora_root_dir, 'LICENSE.TXT'), 'r')
+      file = File.open(File.join($pandora_app_dir, 'LICENSE.TXT'), 'r')
       gpl_text = '================='+_('Full text')+" LICENSE.TXT==================\n"+file.read
       file.close
     rescue
@@ -18142,10 +18225,11 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
-          fn = '/mnt/data/Галюк М.М./Картинки/Iron/robux.png'
-          rel = PandoraUtils.relative_path(fn, 2)
-          abs = PandoraUtils.absolute_path(rel, 1)
-          p '[fn, rel, abs]='+[fn, rel, abs].inspect
+          fn = '/mnt/data/Media/Картинки/Robux/robux.png'
+          dep = PandoraUtils.basename_path_depth(fn, 2)
+          rel = PandoraUtils.relative_path(fn, 1)
+          abs = PandoraUtils.absolute_path(rel, 2)
+          p '[fn, dep, rel, abs]='+[fn, dep, rel, abs].inspect
 
           return
 
@@ -18588,6 +18672,7 @@ module PandoraGtk
                   sha1 = search_req[PandoraNet::SR_Request]
                   fn_fs = $window.pool.blob_exists?(sha1, @shed_models, true)
                   if fn_fs
+                    fn_fs[0] = PandoraUtils.relative_path(fn_fs[0])
                     answ = fn_fs
                   end
                 else
@@ -19061,14 +19146,14 @@ $pandora_parameters = []
 
 # Paths and files
 # RU: Пути и файлы
-$pandora_root_dir = Dir.pwd                                     # Current directory
-$pandora_base_dir = File.join($pandora_root_dir, 'base')        # Database directory
-$pandora_view_dir = File.join($pandora_root_dir, 'view')        # Media files directory
-$pandora_model_dir = File.join($pandora_root_dir, 'model')      # Model directory
-$pandora_lang_dir = File.join($pandora_root_dir, 'lang')        # Languages directory
-$pandora_util_dir = File.join($pandora_root_dir, 'util')        # Utilites directory
+$pandora_app_dir = Dir.pwd                                     # Current directory
+$pandora_base_dir = File.join($pandora_app_dir, 'base')        # Database directory
+$pandora_view_dir = File.join($pandora_app_dir, 'view')        # Media files directory
+$pandora_model_dir = File.join($pandora_app_dir, 'model')      # Model directory
+$pandora_lang_dir = File.join($pandora_app_dir, 'lang')        # Languages directory
+$pandora_util_dir = File.join($pandora_app_dir, 'util')        # Utilites directory
 $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
-$pandora_files_dir = File.join($pandora_root_dir, 'files')      # Files directory
+$pandora_files_dir = File.join($pandora_app_dir, 'files')      # Files directory
 
 # Expand the arguments of command line
 # RU: Разобрать аргументы командной строки
