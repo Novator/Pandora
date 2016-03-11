@@ -8306,6 +8306,9 @@ module PandoraNet
     # Number of search requests per cicle
     # RU: Число поисковых запросов за цикл
     $search_block_count = 2
+    # Search request live time (sec)
+    # RU: Время жизни поискового запроса
+    $search_live_time = 10*60
     # Number of fragment requests per cicle
     # RU: Число запросов фрагментов за цикл
     $frag_block_count = 2
@@ -18621,9 +18624,10 @@ module PandoraGtk
     CheckBaseStep   = 10     #10 sec
     # Size of bundle processed at one cycle
     # RU: Размер пачки, обрабатываемой за цикл
-    HuntTrain       = 10     #10 nodes at a heat
-    BaseGarbTrain   = 3      #3 records at a heat
-    SearchTrain     = 3      #3 request at a heat
+    HuntTrain         = 10     #nodes at a heat
+    BaseGarbTrain     = 3      #records at a heat
+    SearchTrain       = 3      #request at a heat
+    SearchGarbTrain   = 30     #request at a heat
 
     # Initialize scheduler (tasks, hunter, base gabager, mem gabager)
     # RU: Инициировать планировщик (задачи, охотник, мусорщики баз и памяти)
@@ -18644,6 +18648,7 @@ module PandoraGtk
         @task_list = nil
         @task_dialog = nil
         @hunt_node_id = nil
+        @search_garb_ind = 0
         @base_garb_mode = :arch
         @base_garb_model = nil
         @base_garb_kind = 0
@@ -18817,6 +18822,26 @@ module PandoraGtk
                 processed = 0
               end
               pool.found_ind += 1
+            end
+
+            # Search garbager
+            cur_time = Time.now.to_i
+            processed = SearchGarbTrain
+            while (processed > 0)
+              if (@search_garb_ind < pool.search_requests.size)
+                search_req = pool.search_requests[@search_garb_ind]
+                if search_req
+                  time = search_req[PandoraNet::SR_Time]
+                  if (not time.is_a? Integer) or (time+$search_live_time<cur_time)
+                    pool.search_requests[@search_garb_ind] = nil
+                  end
+                end
+                @search_garb_ind += 1
+                processed -= 1
+              else
+                @search_garb_ind = 0
+                processed = 0
+              end
             end
 
             # Base garbager
