@@ -1240,7 +1240,7 @@ module PandoraUtils
   # Absolute file path
   # RU: Абсолютный путь файла
   def self.absolute_path(filename, trans_depth=nil)
-    res = filename
+    res = Utf8String.new(filename)
     if (res.is_a? String) and (res.size>0)
       if (res[0]=='.')
         res = File.join($pandora_files_dir, res[1..-1])
@@ -1291,8 +1291,8 @@ module PandoraUtils
       res = false
       prefix = filename[0, way.size]
       if os_family=='windows'
-        prefix.upper!
-        way = way.upper
+        prefix.upcase!
+        way = way.upcase
       end
       if way==prefix
         func = '['+func+']' if func.size>1
@@ -5604,6 +5604,11 @@ module PandoraNet
       res
     end
 
+    # Check interrupted file downloads and start again
+    # RU: Проверить прерванные загрузки файлов и запустить снова
+    def resume_harvest
+    end
+
     $fragment_size = 1024
 
     # Are all fragments assembled?
@@ -5667,6 +5672,7 @@ module PandoraNet
             filename = sha1_fn+'.dat'
           end
         end
+        filename = Utf8String.new(filename)
         p 'filename='+filename.inspect
 
         frag_fn = PandoraUtils.change_file_ext(filename, 'frs')
@@ -8089,7 +8095,7 @@ module PandoraNet
                       punnet = pool.init_punnet(sha1, fsize, fn)
                       if punnet and punnet[PI_FragsFile] and (not pool.frags_complite?(punnet))
                         frag_ind = pool.hold_next_frag(punnet)
-                        p log_mes+'--[frag_ind,punnet]='+[frag_ind, punnet].inspect
+                        p log_mes+'--[frag_ind]='+[frag_ind].inspect
                         if frag_ind
                           @scmd = EC_Query
                           @scode = ECC_Query_Fragment
@@ -10919,8 +10925,10 @@ module PandoraGtk
     res = nil
     p 'start_image_loading  filename='+filename.inspect
     begin
+      filename = PandoraUtils.absolute_path(filename)
       file_stream = File.open(filename, 'rb')
       res = Gtk::Image.new unless pixbuf_parent
+      sleep(0.01)
       Thread.new do
         pixbuf_loader = Gdk::PixbufLoader.new
         pixbuf_loader.signal_connect('area_prepared') do |loader|
@@ -10941,14 +10949,21 @@ module PandoraGtk
         end
         while file_stream
           buf = file_stream.read(ReadImagePortionSize)
-          pixbuf_loader.write(buf)
-          if file_stream.eof?
-            file_stream.close
-            file_stream = nil
+          if buf
+            pixbuf_loader.write(buf)
+            if file_stream.eof?
+              pixbuf_loader.close
+              pixbuf_loader = nil
+              file_stream.close
+              file_stream = nil
+            end
+            sleep(0.005)
+          else
             pixbuf_loader.close
             pixbuf_loader = nil
+            file_stream.close
+            file_stream = nil
           end
-          sleep(0.005)
         end
       end
       while pixbuf_parent and (not res)
