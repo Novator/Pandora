@@ -9006,7 +9006,7 @@ module PandoraNet
               and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
               and (processed<$search_block_count) \
               and (@search_ind <= pool.search_ind) \
-              and (questioner_step==QS_Finished)
+              and (questioner_step>QS_ResetMessage)
                 search_req = pool.search_requests[@search_ind]
                 p '++++pool.search_requests[size, @search_ind, obj_id]='+[pool.search_requests.size, @search_ind, \
                   search_req.object_id].inspect
