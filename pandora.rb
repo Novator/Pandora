@@ -3424,6 +3424,7 @@ module PandoraModel
 
         if sha1
           fn_fs = $window.pool.blob_exists?(sha1, models, true)
+          p '--- save_record4  fn='+fn.inspect
           if fn_fs
             fn, fs = fn_fs
             harvest_blob = (not File.exist?(fn))
@@ -3488,6 +3489,7 @@ module PandoraModel
           PandoraUtils.log_message(LM_Warning, _('Cannot record')+' '+str)
         end
       end
+      p '--save_rec5   harvest_blob='+harvest_blob.inspect
       if (harvest_blob.is_a? String)
         reqs = $window.pool.add_search_request(harvest_blob, PandoraModel::PK_BlobBody)
       end
@@ -16404,6 +16406,11 @@ module PandoraGtk
     # Create new instance
     # RU: Создать новый экземпляр
     def initialize(a_filters, hbox, pbox)
+
+      def no_filter_frase
+        res = '<'+_('filter')+'>'
+      end
+
       super()
       @filters = a_filters
 
@@ -16425,7 +16432,7 @@ module PandoraGtk
       #  title = df[FI_VFName]
 
       fields = Array.new
-      fields << '<no filter>'
+      fields << no_filter_frase
       fields.concat(tab_flds.collect{|tf| tf[0]})
       @field_com = Gtk::Combo.new
       field_com.set_popdown_strings(fields)
@@ -16433,10 +16440,10 @@ module PandoraGtk
 
       field_com.entry.signal_connect('changed') do |entry|
         if filter_box.children.size>1
-          if (entry.text == '<no filter>') or (entry.text == '')
+          if (entry.text == no_filter_frase) or (entry.text == '')
             delete
           end
-        elsif (entry.text != '<no filter>') and (entry.text != '')
+        elsif (entry.text != no_filter_frase) and (entry.text != '')
           @oper_com = Gtk::Combo.new
           oper_com.set_popdown_strings(['=','==','<>','>','<'])
           oper_com.set_size_request(56, -1)
@@ -16467,6 +16474,9 @@ module PandoraGtk
       hbox.pack_start(filter_box, false, true, 0)
 
       @filters << filter_box
+
+      p '@filters='+@filters.inspect
+
       filter_box
     end
   end
