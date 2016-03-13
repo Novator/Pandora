@@ -2944,7 +2944,8 @@ module PandoraUtils
     if drawing.is_a? Gdk::Pixmap
       pixbuf = Gdk::Pixbuf.from_drawable(nil, drawing, 0, 0, width, height)
     else
-      pixbuf = Gdk::Pixbuf.new(drawing.data, Gdk::Pixbuf::COLORSPACE_RGB, true, 8, width, height, width*4)
+      pixbuf = Gdk::Pixbuf.new(drawing.data, Gdk::Pixbuf::COLORSPACE_RGB, true, \
+        8, width, height, width*4)
     end
     buf = pixbuf.save_to_buffer('jpeg')
     [text, buf]
@@ -4907,9 +4908,11 @@ module PandoraCrypto
               PandoraUtils.set_param('last_auth_key', last_auth_key)
             end
           else
-            dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
+            dialog = Gtk::MessageDialog.new($window, \
+              Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
               Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-              _('Cannot activate key. Try again?')+"\n[" +PandoraUtils.bytes_to_hex(last_auth_key[2,16])+']')
+              _('Cannot activate key. Try again?')+\
+              "\n[" +PandoraUtils.bytes_to_hex(last_auth_key[2,16])+']')
             dialog.title = _('Key init')
             dialog.default_response = Gtk::Dialog::RESPONSE_OK
             dialog.icon = $window.icon
@@ -11127,9 +11130,10 @@ module PandoraGtk
         if event_win and left_win and (event_win == left_win)
           type = Gtk::TextView::WINDOW_LEFT
           target = left_win
-        end
-        if type
-          unless tv.parent.parent.view_mode
+          sw = tv.scrollwin
+          view_mode = true
+          view_mode = sw.view_mode if sw
+          unless view_mode
             first_y = event.area.y
             last_y = first_y + event.area.height
             x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
@@ -11138,11 +11142,11 @@ module PandoraGtk
             pixels = []
             count = get_lines(tv, first_y, last_y, pixels, numbers)
             # Draw fully internationalized numbers!
-            layout = widget.create_pango_layout("")
+            layout = widget.create_pango_layout('')
             count.times do |i|
               x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
               str = numbers[i].to_s
-              layout.set_text(str)
+              layout.text = str
               widget.style.paint_layout(target, widget.state, false,
                 nil, widget, nil, 2, pos + 2, layout)
             end
@@ -11157,7 +11161,8 @@ module PandoraGtk
           # we shouldn't follow a link if the user has selected something
           range = buffer.selection_bounds
           if range and (range[0].offset == range[1].offset)
-            x, y = text_view.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, event.x, event.y)
+            x, y = text_view.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, \
+              event.x, event.y)
             iter = text_view.get_iter_at_location(x, y)
             follow_if_link(text_view, iter)
           end
@@ -11166,7 +11171,8 @@ module PandoraGtk
       end
 
       signal_connect('motion-notify-event') do |text_view, event|
-        x, y = text_view.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, event.x, event.y)
+        x, y = text_view.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, \
+          event.x, event.y)
         set_cursor_if_appropriate(text_view, x, y)
         text_view.window.pointer
         false
@@ -11178,6 +11184,12 @@ module PandoraGtk
         set_cursor_if_appropriate(text_view, bx, by)
         false
       end
+    end
+
+    def scrollwin
+      res = self.parent
+      res = res.parent if not res.is_a? Gtk::ScrolledWindow
+      res
     end
 
     def set_cursor_if_appropriate(text_view, x, y)
@@ -11224,13 +11236,15 @@ module PandoraGtk
       iter, top = tv.get_line_at_y(first_y)
       # For each iter, get its location and add it to the arrays.
       # Stop when we pass last_y
+      line = iter.line
       count = 0
       size = 0
-      while not iter.end?
+      while (line < tv.buffer.line_count)
+        #iter = tv.buffer.get_iter_at_line(line)
         y, height = tv.get_line_yrange(iter)
         buffer_coords << y
-        line_num = iter.line+1
-        numbers << line_num
+        line += 1
+        numbers << line
         count += 1
         break if (y + height) >= last_y
         iter.forward_line
@@ -11334,7 +11348,21 @@ module PandoraGtk
             iter = buf.get_iter_at_mark(mark)
             line1 = iter.line
             set_tags(buf, line1, line1, true)
-            p '====changed!!!!!!!!!!!!!!'
+            #p '====changed!!!!!!!!!!!!!!'
+
+            #tv = self.text_view
+            #if line1==buf.line_count-1
+            #  adj = self.vadjustment
+            #  adj.value = adj.upper - adj.page_size
+            #end
+
+            #tv.scroll_mark_onscreen(mark)
+            #tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0) if tv
+            #tv.scroll_to_mark(mark, 0.0, true, 0.0, 1.0)
+
+            #x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
+            #y, height = tv.get_line_yrange(iter)
+
             false
           end
 
@@ -12353,6 +12381,168 @@ module PandoraGtk
 
     SexList = [[1, _('man')], [0, _('woman')], [2, _('gay')], [3, _('trans')], [4, _('lesbo')]]
 
+
+    Data = Struct.new(:font_size, :lines_per_page, :lines, :n_pages)
+    HEADER_HEIGHT = 10 * 72 / 25.4
+    HEADER_GAP = 3 * 72 / 25.4
+
+    def run_print_operation(preview=false)
+      begin
+        operation = Gtk::PrintOperation.new
+
+        operation.use_full_page = false
+        operation.unit = Gtk::PaperSize::UNIT_POINTS
+        #page_setup = Gtk::PageSetup.new
+        #paper_size = Gtk::PaperSize.new(Gtk::PaperSize.default)
+        #page_setup.paper_size_and_default_margins = paper_size
+        #operation.default_page_setup = page_setup
+        operation.show_progress = true
+        data = Data.new
+        data.font_size = 12.0
+
+        operation.signal_connect('begin-print') do |_operation, context|
+          on_begin_print(_operation, context, data)
+        end
+        operation.signal_connect('draw-page') do |_operation, context, page_number|
+          on_draw_page(_operation, context, page_number, data)
+        end
+        if preview
+          operation.run(Gtk::PrintOperation::ACTION_PREVIEW, $window)
+        else
+          operation.run(Gtk::PrintOperation::ACTION_PRINT_DIALOG, $window)
+        end
+      rescue
+        errdlg = Gtk::MessageDialog.new($window,
+          Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
+          Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
+          $!.message)
+          errdlg.title = _('Note')
+          errdlg.default_response = Gtk::Dialog::RESPONSE_OK
+          errdlg.icon = $window.icon
+        errdlg.signal_connect('response') do
+          errdlg.destroy
+          true
+        end
+        errdlg.show
+      end
+    end
+
+    def on_begin_print(operation, context, data)
+      height = context.height - HEADER_HEIGHT - HEADER_GAP
+      data.lines_per_page = (height / data.font_size).floor
+      p '[context.height, height, HEADER_HEIGHT, HEADER_GAP, data.lines_per_page]='+\
+        [context.height, height, HEADER_HEIGHT, HEADER_GAP, data.lines_per_page].inspect
+      bw = get_bodywin
+      data.lines = bw.text_view.buffer
+      data.n_pages = (data.lines.line_count - 1) / data.lines_per_page + 1
+      operation.set_n_pages(data.n_pages)
+    end
+
+    def on_draw_page(operation, context, page_number, data)
+      cr = context.cairo_context
+      draw_header(cr, operation, context, page_number, data)
+      draw_body(cr, operation, context, page_number, data)
+    end
+
+    def draw_header(cr, operation, context, page_number, data)
+      width = context.width
+      cr.rectangle(0, 0, width, HEADER_HEIGHT)
+      cr.set_source_rgb(0.8, 0.8, 0.8)
+      cr.fill_preserve
+      cr.set_source_rgb(0, 0, 0)
+      cr.line_width = 1
+      cr.stroke
+      layout = context.create_pango_layout
+      layout.font_description = 'sans 14'
+      layout.text = 'Pandora Print'
+      text_width, text_height = layout.pixel_size
+      if (text_width > width)
+        layout.width = width
+        layout.ellipsize = :start
+        text_width, text_height = layout.pixel_size
+      end
+      y = (HEADER_HEIGHT - text_height) / 2
+      cr.move_to((width - text_width) / 2, y)
+      cr.show_pango_layout(layout)
+      layout.text = "#{page_number + 1}/#{data.n_pages}"
+      layout.width = -1
+      text_width, text_height = layout.pixel_size
+      cr.move_to(width - text_width - 4, y)
+      cr.show_pango_layout(layout)
+    end
+
+    def draw_body(cr, operation, context, page_number, data)
+      bw = get_bodywin
+      if bw.view_mode
+        #overlay = Gtk::Overlay.new
+        #win = Gtk::OffscreenWindow.new
+        #btn = Gtk::Button.new('Hello World')
+        #win = Gtk::Window.new(Gtk::Window::TOPLEVEL)
+        #win.set_default_size(500, 400)
+        #win.add(btn)
+        #btn.show_all
+        #win.show_all
+
+        #dst = Cairo::ImageSurface.new(Cairo::FORMAT_ARGB32, 400, 300)
+        #ctx = Cairo::Context.new(dst)
+        #surface = Gdk.cairo_create(win.window()).get_target()  # here
+        #ctx.set_source_surface(surface)
+        #cr.set_source_surface(dst)
+        #ctx.paint()
+        #dst.write_to_png('xx.png')
+        #btn.draw(cr)
+
+        tv = bw.text_view
+        cm = Gdk::Colormap.system
+        width = context.width
+        height = context.height
+        min_width = width
+        min_width = tv.allocation.width if tv.allocation.width < min_width
+        min_height = height - (HEADER_HEIGHT + HEADER_GAP)
+        min_height = tv.allocation.height if tv.allocation.height < min_height
+
+        pixbuf = Gdk::Pixbuf.from_drawable(cm, tv.window, 54, 0, min_width, \
+          min_height)
+
+        cr.set_source_color(Gdk::Color.new(65535, 65535, 65535))
+        cr.gdk_rectangle(Gdk::Rectangle.new(0, HEADER_HEIGHT + HEADER_GAP, \
+          context.width, height - (HEADER_HEIGHT + HEADER_GAP)))
+        cr.fill
+
+        cr.set_source_pixbuf(pixbuf, 0, HEADER_HEIGHT + HEADER_GAP)
+        cr.paint
+      else
+        layout = context.create_pango_layout
+        description = Pango::FontDescription.new('monosapce')
+        description.size = data.font_size * Pango::SCALE
+        layout.font_description = description
+
+        cr.move_to(0, HEADER_HEIGHT + HEADER_GAP)
+        buf = data.lines
+        start_line = page_number * data.lines_per_page
+        line = start_line
+        iter1 = buf.get_iter_at_line(line)
+        iterN = nil
+        buf.begin_user_action do
+          while (line<buf.line_count) and (line<start_line+data.lines_per_page)
+            line += 1
+            if line < buf.line_count
+              iterN = buf.get_iter_at_line(line)
+              iter2 = buf.get_iter_at_offset(iterN.offset-1)
+            else
+              iter2 = buf.end_iter
+            end
+            text = buf.get_text(iter1, iter2)
+            text = (line.to_s+':').ljust(6, ' ')+text.to_s
+            layout.text = text
+            cr.show_pango_layout(layout)
+            cr.rel_move_to(0, data.font_size)
+            iter1 = iterN
+          end
+        end
+      end
+    end
+
     # Create fields dialog
     # RU: Создать форму с полями
     def initialize(apanobject, afields=[], *args)
@@ -12373,10 +12563,10 @@ module PandoraGtk
       toolbar2.toolbar_style = Gtk::Toolbar::Style::ICONS
       panelbox.pack_start(toolbar2, false, false, 0)
 
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Preview', true) do |btn|
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::EDIT, 'Edit', false) do |btn|
         bw = get_bodywin
         if bw
-          bw.view_mode = btn.active?
+          bw.view_mode = (not btn.active?)
           p 'Type  @view_mode='+bw.view_mode.inspect
           bw.set_buffers
         end
@@ -12446,6 +12636,16 @@ module PandoraGtk
         set_tag('link')
       end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::HOME, 'Image')
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Preview') do |btn|
+        run_print_operation(true)
+        true
+      end
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT, 'Print') do |btn|
+        run_print_operation
+        true
+      end
+
+
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
 
@@ -12523,8 +12723,14 @@ module PandoraGtk
 
                 if not field[FI_Widget2]
                   field[FI_Widget2] = bodywid
-                  bodywin.add_with_viewport(bodywid)
-                  #bodywin.add(bodywid)
+                  begin
+                    bodywin.add(bodywid)
+                  rescue Exception
+                    bodywin.add_with_viewport(bodywid)
+                  end
+                  #viewport = Gtk::Viewport.new(nil, nil)
+                  #bodywin.add(viewport)
+                  #viewport.add(bodywid)
                   #format_btn.label
                   type_fld = @fields.detect{ |f| (f[FI_Id].to_s == 'type') }
                   if type_fld.is_a? Array
@@ -16070,9 +16276,9 @@ module PandoraGtk
       if action=='Delete'
         if id and sel[0]
           info = panobject.show_panhash(panhash0) #.force_encoding('ASCII-8BIT') ASCII-8BIT
-          dialog = Gtk::MessageDialog.new($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
-            Gtk::MessageDialog::QUESTION,
-            Gtk::MessageDialog::BUTTONS_OK_CANCEL,
+          dialog = Gtk::MessageDialog.new($window, \
+            Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
+            Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL,
             _('Record will be deleted. Sure?')+"\n["+info+']')
           dialog.title = _('Deletion')+': '+panobject.sname
           dialog.default_response = Gtk::Dialog::RESPONSE_OK
@@ -18619,9 +18825,10 @@ module PandoraGtk
 
     # Scheduler parameters (sec)
     # RU: Параметры планировщика (сек)
-    CheckTaskPeriod = 1*60   #5 min
-    CheckBasePeriod = 60*60  #60 min
-    CheckBaseStep   = 10     #10 sec
+    CheckTaskPeriod  = 1*60   #5 min
+    CheckBasePeriod  = 60*60  #60 min
+    CheckBaseStep    = 10     #10 sec
+    SearchGarbStep   = 30     #10 sec
     # Size of bundle processed at one cycle
     # RU: Размер пачки, обрабатываемой за цикл
     HuntTrain         = 10     #nodes at a heat
@@ -18648,6 +18855,7 @@ module PandoraGtk
         @task_list = nil
         @task_dialog = nil
         @hunt_node_id = nil
+        @search_garb_offset = 0.0
         @search_garb_ind = 0
         @base_garb_mode = :arch
         @base_garb_model = nil
@@ -18775,74 +18983,81 @@ module PandoraGtk
             end
 
             # Search spider
-            processed = SearchTrain
-            while (pool.found_ind <= pool.search_ind) and (processed > 0)
-              search_req = pool.search_requests[pool.found_ind]
-              p '####  Spider  [size, @found_ind, obj_id]='+[pool.search_requests.size, pool.found_ind, \
-                search_req.object_id].inspect
-              if search_req and (not search_req[PandoraNet::SR_Answer])
-                req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
-                p 'search_req3='+req.inspect
-                answ = nil
-                if search_req[PandoraNet::SR_Kind]==PandoraModel::PK_BlobBody
-                  sha1 = search_req[PandoraNet::SR_Request]
-                  fn_fs = $window.pool.blob_exists?(sha1, @shed_models, true)
-                  if fn_fs.is_a? Array
-                    fn_fs[0] = PandoraUtils.relative_path(fn_fs[0])
-                    answ = fn_fs
+            if (pool.found_ind <= pool.search_ind)
+              processed = SearchTrain
+              while (processed > 0) and (pool.found_ind <= pool.search_ind)
+                search_req = pool.search_requests[pool.found_ind]
+                p '####  Spider  [size, @found_ind, obj_id]='+[pool.search_requests.size, \
+                  pool.found_ind, search_req.object_id].inspect
+                if search_req and (not search_req[PandoraNet::SR_Answer])
+                  req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
+                  p 'search_req3='+req.inspect
+                  answ = nil
+                  if search_req[PandoraNet::SR_Kind]==PandoraModel::PK_BlobBody
+                    sha1 = search_req[PandoraNet::SR_Request]
+                    fn_fs = $window.pool.blob_exists?(sha1, @shed_models, true)
+                    if fn_fs.is_a? Array
+                      fn_fs[0] = PandoraUtils.relative_path(fn_fs[0])
+                      answ = fn_fs
+                    end
+                  else
+                    answ,kind = pool.search_in_local_bases(search_req[PandoraNet::SR_Request], \
+                      search_req[PandoraNet::SR_Kind])
                   end
-                else
-                  answ,kind = pool.search_in_local_bases(search_req[PandoraNet::SR_Request], \
-                    search_req[PandoraNet::SR_Kind])
-                end
-                p 'SEARCH answ='+answ.inspect
-                if answ
-                  search_req[PandoraNet::SR_Answer] = answ
-                  answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
-                  session = search_req[PandoraNet::SR_Session]
-                  sessions = []
-                  if pool.sessions.include?(session)
-                    sessions << session
-                  end
-                  sessions.concat(pool.sessions_of_keybase(nil, search_req[PandoraNet::SR_BaseId]))
-                  sessions.flatten!
-                  sessions.uniq!
-                  sessions.compact!
-                  sessions.each do |sess|
-                    if sess.active?
-                      sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
-                        PandoraNet::ECC_News_Answer)
+                  p 'SEARCH answ='+answ.inspect
+                  if answ
+                    search_req[PandoraNet::SR_Answer] = answ
+                    answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
+                    session = search_req[PandoraNet::SR_Session]
+                    sessions = []
+                    if pool.sessions.include?(session)
+                      sessions << session
+                    end
+                    sessions.concat(pool.sessions_of_keybase(nil, \
+                      search_req[PandoraNet::SR_BaseId]))
+                    sessions.flatten!
+                    sessions.uniq!
+                    sessions.compact!
+                    sessions.each do |sess|
+                      if sess.active?
+                        sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
+                          PandoraNet::ECC_News_Answer)
+                      end
                     end
                   end
+                  #p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
+                  #if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
+                  processed -= 1
+                else
+                  processed = 0
                 end
-                #p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
-                #if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
-                processed -= 1
-              else
-                processed = 0
+                pool.found_ind += 1
               end
-              pool.found_ind += 1
             end
 
             # Search garbager
-            cur_time = Time.now.to_i
-            processed = SearchGarbTrain
-            while (processed > 0)
-              if (@search_garb_ind < pool.search_requests.size)
-                search_req = pool.search_requests[@search_garb_ind]
-                if search_req
-                  time = search_req[PandoraNet::SR_Time]
-                  if (not time.is_a? Integer) or (time+$search_live_time<cur_time)
-                    pool.search_requests[@search_garb_ind] = nil
+            if @search_garb_offset >= SearchGarbStep
+              @search_garb_offset = 0.0
+              cur_time = Time.now.to_i
+              processed = SearchGarbTrain
+              while (processed > 0)
+                if (@search_garb_ind < pool.search_requests.size)
+                  search_req = pool.search_requests[@search_garb_ind]
+                  if search_req
+                    time = search_req[PandoraNet::SR_Time]
+                    if (not time.is_a? Integer) or (time+$search_live_time<cur_time)
+                      pool.search_requests[@search_garb_ind] = nil
+                    end
                   end
+                  @search_garb_ind += 1
+                  processed -= 1
+                else
+                  @search_garb_ind = 0
+                  processed = 0
                 end
-                @search_garb_ind += 1
-                processed -= 1
-              else
-                @search_garb_ind = 0
-                processed = 0
               end
             end
+            @search_garb_offset += @scheduler_step
 
             # Base garbager
             if (not @base_garb_offset) \
