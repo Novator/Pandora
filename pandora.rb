@@ -11039,15 +11039,35 @@ module PandoraGtk
             awidth  = apixbuf.width
             aheight = apixbuf.height
 
-            #if @width or @height
-            #  @scale = @width.fdiv(awidth) if @width
-            #  @scale = @height.fdiv(aheight) if @height
-            #end
+            scale_x = nil
+            scale_y = nil
+            if @width or @height
+              p scale_x = @width.fdiv(awidth) if @width
+              p scale_y = @height.fdiv(aheight) if @height
+              new_scale = nil
+              if scale_x and (scale_x<1.0)
+                new_scale = scale_x
+              end
+              if scale_y and ((scale_x and scale_x<1.0 and scale_y.abs<scale_x.abs) \
+              or ((not scale_x) and scale_y<1.0))
+                new_scale = scale_y
+              end
+              if new_scale
+                new_scale = new_scale.abs
+              else
+                new_scale = 1.0
+              end
+              scale_x = scale_y = new_scale
+            end
+            p '[@scale, @width, @height, awidth, aheight, scale_x, scale_y]='+\
+              [@scale, @width, @height, awidth, aheight, scale_x, scale_y].inspect
 
-            scale_x = @scale.fdiv(100)
-            scale_y = scale_x
-            dest_width  = awidth*scale_x
-            dest_height = aheight*scale_y
+            if not scale_x
+              scale_x = @scale.fdiv(100)
+              scale_y = scale_x
+            end
+            p dest_width  = awidth*scale_x
+            p dest_height = aheight*scale_y
             if @scaled_pixbuf
               @scaled_pixbuf.scale!(apixbuf, 0, 0, dest_width, dest_height, 0, 0, scale_x, scale_y)
             else
@@ -11219,33 +11239,33 @@ module PandoraGtk
         false
       end
 
-      signal_connect('event-after') do |text_view, event|
+      signal_connect('event-after') do |body_child, event|
         if event.kind_of?(Gdk::EventButton) and (event.button == 1)
-          buffer = text_view.buffer
+          buffer = body_child.buffer
           # we shouldn't follow a link if the user has selected something
           range = buffer.selection_bounds
           if range and (range[0].offset == range[1].offset)
-            x, y = text_view.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, \
+            x, y = body_child.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, \
               event.x, event.y)
-            iter = text_view.get_iter_at_location(x, y)
-            follow_if_link(text_view, iter)
+            iter = body_child.get_iter_at_location(x, y)
+            follow_if_link(body_child, iter)
           end
         end
         false
       end
 
-      signal_connect('motion-notify-event') do |text_view, event|
-        x, y = text_view.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, \
+      signal_connect('motion-notify-event') do |body_child, event|
+        x, y = body_child.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, \
           event.x, event.y)
-        set_cursor_if_appropriate(text_view, x, y)
-        text_view.window.pointer
+        set_cursor_if_appropriate(body_child, x, y)
+        body_child.window.pointer
         false
       end
 
-      signal_connect('visibility-notify-event') do |text_view, event|
-        window, wx, wy = text_view.window.pointer
-        bx, by = text_view.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, wx, wy)
-        set_cursor_if_appropriate(text_view, bx, by)
+      signal_connect('visibility-notify-event') do |body_child, event|
+        window, wx, wy = body_child.window.pointer
+        bx, by = body_child.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, wx, wy)
+        set_cursor_if_appropriate(body_child, bx, by)
         false
       end
     end
@@ -11256,9 +11276,9 @@ module PandoraGtk
       res
     end
 
-    def set_cursor_if_appropriate(text_view, x, y)
-      buffer = text_view.buffer
-      iter = text_view.get_iter_at_location(x, y)
+    def set_cursor_if_appropriate(body_child, x, y)
+      buffer = body_child.buffer
+      iter = body_child.get_iter_at_location(x, y)
       hovering = false
       tags = iter.tags
       tags.each do |t|
@@ -11269,7 +11289,7 @@ module PandoraGtk
       end
       if hovering != @hovering
         @hovering = hovering
-        window = text_view.get_window(Gtk::TextView::WINDOW_TEXT)
+        window = body_child.get_window(Gtk::TextView::WINDOW_TEXT)
         if @hovering
           window.cursor = @hand_cursor
         else
@@ -11286,7 +11306,7 @@ module PandoraGtk
       print("Insert #{tag}:#{page}\n")
     end
 
-    def follow_if_link(text_view, iter)
+    def follow_if_link(body_child, iter)
       tags = iter.tags
       tags.each do |tag|
         if tag.name=='link'
@@ -11331,7 +11351,7 @@ module PandoraGtk
     # Window for view body (text or blob)
     # RU: Окно просмотра тела (текста или блоба)
     class BodyScrolledWindow < Gtk::ScrolledWindow
-      attr_accessor :field, :link_name, :text_view, :format, :raw_buffer, :view_buffer, \
+      attr_accessor :field, :link_name, :body_child, :format, :raw_buffer, :view_buffer, \
         :view_mode, :color_mode
 
       def initialize(*args)
@@ -11414,7 +11434,7 @@ module PandoraGtk
             set_tags(buf, line1, line1, true)
             #p '====changed!!!!!!!!!!!!!!'
 
-            #tv = self.text_view
+            #tv = self.body_child
             #if line1==buf.line_count-1
             #  adj = self.vadjustment
             #  adj.value = adj.upper - adj.page_size
@@ -11444,7 +11464,7 @@ module PandoraGtk
               $view_buffer_off1 = iter.offset
               set_tags(buf, line1, line2)
 
-              #tv = self.text_view
+              #tv = self.body_child
               #tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0) if tv
               #adj = tv.parent.vadjustment
               #adj.value = adj.upper #- adj.page_size
@@ -12036,8 +12056,9 @@ module PandoraGtk
                               expander.add(etv)
                               iter = view_buf.end_iter
                               anchor = view_buf.create_child_anchor(iter)
-                              p 'CUT [text_view, expander, anchor]='+[text_view, expander, anchor].inspect
-                              text_view.add_child_at_anchor(expander, anchor)
+                              p 'CUT [body_child, expander, anchor]='+
+                                [body_child, expander, anchor].inspect
+                              body_child.add_child_at_anchor(expander, anchor)
                               shift_coms(1)
                               expander.show_all
                             when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE'
@@ -12224,7 +12245,8 @@ module PandoraGtk
                                 case comu
                                   when 'IMG', 'IMAGE'
                                     comu = nil
-                                    img_res = PandoraModel.get_image_from_url(params, true, text_view)
+                                    img_res = PandoraModel.get_image_from_url(params, \
+                                      true, body_child)
                                     if img_res
                                       iter = view_buf.end_iter
                                       if img_res.is_a? Gdk::Pixbuf
@@ -12238,7 +12260,7 @@ module PandoraGtk
                                       end
                                       #anchor = view_buf.create_child_anchor(iter)
                                       #p 'IMG [wid, anchor]='+[wid, anchor].inspect
-                                      #text_view.add_child_at_anchor(wid, anchor)
+                                      #body_child.add_child_at_anchor(wid, anchor)
                                       #wid.show_all
                                     end
                                   #end-case-when
@@ -12283,7 +12305,7 @@ module PandoraGtk
       # Set buffers
       # RU: Задать буферы
       def set_buffers
-        tv = text_view
+        tv = body_child
         tv.hide
         #sleep 2
         #freeze_child_notify
@@ -12378,7 +12400,7 @@ module PandoraGtk
       if tag
         bw = get_bodywin
         if bw
-          tv = bw.text_view
+          tv = bw.body_child
           buffer = tv.buffer
 
           if bw.view_mode #bw.view_buffer==buffer
@@ -12497,7 +12519,7 @@ module PandoraGtk
       p '[context.height, height, HEADER_HEIGHT, HEADER_GAP, data.lines_per_page]='+\
         [context.height, height, HEADER_HEIGHT, HEADER_GAP, data.lines_per_page].inspect
       bw = get_bodywin
-      data.lines = bw.text_view.buffer
+      data.lines = bw.body_child.buffer
       data.n_pages = (data.lines.line_count - 1) / data.lines_per_page + 1
       operation.set_n_pages(data.n_pages)
     end
@@ -12556,7 +12578,7 @@ module PandoraGtk
         #dst.write_to_png('xx.png')
         #btn.draw(cr)
 
-        tv = bw.text_view
+        tv = bw.body_child
         cm = Gdk::Colormap.system
         width = context.width
         height = context.height
@@ -12717,7 +12739,19 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::DELETE, 'Delete')
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
-
+      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_100, 'Show 1:1') do |btn|
+        bw = get_bodywin
+        if bw and (bc = bw.body_child)
+          p image = bc
+        end
+        true
+      end
+      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_FIT, 'Zoom to fit') do |btn|
+      end
+      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_IN, 'Zoom in') do |btn|
+      end
+      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_OUT, 'Zoom out') do |btn|
+      end
       @last_sw = nil
       notebook.signal_connect('switch-page') do |widget, page, page_num|
         if (page_num != 1) and @last_sw
@@ -12757,8 +12791,8 @@ module PandoraGtk
                     ext_dc = ext.downcase
                     if ext
                       if (['.jpg','.gif','.png'].include? ext_dc)
-                        img_width  = bodywin.allocation.width
-                        img_height = bodywin.allocation.height
+                        img_width  = bodywin.parent.allocation.width-14
+                        img_height = bodywin.parent.allocation.height
                         image = PandoraGtk.start_image_loading(link_name, nil, nil, \
                           img_width, img_height)
                         bodywid = image
@@ -12810,10 +12844,10 @@ module PandoraGtk
                     bodywin.format = fmt.downcase if fmt.is_a? String
                   end
                 end
+                bodywin.body_child = bodywid
                 if bodywid.is_a? Gtk::TextView
-                  bodywin.text_view = bodywid
                   bodywin.init_view_buf
-                  bodywin.init_raw_buf(bodywin.text_view.buffer)
+                  bodywin.init_raw_buf(bodywin.body_child.buffer)
                   bodywid.buffer.text = field[FI_Value].to_s
                   bodywin.set_buffers
                   toolbar.show
