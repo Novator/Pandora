@@ -11008,35 +11008,98 @@ module PandoraGtk
     end
   end
 
+  class ScalePixbufLoader < Gdk::PixbufLoader
+    attr_accessor :scale, :width, :height, :scaled_pixbuf, :set_dest, :renew_thread
+
+    def initialize(ascale=nil, awidth=nil, aheight=nil, *args)
+      super(*args)
+      @scale = 100
+      @scaled_pixbuf = nil
+      set_scale(ascale, awidth, aheight)
+    end
+
+    def set_scale(ascale=nil, awidth=nil, aheight=nil)
+      ascale ||= 100
+      if (@scale != ascale) or (@width != awidth) or (@height = aheight)
+        @scale = ascale
+        @width  = awidth
+        @height = aheight
+        renew_scaled_pixbuf
+      end
+    end
+
+    def renew_scaled_pixbuf(redraw_wiget=nil)
+      apixbuf = self.pixbuf
+      if apixbuf and ((@scale != 100) or @width or @height)
+        if not @renew_thread
+          @renew_thread = Thread.new do
+            #sleep(0.01)
+            @renew_thread = nil
+            apixbuf = self.pixbuf
+            awidth  = apixbuf.width
+            aheight = apixbuf.height
+
+            #if @width or @height
+            #  @scale = @width.fdiv(awidth) if @width
+            #  @scale = @height.fdiv(aheight) if @height
+            #end
+
+            scale_x = @scale.fdiv(100)
+            scale_y = scale_x
+            dest_width  = awidth*scale_x
+            dest_height = aheight*scale_y
+            if @scaled_pixbuf
+              @scaled_pixbuf.scale!(apixbuf, 0, 0, dest_width, dest_height, 0, 0, scale_x, scale_y)
+            else
+              @scaled_pixbuf = apixbuf.scale(dest_width, dest_height)
+            end
+            set_dest.call(@scaled_pixbuf) if set_dest
+            redraw_wiget.queue_draw if redraw_wiget and (not redraw_wiget.destroyed?)
+          end
+        end
+      else
+        @scaled_pixbuf = apixbuf
+        redraw_wiget.queue_draw if redraw_wiget and (not redraw_wiget.destroyed?)
+      end
+      @scaled_pixbuf
+    end
+
+  end
+
   ReadImagePortionSize = 1024*1024 # 1Mb
 
   # Start loading image from file
   # RU: Запускает загрузку картинки в файл
-  def self.start_image_loading(filename, pixbuf_parent=nil)
+  def self.start_image_loading(filename, pixbuf_parent=nil, scale=nil, width=nil, height=nil)
     res = nil
-    p 'start_image_loading  filename='+filename.inspect
+    p 'start_image_loading  [filename, scale, width, height]='+\
+      [filename, scale, width, height].inspect
     begin
       filename = PandoraUtils.absolute_path(filename)
       file_stream = File.open(filename, 'rb')
       res = Gtk::Image.new unless pixbuf_parent
       sleep(0.01)
+      scale ||= 100
       Thread.new do
-        pixbuf_loader = Gdk::PixbufLoader.new
+        pixbuf_loader = ScalePixbufLoader.new(scale, width, height)
         pixbuf_loader.signal_connect('area_prepared') do |loader|
+          loader.set_dest = Proc.new do |apixbuf|
+            if pixbuf_parent
+              res = apixbuf
+            else
+              res.pixbuf = apixbuf if (not res.destroyed?)
+            end
+          end
           pixbuf = loader.pixbuf
-          pixbuf.fill!(0xaaaaaaff)
-          if pixbuf_parent
-            res = pixbuf
-          else
-            res.pixbuf = pixbuf
-          end
+          pixbuf.fill!(0xAAAAAAFF)
+          loader.renew_scaled_pixbuf
+          loader.set_dest.call(loader.scaled_pixbuf)
         end
-        pixbuf_loader.signal_connect('area_updated') do
-          if pixbuf_parent
-            pixbuf_parent.queue_draw
-          else
-            res.queue_draw
-          end
+        pixbuf_loader.signal_connect('area_updated') do |loader|
+          upd_wid = res
+          upd_wid = pixbuf_parent if pixbuf_parent
+          loader.renew_scaled_pixbuf(upd_wid)
+          #loader.set_dest.call(loader.scaled_pixbuf)
         end
         while file_stream
           buf = file_stream.read(ReadImagePortionSize)
@@ -11049,6 +11112,7 @@ module PandoraGtk
               file_stream = nil
             end
             sleep(0.005)
+            #sleep(1)
           else
             pixbuf_loader.close
             pixbuf_loader = nil
@@ -11142,13 +11206,13 @@ module PandoraGtk
             pixels = []
             count = get_lines(tv, first_y, last_y, pixels, numbers)
             # Draw fully internationalized numbers!
-            layout = widget.create_pango_layout('')
+            layout = widget.create_pango_layout
             count.times do |i|
               x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
               str = numbers[i].to_s
               layout.text = str
               widget.style.paint_layout(target, widget.state, false,
-                nil, widget, nil, 2, pos + 2, layout)
+                nil, widget, nil, 2, pos, layout)
             end
           end
         end
@@ -12693,7 +12757,11 @@ module PandoraGtk
                     ext_dc = ext.downcase
                     if ext
                       if (['.jpg','.gif','.png'].include? ext_dc)
-                        bodywid = PandoraGtk.start_image_loading(link_name)
+                        img_width  = bodywin.allocation.width
+                        img_height = bodywin.allocation.height
+                        image = PandoraGtk.start_image_loading(link_name, nil, nil, \
+                          img_width, img_height)
+                        bodywid = image
                         bodywin.link_name = link_name
                       elsif (['.txt','.rb','.xml','.py','.csv','.sh'].include? ext_dc)
                         if ext_dc=='.rb'
@@ -12723,9 +12791,13 @@ module PandoraGtk
 
                 if not field[FI_Widget2]
                   field[FI_Widget2] = bodywid
-                  begin
-                    bodywin.add(bodywid)
-                  rescue Exception
+                  if bodywid.is_a? PandoraGtk::SuperTextView
+                    begin
+                      bodywin.add(bodywid)
+                    rescue Exception
+                      bodywin.add_with_viewport(bodywid)
+                    end
+                  else
                     bodywin.add_with_viewport(bodywid)
                   end
                   #viewport = Gtk::Viewport.new(nil, nil)
