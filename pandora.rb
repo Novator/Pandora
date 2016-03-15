@@ -3860,8 +3860,8 @@ module PandoraModel
     avatar_hash = PandoraModel.find_relation(panhash, RK_AvatarFor, true) unless its_blob
     if avatar_hash
       #p '--get_avatar_icon [its_blob, avatar_hash]='+[its_blob, avatar_hash].inspect
-      proto = 'object'
-      obj_type = 'pixbuf'
+      proto = 'icon'
+      obj_type = icon_size
       pixbuf = get_image_from_cache(proto, obj_type, avatar_hash)
       if pixbuf.nil?
         ava_url = 'pandora://'+PandoraUtils.bytes_to_hex(avatar_hash)
@@ -11180,7 +11180,7 @@ module PandoraGtk
 
     def initialize(*args)
       super(*args)
-      wrap_mode = Gtk::TextTag::WRAP_WORD
+      self.wrap_mode = Gtk::TextTag::WRAP_WORD
 
       @hand_cursor = Gdk::Cursor.new(Gdk::Cursor::HAND2)
       @regular_cursor = Gdk::Cursor.new(Gdk::Cursor::XTERM)
@@ -12268,6 +12268,10 @@ module PandoraGtk
                                       iter = view_buf.end_iter
                                       if img_res.is_a? Gdk::Pixbuf
                                         view_buf.insert(iter, img_res)
+                                        #anchor = view_buf.create_child_anchor(iter)
+                                        #img = Gtk::Image.new(img_res)
+                                        #body_child.add_child_at_anchor(img, anchor)
+                                        #img.show_all
                                         shift_coms(1)
                                         show_text = false
                                       else
