@@ -3767,19 +3767,22 @@ module PandoraModel
   # RU: Взять pixbuf из кэша по пути
   def self.get_image_from_cache(proto, obj_type, way)
     ind = [proto, obj_type, way]
+    #p '--get_image_from_cache  [proto, obj_type, way]='+[proto, obj_type, way].inspect
     res = $image_cache[ind]
   end
 
   # Save pixbuf to cache with a way
   # RU: Сохранить pixbuf в кэша по пути
-  def self.save_image_to_cache(pixbuf, proto, obj_type, way)
+  def self.save_image_to_cache(img_obj, proto, obj_type, way)
     res = get_image_from_cache(proto, obj_type, way)
-    if (not res) and (pixbuf.is_a? Gdk::Pixbuf)
+    if res.nil? #and (img_obj.is_a? Gdk::Pixbuf)
       while $image_cache.size >= ImageCacheSize do
         $image_cache.delete_at(0)
       end
       ind = [proto, obj_type, way]
-      $image_cache[ind] = pixbuf
+      img_obj ||= false
+      $image_cache[ind] = img_obj
+      p '--save_image_to_cache  [img_obj, proto, obj_type, way]='+[img_obj, proto, obj_type, way].inspect
     end
   end
 
@@ -3790,7 +3793,7 @@ module PandoraModel
     if res
       proto, obj_type, way = res
       res = get_image_from_cache(proto, obj_type, way)
-      unless res
+      if res.nil?
         body = nil
         fn = nil
         if way and (way.size>0)
@@ -3798,7 +3801,7 @@ module PandoraModel
             panhash = PandoraModel.hex_to_panhash(way)
             kind = PandoraUtils.kind_from_panhash(panhash)
             sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'type,blob')
-            p 'get_image_from_url.pandora/panhash='+panhash.inspect
+            #p 'get_image_from_url.pandora/panhash='+panhash.inspect
             if sel and (sel.size>0)
               type = sel[0][0]
               blob = sel[0][1]
@@ -3853,24 +3856,31 @@ module PandoraModel
   # RU: Добыть иконку-аватар по панхэшу
   def self.get_avatar_icon(panhash, pixbuf_parent, its_blob=false, icon_size=16)
     pixbuf = nil
+    avatar_hash = panhash
     avatar_hash = PandoraModel.find_relation(panhash, RK_AvatarFor, true) unless its_blob
     if avatar_hash
-      #p 'avatar_hash='+avatar_hash.inspect
-      ava_url = 'pandora://'+PandoraUtils.bytes_to_hex(avatar_hash)
-      pixbuf = PandoraModel.get_image_from_url(ava_url, nil, pixbuf_parent)
-      #p 'pixbuf='+pixbuf.inspect
-      if pixbuf
-        w = pixbuf.width
-        h = pixbuf.height
-        #p 'w,h='+[w,h].inspect
-        w2, h2 = icon_size, icon_size
-        if (h>h2) and (h >= w)
-          w2 = w*h2/h
-          pixbuf = pixbuf.scale(w2, h2)
-        elsif w>w2
-          h2 = h*w2/w
-          pixbuf = pixbuf.scale(w2, h2)
+      #p '--get_avatar_icon [its_blob, avatar_hash]='+[its_blob, avatar_hash].inspect
+      proto = 'object'
+      obj_type = 'pixbuf'
+      pixbuf = get_image_from_cache(proto, obj_type, avatar_hash)
+      if pixbuf.nil?
+        ava_url = 'pandora://'+PandoraUtils.bytes_to_hex(avatar_hash)
+        pixbuf = PandoraModel.get_image_from_url(ava_url, nil, pixbuf_parent)
+        #p 'pixbuf='+pixbuf.inspect
+        if pixbuf
+          w = pixbuf.width
+          h = pixbuf.height
+          #p 'w,h='+[w,h].inspect
+          w2, h2 = icon_size, icon_size
+          if (h>h2) and (h >= w)
+            w2 = w*h2/h
+            pixbuf = pixbuf.scale(w2, h2)
+          elsif w>w2
+            h2 = h*w2/w
+            pixbuf = pixbuf.scale(w2, h2)
+          end
         end
+        save_image_to_cache(pixbuf, proto, obj_type, avatar_hash)
       end
     end
     pixbuf
@@ -11014,6 +11024,8 @@ module PandoraGtk
     def initialize(ascale=nil, awidth=nil, aheight=nil, *args)
       super(*args)
       @scale = 100
+      @width  = nil
+      @height = nil
       @scaled_pixbuf = nil
       set_scale(ascale, awidth, aheight)
     end
@@ -11059,9 +11071,8 @@ module PandoraGtk
               end
               scale_x = scale_y = new_scale
             end
-            p '[@scale, @width, @height, awidth, aheight, scale_x, scale_y]='+\
-              [@scale, @width, @height, awidth, aheight, scale_x, scale_y].inspect
-
+            #p '      SCALE [@scale, @width, @height, awidth, aheight, scale_x, scale_y]='+\
+            #  [@scale, @width, @height, awidth, aheight, scale_x, scale_y].inspect
             if not scale_x
               scale_x = @scale.fdiv(100)
               scale_y = scale_x
@@ -11092,63 +11103,69 @@ module PandoraGtk
   # RU: Запускает загрузку картинки в файл
   def self.start_image_loading(filename, pixbuf_parent=nil, scale=nil, width=nil, height=nil)
     res = nil
-    p 'start_image_loading  [filename, scale, width, height]='+\
-      [filename, scale, width, height].inspect
-    begin
-      filename = PandoraUtils.absolute_path(filename)
-      file_stream = File.open(filename, 'rb')
-      res = Gtk::Image.new unless pixbuf_parent
-      sleep(0.01)
-      scale ||= 100
-      Thread.new do
-        pixbuf_loader = ScalePixbufLoader.new(scale, width, height)
-        pixbuf_loader.signal_connect('area_prepared') do |loader|
-          loader.set_dest = Proc.new do |apixbuf|
+    p '--start_image_loading  [filename, pixbuf_parent, scale, width, height]='+\
+      [filename, pixbuf_parent, scale, width, height].inspect
+    filename = PandoraUtils.absolute_path(filename)
+    if File.exist?(filename)
+      begin
+        file_stream = File.open(filename, 'rb')
+        res = Gtk::Image.new if not pixbuf_parent
+        sleep(0.01)
+        scale ||= 100
+        read_thread = Thread.new do
+          pixbuf_loader = ScalePixbufLoader.new(scale, width, height)
+          pixbuf_loader.signal_connect('area_prepared') do |loader|
+            loader.set_dest = Proc.new do |apixbuf|
+              if pixbuf_parent
+                res = apixbuf
+              else
+                res.pixbuf = apixbuf if (not res.destroyed?)
+              end
+            end
+            pixbuf = loader.pixbuf
+            pixbuf.fill!(0xAAAAAAFF)
+            loader.renew_scaled_pixbuf(res)
+            loader.set_dest.call(loader.scaled_pixbuf)
+          end
+          pixbuf_loader.signal_connect('area_updated') do |loader|
+            upd_wid = res
+            upd_wid = pixbuf_parent if pixbuf_parent
+            loader.renew_scaled_pixbuf(upd_wid)
             if pixbuf_parent
-              res = apixbuf
+              #res = loader.pixbuf
             else
-              res.pixbuf = apixbuf if (not res.destroyed?)
+              #res.pixbuf = loader.pixbuf if (not res.destroyed?)
             end
           end
-          pixbuf = loader.pixbuf
-          pixbuf.fill!(0xAAAAAAFF)
-          loader.renew_scaled_pixbuf
-          loader.set_dest.call(loader.scaled_pixbuf)
-        end
-        pixbuf_loader.signal_connect('area_updated') do |loader|
-          upd_wid = res
-          upd_wid = pixbuf_parent if pixbuf_parent
-          loader.renew_scaled_pixbuf(upd_wid)
-          #loader.set_dest.call(loader.scaled_pixbuf)
-        end
-        while file_stream
-          buf = file_stream.read(ReadImagePortionSize)
-          if buf
-            pixbuf_loader.write(buf)
-            if file_stream.eof?
+          while file_stream
+            buf = file_stream.read(ReadImagePortionSize)
+            if buf
+              pixbuf_loader.write(buf)
+              if file_stream.eof?
+                pixbuf_loader.close
+                pixbuf_loader = nil
+                file_stream.close
+                file_stream = nil
+              end
+              sleep(0.005)
+              #sleep(1)
+            else
               pixbuf_loader.close
               pixbuf_loader = nil
               file_stream.close
               file_stream = nil
             end
-            sleep(0.005)
-            #sleep(1)
-          else
-            pixbuf_loader.close
-            pixbuf_loader = nil
-            file_stream.close
-            file_stream = nil
           end
         end
-      end
-      while pixbuf_parent and (not res)
-        sleep(0.01)
-      end
-    rescue => err
-      unless pixbuf_parent
-        err_text = _('Image loading error')+":\n"+err.message
-        label = Gtk::Label.new(err_text)
-        res = label
+        while pixbuf_parent and read_thread.alive?
+          sleep(0.01)
+        end
+      rescue => err
+        if not pixbuf_parent
+          err_text = _('Image loading error')+":\n"+err.message
+          label = Gtk::Label.new(err_text)
+          res = label
+        end
       end
     end
     res
@@ -16929,7 +16946,7 @@ module PandoraGtk
       column.clickable = true
       column.fixed_width = 45
       column.tab_ind = tab_flds.index{ |tf| tf[0] == 'panhash' }
-      p 'column.tab_ind='+column.tab_ind.inspect
+      #p '//////////column.tab_ind='+column.tab_ind.inspect
       treeview.append_column(column)
 
       column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
@@ -16939,6 +16956,7 @@ module PandoraGtk
             row = tvc.tree_view.sel[iter.path.indices[0]]
           end
         rescue
+          p 'rescue'
         end
         val = nil
         if row
@@ -16946,7 +16964,9 @@ module PandoraGtk
           val = row[col] if col
         end
         if val
+          #p '[col, val]='+[col, val].inspect
           pixbuf = PandoraModel.get_avatar_icon(val, tvc.tree_view, its_blob, 45)
+          pixbuf = nil if pixbuf==false
           renderer.pixbuf = pixbuf
         end
       end
@@ -17417,7 +17437,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.46'
+    dlg.version = '0.47'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
