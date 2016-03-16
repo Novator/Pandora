@@ -5557,7 +5557,7 @@ module PandoraNet
     # RU: Найти поисковый запрос в очереди
     def find_search_request(request, kind)
       res = @search_requests.select do |sr|
-        (sr[SR_Request] == request) and (sr[SR_Kind] == kind)
+        (sr.is_a? Array) and (sr[SR_Request] == request) and (sr[SR_Kind] == kind)
       end
       res
     end
@@ -5604,6 +5604,7 @@ module PandoraNet
             fn = sel[0][1]
             fs = sel[0][2]
             if (fn.is_a? String) and (fn.size>1) and (fn[0]=='@')
+              fn = Utf8String.new(fn)
               fn = fn[1..-1]
               fn = PandoraUtils.absolute_path(fn)
               if (fn.is_a? String) and (fn.size>0)
@@ -5726,7 +5727,7 @@ module PandoraNet
           fn_fs = blob_exists?(sha1, nil, true)
           if fn_fs
             fn, fs = fn_fs
-            filename = fn
+            filename = PandoraUtils.absolute_path(fn)
             filesize ||= fs
           else
             filename = sha1_fn+'.dat'
@@ -12760,18 +12761,27 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::DELETE, 'Delete')
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
-      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_100, 'Show 1:1') do |btn|
+      @zoom_100 = PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_100, 'Show 1:1', false) do |btn|
         bw = get_bodywin
         if bw and (bc = bw.body_child)
           p image = bc
         end
+        @zoom_fit.safe_set_active(false)
         true
       end
-      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_FIT, 'Zoom to fit') do |btn|
+      @zoom_fit = PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_FIT, 'Zoom to fit', false) do |btn|
+        @zoom_100.safe_set_active(false)
+        true
       end
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_IN, 'Zoom in') do |btn|
+        @zoom_fit.safe_set_active(false)
+        @zoom_100.safe_set_active(false)
+        true
       end
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_OUT, 'Zoom out') do |btn|
+        @zoom_fit.safe_set_active(false)
+        @zoom_100.safe_set_active(false)
+        true
       end
       @last_sw = nil
       notebook.signal_connect('switch-page') do |widget, page, page_num|
