@@ -34,11 +34,12 @@
 ## Push files from local to repository
 #git add --all
 git commit -a -m "version 0.47 alpha"
+git push -u bitbuc --all
+git push -u github --all
 #git push -u bitbuc master
 #git push -u github master
 #git push -u bitbuc develop
 #git push -u github develop
-git push --all
 
 ##Cancel last commit without cancel code
 #git reset --soft HEAD~1
