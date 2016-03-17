@@ -11113,64 +11113,79 @@ module PandoraGtk
       [filename, pixbuf_parent, scale, width, height].inspect
     filename = PandoraUtils.absolute_path(filename)
     if File.exist?(filename)
-      begin
-        file_stream = File.open(filename, 'rb')
-        res = Gtk::Image.new if not pixbuf_parent
-        sleep(0.01)
-        scale ||= 100
-        read_thread = Thread.new do
-          pixbuf_loader = ScalePixbufLoader.new(scale, width, height)
-          pixbuf_loader.signal_connect('area_prepared') do |loader|
-            loader.set_dest = Proc.new do |apixbuf|
+      if (scale.nil? or (scale==100)) and width.nil? and height.nil?
+        begin
+          res = Gdk::Pixbuf.new(filename)
+          if not pixbuf_parent
+            res = Gtk::Image.new(res)
+          end
+        rescue => err
+          if not pixbuf_parent
+            err_text = _('Image loading error1')+":\n"+err.message
+            label = Gtk::Label.new(err_text)
+            res = label
+          end
+        end
+      else
+        begin
+          file_stream = File.open(filename, 'rb')
+          res = Gtk::Image.new if not pixbuf_parent
+          #sleep(0.01)
+          scale ||= 100
+          read_thread = Thread.new do
+            pixbuf_loader = ScalePixbufLoader.new(scale, width, height)
+            pixbuf_loader.signal_connect('area_prepared') do |loader|
+              loader.set_dest = Proc.new do |apixbuf|
+                if pixbuf_parent
+                  res = apixbuf
+                else
+                  res.pixbuf = apixbuf if (not res.destroyed?)
+                end
+              end
+              pixbuf = loader.pixbuf
+              pixbuf.fill!(0xAAAAAAFF)
+              loader.renew_scaled_pixbuf(res)
+              loader.set_dest.call(loader.scaled_pixbuf)
+            end
+            pixbuf_loader.signal_connect('area_updated') do |loader|
+              upd_wid = res
+              upd_wid = pixbuf_parent if pixbuf_parent
+              loader.renew_scaled_pixbuf(upd_wid)
               if pixbuf_parent
-                res = apixbuf
+                #res = loader.pixbuf
               else
-                res.pixbuf = apixbuf if (not res.destroyed?)
+                #res.pixbuf = loader.pixbuf if (not res.destroyed?)
               end
             end
-            pixbuf = loader.pixbuf
-            pixbuf.fill!(0xAAAAAAFF)
-            loader.renew_scaled_pixbuf(res)
-            loader.set_dest.call(loader.scaled_pixbuf)
-          end
-          pixbuf_loader.signal_connect('area_updated') do |loader|
-            upd_wid = res
-            upd_wid = pixbuf_parent if pixbuf_parent
-            loader.renew_scaled_pixbuf(upd_wid)
-            if pixbuf_parent
-              #res = loader.pixbuf
-            else
-              #res.pixbuf = loader.pixbuf if (not res.destroyed?)
-            end
-          end
-          while file_stream
-            buf = file_stream.read(ReadImagePortionSize)
-            if buf
-              pixbuf_loader.write(buf)
-              if file_stream.eof?
+            while file_stream
+              buf = file_stream.read(ReadImagePortionSize)
+              if buf
+                pixbuf_loader.write(buf)
+                if file_stream.eof?
+                  pixbuf_loader.close
+                  pixbuf_loader = nil
+                  file_stream.close
+                  file_stream = nil
+                end
+                sleep(0.005)
+                #sleep(1)
+              else
                 pixbuf_loader.close
                 pixbuf_loader = nil
                 file_stream.close
                 file_stream = nil
               end
-              sleep(0.005)
-              #sleep(1)
-            else
-              pixbuf_loader.close
-              pixbuf_loader = nil
-              file_stream.close
-              file_stream = nil
             end
           end
-        end
-        while pixbuf_parent and read_thread.alive?
-          sleep(0.01)
-        end
-      rescue => err
-        if not pixbuf_parent
-          err_text = _('Image loading error')+":\n"+err.message
-          label = Gtk::Label.new(err_text)
-          res = label
+          while pixbuf_parent and read_thread.alive?
+            sleep(0.01)
+          end
+        rescue => err
+          if not pixbuf_parent
+            err_text = _('Image loading error2')+":\n"+err.message
+            label = Gtk::Label.new(err_text)
+            res = label
+          end
         end
       end
     end
@@ -17456,7 +17471,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.47'
+    dlg.version = '0.48'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
