@@ -5737,6 +5737,7 @@ module PandoraNet
         p 'filename='+filename.inspect
 
         frag_fn = PandoraUtils.change_file_ext(filename, 'frs')
+        frag_fn = Utf8String.new(frag_fn)
         punnet[PI_FragFN] = frag_fn
         p 'frag_fn='+frag_fn.inspect
 
@@ -5778,7 +5779,11 @@ module PandoraNet
               fragfile.write(frags)
               p 'set frags='+frags.inspect
             end
-            File.truncate(frag_fn, frags.bytesize)
+            begin
+              fragfile.truncate(frags.bytesize)
+            rescue => err
+              p 'ERROR TRUNCATE: '+err.message
+            end
           end
           punnet[PI_Frags] = frags
           punnet[PI_HoldFrags] = 0.chr * frags.bytesize
@@ -19131,7 +19136,7 @@ module PandoraGtk
               processed = SearchTrain
               while (processed > 0) and (pool.found_ind <= pool.search_ind)
                 search_req = pool.search_requests[pool.found_ind]
-                p '####  Spider  [size, @found_ind, obj_id]='+[pool.search_requests.size, \
+                p '####  Search spider  [size, @found_ind, obj_id]='+[pool.search_requests.size, \
                   pool.found_ind, search_req.object_id].inspect
                 if search_req and (not search_req[PandoraNet::SR_Answer])
                   req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
