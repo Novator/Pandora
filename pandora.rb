@@ -5409,13 +5409,13 @@ module PandoraNet
   # RU: Стадия обмена
   ES_Begin        = 0
   ES_IpCheck      = 1
-  ES_Protocol     = 3
-  ES_Puzzle       = 4
-  ES_KeyRequest   = 5
-  ES_Sign         = 6
-  ES_Captcha      = 7
-  ES_Greeting     = 8
-  ES_Exchange     = 9
+  ES_Protocol     = 2
+  ES_Puzzle       = 3
+  ES_KeyRequest   = 4
+  ES_Sign         = 5
+  ES_Captcha      = 6
+  ES_Greeting     = 7
+  ES_Exchange     = 8
 
   # Max recv pack size for stadies
   # RU: Максимально допустимые порции для стадий
@@ -6311,7 +6311,7 @@ module PandoraNet
               node_id_i = row[4]
               node_id_i ||= node_id
               aconn_mode ||= 0
-              if (not $window.cvpaned.csw)
+              if $window.visible? #and $window.has_toplevel_focus?
                 aconn_mode = (aconn_mode | PandoraNet::CM_Captcha)
               end
               aconn_mode = (CM_Hunter | aconn_mode)
@@ -7000,8 +7000,9 @@ module PandoraNet
         auport = nil
         anode_id = nil
 
-        readflds = 'id, state, sended, received, one_ip_count, bad_attempts,' \
-           +'ban_time, panhash, key_hash, base_id, creator, created, addr, domain, tport, uport'
+        readflds = 'id, state, sended, received, one_ip_count, bad_attempts, ' \
+           +'ban_time, panhash, key_hash, base_id, creator, created, addr, ' \
+           +'domain, tport, uport'
 
         trusted = ((trust.is_a? Float) and (trust>0))
         filter = {:key_hash=>skey_panhash, :base_id=>sbase_id}
@@ -7584,7 +7585,8 @@ module PandoraNet
                 else
                   err_scmd('Node password is not setted')
                 end
-              elsif (rcode==ECC_Auth_Captcha) and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
+              elsif (rcode==ECC_Auth_Captcha) and ((@stage==ES_Protocol) \
+              or (@stage==ES_Greeting))
                 p log_mes+'CAPTCHA!!!  ' #+params.inspect
                 if ((conn_mode & CM_Hunter) == 0)
                   err_scmd('Captcha for listener is denied')
@@ -7594,23 +7596,24 @@ module PandoraNet
                   captcha_buf = rdata[clue_length+1..-1]
 
                   @entered_captcha = nil
-                  if (not $window.cvpaned.csw)
-                    $window.cvpaned.show_captcha(params['srckey'], captcha_buf, clue_text, @node) do |res|
+                  if $window.visible? #and $window.has_toplevel_focus?
+                    srckey1 = params['srckey']
+                    res, dlg = PandoraGtk.recognize_captcha(srckey1, captcha_buf, \
+                      clue_text, @node, @node_id, @recv_models)
+                    @dialog ||= dlg
+                    @dialog.set_session(self, true)
+                    if res
                       @entered_captcha = res
-                    end
-                    while $window.cvpaned.csw and @entered_captcha.nil?
-                      sleep(0.02)
-                      Thread.pass
-                    end
-                    if @entered_captcha
                       @scmd = EC_Auth
                       @scode = ECC_Auth_Answer
                       @sbuf = entered_captcha
+                    elsif res.nil?
+                      err_scmd('Cannot open dialog')
                     else
                       err_scmd('Captcha enter canceled')
                     end
                   else
-                    err_scmd('Captcha dock is busy')
+                    err_scmd('User is away')
                   end
                 end
               elsif (rcode==ECC_Auth_Answer) and (@stage==ES_Captcha)
@@ -9168,19 +9171,18 @@ module PandoraNet
                 #@conn_mode, @conn_mode2].inspect
                 ito = false
                 if ((@conn_mode & PandoraNet::CM_Keep) == 0) \
-                and ((@conn_mode2 & PandoraNet::CM_Keep) == 0)
+                and ((@conn_mode2 & PandoraNet::CM_Keep) == 0) \
+                and (not active_hook)
                   if ((@stage == ES_Protocol) or (@stage == ES_Greeting) \
                   or (@stage == ES_Captcha) and ($captcha_timeout>0))
                     ito = is_timeout?($captcha_timeout)
                     #p log_mes+'capcha timeout  ito='+ito.inspect
+                  elsif @dialog and (not @dialog.destroyed?) and ($dialog_timeout>0)
+                    ito = is_timeout?($dialog_timeout)
+                    #p log_mes+'dialog timeout  ito='+ito.inspect
                   else
-                    if @dialog and (not @dialog.destroyed?) and ($dialog_timeout>0)
-                      ito = is_timeout?($dialog_timeout)
-                      #p log_mes+'dialog timeout  ito='+ito.inspect
-                    else
-                      ito = is_timeout?($exchange_timeout)
-                      #p log_mes+'all timeout  ito='+ito.inspect
-                    end
+                    ito = is_timeout?($exchange_timeout)
+                    #p log_mes+'all timeout  ito='+ito.inspect
                   end
                 end
                 if ito
@@ -13616,6 +13618,7 @@ module PandoraGtk
   $you_color = 'red'
   $dude_color = 'blue'
   $tab_color = 'blue'
+  $sys_color = 'purple'
   $read_time = 1.5
   $last_page = nil
 
@@ -13652,7 +13655,7 @@ module PandoraGtk
   class DialogScrollWin < Gtk::ScrolledWindow
     attr_accessor :room_id, :targets, :online_button, :snd_button, :vid_button, :talkview, \
       :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
-      :read_thread, :recv_media_queue, :has_unread, :person_name
+      :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_enter
 
     include PandoraGtk
 
@@ -13788,6 +13791,8 @@ module PandoraGtk
       talkview.buffer.create_tag('dude', 'foreground' => $dude_color)
       talkview.buffer.create_tag('you_bold', 'foreground' => $you_color, 'weight' => Pango::FontDescription::WEIGHT_BOLD)
       talkview.buffer.create_tag('dude_bold', 'foreground' => $dude_color,  'weight' => Pango::FontDescription::WEIGHT_BOLD)
+      talkview.buffer.create_tag('sys', 'foreground' => $sys_color, 'style' => Pango::FontDescription::STYLE_ITALIC)
+      talkview.buffer.create_tag('sys_bold', 'foreground' => $sys_color,  'weight' => Pango::FontDescription::WEIGHT_BOLD)
 
       @editbox = Gtk::TextView.new
       editbox.wrap_mode = Gtk::TextTag::WRAP_WORD
@@ -13801,11 +13806,18 @@ module PandoraGtk
 
       editbox.signal_connect('key-press-event') do |widget, event|
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
-        and (not event.state.control_mask?) and (not event.state.shift_mask?) and (not event.state.mod1_mask?)
+        and (not event.state.control_mask?) and (not event.state.shift_mask?) \
+        and (not event.state.mod1_mask?)
           if editbox.buffer.text != ''
             mes = editbox.buffer.text
-            res = add_and_send_mes(mes)
-            editbox.buffer.text = '' if res
+            p '@captcha_enter='+@captcha_enter.inspect
+            if @captcha_enter
+              @captcha_enter = mes
+              editbox.buffer.text = ''
+            else
+              res = add_and_send_mes(mes)
+              editbox.buffer.text = '' if res
+            end
           end
           true
         elsif (Gdk::Keyval::GDK_Escape==event.keyval)
@@ -14218,6 +14230,7 @@ module PandoraGtk
       @sessions ||= []
       if online
         @sessions << session if (not @sessions.include?(session))
+        session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep)
       else
         @sessions.delete(session)
         session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Keep))
@@ -14290,7 +14303,8 @@ module PandoraGtk
         end
         # run reading thread
         timer_setted = false
-        if (not self.read_thread) and (curpage == self) and $window.visible? and $window.has_toplevel_focus?
+        if (not self.read_thread) and (curpage == self) and $window.visible? \
+        and $window.has_toplevel_focus?
           #color = $window.modifier_style.text(Gtk::STATE_NORMAL)
           #curcolor = tab_widget.label.modifier_style.fg(Gtk::STATE_ACTIVE)
           if @has_unread #curcolor and (color != curcolor)
@@ -17515,14 +17529,14 @@ module PandoraGtk
 
     # Show capcha
     # RU: Показать капчу
-    def show_captcha(srckey, captcha_buf=nil, clue_text=nil, node=nil)
+    def s1how_c1aptcha(srckey, captcha_buf=nil, clue_text=nil, node=nil)
       res = nil
       if captcha_buf and (not @csw)
         @csw = Gtk::ScrolledWindow.new(nil, nil)
         csw = @csw
 
         csw.signal_connect('destroy-event') do
-          show_captcha(srckey)
+          s1how_captcha(srckey)
         end
 
         @vbox = Gtk::VBox.new
@@ -17571,13 +17585,13 @@ module PandoraGtk
         okbutton.signal_connect('clicked') do
           text = captcha_entry.text
           yield(text) if block_given?
-          show_captcha(srckey)
+          s1how_captcha(srckey)
         end
 
         cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
         cancelbutton.signal_connect('clicked') do
           yield(false) if block_given?
-          show_captcha(srckey)
+          s1how_captcha(srckey)
         end
 
         captcha_entry.signal_connect('key-press-event') do |widget, event|
@@ -17652,9 +17666,75 @@ module PandoraGtk
     end
   end
 
+  # Show capcha
+  # RU: Показать капчу
+  def self.recognize_captcha(srckey, captcha_buf=nil, clue_text=nil, node=nil, \
+  node_id=nil, models=nil)
+    res = nil
+    sw = nil
+    p '--recognize_captcha(srckey, captcha_buf.size, clue_text, node, node_id, models)='+\
+      [srckey, captcha_buf.size, clue_text, node, node_id, models].inspect
+    if captcha_buf
+      sw = show_talk_dialog([[], [srckey], []], false, node_id, models)
+      if sw
+        sw.captcha_enter = true
+        buf = sw.talkview.buffer
+        clue_text ||= ''
+        clue, length, symbols = clue_text.split('|')
+        node_text = PandoraUtils.bytes_to_hex(srckey)
+        node_text = node if (not node_text) or (node_text=='')
+        buf.insert(buf.end_iter, "\n" + _('Enter text from picture'), 'sys_bold')
+        if clue
+          buf.insert(buf.end_iter, "\n"+_(clue), 'sys')
+        end
+        if length
+          buf.insert(buf.end_iter, "\n"+_('Length')+'='+length.to_s, 'sys')
+        end
+        if symbols
+          sym_text = _('Symbols')+': '+symbols.to_s
+          i = 30
+          while i<sym_text.size do
+            sym_text = sym_text[0,i]+"\n"+sym_text[i+1..-1]
+            i += 31
+          end
+          buf.insert(buf.end_iter, "\n"+sym_text, 'sys')
+        end
+        if node_text
+          buf.insert(buf.end_iter, "\n"+ _('Far node') + ': '+ node_text, 'sys')
+        end
+        pixbuf_loader = Gdk::PixbufLoader.new
+        pixbuf_loader.last_write(captcha_buf)
+        pixbuf = pixbuf_loader.pixbuf
+        #image = Gtk::Image.new()
+        buf.insert(buf.end_iter, "\n")
+        buf.insert(buf.end_iter, pixbuf)
+        sw.talkview.after_addition(true)
+        while (not sw.destroyed?) and (not (sw.captcha_enter.is_a? String))
+          sleep(0.02)
+          Thread.pass
+        end
+        p '===== sw.captcha_enter='+sw.captcha_enter.inspect
+        if sw.destroyed?
+          res = false
+        elsif (sw.captcha_enter.is_a? String)
+          res = sw.captcha_enter.dup
+          sw.captcha_enter = nil
+        end
+      end
+
+      #captcha_entry = PandoraGtk::MaskEntry.new
+      #captcha_entry.max_length = len
+      #if symbols
+      #  mask = symbols.downcase+symbols.upcase
+      #  captcha_entry.mask = mask
+      #end
+    end
+    [res, sw]
+  end
+
   # Show conversation dialog
   # RU: Показать диалог общения
-  def self.show_talk_dialog(panhashes, nodehash=nil)
+  def self.show_talk_dialog(panhashes, nodehash=nil, node_id=nil, models=nil)
     sw = nil
     p 'show_talk_dialog: [panhashes, nodehash]='+[panhashes, nodehash].inspect
     targets = [[], [], []]
@@ -17672,7 +17752,19 @@ module PandoraGtk
     end
     p 'targets='+targets.inspect
 
-    if (persons.size>0) or (nodes.size>0) or (keys.size>0)
+    target_exist = ((persons.size>0) or (nodes.size>0) or (keys.size>0))
+    if (not target_exist) and node_id
+      node_model = PandoraUtils.get_model('Node', models)
+      sel = node_model.select({:id => node_id}, false, 'panhash, key_hash', nil, 1)
+      if sel and sel.size>0
+        row = sel[0]
+        nodes << row[0]
+        keys  << row[1]
+        extract_targets_from_panhash(targets, panhashes)
+        target_exist = ((persons.size>0) or (nodes.size>0) or (keys.size>0))
+      end
+    end
+    if target_exist
       room_id = construct_room_id(persons)
       if nodehash
         creator = PandoraCrypto.current_user_or_key(true)
@@ -17691,10 +17783,8 @@ module PandoraGtk
           break
         end
       end
-      if not sw
-        sw = DialogScrollWin.new(nodehash, room_id, targets)
-      end
-    elsif (not nodehash)
+      sw ||= DialogScrollWin.new(nodehash, room_id, targets)
+    elsif nodehash.nil?
       mes = ''
       mes = _('node') if nodes.size == 0
       if persons.size == 0
