@@ -6258,7 +6258,7 @@ module PandoraNet
           session.dialog = nil if (session.dialog and session.dialog.destroyed?)
           session.dialog = dialog if dialog and (i==0)
           if session.dialog and (not session.dialog.destroyed?) \
-          and session.dialog.online_button
+          and session.dialog.online_button.active?
             session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep)
             if ((session.socket and (not session.socket.closed?)) or session.active_hook)
               session.dialog.online_button.safe_set_active(true)
@@ -6428,7 +6428,7 @@ module PandoraNet
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
-      :entered_captcha, :captcha_sw, :hooks, :fish_ind, :notice_ind, \
+      :captcha_sw, :hooks, :fish_ind, :notice_ind, \
       :sess_trust, :notice, :activity, :search_ind
 
     # Set socket options
@@ -6772,6 +6772,8 @@ module PandoraNet
       end
       if (@send_queue.single_read_state != PandoraUtils::RoundQueue::SQS_Full)
         res = @send_queue.add_block_to_queue([ascmd, ascode, asbuf])
+      else
+        p '--add_send_segment: @send_queue OVERFLOW !!!'
       end
       if ascmd != EC_Media
         asbuf ||= '';
@@ -6912,7 +6914,7 @@ module PandoraNet
         skey_panhash = params['srckey']
         if (skey_panhash.is_a? String) and (skey_panhash.bytesize>0)
           if first and (@stage == ES_Protocol) and $puzzle_bit_length \
-          and ($puzzle_bit_length>0) and ((conn_mode & CM_Hunter) == 0)
+          and ($puzzle_bit_length>0) and ((@conn_mode & CM_Hunter) == 0)
             # first need to puzzle
             phrase, init = get_sphrase(true)
             phrase[-1] = $puzzle_bit_length.chr
@@ -7441,7 +7443,7 @@ module PandoraNet
                 p log_mes+'recived phrase len='+rphrase.bytesize.to_s
                 if rphrase and (rphrase != '')
                   if rcode==ECC_Auth_Puzzle  #phrase for puzzle
-                    if ((conn_mode & CM_Hunter) == 0)
+                    if ((@conn_mode & CM_Hunter) == 0)
                       err_scmd('Puzzle to listener is denied')
                     else
                       delay = rphrase[-2].ord
@@ -7508,7 +7510,7 @@ module PandoraNet
                 if @skey and @skey[PandoraCrypto::KV_Obj]
                   if PandoraCrypto.verify_sign(@skey, OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
                     creator = PandoraCrypto.current_user_or_key(true)
-                    if ((conn_mode & CM_Hunter) != 0) or (not @skey[PandoraCrypto::KV_Creator]) \
+                    if ((@conn_mode & CM_Hunter) != 0) or (not @skey[PandoraCrypto::KV_Creator]) \
                     or (@skey[PandoraCrypto::KV_Creator] != creator)
                       # check messages if it's not session to myself
                       @send_state = (@send_state | CSF_Message)
@@ -7518,8 +7520,8 @@ module PandoraNet
                     init_and_check_node(@skey[PandoraCrypto::KV_Creator], \
                       @skey[PandoraCrypto::KV_Panhash], sbase_id)
 
-                    if ((conn_mode & CM_Double) == 0)
-                      if ((conn_mode & CM_Hunter) == 0)
+                    if ((@conn_mode & CM_Double) == 0)
+                      if ((@conn_mode & CM_Hunter) == 0)
                         trust = 0 if (not trust) and $trust_for_captchaed
                       elsif $trust_for_listener and (not (trust.is_a? Float))
                         trust = 0.01
@@ -7543,7 +7545,7 @@ module PandoraNet
                                 @to_base_id, not_trust, not_dep, nick)
                             end
                           end
-                          if (conn_mode & CM_Hunter) == 0
+                          if (@conn_mode & CM_Hunter) == 0
                             @stage = ES_Greeting
                             add_send_segment(EC_Auth, true, params['srckey'])
                             set_max_pack_size(ES_Sign)
@@ -7588,29 +7590,28 @@ module PandoraNet
               elsif (rcode==ECC_Auth_Captcha) and ((@stage==ES_Protocol) \
               or (@stage==ES_Greeting))
                 p log_mes+'CAPTCHA!!!  ' #+params.inspect
-                if ((conn_mode & CM_Hunter) == 0)
+                if ((@conn_mode & CM_Hunter) == 0)
                   err_scmd('Captcha for listener is denied')
                 else
                   clue_length = rdata[0].ord
                   clue_text = rdata[1,clue_length]
                   captcha_buf = rdata[clue_length+1..-1]
 
-                  @entered_captcha = nil
                   if $window.visible? #and $window.has_toplevel_focus?
-                    srckey1 = params['srckey']
-                    res, dlg = PandoraGtk.recognize_captcha(srckey1, captcha_buf, \
+                    entered_captcha, dlg = PandoraGtk.show_captcha(captcha_buf, \
                       clue_text, @node, @node_id, @recv_models)
                     @dialog ||= dlg
                     @dialog.set_session(self, true)
-                    if res
-                      @entered_captcha = res
+                    if entered_captcha
                       @scmd = EC_Auth
                       @scode = ECC_Auth_Answer
                       @sbuf = entered_captcha
+                      p log_mes + 'CAPCHA ANSWER setted: '+entered_captcha.inspect
                     elsif res.nil?
                       err_scmd('Cannot open dialog')
                     else
                       err_scmd('Captcha enter canceled')
+                      @conn_mode = (@conn_mode & (~PandoraNet::CM_Keep))
                     end
                   else
                     err_scmd('User is away')
@@ -7628,8 +7629,9 @@ module PandoraNet
                       @skey[PandoraCrypto::KV_Trust] = nil
                     end
                   end
-                  p 'Captcha is GONE!'
-                  if (conn_mode & CM_Hunter) == 0
+                  p log_mes+'Captcha is GONE!  '+@conn_mode.inspect
+                  if (@conn_mode & CM_Hunter) == 0
+                    p log_mes+'Captcha add_send_segment params[srckey]='+params['srckey'].inspect
                     add_send_segment(EC_Auth, true, params['srckey'])
                   end
                   @scmd = EC_Data
@@ -8510,7 +8512,7 @@ module PandoraNet
 
 
           if @socket
-            if ((conn_mode & CM_Hunter) == 0)
+            if ((@conn_mode & CM_Hunter) == 0)
               PandoraUtils.log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
             else
               PandoraUtils.log_message(LM_Info, _('Connected to listener')+': '+server)
@@ -8870,7 +8872,7 @@ module PandoraNet
                     mypanhash = PandoraCrypto.current_user_or_key(true)
                     receiver = @skey[PandoraCrypto::KV_Creator]
                     if (receiver.is_a? String) and (receiver.bytesize>0) \
-                    and (((conn_mode & CM_Hunter) != 0) or (mypanhash != receiver))
+                    and (((@conn_mode & CM_Hunter) != 0) or (mypanhash != receiver))
                       filter = {'destination'=>receiver, 'state'=>1}
                       message_model.update({:state=>0}, nil, filter)
                     end
@@ -9217,7 +9219,7 @@ module PandoraNet
               p log_mes+'closed!'
             end
             if socket.is_a? IPSocket
-              if ((conn_mode & CM_Hunter) == 0)
+              if ((@conn_mode & CM_Hunter) == 0)
                 PandoraUtils.log_message(LM_Info, _('Hunter disconnects')+': '+@host_ip.inspect)
               else
                 PandoraUtils.log_message(LM_Info, _('Disconnected from listener')+': '+@host_ip.inspect)
@@ -13655,12 +13657,127 @@ module PandoraGtk
   class DialogScrollWin < Gtk::ScrolledWindow
     attr_accessor :room_id, :targets, :online_button, :snd_button, :vid_button, :talkview, \
       :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
-      :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_enter
+      :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, :sender_box, \
+      :option_box, :captcha_enter
 
     include PandoraGtk
 
     CL_Online = 0
     CL_Name   = 1
+
+    def init_captcha_entry(pixbuf, length=nil, symbols=nil, clue=nil, node_text=nil)
+      if not @captcha_entry
+        @captcha_label = Gtk::Label.new(_('Enter text from picture'))
+        label = @captcha_label
+        @sender_box.pack_start(label, false, false, 2)
+
+        @captcha_entry = PandoraGtk::MaskEntry.new
+
+        len = 0
+        begin
+          len = length.to_i if length
+        rescue
+        end
+        captcha_entry.max_length = len
+
+        #buf = talkview.buffer
+        #buf.insert(buf.end_iter, "\n" + _('Enter text from picture'), 'sys_bold')
+        #if clue
+        #  buf.insert(buf.end_iter, "\n"+_(clue), 'sys')
+        #end
+        #if length
+        #  buf.insert(buf.end_iter, "\n"+_('Length')+'='+length.to_s, 'sys')
+        #end
+        #if node_text
+        #  buf.insert(buf.end_iter, "\n"+ _('Far node') + ': '+ node_text, 'sys')
+        #end
+        #if symbols
+        #  mask = symbols.downcase+symbols.upcase
+        #  captcha_entry.mask = mask
+        #  sym_text = _('Symbols')+': '+symbols.to_s
+        #  i = 30
+        #  while i<sym_text.size do
+        #    sym_text = sym_text[0,i]+"\n"+sym_text[i+1..-1]
+        #    i += 31
+        #  end
+        #  buf.insert(buf.end_iter, "\n"+sym_text, 'sys')
+        #end
+
+        #image = Gtk::Image.new()
+        #buf.insert(buf.end_iter, "\n")
+        #buf.insert(buf.end_iter, pixbuf)
+
+        res = area_recv.signal_connect('expose-event') do |widget, event|
+          x = (event.area.width - pixbuf.width) / 2
+          y = (event.area.height - pixbuf.height) / 2
+          x = 0 if x<0
+          y = 0 if y<0
+          cr = widget.window.create_cairo_context
+          cr.set_source_pixbuf(pixbuf, x, y)
+          cr.paint
+          true
+        end
+        area_recv.set_expose_event(res)
+
+        captcha_entry.signal_connect('key-press-event') do |widget, event|
+          if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+            @captcha_enter = captcha_entry.text
+            captcha_entry.text = ''
+            del_captcha_entry
+            true
+          elsif (Gdk::Keyval::GDK_Escape==event.keyval)
+            @captcha_enter = false
+            del_captcha_entry
+            false
+          else
+            false
+          end
+        end
+        PandoraGtk.hack_enter_bug(captcha_entry)
+
+        ew = 150
+        if len>0
+          str = label.text
+          label.text = 'W'*(len+1)
+          ew,lh = label.size_request
+          label.text = str
+        end
+
+        captcha_entry.width_request = ew
+        @captcha_align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+        @captcha_align.add(captcha_entry)
+        @sender_box.pack_start(@captcha_align, false, false, 2)
+        @editbox.hide
+        @option_box.hide
+        @captcha_label.show
+        @captcha_align.show_all
+        area_recv.queue_draw
+
+        Thread.pass
+        sleep 0.02
+        talkview.after_addition(true)
+        talkview.show_all
+
+        @captcha_entry.grab_focus
+      end
+    end
+
+    def del_captcha_entry
+      if @captcha_entry and (not self.destroyed?)
+        @captcha_align.destroy
+        @captcha_align = nil
+        @captcha_entry = nil
+        @captcha_label.destroy
+        @captcha_label = nil
+        @option_box.show
+        @editbox.show
+        area_recv.set_expose_event(nil)
+        area_recv.queue_draw
+        Thread.pass
+        talkview.after_addition(true)
+        @editbox.grab_focus
+      end
+    end
 
     # Show conversation dialog
     # RU: Показать диалог общения
@@ -13697,22 +13814,6 @@ module PandoraGtk
         #p 'area_recv '+area_recv.window.xid.inspect
         false
       end
-
-#avconv -f video4linux2 -i /dev/video0 -vcodec mpeg2video -r 25 -pix_fmt yuv420p -me_method epzs -b 2600k -bt 256k -f rtp rtp://192.168.44.150:5004
-
-#ffmpeg -f dshow  -framerate 20 -i video=screen-capture-recorder -vf scale=1280:720 -vcodec libx264 -pix_fmt yuv420p -tune zerolatency -preset ultrafast -f mpegts udp://236.0.0.1:2000
-#mplayer -demuxer +mpegts -framedrop -benchmark ffmpeg://udp://236.0.0.1:2000?fifo_size=100000&buffer_size=10000000
-
-#avconv -f video4linux2 -i /dev/video1 -vcodec mpeg2video -pix_fmt yuv420p -me_method epzs -b 2600k -bt 256k -f mpegts udp://127.0.0.1:5004?listen
-#mplayer -wid 39846401 -demuxer +mpegts -framedrop -benchmark ffmpeg://udp://127.0.0.1:5004
-
-#http://stackoverflow.com/questions/24411982/find-better-vp8-parameters-for-robustness-in-udp-streaming-with-libav-ffmpeg
-#avconv -f video4linux2 -i /dev/video0 -s qvga -f webm -s 320x240 -vcodec libvpx -vb 128k tcp://127.0.0.1:5000?listen
-#avplay tcp://127.0.0.1:5000
-
-#avconv -s qvga -f video4linux2 -i /dev/video0 -r 2 -copyts -b 128k -bt 32k -bufsize 10 -f webm tcp://127.0.0.1:5000?listen
-#avplay -bufsize 10 tcp://127.0.0.1:5000
-
 
       hbox = Gtk::HBox.new
 
@@ -13810,14 +13911,8 @@ module PandoraGtk
         and (not event.state.mod1_mask?)
           if editbox.buffer.text != ''
             mes = editbox.buffer.text
-            p '@captcha_enter='+@captcha_enter.inspect
-            if @captcha_enter
-              @captcha_enter = mes
-              editbox.buffer.text = ''
-            else
-              res = add_and_send_mes(mes)
-              editbox.buffer.text = '' if res
-            end
+            res = add_and_send_mes(mes)
+            editbox.buffer.text = '' if res
           end
           true
         elsif (Gdk::Keyval::GDK_Escape==event.keyval)
@@ -13835,9 +13930,9 @@ module PandoraGtk
       area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
       hpaned2.pack1(area_send, false, true)
 
-      option_box = Gtk::HBox.new
+      @option_box = Gtk::HBox.new
 
-      sender_box = Gtk::VBox.new
+      @sender_box = Gtk::VBox.new
       sender_box.pack_start(option_box, false, true, 0)
       sender_box.pack_start(editbox, true, true, 0)
 
@@ -14225,15 +14320,15 @@ module PandoraGtk
 
     # Set session
     # RU: Задать сессию
-    def set_session(session, online=true)
+    def set_session(session, online=true, keep=true)
       p 'set_session(session, online)='+[session.object_id, online].inspect
       @sessions ||= []
       if online
         @sessions << session if (not @sessions.include?(session))
-        session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep)
+        session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep) if keep
       else
         @sessions.delete(session)
-        session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Keep))
+        session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Keep)) if keep
         session.dialog = nil
       end
       active = (@sessions.size>0)
@@ -14312,7 +14407,7 @@ module PandoraGtk
             self.read_thread = Thread.new do
               sleep(0.3)
               if (not curpage.destroyed?) and (not curpage.editbox.destroyed?)
-                curpage.editbox.grab_focus
+                curpage.editbox.grab_focus if curpage.editbox.visible?
                 curpage.talkview.after_addition(true)
               end
               if $window.visible? and $window.has_toplevel_focus?
@@ -14340,12 +14435,12 @@ module PandoraGtk
             Thread.new do
               sleep(0.3)
               if (not curpage.destroyed?) and (not curpage.editbox.destroyed?)
-                curpage.editbox.grab_focus
+                curpage.editbox.grab_focus if curpage.editbox.visible?
               end
             end
           end
           Thread.pass
-          curpage.editbox.grab_focus
+          curpage.editbox.grab_focus if curpage.editbox.visible?
         end
       end
     end
@@ -17668,56 +17763,38 @@ module PandoraGtk
 
   # Show capcha
   # RU: Показать капчу
-  def self.recognize_captcha(srckey, captcha_buf=nil, clue_text=nil, node=nil, \
+  def self.show_captcha(captcha_buf=nil, clue_text=nil, node=nil, \
   node_id=nil, models=nil)
     res = nil
     sw = nil
-    p '--recognize_captcha(srckey, captcha_buf.size, clue_text, node, node_id, models)='+\
-      [srckey, captcha_buf.size, clue_text, node, node_id, models].inspect
+    p '--recognize_captcha(captcha_buf.size, clue_text, node, node_id, models)='+\
+      [captcha_buf.size, clue_text, node, node_id, models].inspect
     if captcha_buf
-      sw = show_talk_dialog([[], [srckey], []], false, node_id, models)
+      sw = show_talk_dialog(nil, false, node_id, models)
       if sw
-        sw.captcha_enter = true
-        buf = sw.talkview.buffer
         clue_text ||= ''
         clue, length, symbols = clue_text.split('|')
-        node_text = PandoraUtils.bytes_to_hex(srckey)
-        node_text = node if (not node_text) or (node_text=='')
-        buf.insert(buf.end_iter, "\n" + _('Enter text from picture'), 'sys_bold')
-        if clue
-          buf.insert(buf.end_iter, "\n"+_(clue), 'sys')
-        end
-        if length
-          buf.insert(buf.end_iter, "\n"+_('Length')+'='+length.to_s, 'sys')
-        end
-        if symbols
-          sym_text = _('Symbols')+': '+symbols.to_s
-          i = 30
-          while i<sym_text.size do
-            sym_text = sym_text[0,i]+"\n"+sym_text[i+1..-1]
-            i += 31
-          end
-          buf.insert(buf.end_iter, "\n"+sym_text, 'sys')
-        end
-        if node_text
-          buf.insert(buf.end_iter, "\n"+ _('Far node') + ': '+ node_text, 'sys')
-        end
+        node_text = node
         pixbuf_loader = Gdk::PixbufLoader.new
         pixbuf_loader.last_write(captcha_buf)
         pixbuf = pixbuf_loader.pixbuf
-        #image = Gtk::Image.new()
-        buf.insert(buf.end_iter, "\n")
-        buf.insert(buf.end_iter, pixbuf)
-        sw.talkview.after_addition(true)
-        while (not sw.destroyed?) and (not (sw.captcha_enter.is_a? String))
+
+        sw.init_captcha_entry(pixbuf, length, symbols, clue, node_text)
+
+        sw.captcha_enter = true
+        while (not sw.destroyed?) and (sw.captcha_enter.is_a? TrueClass)
           sleep(0.02)
           Thread.pass
         end
         p '===== sw.captcha_enter='+sw.captcha_enter.inspect
         if sw.destroyed?
           res = false
-        elsif (sw.captcha_enter.is_a? String)
-          res = sw.captcha_enter.dup
+        else
+          if (sw.captcha_enter.is_a? String)
+            res = sw.captcha_enter.dup
+          else
+            res = sw.captcha_enter
+          end
           sw.captcha_enter = nil
         end
       end
