@@ -5499,6 +5499,12 @@ module PandoraNet
   PI_SymCount    = 7
   PI_HoldFrags   = 8
 
+  # Session types
+  ST_Hunter   = 0
+  ST_Listener = 1
+  ST_Fisher   = 2
+
+
   # Pool
   # RU: Пул
   class Pool
@@ -5945,7 +5951,7 @@ module PandoraNet
     def add_session(conn)
       if not sessions.include?(conn)
         sessions << conn
-        window.update_conn_status(conn, conn.get_type, 1)
+        window.update_conn_status(conn, conn.conn_type, 1)
       end
     end
 
@@ -5953,7 +5959,7 @@ module PandoraNet
     # RU: Удаляет сессию из списка
     def del_session(conn)
       if sessions.delete(conn)
-        window.update_conn_status(conn, conn.get_type, -1)
+        window.update_conn_status(conn, conn.conn_type, -1)
       end
     end
 
@@ -6050,6 +6056,14 @@ module PandoraNet
           res = [@notice_ind+1, person, key, baseid, notice_trust, notice_depth, nick, time, session]
           @notice_list << res
           @notice_ind += 1
+
+          hpaned = $window.fish_hpaned
+          if (hpaned.max_position - hpaned.position) > 24
+            fish_sw = $window.fish_sw
+            fish_sw.update_btn.clicked
+          else
+            PandoraGtk.show_fish_panel
+          end
         end
         $window.set_status_field(PandoraGtk::SF_Fish, @notice_list.size.to_s)
       end
@@ -6448,10 +6462,6 @@ module PandoraNet
       $window.pool
     end
 
-    ST_Hunter   = 0
-    ST_Listener = 1
-    ST_Fisher   = 2
-
     LHI_Line       = 0
     LHI_Session    = 1
     LHI_Far_Hook   = 2
@@ -6459,7 +6469,7 @@ module PandoraNet
 
     # Type of session
     # RU: Тип сессии
-    def get_type
+    def conn_type
       res = nil
       if ((@conn_mode & CM_Hunter)>0)
         res = ST_Hunter
@@ -7120,7 +7130,7 @@ module PandoraNet
           @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
           #node = PandoraNet.encode_addr(host_ip, port, proto)
           panhash = @skey[PandoraCrypto::KV_Creator]
-          @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
+          @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash, conn_type)
           dialog.update_state(true)
           Thread.pass
           #PandoraUtils.play_mp3('online')
@@ -7599,7 +7609,7 @@ module PandoraNet
 
                   if $window.visible? #and $window.has_toplevel_focus?
                     entered_captcha, dlg = PandoraGtk.show_captcha(captcha_buf, \
-                      clue_text, @node, @node_id, @recv_models)
+                      clue_text, conn_type, @node, @node_id, @recv_models)
                     @dialog ||= dlg
                     @dialog.set_session(self, true)
                     if entered_captcha
@@ -7810,7 +7820,7 @@ module PandoraNet
                 if (not @dialog) or @dialog.destroyed?
                   @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
                   panhash = @skey[PandoraCrypto::KV_Creator]
-                  @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash)
+                  @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash, conn_type)
                   Thread.pass
                   #PandoraUtils.play_mp3('online')
                 end
@@ -12785,7 +12795,7 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::DELETE, 'Delete')
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
-      @zoom_100 = PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_100, 'Show 1:1', false) do |btn|
+      @zoom_100 = PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_100, 'Show 1:1', true) do |btn|
         bw = get_bodywin
         if bw and (bc = bw.body_child)
           p image = bc
@@ -12846,10 +12856,11 @@ module PandoraGtk
                     ext_dc = ext.downcase
                     if ext
                       if (['.jpg','.gif','.png'].include? ext_dc)
+                        scale = nil
                         img_width  = bodywin.parent.allocation.width-14
                         img_height = bodywin.parent.allocation.height
-                        image = PandoraGtk.start_image_loading(link_name, nil, nil, \
-                          img_width, img_height)
+                        image = PandoraGtk.start_image_loading(link_name, nil, scale)
+                          #img_width, img_height)
                         bodywid = image
                         bodywin.link_name = link_name
                       elsif (['.txt','.rb','.xml','.py','.csv','.sh'].include? ext_dc)
@@ -13708,8 +13719,10 @@ module PandoraGtk
         #buf.insert(buf.end_iter, pixbuf)
 
         res = area_recv.signal_connect('expose-event') do |widget, event|
-          x = (event.area.width - pixbuf.width) / 2
-          y = (event.area.height - pixbuf.height) / 2
+          x = widget.allocation.width
+          y = widget.allocation.height
+          x = (x - pixbuf.width) / 2
+          y = (y - pixbuf.height) / 2
           x = 0 if x<0
           y = 0 if y<0
           cr = widget.window.create_cairo_context
@@ -13828,20 +13841,20 @@ module PandoraGtk
           widget.inconsistent = true
           targets[CSI_Persons].each_with_index do |person, i|
             keys = targets[CSI_Keys]
-            if keys.is_a? Array
-              keys.each do |key|
-                $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-                  person, key, nil, PandoraNet::CM_Captcha)
-              end
-            else
-              $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-                person, keys, nil, PandoraNet::CM_Captcha)
-            end
+            #if keys.is_a? Array
+            #  keys.each do |key|
+            #    $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
+            #      person, key, nil, PandoraNet::CM_Captcha)
+            #  end
+            #else
+            #  $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
+            #    person, keys, nil, PandoraNet::CM_Captcha)
+            #end
           end
         else
           widget.safe_set_active(false)
           widget.inconsistent = false
-          $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
+          #$window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
         end
       end
       online_button.safe_set_active(known_node != nil)
@@ -14321,7 +14334,7 @@ module PandoraGtk
     # Set session
     # RU: Задать сессию
     def set_session(session, online=true, keep=true)
-      p 'set_session(session, online)='+[session.object_id, online].inspect
+      p '***---- set_session(session, online)='+[session.object_id, online].inspect
       @sessions ||= []
       if online
         @sessions << session if (not @sessions.include?(session))
@@ -15872,7 +15885,7 @@ module PandoraGtk
       list_tree.append_column(column)
 
       list_tree.signal_connect('row_activated') do |tree_view, path, column|
-        # download and go to record
+        PandoraGtk.act_panobject(list_tree, 'Dialog')
       end
 
       menu = Gtk::Menu.new
@@ -15901,26 +15914,26 @@ module PandoraGtk
       list_tree.signal_connect('key-press-event') do |widget, event|
         res = true
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-          act_panobject(list_tree, 'Edit')
+          PandoraGtk.act_panobject(list_tree, 'Dialog')
         elsif (event.keyval==Gdk::Keyval::GDK_Insert)
           if event.state.control_mask?
-            act_panobject(list_tree, 'Copy')
+            #act_panobject(list_tree, 'Copy')
           else
-            act_panobject(list_tree, 'Create')
+            #act_panobject(list_tree, 'Create')
           end
         elsif (event.keyval==Gdk::Keyval::GDK_Delete)
-          act_panobject(list_tree, 'Delete')
+          #act_panobject(list_tree, 'Delete')
         elsif event.state.control_mask?
           if [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
-            #act_panobject(list_tree, 'Dialog')
-            path, column = list_tree.cursor
-            if path
-              iter = list_store.get_iter(path)
-              person = nil
-              person = iter[0] if iter
-              person = PandoraUtils.hex_to_bytes(person)
-              PandoraGtk.show_talk_dialog(person) if person
-            end
+            PandoraGtk.act_panobject(list_tree, 'Dialog')
+            #path, column = list_tree.cursor
+            #if path
+            #  iter = list_store.get_iter(path)
+            #  person = nil
+            #  person = iter[0] if iter
+            #  person = PandoraUtils.hex_to_bytes(person)
+            #  PandoraGtk.show_talk_dialog(person) if person
+            #end
           else
             res = false
           end
@@ -16145,15 +16158,7 @@ module PandoraGtk
     else
       image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
     end
-    if toggle != nil
-      btn = SafeToggleToolButton.new(stock)
-      #btn = Gtk::ToolButton.new(image, _(title))
-      btn.safe_signal_clicked do |*args|
-      #btn.signal_connect('clicked') do |*args|
-        yield(*args) if block_given?
-      end
-      btn.active = toggle if toggle
-    else
+    if toggle.nil?
       #btn = Gtk::ToolButton.new(iconset, _(title))
       btn = Gtk::ToolButton.new(image, _(title))
       #btn = Gtk::ToolButton.new(stock)
@@ -16161,6 +16166,15 @@ module PandoraGtk
         yield(*args) if block_given?
       end
       btn.label = title
+    else
+      btn = SafeToggleToolButton.new(stock)
+      #btn = Gtk::ToolButton.new(image, _(title))
+      btn.safe_signal_clicked do |*args|
+      #btn.signal_connect('clicked') do |*args|
+        yield(*args) if block_given?
+      end
+      #btn.active = toggle if toggle
+      btn.safe_set_active(toggle) if toggle
     end
     toolbar.add(btn)
     title = _(title)
@@ -17763,14 +17777,14 @@ module PandoraGtk
 
   # Show capcha
   # RU: Показать капчу
-  def self.show_captcha(captcha_buf=nil, clue_text=nil, node=nil, \
+  def self.show_captcha(captcha_buf=nil, clue_text=nil, conntype=nil, node=nil, \
   node_id=nil, models=nil)
     res = nil
     sw = nil
     p '--recognize_captcha(captcha_buf.size, clue_text, node, node_id, models)='+\
       [captcha_buf.size, clue_text, node, node_id, models].inspect
     if captcha_buf
-      sw = show_talk_dialog(nil, false, node_id, models)
+      sw = show_talk_dialog(nil, false, conntype, node_id, models)
       if sw
         clue_text ||= ''
         clue, length, symbols = clue_text.split('|')
@@ -17811,7 +17825,7 @@ module PandoraGtk
 
   # Show conversation dialog
   # RU: Показать диалог общения
-  def self.show_talk_dialog(panhashes, nodehash=nil, node_id=nil, models=nil)
+  def self.show_talk_dialog(panhashes, nodehash=nil, conntype=nil, node_id=nil, models=nil)
     sw = nil
     p 'show_talk_dialog: [panhashes, nodehash]='+[panhashes, nodehash].inspect
     targets = [[], [], []]
@@ -17842,8 +17856,9 @@ module PandoraGtk
       end
     end
     if target_exist
+      p '@@@@@@@@@ nodehash, conntype='+[nodehash, conntype].inspect
       room_id = construct_room_id(persons)
-      if nodehash
+      if conntype.nil? or (conntype==PandoraNet::ST_Hunter)
         creator = PandoraCrypto.current_user_or_key(true)
         if (persons.size==1) and (persons[0]==creator)
           room_id[-1] = (room_id[-1].ord ^ 1).chr
@@ -17853,9 +17868,9 @@ module PandoraGtk
       $window.notebook.children.each do |child|
         if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
           child.targets = targets
-          child.online_button.safe_set_active(nodehash != nil)
-          child.online_button.inconsistent = false
-          $window.notebook.page = $window.notebook.children.index(child) if (not nodehash)
+          #child.online_button.safe_set_active(nodehash != nil)
+          #child.online_button.inconsistent = false
+          $window.notebook.page = $window.notebook.children.index(child) if conntype.nil?
           sw = child
           break
         end
@@ -18021,13 +18036,13 @@ module PandoraGtk
   # RU: Показать список рыб
   def self.show_fish_panel
     hpaned = $window.fish_hpaned
-    list_sw = hpaned.children[1]
-    if list_sw.allocation.width <= 24 #hpaned.position <= 20
-      list_sw.width_request = 250 if list_sw.width_request <= 24
-      hpaned.position = hpaned.max_position-list_sw.width_request
-      list_sw.update_btn.clicked
+    fish_sw = $window.fish_sw
+    if fish_sw.allocation.width <= 24 #hpaned.position <= 20
+      fish_sw.width_request = 200 if fish_sw.width_request <= 24
+      hpaned.position = hpaned.max_position-fish_sw.width_request
+      fish_sw.update_btn.clicked
     else
-      list_sw.width_request = list_sw.allocation.width
+      fish_sw.width_request = fish_sw.allocation.width
       hpaned.position = hpaned.max_position
     end
     $window.correct_fish_btn_state
@@ -18327,7 +18342,8 @@ module PandoraGtk
   # RU: Главное окно
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
-      :pool, :focus_timer, :title_view, :do_on_start, :fish_hpaned, :task_offset
+      :pool, :focus_timer, :title_view, :do_on_start, :fish_hpaned, :task_offset, \
+      :fish_sw
 
     include PandoraUtils
 
@@ -18814,12 +18830,12 @@ module PandoraGtk
             close_btn.clicked
           end
         when 'Create','Edit','Delete','Copy', 'Dialog', 'Convert', 'Import', 'Export'
-          p 'act_panobject()'
+          p 'act_panobject()  treeview='+treeview.inspect
           if (not treeview) and (notebook.page >= 0)
             sw = notebook.get_nth_page(notebook.page)
             treeview = sw.children[0]
           end
-          if treeview.is_a? SubjTreeView
+          if treeview.is_a? Gtk::TreeView # SubjTreeView
             if command=='Convert'
               panobject = treeview.panobject
               panobject.update(nil, nil, nil)
@@ -19540,7 +19556,7 @@ module PandoraGtk
       sw.border_width = 1;
       sw.set_size_request(-1, 40)
 
-      fish_sw = FishScrollWin.new
+      @fish_sw = FishScrollWin.new
       fish_sw.set_size_request(0, -1)
 
       @fish_hpaned = Gtk::HPaned.new
@@ -19746,6 +19762,8 @@ module PandoraGtk
       $window.set_default_size(640, 420)
       $window.maximize
       $window.show_all
+
+      @fish_hpaned.position = @fish_hpaned.max_position
 
       #------next must be after show main form ---->>>>
 
