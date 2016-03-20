@@ -4059,6 +4059,7 @@ module PandoraModel
   # RU: Флаги состояния объекта/записи
   PSF_Support    = 1      # must keep on this node (else will be deleted by GC)
   PSF_Verified   = 2      # signature was verified
+  PSF_Crypted    = 4      # record is encrypted
   PSF_Harvest    = 64     # download by pieces in progress
   PSF_Deleted    = 128    # marked to delete
 
@@ -4262,7 +4263,8 @@ module PandoraCrypto
     #cipher_hash ||= encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
     if cipher_hash and (cipher_hash != 0) and data
       ckind, chash = decode_cipher_and_hash(cipher_hash)
-      if (chash == KH_None)
+      ktype, klen = divide_type_and_klen(ckind)
+      if (ktype == KT_None)
         key_vec = current_key(false, true)
         if key_vec and key_vec[KV_Obj] and key_vec[KV_Panhash]
           if encode
@@ -4376,8 +4378,8 @@ module PandoraCrypto
     if not key
       keypub  = key_vec[KV_Pub]
       keypriv = key_vec[KV_Priv]
-      keypriv = AsciiString.new(keypriv) if keypriv
       keypub  = AsciiString.new(keypub) if keypub
+      keypriv = AsciiString.new(keypriv) if keypriv
       type_klen = key_vec[KV_Kind]
       cipher_hash = key_vec[KV_Cipher]
       pass = key_vec[KV_Pass]
@@ -4534,15 +4536,15 @@ module PandoraCrypto
     else  #elsif key.is_a? OpenSSL::PKey
       if encrypt
         if private
-          recrypted = key.private_encrypt(data)
+          recrypted = key.private_encrypt(data)  #for make sign
         else
-          recrypted = key.public_encrypt(data)
+          recrypted = key.public_encrypt(data)   #crypt to transfer
         end
       else
         if private
-          recrypted = key.private_decrypt(data)
+          recrypted = key.private_decrypt(data)  #uncrypt after transfer
         else
-          recrypted = key.public_decrypt(data)
+          recrypted = key.public_decrypt(data)   #for check sign
         end
       end
     end
@@ -4555,6 +4557,7 @@ module PandoraCrypto
     if key_vec.is_a? Array
       PandoraUtils.fill_by_zeros(key_vec[PandoraCrypto::KV_Priv])  #private key
       PandoraUtils.fill_by_zeros(key_vec[PandoraCrypto::KV_Pass])
+      PandoraUtils.fill_by_zeros(key_vec[PandoraCrypto::KV_Pub])
       key_vec.each_index do |i|
         key_vec[i] = nil
       end
@@ -4569,6 +4572,8 @@ module PandoraCrypto
   # Deactivate current key
   # RU: Деактивирует текущий ключ
   def self.reset_current_key
+    panhash = self.the_current_key[KV_Panhash]
+    $open_keys[panhash] = nil
     self.the_current_key = deactivate_key(self.the_current_key)
     $window.set_status_field(PandoraGtk::SF_Auth, 'Not logged', nil, false)
     self.the_current_key
@@ -4909,6 +4914,9 @@ module PandoraCrypto
           key_vec = init_key(key_vec)
           if key_vec and key_vec[KV_Obj]
             self.the_current_key = key_vec
+            panhash = key_vec[KV_Panhash]
+            panhash ||= last_auth_key
+            $open_keys[panhash] = key_vec
             text = PandoraCrypto.short_name_of_person(key_vec, nil, 1)
             if not (text and (text.size>0))
               text = 'Logged'
@@ -10608,7 +10616,7 @@ module PandoraGtk
           image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
           image.set_padding(2, 0)
           label_box2 = TabLabelBox.new(image, title, nil, false, 0)
-          pbox = PandoraGtk::PanobjBox.new
+          pbox = PandoraGtk::PanobjScrolledWindow.new
           page = dialog.notebook.append_page(pbox, label_box2)
           auto_create = PandoraGtk.show_panobject_list(panclass, nil, pbox, auto_create)
           if panclasses.size>MaxPanhashTabs
@@ -13170,7 +13178,7 @@ module PandoraGtk
       image = $window.get_preset_image('relation')
       image.set_padding(2, 0)
       label_box2 = TabLabelBox.new(image, _('Relations'), nil, false, 0)
-      pbox = PandoraGtk::PanobjBox.new
+      pbox = PandoraGtk::PanobjScrolledWindow.new
       page = notebook.append_page(pbox, label_box2)
       PandoraGtk.show_panobject_list(PandoraModel::Relation, nil, pbox)
 
@@ -13178,7 +13186,7 @@ module PandoraGtk
       image = $window.get_preset_image('sign')
       image.set_padding(2, 0)
       label_box2 = TabLabelBox.new(image, _('Signs'), nil, false, 0)
-      pbox = PandoraGtk::PanobjBox.new
+      pbox = PandoraGtk::PanobjScrolledWindow.new
       page = notebook.append_page(pbox, label_box2)
       PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox)
 
@@ -13186,7 +13194,7 @@ module PandoraGtk
       image = $window.get_preset_image('opinion')
       image.set_padding(2, 0)
       label_box2 = TabLabelBox.new(image, _('Opinions'), nil, false, 0)
-      pbox = PandoraGtk::PanobjBox.new
+      pbox = PandoraGtk::PanobjScrolledWindow.new
       page = notebook.append_page(pbox, label_box2)
       PandoraGtk.show_panobject_list(PandoraModel::Opinion, nil, pbox)
 
@@ -15798,7 +15806,7 @@ module PandoraGtk
       hbox.pack_start(delete_btn, false, true, 0)
 
       list_sw = Gtk::ScrolledWindow.new(nil, nil)
-      list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+      list_sw.shadow_type = Gtk::SHADOW_NONE
       list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
 
       #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
@@ -16909,8 +16917,12 @@ module PandoraGtk
 
   # ScrolledWindow for panobjects
   # RU: ScrolledWindow для объектов Пандоры
-  class PanobjBox < Gtk::VBox
+  class PanobjScrolledWindow < Gtk::ScrolledWindow
     attr_accessor :update_btn, :auto_btn, :arch_btn, :treeview
+
+    def initialize
+      super(nil, nil)
+    end
 
     def update_treeview
       panobject = treeview.panobject
@@ -16994,7 +17006,7 @@ module PandoraGtk
 
     # Create new instance
     # RU: Создать новый экземпляр
-    def initialize(a_filters, hbox, pbox)
+    def initialize(a_filters, hbox, page_sw)
 
       def no_filter_frase
         res = '<'+_('filter')+'>'
@@ -17005,7 +17017,7 @@ module PandoraGtk
 
       filter_box = self
 
-      panobject = pbox.treeview.panobject
+      panobject = page_sw.treeview.panobject
 
       tab_flds = panobject.tab_fields
       def_flds = panobject.def_fields
@@ -17036,28 +17048,28 @@ module PandoraGtk
           @oper_com = Gtk::Combo.new
           oper_com.set_popdown_strings(['=','==','<>','>','<'])
           oper_com.set_size_request(56, -1)
-          filter_box.pack_start(oper_com, false, false, 0)
+          filter_box.pack_start(oper_com, false, true, 0)
 
           @val_entry = Gtk::Entry.new
           val_entry.set_size_request(120, -1)
-          filter_box.pack_start(val_entry, false, false, 0)
+          filter_box.pack_start(val_entry, false, true, 0)
 
           del_btn = Gtk::ToolButton.new(Gtk::Stock::DELETE, _('Delete'))
           del_btn.tooltip_text = _('Delete this filter')
           del_btn.signal_connect('clicked') do |*args|
             delete
           end
-          filter_box.pack_start(del_btn, false, false, 0)
+          filter_box.pack_start(del_btn, false, true, 0)
 
           add_btn = Gtk::ToolButton.new(Gtk::Stock::ADD, _('Add'))
           add_btn.tooltip_text = _('Add a new filter')
-          add_btn.signal_connect('clicked') { |*args| FilterHBox.new(filters, hbox, pbox) }
-          filter_box.pack_start(add_btn, false, false, 0)
+          add_btn.signal_connect('clicked') { |*args| FilterHBox.new(filters, hbox, page_sw) }
+          filter_box.pack_start(add_btn, false, true, 0)
 
           filter_box.show_all
         end
       end
-      filter_box.pack_start(field_com, false, false, 0)
+      filter_box.pack_start(field_com, false, true, 0)
 
       filter_box.show_all
       hbox.pack_start(filter_box, false, true, 0)
@@ -17072,12 +17084,12 @@ module PandoraGtk
 
   # Showing panobject list
   # RU: Показ списка панобъектов
-  def self.show_panobject_list(panobject_class, widget=nil, pbox=nil, auto_create=false)
+  def self.show_panobject_list(panobject_class, widget=nil, page_sw=nil, auto_create=false)
     notebook = $window.notebook
-    single = (pbox == nil)
+    single = (page_sw == nil)
     if single
       notebook.children.each do |child|
-        if (child.is_a? PanobjBox) and (child.name==panobject_class.ider)
+        if (child.is_a? PanobjScrolledWindow) and (child.name==panobject_class.ider)
           notebook.page = notebook.children.index(child)
           #child.update_if_need
           return nil
@@ -17202,45 +17214,53 @@ module PandoraGtk
       if single
         act_panobject(tree_view, 'Edit')
       else
-        dialog = pbox.parent.parent.parent
+        dialog = page_sw.parent.parent.parent
         dialog.okbutton.activate
       end
     end
 
-    pbox ||= PanobjBox.new
-    pbox.name = panobject.ider
-    pbox.treeview = treeview
+    #list_sw = Gtk::ScrolledWindow.new(nil, nil)
+    #list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+    #list_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+    #list_sw.border_width = 0
+    #list_sw.add(treeview)
 
-    list_sw = Gtk::ScrolledWindow.new(nil, nil)
-    list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
-    list_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-    list_sw.border_width = 0
-    list_sw.add(treeview)
+    pbox = Gtk::VBox.new
+
+    page_sw ||= PanobjScrolledWindow.new
+    page_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+    page_sw.border_width = 0
+    page_sw.add_with_viewport(pbox)
+    #page_sw.children[0].shadow_type = Gtk::SHADOW_NONE
+    page_sw.children[0].shadow_type = Gtk::SHADOW_ETCHED_IN
+
+    page_sw.name = panobject.ider
+    page_sw.treeview = treeview
 
     hbox = Gtk::HBox.new
 
     title = _('Update')
-    pbox.update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
-    update_btn = pbox.update_btn
+    page_sw.update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
+    update_btn = page_sw.update_btn
     update_btn.tooltip_text = title
     update_btn.label = title
     update_btn.signal_connect('clicked') do |*args|
-      pbox.update_treeview
+      page_sw.update_treeview
     end
     hbox.pack_start(update_btn, false, true, 0)
 
-    pbox.auto_btn = nil
+    page_sw.auto_btn = nil
     if single
-      pbox.auto_btn = SafeCheckButton.new(_('auto'), true)
-      auto_btn = pbox.auto_btn
+      page_sw.auto_btn = SafeCheckButton.new(_('auto'), true)
+      auto_btn = page_sw.auto_btn
       auto_btn.safe_signal_clicked do |widget|
-        update_treeview_if_need(pbox)
+        update_treeview_if_need(page_sw)
       end
       auto_btn.safe_set_active(true)
       hbox.pack_start(auto_btn, false, true, 0)
     end
-    pbox.arch_btn = SafeCheckButton.new(_('arch'), true)
-    arch_btn = pbox.arch_btn
+    page_sw.arch_btn = SafeCheckButton.new(_('arch'), true)
+    arch_btn = page_sw.arch_btn
     arch_btn.safe_signal_clicked do |widget|
       update_btn.clicked
     end
@@ -17248,10 +17268,10 @@ module PandoraGtk
     hbox.pack_start(arch_btn, false, true, 0)
 
     filters = Array.new
-    filter_box = FilterHBox.new(filters, hbox, pbox)
+    filter_box = FilterHBox.new(filters, hbox, page_sw)
 
-    pbox.pack_start(hbox, false, false, 0)
-    pbox.pack_start(list_sw, true, true, 0)
+    pbox.pack_start(hbox, false, true, 0)
+    pbox.pack_start(treeview, true, true, 0)
 
     update_btn.clicked
 
@@ -17286,14 +17306,14 @@ module PandoraGtk
         end
       end
 
-      label_box = TabLabelBox.new(image, panobject.pname, pbox, false, 0) do
+      label_box = TabLabelBox.new(image, panobject.pname, page_sw, false, 0) do
         store.clear
         treeview.destroy
       end
 
-      page = notebook.append_page(pbox, label_box)
-      notebook.set_tab_reorderable(pbox, true)
-      pbox.show_all
+      page = notebook.append_page(page_sw, label_box)
+      notebook.set_tab_reorderable(page_sw, true)
+      page_sw.show_all
       notebook.page = notebook.n_pages-1
 
       #pbox.update_if_need
@@ -17363,7 +17383,7 @@ module PandoraGtk
       $treeview_thread.exit if $treeview_thread.alive?
       $treeview_thread = nil
     end
-    if (panobjbox.is_a? PanobjBox) and panobjbox.auto_btn and panobjbox.auto_btn.active?
+    if (panobjbox.is_a? PanobjScrolledWindow) and panobjbox.auto_btn and panobjbox.auto_btn.active?
       $treeview_thread = Thread.new do
         while panobjbox and (not panobjbox.destroyed?) and panobjbox.treeview \
         and (not panobjbox.treeview.destroyed?) and $window.visible?
@@ -18802,6 +18822,49 @@ module PandoraGtk
       @mutex ||= Mutex.new
     end
 
+    def recrypt_mes(key_panhash, data, encrypt=true)
+      res = nil
+      if data.is_a? String
+        data_len = data.bytesize
+        if data_len>0
+          key_vec = PandoraCrypto.open_key(key_panhash)
+          if (key_vec.is_a? Array) and key_vec[PandoraCrypto::KV_Obj]
+            #p '------------------ key_vec='+key_vec.inspect
+            type_klen = key_vec[PandoraCrypto::KV_Kind]
+            #p 'type_klen='+type_klen.inspect
+            type, klen = PandoraCrypto.divide_type_and_klen(type_klen)
+            #p '[type, klen]='+[type, klen].inspect
+            bitlen = PandoraCrypto.klen_to_bitlen(klen)
+            #p 'bitlen='+bitlen.inspect
+            max_len = bitlen/8
+            p '--max_len='+max_len.inspect
+            if data_len>max_len
+              #cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
+              cipher_hash = PandoraCrypto.encode_cipher_and_hash(\
+                PandoraCrypto::KT_Aes | PandoraCrypto::KL_bit256, 0)
+              if encrypt
+                #key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
+                #keypub  = key.random_iv
+                #keypriv = key.random_key
+                ckey = OpenSSL::Random.random_bytes(32)
+                res = PandoraCrypto.key_recrypt(data, true, cipher_hash, ckey)
+                eckey = PandoraCrypto.recrypt(key_vec, ckey, encrypt, (not encrypt))
+                res = eckey + res
+              else
+                eckey = data[0, max_len]
+                ckey = PandoraCrypto.recrypt(key_vec, eckey, encrypt, (not encrypt))
+                data = data[max_len..-1]
+                res = PandoraCrypto.key_recrypt(data, false, cipher_hash, ckey)
+              end
+            else
+              res = PandoraCrypto.recrypt(key_vec, data, encrypt, (not encrypt))
+            end
+          end
+        end
+      end
+      res
+    end
+
     # Menu event handler
     # RU: Обработчик события меню
     def do_menu_act(command, treeview=nil)
@@ -18892,6 +18955,86 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
+          #from_time = Time.now.to_i - 5*24*3600
+          #trust = 0.5
+          #list = PandoraModel.public_records(nil, nil, nil, 1.chr)
+          #list = PandoraModel.follow_records
+          #list = PandoraModel.get_panhashes_by_kinds([1,11], from_time)
+          #list = PandoraModel.created_records(nil, nil, nil, nil)
+          #p 'list='+list.inspect
+          #if list
+          #  list.each do |panhash|
+          #    p '----------------'
+          #    kind = PandoraUtils.kind_from_panhash(panhash)
+          #    p [panhash, kind].inspect
+          #    p res = PandoraModel.get_record_by_panhash(kind, panhash, true)
+          #  end
+          #end
+
+
+          #p OpenSSL::Cipher::ciphers
+
+          #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
+          #cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
+          #p 'cipher_hash16='+cipher_hash.to_s(16)
+          #passwd = '123'
+
+          #type_klen = KT_Rsa | KL_bit2048
+          #p keys = generate_key(type_klen, cipher_hash, passwd)
+          #type_klen = KT_Aes | KL_bit256
+          #key_vec = generate_key(type_klen, cipher_hash, passwd)
+
+          p data = 'Тестовое сообщение!'*10
+          p '---data.size='+data.bytesize.to_s
+
+          #cipher_hash = PandoraCrypto.encode_cipher_and_hash(PandoraCrypto::KT_Rsa | \
+          #  PandoraCrypto::KL_bit2048, PandoraCrypto::KH_None)
+          p cipher_vec = PandoraCrypto.generate_key(PandoraCrypto::KT_Bf)#, cipher_hash)
+          p 'rrrrrrrrand='+cipher_vec[PandoraCrypto::KV_Obj].random_iv.bytesize.inspect
+
+          #cipher_vec = PandoraCrypto.current_key(false, true)
+          p panhash = 'dd03b085c8f2017d05b07abf2184cfea993b56cda131'
+          #p panhash = 'dd03b3bb447319a98e11a842f7320ce94c4854e886e9'
+          panhash = PandoraUtils.hex_to_bytes(panhash)
+          #p cipher_vec = PandoraCrypto.open_key(panhash)
+
+          #p 'initkey'
+          #p cipher_vec = PandoraCrypto.init_key(cipher_vec)
+          #p cipher_vec[PandoraCrypto::KV_Pub] = cipher_vec[PandoraCrypto::KV_Obj].random_iv
+
+          p 'coded:'
+
+          #p data = PandoraCrypto.recrypt(cipher_vec, data, true, false)
+          p data = recrypt_mes(panhash, data, true)
+          p '---data.size='+data.bytesize.to_s
+
+          p 'decoded:'
+          #puts data = PandoraCrypto.recrypt(cipher_vec, data, false, true)
+          puts data = recrypt_mes(panhash, data, false)
+          p '---data.size='+data.bytesize.to_s
+
+          #typ, count = encode_pson_type(PT_Str, 0x1FF)
+          #p decode_pson_type(typ)
+
+          #p pson = hash_to_namepson({:first_name=>'Ivan', :last_name=>'Inavov', 'ddd'=>555})
+          #p hash = namepson_to_hash(pson)
+
+          #p PandoraUtils.get_param('base_id')
+
+          return
+
+          p res44 = OpenSSL::Digest::RIPEMD160.new
+
+          a = rand
+          if a<0.33
+            PandoraUtils.play_mp3('online')
+          elsif a<0.66
+            PandoraUtils.play_mp3('offline')
+          else
+            PandoraUtils.play_mp3('message')
+          end
+          return
+
           fn = '/mnt/data/Media/Картинки/Robux/robux.png'
           dep = PandoraUtils.basename_path_depth(fn, 2)
           rel = PandoraUtils.relative_path(fn, 1)
@@ -18936,75 +19079,6 @@ module PandoraGtk
 
           $window.pool.close_punnet(sha1_1)
           $window.pool.close_punnet(sha1_2)
-
-          return
-
-
-          #from_time = Time.now.to_i - 5*24*3600
-          #trust = 0.5
-          #list = PandoraModel.public_records(nil, nil, nil, 1.chr)
-          #list = PandoraModel.follow_records
-          #list = PandoraModel.get_panhashes_by_kinds([1,11], from_time)
-          #list = PandoraModel.created_records(nil, nil, nil, nil)
-          #p 'list='+list.inspect
-          #if list
-          #  list.each do |panhash|
-          #    p '----------------'
-          #    kind = PandoraUtils.kind_from_panhash(panhash)
-          #    p [panhash, kind].inspect
-          #    p res = PandoraModel.get_record_by_panhash(kind, panhash, true)
-          #  end
-          #end
-
-
-          p res44 = OpenSSL::Digest::RIPEMD160.new
-
-          a = rand
-          if a<0.33
-            PandoraUtils.play_mp3('online')
-          elsif a<0.66
-            PandoraUtils.play_mp3('offline')
-          else
-            PandoraUtils.play_mp3('message')
-          end
-          return
-
-
-          #p OpenSSL::Cipher::ciphers
-
-          #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
-          #cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
-          #p 'cipher_hash16='+cipher_hash.to_s(16)
-          #type_klen = KT_Rsa | KL_bit2048
-          #passwd = '123'
-          #p keys = generate_key(type_klen, cipher_hash, passwd)
-          #type_klen = KT_Aes | KL_bit256
-          #key_vec = generate_key(type_klen, cipher_hash, passwd)
-
-          p data = 'Тестовое сообщение!'
-
-          cipher_hash = PandoraCrypto.encode_cipher_and_hash(PandoraCrypto::KT_Rsa | \
-            PandoraCrypto::KL_bit2048, PandoraCrypto::KH_None)
-          p cipher_vec = PandoraCrypto.generate_key(PandoraCrypto::KT_Bf, cipher_hash)
-
-          p 'initkey'
-          p cipher_vec = PandoraCrypto.init_key(cipher_vec)
-          p cipher_vec[PandoraCrypto::KV_Pub] = cipher_vec[PandoraCrypto::KV_Obj].random_iv
-
-          p 'coded:'
-
-          p data = PandoraCrypto.recrypt(cipher_vec, data, true)
-
-          p 'decoded:'
-          puts data = PandoraCrypto.recrypt(cipher_vec, data, false)
-
-          #typ, count = encode_pson_type(PT_Str, 0x1FF)
-          #p decode_pson_type(typ)
-
-          #p pson = hash_to_namepson({:first_name=>'Ivan', :last_name=>'Inavov', 'ddd'=>555})
-          #p hash = namepson_to_hash(pson)
-
-          #p PandoraUtils.get_param('base_id')
         when 'Profile'
           PandoraGtk.show_profile_panel
         when 'Search'
@@ -19559,7 +19633,15 @@ module PandoraGtk
       @fish_sw = FishScrollWin.new
       fish_sw.set_size_request(0, -1)
 
+      #note_sw = Gtk::ScrolledWindow.new(nil, nil)
+      #note_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      #note_sw.border_width = 0
+      #@viewport = Gtk::Viewport.new(nil, nil)
+      #sw.add(viewport)
+
       @fish_hpaned = Gtk::HPaned.new
+      #note_sw.add_with_viewport(notebook)
+      #@fish_hpaned.pack1(note_sw, true, true)
       @fish_hpaned.pack1(notebook, true, true)
       @fish_hpaned.pack2(fish_sw, false, true)
       #@fish_hpaned.position = 1
@@ -19700,7 +19782,7 @@ module PandoraGtk
           if $window.notebook.n_pages>0
             curpage = $window.notebook.get_nth_page($window.notebook.page)
           end
-          if curpage.is_a? PandoraGtk::PanobjBox
+          if curpage.is_a? PandoraGtk::PanobjScrolledWindow
             res = false
           else
             res = PandoraGtk.show_panobject_list(PandoraModel::Person)
