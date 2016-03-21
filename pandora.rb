@@ -6555,7 +6555,9 @@ module PandoraNet
     # Link to pool
     # RU: Ссылка на пул
     def pool
-      $window.pool
+      res = nil
+      res = $window.pool if $window
+      res
     end
 
     LHI_Line       = 0
