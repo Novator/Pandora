@@ -277,12 +277,6 @@
       <kind name.ru="Тип" />
     </Event>
 
-    <Repository name.ru="Хранилище|Хранилища">
-      <name name.ru="Название" />
-      <kind name.ru="Тип" />
-      <place name.ru="Расположение" />
-    </Repository>
-
     <Message name.ru="Сообщение|Сообщения">
       <destination name.ru="Получатель" />
       <state name.ru="Состояние" />

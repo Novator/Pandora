@@ -379,3 +379,4 @@ On=>Вкл
 Off=>Выкл
 Current time=>Текущее время
 filter=>фильтр
+crypt=>шифр

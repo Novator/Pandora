@@ -98,6 +98,21 @@
       <comment name="Comment" type="Text" hash="4:hash(8)" />
     </Opinion>
 
+    <Message name="Message" parent="Created" kind="227">
+      <creator hash="1:phash(12)" />
+      <created hash="2:integer(4)" />
+      <destination name="Destination" type="Panhash(Person)" />
+      <state name="State" type="Word" />
+      <text name="Text" type="Text" hash="3:crc32(4)" />
+    </Message>
+
+    <Task parent="Created" kind="90">
+      <executor name="Executor" type="Panhash(Person)" />
+      <time name="Time" type="Time" />
+      <mode name="Mode" type="Byte" />
+      <message name="Message" type="Text" />
+    </Task>
+
   </World>
   <Business name="Business">
 
@@ -293,27 +308,6 @@
       <object name="Object" type="Panhash" />
       <kind name="Kind" type="Integer" />
     </Event>
-
-    <Repository name="Repository" kind="226">
-      <name name="Name" type="String" size="128" />
-      <kind name="Kind" type="String" size="32" />
-      <place name="Place" type="Blob" />
-    </Repository>
-
-    <Message name="Message" parent="Created" kind="227">
-      <creator hash="1:phash(12)" />
-      <created hash="2:integer(4)" />
-      <destination name="Destination" type="Panhash(Person)" />
-      <state name="State" type="Word" />
-      <text name="Text" type="Text" hash="3:crc32(4)" />
-    </Message>
-
-    <Task parent="Created" kind="90">
-      <executor name="Executor" type="Panhash(Person)" />
-      <time name="Time" type="Time" />
-      <mode name="Mode" type="Byte" />
-      <message name="Message" type="Text" />
-    </Task>
 
     <Request name="Request" parent="Created" kind="228">
       <creator_key name="Creator Key" type="Panhash" />

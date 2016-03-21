@@ -735,9 +735,9 @@ module PandoraUtils
         val = Utf8String.new(val)
         begin
           val = val[0,50].gsub(/[\r\n\t]/, ' ').squeeze(' ')
+          val = val.rstrip
         rescue
         end
-        val = val.rstrip
         color = '#226633'
       end
     end
@@ -3327,12 +3327,13 @@ module PandoraModel
 
   # Pandora record kind
   # RU: Тип записей Пандоры
-  PK_Person   = 1
-  PK_Blob     = 12
-  PK_Key      = 221
-  PK_Sign     = 222
-  PK_Message  = 227
-  PK_BlobBody = 255
+  PK_Person    = 1
+  PK_Blob      = 12
+  PK_Key       = 221
+  PK_Sign      = 222
+  PK_Parameter = 220
+  PK_Message   = 227
+  PK_BlobBody  = 255
 
   # Read record by panhash
   # RU: Читает запись по панхэшу
@@ -4264,7 +4265,7 @@ module PandoraCrypto
     if cipher_hash and (cipher_hash != 0) and data
       ckind, chash = decode_cipher_and_hash(cipher_hash)
       ktype, klen = divide_type_and_klen(ckind)
-      if (ktype == KT_None)
+      if (ktype == KT_None)  #No cifer, crypt on active RSA
         key_vec = current_key(false, true)
         if key_vec and key_vec[KV_Obj] and key_vec[KV_Panhash]
           if encode
@@ -4290,7 +4291,7 @@ module PandoraCrypto
         else
           data = nil
         end
-      else
+      else  #Cipher is given, use it to crypt
         hash = pan_kh_to_openssl_hash(chash)
         #p 'hash='+hash.inspect
         cipherkey ||= ''
@@ -4542,7 +4543,12 @@ module PandoraCrypto
         end
       else
         if private
-          recrypted = key.private_decrypt(data)  #uncrypt after transfer
+          if key_vec[KV_Priv]
+            recrypted = key.private_decrypt(data)  #uncrypt after transfer
+          else
+            recrypted = '<Private key needed ['+\
+              PandoraUtils.bytes_to_hex(key_vec[KV_Panhash])+']>'
+          end
         else
           recrypted = key.public_decrypt(data)   #for check sign
         end
@@ -5168,6 +5174,88 @@ module PandoraCrypto
       #p 'openkey init key='+key_vec.inspect
     end
     key_vec
+  end
+
+  # Encode a message to the key panhash or decode it
+  # (long messages crypted by 2 step with additional symmetric cipher)
+  # RU: Зашифровывает сообщение на панхэш ключа или расшифровывает его
+  # RU: (длинные сообщения криптуются в 2 шага с дополнительным симметричным ключом)
+  def self.recrypt_mes(data, key_panhash=nil, new_key_panhash=nil, cipher=nil)
+    res = nil
+    if data.is_a? String
+      encrypt = (not key_panhash.nil?)
+      data_len = data.bytesize
+      if (encrypt and (data_len>0)) or (data_len>22)
+        if not encrypt
+          key_panhash = data[0, 22]
+          if new_key_panhash and (key_panhash==new_key_panhash)
+            return data
+          end
+          data = data[22..-1]
+          data_len = data.bytesize
+        end
+        #p 'encrypt, key_panhash, data_len='+[encrypt, \
+        #  PandoraUtils.bytes_to_hex(key_panhash), data_len].inspect
+        key_vec = open_key(key_panhash)
+        if (key_vec.is_a? Array) and key_vec[KV_Obj]
+          #p '------------------ key_vec='+key_vec.inspect
+          type_klen = key_vec[KV_Kind]
+          #p 'type_klen='+type_klen.inspect
+          type, klen = divide_type_and_klen(type_klen)
+          #p '[type, klen]='+[type, klen].inspect
+          bitlen = klen_to_bitlen(klen)
+          #p 'bitlen='+bitlen.inspect
+          max_len = bitlen/8
+          #p '--max_len='+max_len.inspect
+          if data_len>max_len
+            if encrypt
+              cipher ||= KT_Aes | KL_bit256   #default cipher
+              ciphlen = klen_to_bitlen(cipher)/8
+              cipher_hash = encode_cipher_and_hash(cipher, 0)
+              #key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
+              #keypub  = key.random_iv
+              #keypriv = key.random_key
+              ckey = OpenSSL::Random.random_bytes(ciphlen)  #generate cipher
+              #p 'ckey1.size='+ckey.bytesize.to_s
+              #encrypt data with cipher
+              res = key_recrypt(data, true, cipher_hash, ckey)
+              #encrypt cipher and its code with RSA
+              eckey = recrypt(key_vec, ckey+cipher.chr, encrypt, (not encrypt))
+              #p 'eckey1.size='+eckey.bytesize.to_s
+              res = eckey + res
+            else
+              eckey = data[0, max_len]
+              #p 'eckey2.size='+eckey.bytesize.to_s
+              ckey = recrypt(key_vec, eckey, encrypt, (not encrypt))
+              if ckey.bytesize>0
+                #p 'ckey2.size='+ckey.bytesize.to_s
+                cipher = ckey[-1].ord
+                ciphlen = klen_to_bitlen(cipher)/8
+                if ckey.bytesize==ciphlen+1
+                  ckey = ckey[0..-2]
+                  cipher_hash = encode_cipher_and_hash(cipher, 0)
+                  data = data[max_len..-1]
+                  res = key_recrypt(data, false, cipher_hash, ckey)
+                else
+                  res = ckey
+                end
+              end
+            end
+          else
+            res = recrypt(key_vec, data, encrypt, (not encrypt))
+          end
+          if encrypt
+            res = key_panhash + res
+          elsif new_key_panhash
+            res = recrypt_mes(res, new_key_panhash)
+          end
+        else
+          res = '<'+_('Key not found with panhash')+' ['+\
+            PandoraUtils.bytes_to_hex(key_panhash)+']>'
+        end
+      end
+    end
+    res
   end
 
   # Current kind permission for different trust levels
@@ -7842,18 +7930,23 @@ module PandoraNet
                     created = nil
                     destination = @rkey[PandoraCrypto::KV_Creator]
                     text = nil
+                    panstate = 0
                     if row.is_a? Array
                       id = row[0]
                       creator = row[1]
                       created = row[2]
                       text = row[3]
+                      panstate = row[4]
+                      panstate = (panstate & PandoraModel::PSF_Crypted) if panstate.is_a? Integer
+                      panstate ||= 0
                     else
                       creator = @skey[PandoraCrypto::KV_Creator]
                       created = time_now
                       text = row
                     end
                     values = {:destination=>destination, :text=>text, :state=>2, \
-                      :creator=>creator, :created=>created, :modified=>time_now}
+                      :creator=>creator, :created=>created, :modified=>time_now, \
+                      :panstate=>panstate}
                     model = PandoraUtils.get_model('Message', @recv_models)
                     panhash = model.panhash(values)
                     values['panhash'] = panhash
@@ -7879,12 +7972,13 @@ module PandoraNet
                       #talkview.after_addition
                       #talkview.show_all
                       #dialog.update_state(true)
-                      dialog.add_mes_to_view(text, nil, @skey, myname, time_now, created)
+                      dialog.add_mes_to_view(text, panstate, nil, @skey, myname, time_now, created)
                     else
                       PandoraUtils.log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
                     end
 
-                    if (text.is_a? String) and (text.size>1) and ((text[0]=='!') or (text[0]=='/'))
+                    if ((panstate & PandoraModel::PSF_Crypted)==0) and (text.is_a? String) \
+                    and (text.size>1) and ((text[0]=='!') or (text[0]=='/'))
                       i = text.index(' ')
                       i ||= text.size
                       chat_com = text[1..i-1]
@@ -7898,7 +7992,7 @@ module PandoraNet
                         case chat_com
                           when 'echo'
                             if dialog and (not dialog.destroyed?)
-                              dialog.add_and_send_mes(chat_par)
+                              dialog.send_mes(chat_par)
                             else
                               add_send_segment(EC_Message, true, chat_par)
                             end
@@ -8972,7 +9066,7 @@ module PandoraNet
                 receiver = @skey[PandoraCrypto::KV_Creator]
                 if @skey and receiver
                   filter = {'destination'=>receiver, 'state'=>0}
-                  fields = 'id, creator, created, text'
+                  fields = 'id, creator, created, text, panstate'
                   sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
                   if sel and (sel.size>0)
                     @send_state = (send_state | CSF_Messaging)
@@ -8982,6 +9076,15 @@ module PandoraNet
                     and (@send_queue.single_read_state != PandoraUtils::RoundQueue::SQS_Full)
                       processed += 1
                       row = sel[i]
+                      panstate = row[4]
+                      row[4] = (panstate & PandoraModel::PSF_Crypted) if panstate
+                      creator = row[1]
+                      text = row[3]
+                      if ((panstate & PandoraModel::PSF_Crypted)>0) and text
+                        dest_key = @skey[PandoraCrypto::KV_Panhash]
+                        text = PandoraCrypto.recrypt_mes(text, nil, dest_key)
+                        row[3] = text
+                      end
                       if add_send_segment(EC_Message, true, row)
                         id = row[0]
                         res = message_model.update({:state=>1}, nil, {:id=>id})
@@ -13926,41 +14029,18 @@ module PandoraGtk
       talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       talksw.add(talkview)
 
-      editbox.signal_connect('key-press-event') do |widget, event|
-        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
-        and (not event.state.control_mask?) and (not event.state.shift_mask?) \
-        and (not event.state.mod1_mask?)
-          if editbox.buffer.text != ''
-            mes = editbox.buffer.text
-            res = add_and_send_mes(mes)
-            editbox.buffer.text = '' if res
-          end
-          true
-        elsif (Gdk::Keyval::GDK_Escape==event.keyval)
-          editbox.buffer.text = ''
-          false
-        else
-          false
-        end
-      end
-      PandoraGtk.hack_enter_bug(editbox)
-
-      hpaned2 = Gtk::HPaned.new
-      @area_send = ViewDrawingArea.new
-      area_send.set_size_request(120, 90)
-      area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
-      hpaned2.pack1(area_send, false, true)
-
       @option_box = Gtk::HBox.new
-
-      @sender_box = Gtk::VBox.new
-      sender_box.pack_start(option_box, false, true, 0)
-      sender_box.pack_start(editbox, true, true, 0)
-
       image = $window.get_preset_image('smile')
       smile_btn = Gtk::ToolButton.new(image, _('smile'))
       smile_btn.tooltip_text = _('smile')
       option_box.pack_start(smile_btn, false, false, 2)
+
+      crypt_btn = SafeCheckButton.new(_('crypt'), true)
+      crypt_btn.safe_signal_clicked do |widget|
+        #update_btn.clicked
+      end
+      crypt_btn.active = true
+      option_box.pack_start(crypt_btn, false, false, 2)
 
       vouch_btn = SafeCheckButton.new(_('vouch'), true)
       vouch_btn.safe_signal_clicked do |widget|
@@ -13988,6 +14068,35 @@ module PandoraGtk
       game_btn = Gtk::ToolButton.new(image, _('game'))
       game_btn.tooltip_text = _('game')
       option_box.pack_start(game_btn, false, false, 2)
+
+      editbox.signal_connect('key-press-event') do |widget, event|
+        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
+        and (not event.state.control_mask?) and (not event.state.shift_mask?) \
+        and (not event.state.mod1_mask?)
+          if editbox.buffer.text != ''
+            mes = editbox.buffer.text
+            res = send_mes(mes, crypt_btn.active?)
+            editbox.buffer.text = '' if res
+          end
+          true
+        elsif (Gdk::Keyval::GDK_Escape==event.keyval)
+          editbox.buffer.text = ''
+          false
+        else
+          false
+        end
+      end
+      PandoraGtk.hack_enter_bug(editbox)
+
+      hpaned2 = Gtk::HPaned.new
+      @area_send = ViewDrawingArea.new
+      area_send.set_size_request(120, 90)
+      area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
+      hpaned2.pack1(area_send, false, true)
+
+      @sender_box = Gtk::VBox.new
+      sender_box.pack_start(option_box, false, true, 0)
+      sender_box.pack_start(editbox, true, true, 0)
 
       hpaned2.pack2(sender_box, true, true)
 
@@ -14147,10 +14256,13 @@ module PandoraGtk
 
     # Put message to dialog
     # RU: Добавляет сообщение в диалог
-    def add_mes_to_view(mes, to_end=nil, key_or_panhash=nil, myname=nil, \
-    modified=nil, created=nil)
+    def add_mes_to_view(mes, panstate=nil, to_end=nil, key_or_panhash=nil, \
+    myname=nil, modified=nil, created=nil)
 
       if mes
+        encrypted = ((panstate.is_a? Integer) and ((panstate & PandoraModel::PSF_Crypted) > 0))
+        mes = PandoraCrypto.recrypt_mes(mes) if encrypted
+
         notice = false
         if not myname
           mykey = PandoraCrypto.current_key(false, false)
@@ -14293,12 +14405,13 @@ module PandoraGtk
           creator = message[0]
           created = message[1]
           mes = message[4]
+          panstate = message[5]
           modified = message[6]
 
           key_or_panhash = nil
           key_or_panhash = creator if (creator != mypanhash)
 
-          add_mes_to_view(mes, false, key_or_panhash, myname, modified, created)
+          add_mes_to_view(mes, panstate, false, key_or_panhash, myname, modified, created)
           i += 1
         end
         talkview.after_addition(true)
@@ -14364,9 +14477,9 @@ module PandoraGtk
       end
     end
 
-    # Send message to node
-    # RU: Отправляет сообщение на узел
-    def add_and_send_mes(text)
+    # Send message to node, before encrypt it if need
+    # RU: Отправляет сообщение на узел, шифрует предварительно если надо
+    def send_mes(text, crypt=nil)
       res = false
       creator = PandoraCrypto.current_user_or_key(true)
       if creator
@@ -14374,16 +14487,24 @@ module PandoraGtk
         #Thread.pass
         time_now = Time.now.to_i
         state = 0
+        panstate = 0
+        if crypt
+          keyhash = PandoraCrypto.current_user_or_key(false, false)
+          if keyhash
+            text = PandoraCrypto.recrypt_mes(text, keyhash)
+            panstate = (panstate | PandoraModel::PSF_Crypted)
+          end
+        end
         targets[CSI_Persons].each do |panhash|
           #p 'ADD_MESS panhash='+panhash.inspect
           values = {:destination=>panhash, :text=>text, :state=>state, \
-            :creator=>creator, :created=>time_now, :modified=>time_now}
+            :creator=>creator, :created=>time_now, :modified=>time_now, :panstate=>panstate}
           model = PandoraUtils.get_model('Message')
           panhash = model.panhash(values)
           values['panhash'] = panhash
           res1 = model.update(values, nil, nil)
           res = (res or res1)
-          add_mes_to_view(text, true) if res
+          add_mes_to_view(text, panstate, true) if res
         end
         dlg_sessions = $window.pool.sessions_on_dialog(self)
         dlg_sessions.each do |session|
@@ -16599,7 +16720,7 @@ module PandoraGtk
           col = tab_flds.index{ |tf| tf[0] == fid }
           if col and sel and (sel[0].is_a? Array)
             val = sel[0][col]
-            if (panobject.ider=='Parameter') and (fid=='value')
+            if (panobject.kind==PK_Parameter) and (fid=='value')
               type = panobject.field_val('type', sel[0])
               setting = panobject.field_val('setting', sel[0])
               ps = PandoraUtils.decode_param_setting(setting)
@@ -16717,7 +16838,7 @@ module PandoraGtk
             view = field[FI_View]
             val = field[FI_Value]
 
-            if (panobject.ider=='Parameter') and (field[FI_Id]=='value')
+            if (panobject.kind==PK_Parameter) and (field[FI_Id]=='value')
               par_type = panobject.field_val('type', sel[0])
               setting = panobject.field_val('setting', sel[0])
               ps = PandoraUtils.decode_param_setting(setting)
@@ -16943,7 +17064,10 @@ module PandoraGtk
           sel = panobject.select(filter, false, nil, panobject.sort)
           treeview.sel = sel
           treeview.param_view_col = nil
-          treeview.param_view_col = sel[0].size if (panobject.ider=='Parameter') and sel[0]
+          if ((panobject.kind==PandoraModel::PK_Parameter) \
+          or (panobject.kind==PandoraModel::PK_Message)) and sel[0]
+            treeview.param_view_col = sel[0].size
+          end
           iter0 = nil
           sel.each_with_index do |row,i|
             #iter = store.append
@@ -16954,11 +17078,19 @@ module PandoraGtk
             iter[0] = id
             iter0 = iter if id0 and id and (id == id0)
             if treeview.param_view_col
-              type = panobject.field_val('type', row)
-              setting = panobject.field_val('setting', row)
-              ps = PandoraUtils.decode_param_setting(setting)
-              view = ps['view']
-              view ||= PandoraUtils.pantype_to_view(type)
+              view = nil
+              if (panobject.kind==PandoraModel::PK_Parameter)
+                type = panobject.field_val('type', row)
+                setting = panobject.field_val('setting', row)
+                ps = PandoraUtils.decode_param_setting(setting)
+                view = ps['view']
+                view ||= PandoraUtils.pantype_to_view(type)
+              else
+                panstate = panobject.field_val('panstate', row)
+                if (panstate.is_a? Integer) and ((panstate & PandoraModel::PSF_Crypted)>0)
+                  view = 'hex'
+                end
+              end
               row[treeview.param_view_col] = view
             end
           end
@@ -17190,7 +17322,7 @@ module PandoraGtk
             fdesc = panobject.tab_fields[col][TI_Desc]
             if fdesc.is_a? Array
               view = nil
-              if tvc.tree_view.param_view_col and (fdesc[FI_Id]=='value')
+              if tvc.tree_view.param_view_col and ((fdesc[FI_Id]=='value') or (fdesc[FI_Id]=='text'))
                 view = row[tvc.tree_view.param_view_col] if row
               else
                 view = fdesc[FI_View]
@@ -17219,11 +17351,11 @@ module PandoraGtk
       end
     end
 
-    #list_sw = Gtk::ScrolledWindow.new(nil, nil)
-    #list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
-    #list_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-    #list_sw.border_width = 0
-    #list_sw.add(treeview)
+    list_sw = Gtk::ScrolledWindow.new(nil, nil)
+    list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+    list_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+    list_sw.border_width = 0
+    list_sw.add(treeview)
 
     pbox = Gtk::VBox.new
 
@@ -17231,8 +17363,7 @@ module PandoraGtk
     page_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
     page_sw.border_width = 0
     page_sw.add_with_viewport(pbox)
-    #page_sw.children[0].shadow_type = Gtk::SHADOW_NONE
-    page_sw.children[0].shadow_type = Gtk::SHADOW_ETCHED_IN
+    page_sw.children[0].shadow_type = Gtk::SHADOW_NONE # Gtk::SHADOW_ETCHED_IN
 
     page_sw.name = panobject.ider
     page_sw.treeview = treeview
@@ -17271,7 +17402,7 @@ module PandoraGtk
     filter_box = FilterHBox.new(filters, hbox, page_sw)
 
     pbox.pack_start(hbox, false, true, 0)
-    pbox.pack_start(treeview, true, true, 0)
+    pbox.pack_start(list_sw, true, true, 0)
 
     update_btn.clicked
 
@@ -17614,7 +17745,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.48'
+    dlg.version = '0.49'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
@@ -18822,49 +18953,6 @@ module PandoraGtk
       @mutex ||= Mutex.new
     end
 
-    def recrypt_mes(key_panhash, data, encrypt=true)
-      res = nil
-      if data.is_a? String
-        data_len = data.bytesize
-        if data_len>0
-          key_vec = PandoraCrypto.open_key(key_panhash)
-          if (key_vec.is_a? Array) and key_vec[PandoraCrypto::KV_Obj]
-            #p '------------------ key_vec='+key_vec.inspect
-            type_klen = key_vec[PandoraCrypto::KV_Kind]
-            #p 'type_klen='+type_klen.inspect
-            type, klen = PandoraCrypto.divide_type_and_klen(type_klen)
-            #p '[type, klen]='+[type, klen].inspect
-            bitlen = PandoraCrypto.klen_to_bitlen(klen)
-            #p 'bitlen='+bitlen.inspect
-            max_len = bitlen/8
-            p '--max_len='+max_len.inspect
-            if data_len>max_len
-              #cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
-              cipher_hash = PandoraCrypto.encode_cipher_and_hash(\
-                PandoraCrypto::KT_Aes | PandoraCrypto::KL_bit256, 0)
-              if encrypt
-                #key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
-                #keypub  = key.random_iv
-                #keypriv = key.random_key
-                ckey = OpenSSL::Random.random_bytes(32)
-                res = PandoraCrypto.key_recrypt(data, true, cipher_hash, ckey)
-                eckey = PandoraCrypto.recrypt(key_vec, ckey, encrypt, (not encrypt))
-                res = eckey + res
-              else
-                eckey = data[0, max_len]
-                ckey = PandoraCrypto.recrypt(key_vec, eckey, encrypt, (not encrypt))
-                data = data[max_len..-1]
-                res = PandoraCrypto.key_recrypt(data, false, cipher_hash, ckey)
-              end
-            else
-              res = PandoraCrypto.recrypt(key_vec, data, encrypt, (not encrypt))
-            end
-          end
-        end
-      end
-      res
-    end
-
     # Menu event handler
     # RU: Обработчик события меню
     def do_menu_act(command, treeview=nil)
@@ -18993,7 +19081,8 @@ module PandoraGtk
           p 'rrrrrrrrand='+cipher_vec[PandoraCrypto::KV_Obj].random_iv.bytesize.inspect
 
           #cipher_vec = PandoraCrypto.current_key(false, true)
-          p panhash = 'dd03b085c8f2017d05b07abf2184cfea993b56cda131'
+          #p panhash = 'dd03b085c8f2017d05b07abf2184cfea993b56cda131'
+          p panhash = 'dd031f8870179fdff1ccec7f314cbd47c89054818a91'
           #p panhash = 'dd03b3bb447319a98e11a842f7320ce94c4854e886e9'
           panhash = PandoraUtils.hex_to_bytes(panhash)
           #p cipher_vec = PandoraCrypto.open_key(panhash)
@@ -19005,12 +19094,12 @@ module PandoraGtk
           p 'coded:'
 
           #p data = PandoraCrypto.recrypt(cipher_vec, data, true, false)
-          p data = recrypt_mes(panhash, data, true)
+          p data = PandoraCrypto.recrypt_mes(data, panhash)
           p '---data.size='+data.bytesize.to_s
 
           p 'decoded:'
           #puts data = PandoraCrypto.recrypt(cipher_vec, data, false, true)
-          puts data = recrypt_mes(panhash, data, false)
+          puts data = PandoraCrypto.recrypt_mes(data)
           p '---data.size='+data.bytesize.to_s
 
           #typ, count = encode_pson_type(PT_Str, 0x1FF)
