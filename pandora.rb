@@ -6175,6 +6175,29 @@ module PandoraNet
       res
     end
 
+    # Close all session
+    # RU: Закрывает все сессии
+    def close_all_session(wait_sec=5)
+      i = sessions.size
+      while i>0
+        i -= 1
+        session = sessions[i]
+        if session
+          session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Keep))
+          session.conn_mode2 = (session.conn_mode2 & (~PandoraNet::CM_Keep))
+          session.conn_state = CS_StopRead if session.conn_state<CS_StopRead
+        end
+      end
+      if wait_sec
+        time1 = Time.now.to_i
+        time2 = time1
+        while (sessions.size>0) and (time2-time1)<wait_sec
+          sleep(0.05)
+          time2 = Time.now.to_i
+        end
+      end
+    end
+
     # Add order to notice
     # RU: Добавить заявку на уведомление
     def add_notice_order(session, person, key, baseid, notice_trust, notice_depth, nick=nil)
@@ -19084,6 +19107,7 @@ module PandoraGtk
       end
       case command
         when 'Quit'
+          self.pool.close_all_session
           self.destroy
         when 'Activate'
           self.deiconify
