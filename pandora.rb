@@ -7774,7 +7774,7 @@ module PandoraNet
                       @scode = ECC_Auth_Answer
                       @sbuf = entered_captcha
                       p log_mes + 'CAPCHA ANSWER setted: '+entered_captcha.inspect
-                    elsif res.nil?
+                    elsif entered_captcha.nil?
                       err_scmd('Cannot open dialog')
                     else
                       err_scmd('Captcha enter canceled')
@@ -14529,7 +14529,7 @@ module PandoraGtk
       active = (@sessions.size>0)
       online_button.safe_set_active(active) if (not online_button.destroyed?)
       if active
-        online_button.inconsistent = false
+        online_button.inconsistent = false if (not online_button.destroyed?)
       else
         snd_button.active = false if (not snd_button.destroyed?) and snd_button.active?
         vid_button.active = false if (not vid_button.destroyed?) and vid_button.active?
@@ -18645,24 +18645,32 @@ module PandoraGtk
     # Add field to statusbar
     # RU: Добавляет поле в статусбар
     def add_status_field(index, text, stock=nil, toggle=nil)
-      $statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0) if ($status_fields != [])
+      #$statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0) if ($status_fields != [])
       if toggle.nil?
-        btn = Gtk::Button.new(text)
+        #btn = Gtk::Button.new(text)
+        #btn = Gtk::Button.new(Gtk::Stock::CONNECT)
+        btn = Gtk::ToolButton.new(:radar)
       else
         text ||= ''
-        btn = SafeToggleButton.new(text)
+        #btn = SafeToggleButton.new(text)
+        #btn = SafeToggleButton.new(:radar)
         #$window.register_stock(stock.to_sym)
         #btn = SafeToggleToolButton.new(stock.to_sym, SMALL_TOOLBAR)
+        btn = SafeToggleToolButton.new(Gtk::Stock::CONNECT)
       end
+      p '---------------[text, stock, index]='+[text, stock, index].inspect
       if stock
-        #p '---------------stock='+stock.inspect
-        $window.register_stock(stock)
-        image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
+        #$window.register_stock(stock)
+        #image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
+        #image = $window.get_preset_image(stock.to_s, Gtk::IconSize::MENU)
+        #buf = $window.get_icon_buf(stock.to_s, 'pan')
+        #image = Gtk::Image.new(buf) #, Gtk::IconSize::MENU)
         #image.set_padding(2, 0)
         #image.sensitive = false
-        btn.image = image
+        #p '[image, image.pixbuf]='+[image, image.pixbuf].inspect
+        #btn.image = image
       end
-      btn.relief = Gtk::RELIEF_NONE
+      #btn.relief = Gtk::RELIEF_NONE
       if block_given?
         if toggle.nil?
           btn.signal_connect('clicked') do |*args|
@@ -18675,7 +18683,9 @@ module PandoraGtk
           btn.safe_set_active(toggle)
         end
       end
-      $statusbar.pack_start(btn, false, false, 0)
+      #$statusbar.pack_start(btn, false, false, 0)
+      #$status_toolbar.pack_start(btn, false, false, 0)
+      $status_toolbar.add(btn)
       $status_fields[index] = btn
     end
 
@@ -19903,8 +19913,14 @@ module PandoraGtk
       #@cvpaned = CaptchaHPaned.new(vpaned)
       #@cvpaned.position = cvpaned.max_position
 
-      $statusbar = Gtk::Statusbar.new
-      PandoraGtk.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
+      #$statusbar = Gtk::HBox.new #Gtk::Statusbar.new
+      #PandoraGtk.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
+      $status_toolbar = Gtk::Toolbar.new #Gtk::HBox.new
+      $status_toolbar.toolbar_style = Gtk::Toolbar::Style::BOTH_HORIZ
+
+      #$status_toolbar.internal_padding = 0
+      $status_toolbar.icon_size = Gtk::IconSize::MENU
+      #$statusbar.pack_start($status_toolbar, true, false, 0)
 
       add_status_field(SF_Update, _('Version') + ': ' + _('Not checked')) do
         PandoraGtk.start_updating(true)
@@ -19945,7 +19961,9 @@ module PandoraGtk
       vbox.pack_start(toolbar, false, false, 0)
       #vbox.pack_start(cvpaned, true, true, 0)
       vbox.pack_start(vpaned, true, true, 0)
-      vbox.pack_start($statusbar, false, false, 0)
+      #vbox.pack_start($statusbar, false, false, 0)
+      vbox.pack_start($status_toolbar, false, false, 0)
+
 
       #dat = DateEntry.new
       #vbox.pack_start(dat, false, false, 0)
