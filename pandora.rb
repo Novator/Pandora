@@ -118,9 +118,11 @@ module PandoraUtils
     end
   end
 
+  MaxCognateDeep = 3
+
   # Load translated phrases
   # RU: Загрузить переводы фраз
-  def self.load_language(lang='ru')
+  def self.load_language(lang='ru', cognate_call=nil)
 
     def self.unslash_quotes(str)
       str ||= ''
@@ -145,9 +147,13 @@ module PandoraUtils
       (i<pos)
     end
 
-    $lang_trans = {}
+    if cognate_call.nil?
+      cognate_call = MaxCognateDeep
+      $lang_trans.clear
+    end
+    cognate = nil
     langfile = File.join($pandora_lang_dir, lang+'.txt')
-    if File.exist?(langfile)
+    if File.exist?(langfile) and (cognate_call>0)
       scanmode = 0
       frase = ''
       trans = ''
@@ -159,15 +165,29 @@ module PandoraUtils
           end_is_found = false
           if scanmode==0
             end_is_found = true
-            if (line.size>0) and (line[0, 1] != '#')
-              if line[0, 1] != '"'
-                frase, trans = line.split('=>')
-                $lang_trans[frase] = trans if (frase != '') and (trans != '')
+            if (line.size>0)
+              if (line[0, 1] == '#')
+                if cognate.nil? and (line[0, 10] == '#!cognate=')
+                  cognate = line[10..-1]
+                  cognate.strip! if cognate
+                  cognate.downcase! if cognate
+                end
               else
-                line = line[1..-1]
-                frase = ''
-                trans = ''
-                end_is_found = false
+                if line[0, 1] != '"'
+                  frase, trans = line.split('=>')
+                  if (frase != '') and (trans != '')
+                    if cognate_call
+                      $lang_trans[frase] ||= trans
+                    else
+                      $lang_trans[frase] = trans
+                    end
+                  end
+                else
+                  line = line[1..-1]
+                  frase = ''
+                  trans = ''
+                  end_is_found = false
+                end
               end
             end
           end
@@ -194,7 +214,13 @@ module PandoraUtils
             end
 
             if end_is_found
-              $lang_trans[frase] = trans if (frase != '') and (trans != '')
+              if (frase != '') and (trans != '')
+                if cognate_call
+                  $lang_trans[frase] ||= trans
+                else
+                  $lang_trans[frase] = trans
+                end
+              end
               scanmode = 0
             else
               if scanmode < 2
@@ -207,6 +233,9 @@ module PandoraUtils
           end
         end
       end
+    end
+    if (cognate.is_a? String) and (cognate.size>0) and (cognate != lang)
+      load_language(cognate, cognate_call-1)
     end
   end
 
@@ -425,6 +454,10 @@ module PandoraUtils
       end
     end
     res
+  end
+
+  def self.hex?(value)
+    res = (/^[0-9a-fA-F]*$/ === value)
   end
 
   # Convert hex string to bytes
@@ -3732,30 +3765,30 @@ module PandoraModel
     res = nil
     proto, obj_type, way = nil
     if (url.is_a? String) and (url.size>0)
-      i = url.index('://')
+      i = url.index(':')
       if i and (i>0)
         proto = url[0, i].strip.downcase
-        url = url[i+3..-1]
+        url = url[i+1..-1]
         proto = 'pandora' if (proto=='pan') or (proto=='pand')
       else
         proto = DefaultProto
       end
       #type detect
+      i = url.index('/')
+      while i and (i==0)
+        url = url[1..-1]
+        i = nil
+        i = url.index('/') if url
+      end
       case proto
         when 'pandora', 'smile'
-          i = url.index('/')
-          if i and (i==0)
-            url = url[1..-1]
-            i = nil
-            i = url.index('/') if url
-          end
           if i and (i>0)
             obj_type = url[0, i].strip.downcase
             url = url[i+1..-1]
           end
       end
       way = url
-      #p 'parse_url  [url, proto, obj_type, way]='+[url, proto, obj_type, way].inspect
+      p 'parse_url  [url, proto, obj_type, way]='+[url, proto, obj_type, way].inspect
     end
     res = [proto, obj_type, way] if proto and (proto.size>0) and way and (way.size>0)
     res
@@ -3787,6 +3820,10 @@ module PandoraModel
     end
   end
 
+  # Max smile name length
+  # RU: Максимальная длина имени смайла
+  MaxSmileName = 12
+
   # Obtain image pixbuf from URL
   # RU: Добывает pixbuf картинки по URL
   def self.get_image_from_url(url, err_text=true, pixbuf_parent=nil)
@@ -3799,40 +3836,39 @@ module PandoraModel
         fn = nil
         if way and (way.size>0)
           if (proto=='pandora') #and obj_type.nil?
-            panhash = PandoraModel.hex_to_panhash(way)
-            kind = PandoraUtils.kind_from_panhash(panhash)
-            sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'type,blob')
-            #p 'get_image_from_url.pandora/panhash='+panhash.inspect
-            if sel and (sel.size>0)
-              type = sel[0][0]
-              blob = sel[0][1]
-              if blob and (blob.size>0)
-                if blob[0]=='@'
-                  fn = blob[1..-1]
-                  ext = nil
-                  ext = File.extname(fn) if fn
-                  unless ext and (['.jpg','.gif','.png'].include? ext.downcase)
-                    fn = nil
+            if (way.size>9) and PandoraUtils.hex?(way)
+              panhash = PandoraModel.hex_to_panhash(way)
+              kind = PandoraUtils.kind_from_panhash(panhash)
+              sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'type,blob')
+              #p 'get_image_from_url.pandora/panhash='+panhash.inspect
+              if sel and (sel.size>0)
+                type = sel[0][0]
+                blob = sel[0][1]
+                if blob and (blob.size>0)
+                  if blob[0]=='@'
+                    fn = blob[1..-1]
+                    ext = nil
+                    ext = File.extname(fn) if fn
+                    unless ext and (['.jpg','.gif','.png'].include? ext.downcase)
+                      fn = nil
+                    end
+                  else
+                    #body = blob
+                    #need to search an image!
                   end
-                else
-                  #body = blob
-                  #need to search an image!
                 end
-              end
-            else
-              if (way.size<=PandoraGtk::MaxSmileName)
-                res = $window.get_icon_buf(way, obj_type)
-              end
-              if (not res)
+              else
                 if err_text
                   res = _('Cannot find image')+': panhash='+PandoraUtils.bytes_to_hex(panhash)
                 elsif err_text.is_a? FalseClass
                   res = $window.get_icon_buf('sad')
                 end
               end
+            elsif (way.size<=MaxSmileName)  #like a smile
+              res = $window.get_icon_buf(way, obj_type)
             end
           elsif ((proto=='http') or (proto=='https'))
-            fn = load_http_to_file(way)
+            fn = load_http_to_file(way)  #need realize!
           elsif proto=='smile'
             res = $window.get_icon_buf(way, obj_type)
           end
@@ -6158,7 +6194,7 @@ module PandoraNet
             fish_sw = $window.fish_sw
             fish_sw.update_btn.clicked
           else
-            PandoraGtk.show_fish_panel
+            PandoraGtk.show_neighbor_panel
           end
         end
         $window.set_status_field(PandoraGtk::SF_Fish, @notice_list.size.to_s)
@@ -15576,7 +15612,7 @@ module PandoraGtk
           PandoraGtk.set_readonly(widget, true)
           #bases = kind
           #local_btn.active?  active_btn.active?  hunt_btn.active?
-          if (kind=='Blob') and (/\h/ === request)
+          if (kind=='Blob') and PandoraUtils.hex?(request)
             kind = PandoraModel::PK_BlobBody
             request = PandoraUtils.hex_to_bytes(request)
             p 'Search: Detect blob search  kind,sha1='+[kind,request].inspect
@@ -15843,16 +15879,17 @@ module PandoraGtk
         stock, opts = PandoraGtk.detect_icon_opts(stock)
         if stock and opts.index('m')
           if stock.is_a? String
-            image = $window.get_preset_image(stock)
-            if image
-              menuitem = Gtk::ImageMenuItem.new(text)
-              menuitem.image = image
-            end
-          else
-            menuitem = Gtk::ImageMenuItem.new(stock)
-            label = menuitem.children[0]
-            label.set_text(text, true)
+            stock = stock.to_sym
+            #image = $window.get_preset_image(stock)
+            #if image
+            #  menuitem = Gtk::ImageMenuItem.new(text)
+            #  menuitem.image = image
+            #end
           end
+          $window.register_stock(stock)
+          menuitem = Gtk::ImageMenuItem.new(stock)
+          label = menuitem.children[0]
+          label.set_text(text, true)
         end
       else
         menuitem = Gtk::MenuItem.new(text)
@@ -16075,7 +16112,8 @@ module PandoraGtk
       end
 
       list_sw.add(list_tree)
-      image = Gtk::Image.new(Gtk::Stock::GO_FORWARD, Gtk::IconSize::MENU)
+      #image = Gtk::Image.new(Gtk::Stock::GO_FORWARD, Gtk::IconSize::MENU)
+      image = Gtk::Image.new(:radar, Gtk::IconSize::MENU)
       image.set_padding(2, 0)
       #image1 = Gtk::Image.new(Gtk::Stock::ORIENTATION_PORTRAIT, Gtk::IconSize::MENU)
       #image1.set_padding(2, 2)
@@ -16095,7 +16133,7 @@ module PandoraGtk
       btn.relief = Gtk::RELIEF_NONE
       btn.focus_on_click = false
       btn.signal_connect('clicked') do |*args|
-        PandoraGtk.show_fish_panel
+        PandoraGtk.show_neighbor_panel
       end
       btn.add(btn_hbox)
       align.add(btn)
@@ -16282,21 +16320,24 @@ module PandoraGtk
     btn = nil
     p 'stock='+stock.inspect
     if stock.is_a? String
-      image = $window.get_preset_image(stock)
+      stock = stock.to_sym
+    end
+    $window.register_stock(stock)
+      #image = $window.get_preset_image(stock)
       #p buf = $window.get_icon_buf(stock, 'pan')
       #iconset = Gtk::IconSet.new(buf)
       #image = Gtk::Image.new(iconset, Gtk::IconSize::MENU)
-    else
-      image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
-    end
+    #else
+    #  image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
+    #end
     if toggle.nil?
       #btn = Gtk::ToolButton.new(iconset, _(title))
-      btn = Gtk::ToolButton.new(image, _(title))
-      #btn = Gtk::ToolButton.new(stock)
+      #btn = Gtk::ToolButton.new(image, _(title))
+      btn = Gtk::ToolButton.new(stock, _(title))
       btn.signal_connect('clicked') do |*args|
         yield(*args) if block_given?
       end
-      btn.label = title
+      #btn.label = title
     else
       btn = SafeToggleToolButton.new(stock)
       #btn = Gtk::ToolButton.new(image, _(title))
@@ -16307,11 +16348,11 @@ module PandoraGtk
       #btn.active = toggle if toggle
       btn.safe_set_active(toggle) if toggle
     end
-    toolbar.add(btn)
     title = _(title)
     title.gsub!('_', '')
     btn.tooltip_text = title
     btn.label = title
+    toolbar.add(btn)
     btn
   end
 
@@ -17122,7 +17163,7 @@ module PandoraGtk
   # Filter box: field, operation and value
   # RU: Группа фильтра: поле, операция и значение
   class FilterHBox < Gtk::HBox
-    attr_accessor :filters, :field_com, :oper_com, :val_entry
+    attr_accessor :filters, :field_com, :oper_com, :val_entry, :logic_com
 
     # Remove itself
     # RU: Удалить себя
@@ -17165,6 +17206,13 @@ module PandoraGtk
         #renderer.text = 'aaa'
 
       #  title = df[FI_VFName]
+      if @filters.size>0
+        @logic_com = Gtk::Combo.new
+        logic_com.set_popdown_strings(['AND', 'OR'])
+        logic_com.entry.text = 'AND'
+        logic_com.set_size_request(64, -1)
+        filter_box.pack_start(logic_com, false, true, 0)
+      end
 
       fields = Array.new
       fields << no_filter_frase
@@ -17174,7 +17222,7 @@ module PandoraGtk
       field_com.set_size_request(110, -1)
 
       field_com.entry.signal_connect('changed') do |entry|
-        if filter_box.children.size>1
+        if filter_box.children.size>2
           if (entry.text == no_filter_frase) or (entry.text == '')
             delete
           end
@@ -17420,24 +17468,27 @@ module PandoraGtk
     end
 
     if single
+      image = $window.get_panobject_iconset(panobject_class.ider)
+
       #p 'single: widget='+widget.inspect
-      if widget.is_a? Gtk::ImageMenuItem
-        animage = widget.image
-      elsif widget.is_a? Gtk::ToolButton
-        animage = widget.icon_widget
-      else
-        animage = nil
-      end
-      image = nil
-      if animage
-        if animage.stock
-          image = Gtk::Image.new(animage.stock, Gtk::IconSize::MENU)
-          image.set_padding(2, 0)
-        else
-          image = Gtk::Image.new(animage.icon_set, Gtk::IconSize::MENU)
-          image.set_padding(2, 0)
-        end
-      end
+      #if widget.is_a? Gtk::ImageMenuItem
+      #  animage = widget.image
+      #elsif widget.is_a? Gtk::ToolButton
+      #  animage = widget.icon_widget
+      #else
+      #  animage = nil
+      #end
+      #image = nil
+      #if animage
+      #  if animage.stock
+      #    image = Gtk::Image.new(animage.stock, Gtk::IconSize::MENU)
+      #    image.set_padding(2, 0)
+      #  else
+      #    image = Gtk::Image.new(animage.icon_set, Gtk::IconSize::MENU)
+      #    image.set_padding(2, 0)
+      #  end
+      #end
+      image.set_padding(2, 0)
 
       label_box = TabLabelBox.new(image, panobject.pname, page_sw, false, 0) do
         store.clear
@@ -18185,9 +18236,9 @@ module PandoraGtk
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
-  # Show fish list
-  # RU: Показать список рыб
-  def self.show_fish_panel
+  # Show neighbor list
+  # RU: Показать список соседей
+  def self.show_neighbor_panel
     hpaned = $window.fish_hpaned
     fish_sw = $window.fish_sw
     if fish_sw.allocation.width <= 24 #hpaned.position <= 20
@@ -18487,10 +18538,6 @@ module PandoraGtk
     [res, opts]
   end
 
-  # Max smile name length
-  # RU: Максимальная длина имени смайла
-  MaxSmileName = 12
-
   # Main window
   # RU: Главное окно
   class MainWindow < Gtk::Window
@@ -18565,8 +18612,7 @@ module PandoraGtk
       end
       PandoraNet.get_notice_params
       notice = PandoraModel.transform_trust($notice_trust, false)
-      notice = ((notice*10.0).round/10.0).to_s
-      notice += '/'+$notice_depth.to_s
+      notice = notice.round(1).to_s + '/'+$notice_depth.to_s
       set_status_field(PandoraGtk::SF_Notice, notice, nil, false)
     end
 
@@ -18582,8 +18628,12 @@ module PandoraGtk
       else
         text ||= ''
         btn = SafeToggleButton.new(text)
+        #$window.register_stock(stock.to_sym)
+        #btn = SafeToggleToolButton.new(stock.to_sym, SMALL_TOOLBAR)
       end
       if stock
+        #p '---------------stock='+stock.inspect
+        $window.register_stock(stock)
         image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
         #image.set_padding(2, 0)
         #image.sensitive = false
@@ -18807,12 +18857,81 @@ module PandoraGtk
       buf
     end
 
+    $iconsets = {}
+
+    # Return Image with defined icon size
+    # RU: Возвращает Image с заданным размером иконки
+    def get_preset_iconset(iname, preset='pan')
+      ind = [iname, preset]
+      res = $iconsets[ind]
+      if res.nil?
+        buf = get_icon_buf(iname, preset)
+        if buf
+          width = buf.width
+          height = buf.height
+          if width==height
+            qbuf = buf
+          else
+            asize = width
+            asize = height if asize<height
+            left = (asize - width)/2
+            top  = (asize - height)/2
+            qbuf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, asize, asize)
+            qbuf.fill!(0xFFFFFF00)
+            buf.copy_area(0, 0, width, height, qbuf, left, top)
+          end
+          res = Gtk::IconSet.new(qbuf)
+          $iconsets[ind] = res
+        end
+      end
+      res
+    end
+
     # Return Image with defined icon size
     # RU: Возвращает Image с заданным размером иконки
     def get_preset_image(iname, isize=Gtk::IconSize::MENU, preset='pan')
-      buf = get_icon_buf(iname, preset)
-      iconset = Gtk::IconSet.new(buf)
-      image = Gtk::Image.new(iconset, isize)
+      image = nil
+      if iname.is_a? String
+        iconset = get_preset_iconset(iname, preset)
+        image = Gtk::Image.new(iconset, isize)
+      else
+        image = Gtk::Image.new(iname, isize)
+      end
+      image
+    end
+
+    def get_panobject_iconset(panobject_ider, isize=Gtk::IconSize::MENU, preset='pan')
+      res = nil
+      mi = MENU_ITEMS.detect {|mi| mi[0]==panobject_ider }
+      if mi
+        stock_opt = mi[1]
+        stock, opts = PandoraGtk.detect_icon_opts(stock_opt)
+        if stock
+          p 'stock='+stock.inspect
+          res = get_preset_image(stock, isize, preset)
+        end
+      end
+      res
+    end
+
+    # Register new stock by name of image preset
+    # RU: Регистрирует новый stock по имени пресета иконки
+    def register_stock(stock=:person)
+      stock_inf = nil
+      begin
+        #stock = stock.to_sym
+        stock_inf = Gtk::Stock.lookup(stock)
+      rescue
+      end
+      if not stock_inf
+        stock_str = stock.to_s
+        icon_set = get_preset_iconset(stock_str)
+        if icon_set
+          Gtk::Stock.add(stock, '_'+stock_str.capitalize)
+          @icon_factory.add(stock_str, icon_set)
+        end
+      end
+      stock_inf
     end
 
     TV_Name    = 0
@@ -19045,6 +19164,12 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
+          #p PandoraUtils.hex?('ad')
+          p [Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU].inspect
+          p [Gtk::Stock::MEDIA_PLAY.class, Gtk::IconSize::MENU.class].inspect
+          p Gtk::IconSize.lookup(Gtk::IconSize::MENU).inspect
+
+          return
           #from_time = Time.now.to_i - 5*24*3600
           #trust = 0.5
           #list = PandoraModel.public_records(nil, nil, nil, 1.chr)
@@ -19176,8 +19301,8 @@ module PandoraGtk
           PandoraGtk.show_search_panel
         when 'Session'
           PandoraGtk.show_session_panel
-        when 'Fish'
-          PandoraGtk.show_fish_panel
+        when 'Neighbor'
+          PandoraGtk.show_neighbor_panel
         when 'Fisher'
           PandoraGtk.show_fisher_panel
         else
@@ -19257,10 +19382,10 @@ module PandoraGtk
       ['Request', 'request:m', 'Requests'],  #Gtk::Stock::SELECT_COLOR
       ['Session', 'session:m', 'Sessions', '<control>S'],   #Gtk::Stock::JUSTIFY_FILL
       ['-', nil, '-'],
-      ['Authorize', Gtk::Stock::DIALOG_AUTHENTICATION, 'Authorize', '<control>U', :check],
-      ['Listen', Gtk::Stock::CONNECT, 'Listen', '<control>L', :check],
-      ['Hunt', Gtk::Stock::REFRESH, 'Hunt', '<control>H', :check],   #Gtk::Stock::REFRESH
-      ['Fish', Gtk::Stock::GO_FORWARD, 'Neighbors', '<control>N', :check],  #Gtk::Stock::GO_FORWARD
+      ['Authorize', :auth, 'Authorize', '<control>U', :check], #Gtk::Stock::DIALOG_AUTHENTICATION
+      ['Listen', :listen, 'Listen', '<control>L', :check],  #Gtk::Stock::CONNECT
+      ['Hunt', :hunt, 'Hunt', '<control>H', :check],   #Gtk::Stock::REFRESH
+      ['Neighbor', :radar, 'Neighbors', '<control>N', :check],  #Gtk::Stock::GO_FORWARD
       ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
       ['Exchange', 'exchange:m', 'Exchange'],
       ['-', nil, '-'],
@@ -19315,7 +19440,7 @@ module PandoraGtk
                   index = SF_Listen
                 when 'Hunt'
                   index = SF_Hunt
-                when 'Fish'
+                when 'Neighbor'
                   index = SF_Fish
               end
               if index
@@ -19662,6 +19787,9 @@ module PandoraGtk
       @hunter_count, @listener_count, @fisher_count = 0, 0, 0
       @title_view = TV_Name
 
+      @icon_factory = Gtk::IconFactory.new
+      @icon_factory.add_default
+
       main_icon = nil
       begin
         main_icon = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.ico'))
@@ -19760,23 +19888,23 @@ module PandoraGtk
       add_status_field(SF_Lang, $lang) do
         do_menu_act('Blob')
       end
-      add_status_field(SF_Auth, _('Not logged'), Gtk::Stock::DIALOG_AUTHENTICATION, false) do
-        do_menu_act('Authorize')
+      add_status_field(SF_Auth, _('Not logged'), :auth, false) do
+        do_menu_act('Authorize')          #Gtk::Stock::DIALOG_AUTHENTICATION
       end
-      add_status_field(SF_Listen, nil, Gtk::Stock::CONNECT, false) do
+      add_status_field(SF_Listen, nil, :listen, false) do
         do_menu_act('Listen')
       end
-      add_status_field(SF_Hunt, nil, Gtk::Stock::REFRESH, false) do
+      add_status_field(SF_Hunt, nil, :hunt, false) do
         do_menu_act('Hunt')
       end
-      add_status_field(SF_Notice, '-', Gtk::Stock::PROPERTIES) do
+      add_status_field(SF_Notice, '-') do
         do_menu_act('Notice')
       end
       add_status_field(SF_Conn, '0/0/0', Gtk::Stock::JUSTIFY_FILL) do
         do_menu_act('Session')
       end
-      add_status_field(SF_Fish, '0', Gtk::Stock::GO_FORWARD, false) do
-        do_menu_act('Fish')
+      add_status_field(SF_Fish, '0', :radar, false) do
+        do_menu_act('Neighbor')
       end
       add_status_field(SF_Fisher, '0', Gtk::Stock::JUSTIFY_RIGHT) do
         do_menu_act('Fisher')
@@ -19784,7 +19912,7 @@ module PandoraGtk
       add_status_field(SF_Search, '0', Gtk::Stock::FIND) do
         do_menu_act('Search')
       end
-      add_status_field(SF_Harvest, '0', Gtk::Stock::FILE) do
+      add_status_field(SF_Harvest, '0', :blob) do
         do_menu_act('Blob')
       end
 
@@ -20397,6 +20525,8 @@ if $autodetect_lang
     end
   end
 end
+
+#$lang = 'ua'
 
 # Some settings
 # RU: Некоторые настройки

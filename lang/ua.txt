@@ -1,5 +1,5 @@
 # Pandora language file EN=>UA
-#!in_absence=ru
+#!cognate=ru
 Profile=>Профіль
 Expenditures=>Освоєння
 _Region=>_Регіон
