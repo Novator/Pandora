@@ -95,7 +95,6 @@ _World=>_Мир
 Activities=>Деятельность
 Disregards=>Игнорируемое
 Repositories=>Хранилища
-"Base directory: "=>"Каталог данных: "
 Offenses=>Преступления
 Words=>Слова
 States=>Страны

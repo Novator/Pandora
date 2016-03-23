@@ -9534,11 +9534,15 @@ module PandoraNet
 
   UdpHello = 'pandora:hello:'
 
+  def self.listen?
+    res = ($tcp_listen_thread or $udp_listen_thread)
+  end
+
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen
     PandoraNet.get_exchange_params
-    if $tcp_listen_thread or $udp_listen_thread
+    if listen?
       # Need to stop
       if $tcp_listen_thread
         #server = $tcp_listen_thread[:tcp_server]
@@ -18592,7 +18596,7 @@ module PandoraGtk
     def correct_lis_btn_state
       tool_btn = $toggle_buttons[PandoraGtk::SF_Listen]
       if tool_btn
-        lis_act = ($tcp_listen_thread != nil) or ($udp_listen_thread != nil)
+        lis_act = PandoraNet.listen?
         tool_btn.safe_set_active(lis_act) if tool_btn.is_a? SafeToggleToolButton
       end
     end
@@ -18636,7 +18640,128 @@ module PandoraGtk
       PandoraNet.get_notice_params
       notice = PandoraModel.transform_trust($notice_trust, false)
       notice = notice.round(1).to_s + '/'+$notice_depth.to_s
-      set_status_field(PandoraGtk::SF_Notice, notice, nil, false)
+      set_status_field(PandoraGtk::SF_Notice, notice)
+    end
+
+    class GoodButton < Gtk::Frame
+      attr_accessor :hbox, :image, :label, :active
+
+      def initialize(astock, atitle=nil, atoggle=nil)
+        super()
+        @hbox = Gtk::HBox.new
+        #align = Gtk::Alignment.new(0.5, 0.5, 0, 0)
+        #align.add(@image)
+        set_active(atoggle)
+
+        @proc_on_click = Proc.new do |*args|
+          yield(*args) if block_given?
+        end
+
+        @im_evbox = Gtk::EventBox.new
+        @im_evbox.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
+          | Gdk::Event::ENTER_NOTIFY_MASK | Gdk::Event::LEAVE_NOTIFY_MASK \
+          | Gdk::Event::VISIBILITY_NOTIFY_MASK
+        @lab_evbox = Gtk::EventBox.new
+        @lab_evbox.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
+          | Gdk::Event::ENTER_NOTIFY_MASK | Gdk::Event::LEAVE_NOTIFY_MASK \
+          | Gdk::Event::VISIBILITY_NOTIFY_MASK
+
+        set_image(astock)
+        set_label(atitle)
+        self.add(@hbox)
+
+        @enter_event = Proc.new do |body_child, event|
+          self.shadow_type = Gtk::SHADOW_ETCHED_OUT if @active.nil?
+          false
+        end
+
+        @leave_event = Proc.new do |body_child, event|
+          self.shadow_type = Gtk::SHADOW_NONE if @active.nil?
+          false
+        end
+
+        @press_event = Proc.new do |widget, event|
+          if (event.button == 1)
+            if @active.nil?
+              self.shadow_type = Gtk::SHADOW_ETCHED_IN
+            else
+              @active = (not @active)
+              set_active(@active)
+            end
+            do_on_click
+          end
+          false
+        end
+
+        @release_event = Proc.new do |widget, event|
+          set_active(@active)
+          false
+        end
+
+        @im_evbox.signal_connect('enter-notify-event') { |*args| @enter_event.call(*args) }
+        @im_evbox.signal_connect('leave-notify-event') { |*args| @leave_event.call(*args) }
+        @im_evbox.signal_connect('button-press-event') { |*args| @press_event.call(*args) }
+        @im_evbox.signal_connect('button-release-event') { |*args| @release_event.call(*args) }
+
+        @lab_evbox.signal_connect('enter-notify-event') { |*args| @enter_event.call(*args) }
+        @lab_evbox.signal_connect('leave-notify-event') { |*args| @leave_event.call(*args) }
+        @lab_evbox.signal_connect('button-press-event') { |*args| @press_event.call(*args) }
+        @lab_evbox.signal_connect('button-release-event') { |*args| @release_event.call(*args) }
+      end
+
+      def do_on_click
+        @proc_on_click.call
+      end
+
+      def set_active(toggle)
+        @active = toggle
+        if @active.nil?
+          self.shadow_type = Gtk::SHADOW_NONE
+        elsif @active
+          self.shadow_type = Gtk::SHADOW_ETCHED_IN
+        else
+          self.shadow_type = Gtk::SHADOW_ETCHED_OUT
+        end
+      end
+
+      def set_image(astock=nil)
+        if @image
+          @image.destroy
+          @image = nil
+          #@im_align.destroy
+          #@im_align = nil
+        end
+        if astock
+          #$window.get_preset_iconset(astock)
+          $window.register_stock(astock)
+          @image = Gtk::Image.new(astock, Gtk::IconSize::MENU)
+          @im_evbox.add(@image)
+          #@im_align = Gtk::Alignment.new(0.0, 1.0, 0, 0)
+          #@im_align.add(@im_evbox)
+          @hbox.pack_start(@im_align, false, false, 0)
+          @hbox.pack_start(@im_evbox, false, false, 0)
+        end
+      end
+
+      def set_label(atitle=nil)
+        if atitle.nil?
+          if @label
+            @label.visible = false
+            @label.text = ''
+          end
+        else
+          if @label
+            @label.text = atitle
+            @label.visible = true if not @label.visible?
+          else
+            @label = Gtk::Label.new(atitle)
+            @lab_evbox.add(@label)
+            align = Gtk::Alignment.new(0.0, 1.0, 0, 0)
+            align.add(@lab_evbox)
+            @hbox.pack_start(align, false, false, 1)
+          end
+        end
+      end
     end
 
     $statusbar = nil
@@ -18645,47 +18770,12 @@ module PandoraGtk
     # Add field to statusbar
     # RU: Добавляет поле в статусбар
     def add_status_field(index, text, stock=nil, toggle=nil)
-      #$statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0) if ($status_fields != [])
-      if toggle.nil?
-        #btn = Gtk::Button.new(text)
-        #btn = Gtk::Button.new(Gtk::Stock::CONNECT)
-        btn = Gtk::ToolButton.new(:radar)
-      else
-        text ||= ''
-        #btn = SafeToggleButton.new(text)
-        #btn = SafeToggleButton.new(:radar)
-        #$window.register_stock(stock.to_sym)
-        #btn = SafeToggleToolButton.new(stock.to_sym, SMALL_TOOLBAR)
-        btn = SafeToggleToolButton.new(Gtk::Stock::CONNECT)
+      separ = Gtk::SeparatorToolItem.new
+      $statusbar.pack_start(separ, false, false, 0)
+      btn = GoodButton.new(stock, text, toggle) do |*args|
+        yield(*args) if block_given?
       end
-      p '---------------[text, stock, index]='+[text, stock, index].inspect
-      if stock
-        #$window.register_stock(stock)
-        #image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
-        #image = $window.get_preset_image(stock.to_s, Gtk::IconSize::MENU)
-        #buf = $window.get_icon_buf(stock.to_s, 'pan')
-        #image = Gtk::Image.new(buf) #, Gtk::IconSize::MENU)
-        #image.set_padding(2, 0)
-        #image.sensitive = false
-        #p '[image, image.pixbuf]='+[image, image.pixbuf].inspect
-        #btn.image = image
-      end
-      #btn.relief = Gtk::RELIEF_NONE
-      if block_given?
-        if toggle.nil?
-          btn.signal_connect('clicked') do |*args|
-            yield(*args)
-          end
-        else
-          btn.safe_signal_clicked do |widget|
-            yield(widget)
-          end
-          btn.safe_set_active(toggle)
-        end
-      end
-      #$statusbar.pack_start(btn, false, false, 0)
-      #$status_toolbar.pack_start(btn, false, false, 0)
-      $status_toolbar.add(btn)
+      $statusbar.pack_start(btn, false, false, 0)
       $status_fields[index] = btn
     end
 
@@ -18697,13 +18787,11 @@ module PandoraGtk
         if text
           str = _(text)
           str = _('Version') + ': ' + str if (index==SF_Update)
-          fld.label = str
+          fld.set_label(str)
         end
-        if (enabled != nil)
-          fld.sensitive = enabled
-        end
+        fld.sensitive = enabled if (enabled != nil)
         if (toggle != nil)
-          fld.safe_set_active(toggle) if fld.is_a? SafeToggleButton
+          fld.set_active(toggle)
           btn = $toggle_buttons[index]
           btn.safe_set_active(toggle) if btn and (btn.is_a? SafeToggleToolButton)
         end
@@ -19193,14 +19281,14 @@ module PandoraGtk
           $window.show_notice(true)
         when 'Authorize'
           key = PandoraCrypto.current_key(false, false)
-          if key and $listen_thread
+          if key and PandoraNet.listen?
             PandoraNet.start_or_stop_listen
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
           #p PandoraUtils.hex?('ad')
-          p [Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU].inspect
-          p [Gtk::Stock::MEDIA_PLAY.class, Gtk::IconSize::MENU.class].inspect
+          p [Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU, Gtk::Stock::OK].inspect
+          p [Gtk::Stock::MEDIA_PLAY.class, Gtk::IconSize::MENU.class, Gtk::Stock::OK.class].inspect
           p Gtk::IconSize.lookup(Gtk::IconSize::MENU).inspect
 
           return
@@ -19913,13 +20001,21 @@ module PandoraGtk
       #@cvpaned = CaptchaHPaned.new(vpaned)
       #@cvpaned.position = cvpaned.max_position
 
-      #$statusbar = Gtk::HBox.new #Gtk::Statusbar.new
+      $statusbar = Gtk::HBox.new
+      $statusbar.spacing = 1
+      $statusbar.border_width = 0
+      #$statusbar = Gtk::Statusbar.new
       #PandoraGtk.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
-      $status_toolbar = Gtk::Toolbar.new #Gtk::HBox.new
-      $status_toolbar.toolbar_style = Gtk::Toolbar::Style::BOTH_HORIZ
+      pathlabel = Gtk::Label.new($pandora_app_dir)
+      #pathlabel.justify = Gtk::JUSTIFY_LEFT
+      align = Gtk::Alignment.new(0.0, 0.5, 0.0, 0.0)
+      align.add(pathlabel)
+      $statusbar.pack_start(align, true, true, 0)
+      #$status_toolbar = Gtk::Toolbar.new #Gtk::HBox.new
+      #$status_toolbar.toolbar_style = Gtk::Toolbar::Style::BOTH_HORIZ
 
       #$status_toolbar.internal_padding = 0
-      $status_toolbar.icon_size = Gtk::IconSize::MENU
+      #$status_toolbar.icon_size = Gtk::IconSize::MENU
       #$statusbar.pack_start($status_toolbar, true, false, 0)
 
       add_status_field(SF_Update, _('Version') + ': ' + _('Not checked')) do
@@ -19961,8 +20057,8 @@ module PandoraGtk
       vbox.pack_start(toolbar, false, false, 0)
       #vbox.pack_start(cvpaned, true, true, 0)
       vbox.pack_start(vpaned, true, true, 0)
-      #vbox.pack_start($statusbar, false, false, 0)
-      vbox.pack_start($status_toolbar, false, false, 0)
+      vbox.pack_start($statusbar, false, false, 0)
+      #vbox.pack_start($status_toolbar, false, false, 0)
 
 
       #dat = DateEntry.new
@@ -20087,7 +20183,7 @@ module PandoraGtk
       $window.signal_connect('show') do |window, event|
         if $window.do_on_start > 0
           key = PandoraCrypto.current_key(false, true)
-          if (($window.do_on_start & 2) != 0) and key and (not $listen_thread)
+          if (($window.do_on_start & 2) != 0) and key and (not PandoraNet.listen?)
             PandoraNet.start_or_stop_listen
           end
           if (($window.do_on_start & 4) != 0) and key and (not $hunter_thread)
