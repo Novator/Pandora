@@ -4614,9 +4614,11 @@ module PandoraCrypto
   # Deactivate current key
   # RU: Деактивирует текущий ключ
   def self.reset_current_key
-    panhash = self.the_current_key[KV_Panhash]
-    $open_keys[panhash] = nil
-    self.the_current_key = deactivate_key(self.the_current_key)
+    if self.the_current_key
+      panhash = self.the_current_key[KV_Panhash]
+      $open_keys[panhash] = nil
+      self.the_current_key = deactivate_key(self.the_current_key)
+    end
     $window.set_status_field(PandoraGtk::SF_Auth, 'Not logged', nil, false)
     self.the_current_key
   end
@@ -6177,7 +6179,7 @@ module PandoraNet
 
     # Close all session
     # RU: Закрывает все сессии
-    def close_all_session(wait_sec=5)
+    def close_all_session(wait_sec=2)
       i = sessions.size
       while i>0
         i -= 1
@@ -6188,11 +6190,12 @@ module PandoraNet
           session.conn_state = CS_StopRead if session.conn_state<CS_StopRead
         end
       end
-      if wait_sec
+      if (sessions.size>0) and wait_sec
         time1 = Time.now.to_i
         time2 = time1
-        while (sessions.size>0) and (time2-time1)<wait_sec
+        while (sessions.size>0) and (time1+wait_sec>time2)
           sleep(0.05)
+          Thread.pass
           time2 = Time.now.to_i
         end
       end
@@ -18570,7 +18573,15 @@ module PandoraGtk
   $status_font = nil
 
   def self.status_font
-    $status_font ||= Pango::FontDescription.new('9')
+    if $status_font.nil?
+      style = Gtk::Widget.default_style
+      font = style.font_desc
+      fs = font.size
+      fs = fs * Pango::SCALE_SMALL if fs
+      font.size = fs if fs
+      $status_font = font
+    end
+    $status_font
   end
 
   class GoodButton < Gtk::Frame
@@ -18604,7 +18615,7 @@ module PandoraGtk
       set_active(atoggle)
 
       @enter_event = Proc.new do |body_child, event|
-        self.shadow_type = Gtk::SHADOW_ETCHED_OUT if @active.nil?
+        self.shadow_type = Gtk::SHADOW_OUT if @active.nil?
         false
       end
 
@@ -18616,7 +18627,7 @@ module PandoraGtk
       @press_event = Proc.new do |widget, event|
         if (event.button == 1)
           if @active.nil?
-            self.shadow_type = Gtk::SHADOW_ETCHED_IN
+            self.shadow_type = Gtk::SHADOW_IN
           else
             @active = (not @active)
             set_active(@active)
@@ -18651,11 +18662,11 @@ module PandoraGtk
       if @active.nil?
         self.shadow_type = Gtk::SHADOW_NONE
       elsif @active
-        self.shadow_type = Gtk::SHADOW_ETCHED_IN
+        self.shadow_type = Gtk::SHADOW_IN
         @im_evbox.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
         @lab_evbox.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
       else
-        self.shadow_type = Gtk::SHADOW_ETCHED_OUT
+        self.shadow_type = Gtk::SHADOW_OUT
         @im_evbox.modify_bg(Gtk::STATE_NORMAL, nil)
         @lab_evbox.modify_bg(Gtk::STATE_NORMAL, nil)
       end
@@ -18665,20 +18676,15 @@ module PandoraGtk
       if @image
         @image.destroy
         @image = nil
-        @im_align.destroy
-        @im_align = nil
       end
       if astock
         #$window.get_preset_iconset(astock)
         $window.register_stock(astock)
         @image = Gtk::Image.new(astock, Gtk::IconSize::MENU)
         @image.set_padding(2, 2)
+        @image.set_alignment(0.5, 0.5)
         @im_evbox.add(@image)
-        @im_align = Gtk::Alignment.new(0.5, 0.5, 1, 1)
-        #@im_align.set_padding(1,2,1,1)
-        @im_align.add(@im_evbox)
-        @hbox.pack_start(@im_align, false, false, 0)
-        @hbox.pack_start(@im_evbox, false, false, 0)
+        @hbox.pack_start(@im_evbox, true, false, 0)
       end
     end
 
@@ -18695,20 +18701,16 @@ module PandoraGtk
         else
           @label = Gtk::Label.new(atitle)
           @label.set_padding(2, 2)
-
-          #p style = @label.modifier_style
-          p astyle = Gtk::Widget.default_style
-          p astyle.font_desc
-
-          #astyle.font_desc.size = 3 #astyle.font_desc.weight/2
-          #@label.style = astyle
+          @label.set_alignment(0.0, 0.5)
           @label.modify_font(PandoraGtk.status_font)
-          #@label.modify_style(style)
-
+          #p style = @label.style
+          #p style = @label.modifier_style
+          #p style = Gtk::Widget.default_style
+          #p style.font_desc
+          #p style.font_desc.size
+          #p style.font_desc.family
           @lab_evbox.add(@label)
-          align = Gtk::Alignment.new(0.0, 0.5, 1, 1)
-          align.add(@lab_evbox)
-          @hbox.pack_start(align, false, false, 0)
+          @hbox.pack_start(@lab_evbox, true, false, 0)
         end
       end
     end
@@ -19309,8 +19311,10 @@ module PandoraGtk
           $window.show_notice(true)
         when 'Authorize'
           key = PandoraCrypto.current_key(false, false)
-          if key and PandoraNet.listen?
-            PandoraNet.start_or_stop_listen
+          if key
+            PandoraNet.start_or_stop_listen if PandoraNet.listen?
+            PandoraNet.start_or_stop_hunt(false) if $hunter_thread
+            self.pool.close_all_session
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
@@ -20034,18 +20038,14 @@ module PandoraGtk
       $statusbar.border_width = 0
       #$statusbar = Gtk::Statusbar.new
       #PandoraGtk.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
-      pathlabel = Gtk::Label.new($pandora_app_dir)
+      path = $pandora_app_dir
+      path = '..'+path[-40..-1] if path.size>40
+      pathlabel = Gtk::Label.new(path)
       pathlabel.modify_font(PandoraGtk.status_font)
-      #pathlabel.justify = Gtk::JUSTIFY_LEFT
-      align = Gtk::Alignment.new(0.0, 0.5, 0.0, 0.0)
-      align.add(pathlabel)
-      $statusbar.pack_start(align, true, true, 0)
-      #$status_toolbar = Gtk::Toolbar.new #Gtk::HBox.new
-      #$status_toolbar.toolbar_style = Gtk::Toolbar::Style::BOTH_HORIZ
-
-      #$status_toolbar.internal_padding = 0
-      #$status_toolbar.icon_size = Gtk::IconSize::MENU
-      #$statusbar.pack_start($status_toolbar, true, false, 0)
+      pathlabel.justify = Gtk::JUSTIFY_LEFT
+      pathlabel.set_padding(1, 1)
+      pathlabel.set_alignment(0.0, 0.5)
+      $statusbar.pack_start(pathlabel, true, true, 0)
 
       add_status_field(SF_Update, _('Version') + ': ' + _('Not checked')) do
         PandoraGtk.start_updating(true)
@@ -20080,18 +20080,24 @@ module PandoraGtk
       add_status_field(SF_Harvest, '0', :blob) do
         do_menu_act('Blob')
       end
+      frame = Gtk::Frame.new
+      frame.width_request = 12
+      frame.shadow_type = Gtk::SHADOW_NONE
+      $statusbar.pack_start(frame, false, false, 0)
 
       vbox = Gtk::VBox.new
       vbox.pack_start(menubar, false, false, 0)
       vbox.pack_start(toolbar, false, false, 0)
       #vbox.pack_start(cvpaned, true, true, 0)
       vbox.pack_start(vpaned, true, true, 0)
-      vbox.pack_start($statusbar, false, false, 0)
-      #vbox.pack_start($status_toolbar, false, false, 0)
-
-
-      #dat = DateEntry.new
-      #vbox.pack_start(dat, false, false, 0)
+      stat_sw = Gtk::ScrolledWindow.new(nil, nil)
+      stat_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_NEVER)
+      stat_sw.border_width = 0
+      iw, iy = Gtk::IconSize.lookup(Gtk::IconSize::MENU)
+      stat_sw.height_request = iy+6
+      #stat_sw.add_with_viewport($statusbar)
+      stat_sw.add($statusbar)
+      vbox.pack_start(stat_sw, false, false, 0)
 
       $window.add(vbox)
 
