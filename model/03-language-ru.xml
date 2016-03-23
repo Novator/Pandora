@@ -142,6 +142,7 @@
     <Transfer name.ru="Перевод">
       <creator name.ru="Плательщик" />
       <debenture name.ru="Расписка" />
+      <recipient name.ru="Получатель" />
       <deal name.ru="Сделка" />
       <currency name.ru="Валюта" />
       <sum name.ru="Сумма" />

@@ -162,6 +162,7 @@
     <Transfer parent="Created" kind="84">
       <creator name="Payer" />
       <debenture name="Debenture" type="Panhash(Debenture)" />
+      <recipient name="Recipient" type="Panhash(Person, Community)" />
       <deal name="Deal" type="Panhash(Deal)" />
       <currency name="Currency" type="Panhash(Currency)" />
       <sum name="Sum" type="Real" />

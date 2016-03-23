@@ -13881,17 +13881,17 @@ module PandoraGtk
         #if node_text
         #  buf.insert(buf.end_iter, "\n"+ _('Far node') + ': '+ node_text, 'sys')
         #end
-        #if symbols
-        #  mask = symbols.downcase+symbols.upcase
-        #  captcha_entry.mask = mask
-        #  sym_text = _('Symbols')+': '+symbols.to_s
-        #  i = 30
-        #  while i<sym_text.size do
-        #    sym_text = sym_text[0,i]+"\n"+sym_text[i+1..-1]
-        #    i += 31
-        #  end
-        #  buf.insert(buf.end_iter, "\n"+sym_text, 'sys')
-        #end
+        if symbols
+          mask = symbols.downcase+symbols.upcase
+          captcha_entry.mask = mask
+          #sym_text = _('Symbols')+': '+symbols.to_s
+          #i = 30
+          #while i<sym_text.size do
+          #  sym_text = sym_text[0,i]+"\n"+sym_text[i+1..-1]
+          #  i += 31
+          #end
+          #buf.insert(buf.end_iter, "\n"+sym_text, 'sys')
+        end
 
         #image = Gtk::Image.new()
         #buf.insert(buf.end_iter, "\n")
@@ -13913,9 +13913,12 @@ module PandoraGtk
 
         captcha_entry.signal_connect('key-press-event') do |widget, event|
           if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-            @captcha_enter = captcha_entry.text
-            captcha_entry.text = ''
-            del_captcha_entry
+            text = captcha_entry.text
+            if text.size>0
+              @captcha_enter = captcha_entry.text
+              captcha_entry.text = ''
+              del_captcha_entry
+            end
             true
           elsif (Gdk::Keyval::GDK_Escape==event.keyval)
             @captcha_enter = false
@@ -17195,19 +17198,47 @@ module PandoraGtk
   # Filter box: field, operation and value
   # RU: Группа фильтра: поле, операция и значение
   class FilterHBox < Gtk::HBox
-    attr_accessor :filters, :field_com, :oper_com, :val_entry, :logic_com
+    attr_accessor :filters, :field_com, :oper_com, :val_entry, :logic_com, \
+      :del_btn, :add_btn
 
     # Remove itself
     # RU: Удалить себя
-    def delete
+    def delete(page_sw)
+      @add_btn = nil
       if @filters.size>1
         parent.remove(self)
         filters.delete(self)
+        last = filters[filters.size-1]
+        p [last, last.add_btn, filters.size-1]
+        last.add_btn_to(page_sw)
       else
         field_com.entry.text = ''
         while children.size>1
-          remove(children[children.size-1])
+          child = children[children.size-1]
+          remove(child)
+          child.destroy
         end
+        @add_btn.destroy if @add_btn
+        @add_btn = nil
+      end
+      first = filters[0]
+      if first and first.logic_com
+        first.remove(first.logic_com)
+        first.logic_com = nil
+      end
+    end
+
+    def add_btn_to(page_sw)
+      p '---add_btn_to [add_btn, @add_btn]='+[add_btn, @add_btn].inspect
+      if add_btn.nil? and (children.size>2)
+        @add_btn = Gtk::ToolButton.new(Gtk::Stock::ADD, _('Add'))
+        add_btn.tooltip_text = _('Add a new filter')
+        hbox = parent
+        add_btn.signal_connect('clicked') do |*args|
+          FilterHBox.new(filters, hbox, page_sw)
+        end
+        pack_start(add_btn, false, true, 0)
+        add_btn.show_all
       end
     end
 
@@ -17244,6 +17275,11 @@ module PandoraGtk
         logic_com.entry.text = 'AND'
         logic_com.set_size_request(64, -1)
         filter_box.pack_start(logic_com, false, true, 0)
+        prev = @filters[@filters.size-1]
+        if prev and prev.add_btn
+          prev.remove(prev.add_btn)
+          prev.add_btn = nil
+        end
       end
 
       fields = Array.new
@@ -17256,29 +17292,29 @@ module PandoraGtk
       field_com.entry.signal_connect('changed') do |entry|
         if filter_box.children.size>2
           if (entry.text == no_filter_frase) or (entry.text == '')
-            delete
+            delete(page_sw)
           end
         elsif (entry.text != no_filter_frase) and (entry.text != '')
           @oper_com = Gtk::Combo.new
           oper_com.set_popdown_strings(['=','==','<>','>','<'])
           oper_com.set_size_request(56, -1)
+          oper_com.entry.signal_connect('activate') do |*args|
+            @val_entry.grab_focus
+          end
           filter_box.pack_start(oper_com, false, true, 0)
+
+          @del_btn = Gtk::ToolButton.new(Gtk::Stock::DELETE, _('Delete'))
+          del_btn.tooltip_text = _('Delete this filter')
+          del_btn.signal_connect('clicked') do |*args|
+            delete(page_sw)
+          end
+          filter_box.pack_start(del_btn, false, true, 0)
 
           @val_entry = Gtk::Entry.new
           val_entry.set_size_request(120, -1)
           filter_box.pack_start(val_entry, false, true, 0)
 
-          del_btn = Gtk::ToolButton.new(Gtk::Stock::DELETE, _('Delete'))
-          del_btn.tooltip_text = _('Delete this filter')
-          del_btn.signal_connect('clicked') do |*args|
-            delete
-          end
-          filter_box.pack_start(del_btn, false, true, 0)
-
-          add_btn = Gtk::ToolButton.new(Gtk::Stock::ADD, _('Add'))
-          add_btn.tooltip_text = _('Add a new filter')
-          add_btn.signal_connect('clicked') { |*args| FilterHBox.new(filters, hbox, page_sw) }
-          filter_box.pack_start(add_btn, false, true, 0)
+          add_btn_to(page_sw)
 
           filter_box.show_all
         end
@@ -19048,6 +19084,7 @@ module PandoraGtk
       else
         image = Gtk::Image.new(iname, isize)
       end
+      image.set_alignment(0.0, 0.5)
       image
     end
 
@@ -19617,9 +19654,9 @@ module PandoraGtk
     # Scheduler parameters (sec)
     # RU: Параметры планировщика (сек)
     CheckTaskPeriod  = 1*60   #5 min
-    CheckBasePeriod  = 60*60  #60 min
+    SearchGarbStep   = 30     #30 sec
     CheckBaseStep    = 10     #10 sec
-    SearchGarbStep   = 30     #10 sec
+    CheckBasePeriod  = 60*60  #60 min
     # Size of bundle processed at one cycle
     # RU: Размер пачки, обрабатываемой за цикл
     HuntTrain         = 10     #nodes at a heat
@@ -19863,7 +19900,8 @@ module PandoraGtk
               while train_tail>0
                 if (not @base_garb_model)
                   @base_garb_id = 0
-                  while (@base_garb_kind<255) and (not @base_garb_model.is_a? PandoraModel::Panobject)
+                  while (@base_garb_kind<255) \
+                  and (not @base_garb_model.is_a? PandoraModel::Panobject)
                     @base_garb_kind += 1
                     panobjectclass = PandoraModel.panobjectclass_by_kind(@base_garb_kind)
                     if panobjectclass
@@ -20000,7 +20038,7 @@ module PandoraGtk
       sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       sw.shadow_type = Gtk::SHADOW_IN
       sw.add(log_view)
-      sw.border_width = 1;
+      sw.border_width = 0;
       sw.set_size_request(-1, 40)
 
       @fish_sw = FishScrollWin.new
