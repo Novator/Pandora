@@ -15457,11 +15457,13 @@ module PandoraGtk
         @list_store.clear
         reqs ||= pool.search_requests
         reqs.each do |sr|
-          user_iter = @list_store.append
-          user_iter[0] = sr[PandoraNet::SR_Index]
-          user_iter[1] = Utf8String.new(sr[PandoraNet::SR_Request])
-          user_iter[2] = Utf8String.new(sr[PandoraNet::SR_Kind])
-          user_iter[3] = Utf8String.new(sr[PandoraNet::SR_Answer].inspect)
+          if sr.is_a? Array
+            user_iter = @list_store.append
+            user_iter[0] = sr[PandoraNet::SR_Index]
+            user_iter[1] = Utf8String.new(sr[PandoraNet::SR_Request])
+            user_iter[2] = Utf8String.new(sr[PandoraNet::SR_Kind])
+            user_iter[3] = Utf8String.new(sr[PandoraNet::SR_Answer].inspect)
+          end
         end
         if reqs
           @last_search_ind = nil
@@ -18565,6 +18567,153 @@ module PandoraGtk
     [res, opts]
   end
 
+  $status_font = nil
+
+  def self.status_font
+    $status_font ||= Pango::FontDescription.new('9')
+  end
+
+  class GoodButton < Gtk::Frame
+    attr_accessor :hbox, :image, :label, :active
+
+    def initialize(astock, atitle=nil, atoggle=nil)
+      super()
+      @hbox = Gtk::HBox.new
+      #align = Gtk::Alignment.new(0.5, 0.5, 0, 0)
+      #align.add(@image)
+
+      @proc_on_click = Proc.new do |*args|
+        yield(*args) if block_given?
+      end
+
+      @im_evbox = Gtk::EventBox.new
+      #@im_evbox.border_width = 2
+      @im_evbox.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
+        | Gdk::Event::ENTER_NOTIFY_MASK | Gdk::Event::LEAVE_NOTIFY_MASK \
+        | Gdk::Event::VISIBILITY_NOTIFY_MASK
+      @lab_evbox = Gtk::EventBox.new
+      #@lab_evbox.border_width = 1
+      @lab_evbox.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
+        | Gdk::Event::ENTER_NOTIFY_MASK | Gdk::Event::LEAVE_NOTIFY_MASK \
+        | Gdk::Event::VISIBILITY_NOTIFY_MASK
+
+      set_image(astock)
+      set_label(atitle)
+      self.add(@hbox)
+
+      set_active(atoggle)
+
+      @enter_event = Proc.new do |body_child, event|
+        self.shadow_type = Gtk::SHADOW_ETCHED_OUT if @active.nil?
+        false
+      end
+
+      @leave_event = Proc.new do |body_child, event|
+        self.shadow_type = Gtk::SHADOW_NONE if @active.nil?
+        false
+      end
+
+      @press_event = Proc.new do |widget, event|
+        if (event.button == 1)
+          if @active.nil?
+            self.shadow_type = Gtk::SHADOW_ETCHED_IN
+          else
+            @active = (not @active)
+            set_active(@active)
+          end
+          do_on_click
+        end
+        false
+      end
+
+      @release_event = Proc.new do |widget, event|
+        set_active(@active)
+        false
+      end
+
+      @im_evbox.signal_connect('enter-notify-event') { |*args| @enter_event.call(*args) }
+      @im_evbox.signal_connect('leave-notify-event') { |*args| @leave_event.call(*args) }
+      @im_evbox.signal_connect('button-press-event') { |*args| @press_event.call(*args) }
+      @im_evbox.signal_connect('button-release-event') { |*args| @release_event.call(*args) }
+
+      @lab_evbox.signal_connect('enter-notify-event') { |*args| @enter_event.call(*args) }
+      @lab_evbox.signal_connect('leave-notify-event') { |*args| @leave_event.call(*args) }
+      @lab_evbox.signal_connect('button-press-event') { |*args| @press_event.call(*args) }
+      @lab_evbox.signal_connect('button-release-event') { |*args| @release_event.call(*args) }
+    end
+
+    def do_on_click
+      @proc_on_click.call
+    end
+
+    def set_active(toggle)
+      @active = toggle
+      if @active.nil?
+        self.shadow_type = Gtk::SHADOW_NONE
+      elsif @active
+        self.shadow_type = Gtk::SHADOW_ETCHED_IN
+        @im_evbox.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
+        @lab_evbox.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
+      else
+        self.shadow_type = Gtk::SHADOW_ETCHED_OUT
+        @im_evbox.modify_bg(Gtk::STATE_NORMAL, nil)
+        @lab_evbox.modify_bg(Gtk::STATE_NORMAL, nil)
+      end
+    end
+
+    def set_image(astock=nil)
+      if @image
+        @image.destroy
+        @image = nil
+        @im_align.destroy
+        @im_align = nil
+      end
+      if astock
+        #$window.get_preset_iconset(astock)
+        $window.register_stock(astock)
+        @image = Gtk::Image.new(astock, Gtk::IconSize::MENU)
+        @image.set_padding(2, 2)
+        @im_evbox.add(@image)
+        @im_align = Gtk::Alignment.new(0.5, 0.5, 1, 1)
+        #@im_align.set_padding(1,2,1,1)
+        @im_align.add(@im_evbox)
+        @hbox.pack_start(@im_align, false, false, 0)
+        @hbox.pack_start(@im_evbox, false, false, 0)
+      end
+    end
+
+    def set_label(atitle=nil)
+      if atitle.nil?
+        if @label
+          @label.visible = false
+          @label.text = ''
+        end
+      else
+        if @label
+          @label.text = atitle
+          @label.visible = true if not @label.visible?
+        else
+          @label = Gtk::Label.new(atitle)
+          @label.set_padding(2, 2)
+
+          #p style = @label.modifier_style
+          p astyle = Gtk::Widget.default_style
+          p astyle.font_desc
+
+          #astyle.font_desc.size = 3 #astyle.font_desc.weight/2
+          #@label.style = astyle
+          @label.modify_font(PandoraGtk.status_font)
+          #@label.modify_style(style)
+
+          @lab_evbox.add(@label)
+          align = Gtk::Alignment.new(0.0, 0.5, 1, 1)
+          align.add(@lab_evbox)
+          @hbox.pack_start(align, false, false, 0)
+        end
+      end
+    end
+  end
+
   # Main window
   # RU: Главное окно
   class MainWindow < Gtk::Window
@@ -18641,127 +18790,6 @@ module PandoraGtk
       notice = PandoraModel.transform_trust($notice_trust, false)
       notice = notice.round(1).to_s + '/'+$notice_depth.to_s
       set_status_field(PandoraGtk::SF_Notice, notice)
-    end
-
-    class GoodButton < Gtk::Frame
-      attr_accessor :hbox, :image, :label, :active
-
-      def initialize(astock, atitle=nil, atoggle=nil)
-        super()
-        @hbox = Gtk::HBox.new
-        #align = Gtk::Alignment.new(0.5, 0.5, 0, 0)
-        #align.add(@image)
-        set_active(atoggle)
-
-        @proc_on_click = Proc.new do |*args|
-          yield(*args) if block_given?
-        end
-
-        @im_evbox = Gtk::EventBox.new
-        @im_evbox.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
-          | Gdk::Event::ENTER_NOTIFY_MASK | Gdk::Event::LEAVE_NOTIFY_MASK \
-          | Gdk::Event::VISIBILITY_NOTIFY_MASK
-        @lab_evbox = Gtk::EventBox.new
-        @lab_evbox.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
-          | Gdk::Event::ENTER_NOTIFY_MASK | Gdk::Event::LEAVE_NOTIFY_MASK \
-          | Gdk::Event::VISIBILITY_NOTIFY_MASK
-
-        set_image(astock)
-        set_label(atitle)
-        self.add(@hbox)
-
-        @enter_event = Proc.new do |body_child, event|
-          self.shadow_type = Gtk::SHADOW_ETCHED_OUT if @active.nil?
-          false
-        end
-
-        @leave_event = Proc.new do |body_child, event|
-          self.shadow_type = Gtk::SHADOW_NONE if @active.nil?
-          false
-        end
-
-        @press_event = Proc.new do |widget, event|
-          if (event.button == 1)
-            if @active.nil?
-              self.shadow_type = Gtk::SHADOW_ETCHED_IN
-            else
-              @active = (not @active)
-              set_active(@active)
-            end
-            do_on_click
-          end
-          false
-        end
-
-        @release_event = Proc.new do |widget, event|
-          set_active(@active)
-          false
-        end
-
-        @im_evbox.signal_connect('enter-notify-event') { |*args| @enter_event.call(*args) }
-        @im_evbox.signal_connect('leave-notify-event') { |*args| @leave_event.call(*args) }
-        @im_evbox.signal_connect('button-press-event') { |*args| @press_event.call(*args) }
-        @im_evbox.signal_connect('button-release-event') { |*args| @release_event.call(*args) }
-
-        @lab_evbox.signal_connect('enter-notify-event') { |*args| @enter_event.call(*args) }
-        @lab_evbox.signal_connect('leave-notify-event') { |*args| @leave_event.call(*args) }
-        @lab_evbox.signal_connect('button-press-event') { |*args| @press_event.call(*args) }
-        @lab_evbox.signal_connect('button-release-event') { |*args| @release_event.call(*args) }
-      end
-
-      def do_on_click
-        @proc_on_click.call
-      end
-
-      def set_active(toggle)
-        @active = toggle
-        if @active.nil?
-          self.shadow_type = Gtk::SHADOW_NONE
-        elsif @active
-          self.shadow_type = Gtk::SHADOW_ETCHED_IN
-        else
-          self.shadow_type = Gtk::SHADOW_ETCHED_OUT
-        end
-      end
-
-      def set_image(astock=nil)
-        if @image
-          @image.destroy
-          @image = nil
-          #@im_align.destroy
-          #@im_align = nil
-        end
-        if astock
-          #$window.get_preset_iconset(astock)
-          $window.register_stock(astock)
-          @image = Gtk::Image.new(astock, Gtk::IconSize::MENU)
-          @im_evbox.add(@image)
-          #@im_align = Gtk::Alignment.new(0.0, 1.0, 0, 0)
-          #@im_align.add(@im_evbox)
-          @hbox.pack_start(@im_align, false, false, 0)
-          @hbox.pack_start(@im_evbox, false, false, 0)
-        end
-      end
-
-      def set_label(atitle=nil)
-        if atitle.nil?
-          if @label
-            @label.visible = false
-            @label.text = ''
-          end
-        else
-          if @label
-            @label.text = atitle
-            @label.visible = true if not @label.visible?
-          else
-            @label = Gtk::Label.new(atitle)
-            @lab_evbox.add(@label)
-            align = Gtk::Alignment.new(0.0, 1.0, 0, 0)
-            align.add(@lab_evbox)
-            @hbox.pack_start(align, false, false, 1)
-          end
-        end
-      end
     end
 
     $statusbar = nil
@@ -20007,6 +20035,7 @@ module PandoraGtk
       #$statusbar = Gtk::Statusbar.new
       #PandoraGtk.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
       pathlabel = Gtk::Label.new($pandora_app_dir)
+      pathlabel.modify_font(PandoraGtk.status_font)
       #pathlabel.justify = Gtk::JUSTIFY_LEFT
       align = Gtk::Alignment.new(0.0, 0.5, 0.0, 0.0)
       align.add(pathlabel)
