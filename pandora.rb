@@ -19084,7 +19084,7 @@ module PandoraGtk
       else
         image = Gtk::Image.new(iname, isize)
       end
-      image.set_alignment(0.0, 0.5)
+      image.set_alignment(0.5, 0.5)
       image
     end
 
