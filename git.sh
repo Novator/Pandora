@@ -30,6 +30,7 @@
 #git remote -v
 #git branch -v
 #git diff
+#git log
 
 ## Push files from local to repository
 #git add --all
@@ -39,8 +40,12 @@ git push -u github master
 #git push -u bitbuc develop
 #git push -u github develop
 
-##Cancel last commit without cancel code
+##Cancel last commit with save current files
 #git reset --soft HEAD~1
+#git reset --soft HEAD^
+##Cancel last commit without save current files
+#git reset --hard HEAD^
+#git push -f origin master
 
 ##Modify last commit
 #git commit --amend
@@ -86,10 +91,4 @@ git push -u github master
 #git branch --merged
 #git branch --no-merged
 #git branch -d testing
-
-##Reset last commit with save fales
-#git reset --soft HEAD^
-##Reset last commit without save fales
-#git reset --hard HEAD^
-#git push -f origin master
 
