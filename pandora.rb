@@ -9587,7 +9587,7 @@ module PandoraNet
       $window.correct_lis_btn_state
     else
       # Need to start
-      $window.show_notice(false)
+      #$window.show_notice(false)
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, true)
@@ -18293,7 +18293,7 @@ module PandoraGtk
     end
     sw = SessionScrollWin.new
 
-    image = Gtk::Image.new(Gtk::Stock::JUSTIFY_FILL, Gtk::IconSize::MENU)
+    image = Gtk::Image.new(:session, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
     label_box = TabLabelBox.new(image, _('Sessions'), sw, false, 0) do
       #sw.destroy
@@ -18349,7 +18349,7 @@ module PandoraGtk
     end
     sw = FisherScrollWin.new
 
-    image = Gtk::Image.new(Gtk::Stock::JUSTIFY_RIGHT, Gtk::IconSize::MENU)
+    image = Gtk::Image.new(:fish, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
     label_box = TabLabelBox.new(image, _('Fishers'), sw, false, 0) do
       #sw.destroy
@@ -18820,15 +18820,15 @@ module PandoraGtk
 
     # Show notice status
     # RU: Показать уведомления в статусе
-    def show_notice(change=nil)
-      if change
-        PandoraGtk.show_panobject_list(PandoraModel::Parameter, nil, nil, true)
-      end
-      PandoraNet.get_notice_params
-      notice = PandoraModel.transform_trust($notice_trust, false)
-      notice = notice.round(1).to_s + '/'+$notice_depth.to_s
-      set_status_field(PandoraGtk::SF_Notice, notice)
-    end
+    #def show_notice(change=nil)
+    #  if change
+    #    PandoraGtk.show_panobject_list(PandoraModel::Parameter, nil, nil, true)
+    #  end
+    #  PandoraNet.get_notice_params
+    #  notice = PandoraModel.transform_trust($notice_trust, false)
+    #  notice = notice.round(1).to_s + '/'+$notice_depth.to_s
+    #  set_status_field(PandoraGtk::SF_Notice, notice)
+    #end
 
     $statusbar = nil
     $status_fields = []
@@ -19344,8 +19344,8 @@ module PandoraGtk
           continue = ((mask & Gdk::Window::SHIFT_MASK.to_i) == 0) \
             and ((mask & Gdk::Window::CONTROL_MASK.to_i) == 0)
           PandoraNet.start_or_stop_hunt(continue)
-        when 'Notice'
-          $window.show_notice(true)
+        #when 'Notice'
+        #  $window.show_notice(true)
         when 'Authorize'
           key = PandoraCrypto.current_key(false, false)
           if key
@@ -19579,6 +19579,7 @@ module PandoraGtk
       ['Neighbor', :radar, 'Neighbors', '<control>N', :check],  #Gtk::Stock::GO_FORWARD
       ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
       ['Exchange', 'exchange:m', 'Exchange'],
+      ['Fisher', 'fish:m', 'Fishers'],
       ['-', nil, '-'],
       ['Profile', Gtk::Stock::HOME, 'Profile'],
       ['Wizard', Gtk::Stock::PREFERENCES, 'Wizards'],
@@ -20100,23 +20101,23 @@ module PandoraGtk
       add_status_field(SF_Hunt, nil, :hunt, false) do
         do_menu_act('Hunt')
       end
-      add_status_field(SF_Notice, '-') do
-        do_menu_act('Notice')
-      end
-      add_status_field(SF_Conn, '0/0/0', Gtk::Stock::JUSTIFY_FILL) do
-        do_menu_act('Session')
-      end
-      add_status_field(SF_Fish, '0', :radar, false) do
-        do_menu_act('Neighbor')
-      end
-      add_status_field(SF_Fisher, '0', Gtk::Stock::JUSTIFY_RIGHT) do
+      add_status_field(SF_Fisher, '0', :fish) do
         do_menu_act('Fisher')
       end
+      add_status_field(SF_Conn, '0/0/0', :session) do
+        do_menu_act('Session')
+      end
+      #add_status_field(SF_Notice, '-') do
+      #  do_menu_act('Notice')
+      #end
       add_status_field(SF_Search, '0', Gtk::Stock::FIND) do
         do_menu_act('Search')
       end
       add_status_field(SF_Harvest, '0', :blob) do
         do_menu_act('Blob')
+      end
+      add_status_field(SF_Fish, '0', :radar, false) do
+        do_menu_act('Neighbor')
       end
       frame = Gtk::Frame.new
       frame.width_request = 12
