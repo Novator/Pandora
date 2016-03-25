@@ -19972,6 +19972,8 @@ module PandoraGtk
       end
     end
 
+    $pointoff = nil
+
     # Show main Gtk window
     # RU: Показать главное окно Gtk
     def initialize(*args)
@@ -20131,19 +20133,21 @@ module PandoraGtk
         window = widget.window
         window.cursor = nil #Gdk::Cursor.new(Gdk::Cursor::XTERM)
       end
-
-      $pointoff = nil
       resize_eb.signal_connect('button-press-event') do |widget, event|
         if (event.button == 1)
           point = $window.window.pointer[1,2]
-          wh = $window.window.geometry[2,3]
+          wh = $window.window.geometry[2,2]
           $pointoff = [(wh[0]-point[0]), (wh[1]-point[1])]
           if $window.window.state == Gdk::EventWindowState::MAXIMIZED
-            w, h = [(point[0]+$pointoff[0]), (point[1]+$pointoff[1])]
+            wbord = 6
+            w, h = [(point[0]+$pointoff[0]-wbord), (point[1]+$pointoff[1]-wbord)]
             $window.move(0, 0)
-            $window.set_default_size(w-2, h-2)
-            $window.resize(w-2, h-2)
+            $window.set_default_size(w, h)
+            $window.resize(w, h)
             $window.unmaximize
+            $window.move(0, 0)
+            $window.set_default_size(w, h)
+            $window.resize(w, h)
           end
         end
         false
