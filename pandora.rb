@@ -5330,6 +5330,7 @@ module PandoraCrypto
       #p 'key, person, sel='+[key, person, sel].inspect
       if (sel.is_a? Array) and (sel.size>0)
         aname, afamily = [Utf8String.new(sel[0][0]), Utf8String.new(sel[0][1])]
+        key[KV_NameFamily] = [aname, afamily] if key
       end
       #p '[aname, afamily]='+[aname, afamily].inspect
       if (not aname) and (not afamily) and (key.is_a? Array)
@@ -5346,7 +5347,6 @@ module PandoraCrypto
         afamily = person[5, 4]
         afamily = PandoraUtils.bytes_to_hex(afamily) if afamily
       end
-      key[KV_NameFamily] = [aname, afamily] if key
     end
     aname ||= ''
     afamily ||= ''
@@ -7771,7 +7771,7 @@ module PandoraNet
                     entered_captcha, dlg = PandoraGtk.show_captcha(captcha_buf, \
                       clue_text, conn_type, @node, @node_id, @recv_models)
                     @dialog ||= dlg
-                    @dialog.set_session(self, true)
+                    @dialog.set_session(self, true) if @dialog
                     if entered_captcha
                       @scmd = EC_Auth
                       @scode = ECC_Auth_Answer

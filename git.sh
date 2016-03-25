@@ -23,7 +23,7 @@
 #git commit -m "first commit"
 #git remote rm origin
 #git remote add origin https://github.com/Novator/Pandora.git
-#git remote add robux git://user@git.site.biz:222/pandora
+#git remote add robux ssh://user@git.site.biz:222/pandora
 #git clone --depth=1 git://git.site.biz/pandora
 #git push -u origin master
 
