@@ -2769,15 +2769,15 @@ module PandoraUtils
     value
   end
 
-  # Set parameter value
-  # RU: Задаёт значение параметра
-  def self.set_param(name, value, definition=nil)
+  # Set parameter value (delete if value=nil)
+  # RU: Задаёт значение параметра (удаляет если value=nil)
+  def self.set_param(name, value)
     res = false
     old_value, id = PandoraUtils.get_param(name, true)
     param_model = PandoraUtils.get_model('Parameter')
-    if (value != old_value) and param_model
-      values = {:value=>value, :modified=>Time.now.to_i}
-      res = param_model.update(values, nil, 'id='+id.to_s)
+    if ((value != old_value) or value.nil?) and param_model
+      value = {:value=>value, :modified=>Time.now.to_i} if value
+      res = param_model.update(value, nil, 'id='+id.to_s)
     end
     res
   end
@@ -18870,6 +18870,16 @@ module PandoraGtk
       $status_fields[index]
     end
 
+    def get_icon_file_params(preset)
+      smile_desc = PandoraUtils.get_param('icons_'+preset)
+      p 'smile_desc='+smile_desc.inspect
+      p 'smile_desc.size='+smile_desc.size.inspect
+      icon_params = smile_desc.split('|')
+      icon_file_desc = icon_params[0]
+      icon_params.delete_at(0)
+      [icon_params, icon_file_desc]
+    end
+
     # Return Pixbuf with icon picture
     # RU: Возвращает Pixbuf с изображением иконки
     def get_icon_buf(emot='smile', preset='qip')
@@ -18884,12 +18894,7 @@ module PandoraGtk
         @icon_presets ||= Hash.new
         icon_preset = @icon_presets[preset]
         if icon_preset.nil?
-          smile_desc = PandoraUtils.get_param('icons_'+preset)
-          p 'smile_desc='+smile_desc.inspect
-          p 'smile_desc.size='+smile_desc.size.inspect
-          icon_params = smile_desc.split('|')
-          icon_file_desc = icon_params[0]
-          icon_params.delete_at(0)
+          icon_params, icon_file_desc = get_icon_file_params(preset)
           icon_file_params = icon_file_desc.split(':')
           icon_file_name = icon_file_params[0]
           numXs, numYs = icon_file_params[1].split('x')
@@ -18932,7 +18937,16 @@ module PandoraGtk
 
       if buf.nil? and icon_preset
         index = icon_preset[:names].index(emot)
-        index ||= 0
+        if index.nil?
+          if icon_preset[:def_index].nil?
+            PandoraUtils.set_param('icons_'+preset, nil)
+            icon_params, icon_file_desc = get_icon_file_params(preset)
+            icon_preset[:names] = icon_params
+            index = icon_preset[:names].index(emot)
+            icon_preset[:def_index] = 0
+          end
+          index ||= icon_preset[:def_index]
+        end
         if index
           big_width  = icon_preset[:big_width]
           big_height = icon_preset[:big_height]
