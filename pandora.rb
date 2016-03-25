@@ -16108,7 +16108,7 @@ module PandoraGtk
       menu.show_all
 
       list_tree.add_events(Gdk::Event::BUTTON_PRESS_MASK)
-      list_tree.signal_connect('button_press_event') do |widget, event|
+      list_tree.signal_connect('button-press-event') do |widget, event|
         if (event.button == 3)
           menu.popup(nil, nil, event.button, event.time)
         end
@@ -17590,7 +17590,7 @@ module PandoraGtk
     menu.show_all
 
     treeview.add_events(Gdk::Event::BUTTON_PRESS_MASK)
-    treeview.signal_connect('button_press_event') do |widget, event|
+    treeview.signal_connect('button-press-event') do |widget, event|
       if (event.button == 3)
         menu.popup(nil, nil, event.button, event.time)
       end
@@ -19572,6 +19572,7 @@ module PandoraGtk
       ['Event', 'event:m', 'Events'],
       ['Request', 'request:m', 'Requests'],  #Gtk::Stock::SELECT_COLOR
       ['Session', 'session:m', 'Sessions', '<control>S'],   #Gtk::Stock::JUSTIFY_FILL
+      ['Fisher', 'fish:m', 'Fishers'],
       ['-', nil, '-'],
       ['Authorize', :auth, 'Authorize', '<control>U', :check], #Gtk::Stock::DIALOG_AUTHENTICATION
       ['Listen', :listen, 'Listen', '<control>L', :check],  #Gtk::Stock::CONNECT
@@ -19579,7 +19580,6 @@ module PandoraGtk
       ['Neighbor', :radar, 'Neighbors', '<control>N', :check],  #Gtk::Stock::GO_FORWARD
       ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
       ['Exchange', 'exchange:m', 'Exchange'],
-      ['Fisher', 'fish:m', 'Fishers'],
       ['-', nil, '-'],
       ['Profile', Gtk::Stock::HOME, 'Profile'],
       ['Wizard', Gtk::Stock::PREFERENCES, 'Wizards'],
@@ -20095,34 +20095,79 @@ module PandoraGtk
       add_status_field(SF_Auth, _('Not logged'), :auth, false) do
         do_menu_act('Authorize')          #Gtk::Stock::DIALOG_AUTHENTICATION
       end
-      add_status_field(SF_Listen, nil, :listen, false) do
+      add_status_field(SF_Listen, '0', :listen, false) do
         do_menu_act('Listen')
       end
-      add_status_field(SF_Hunt, nil, :hunt, false) do
+      add_status_field(SF_Hunt, '0', :hunt, false) do
         do_menu_act('Hunt')
       end
       add_status_field(SF_Fisher, '0', :fish) do
         do_menu_act('Fisher')
       end
-      add_status_field(SF_Conn, '0/0/0', :session) do
+      add_status_field(SF_Fish, '0', :radar, false) do
+        do_menu_act('Neighbor')
+      end
+      add_status_field(SF_Conn, '0', :session) do
         do_menu_act('Session')
       end
       #add_status_field(SF_Notice, '-') do
       #  do_menu_act('Notice')
       #end
-      add_status_field(SF_Search, '0', Gtk::Stock::FIND) do
-        do_menu_act('Search')
-      end
       add_status_field(SF_Harvest, '0', :blob) do
         do_menu_act('Blob')
       end
-      add_status_field(SF_Fish, '0', :radar, false) do
-        do_menu_act('Neighbor')
+      add_status_field(SF_Search, '0', Gtk::Stock::FIND) do
+        do_menu_act('Search')
       end
-      frame = Gtk::Frame.new
-      frame.width_request = 12
-      frame.shadow_type = Gtk::SHADOW_NONE
-      $statusbar.pack_start(frame, false, false, 0)
+      resize_eb = Gtk::EventBox.new
+      resize_eb.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
+        | Gdk::Event::ENTER_NOTIFY_MASK | Gdk::Event::LEAVE_NOTIFY_MASK \
+        | Gdk::Event::VISIBILITY_NOTIFY_MASK
+      resize_eb.signal_connect('enter-notify-event') do |widget, param|
+        window = widget.window
+        window.cursor = Gdk::Cursor.new(Gdk::Cursor::BOTTOM_RIGHT_CORNER)
+      end
+      resize_eb.signal_connect('leave-notify-event') do |widget, param|
+        window = widget.window
+        window.cursor = nil #Gdk::Cursor.new(Gdk::Cursor::XTERM)
+      end
+
+      $pointoff = nil
+      resize_eb.signal_connect('button-press-event') do |widget, event|
+        if (event.button == 1)
+          point = $window.window.pointer[1,2]
+          wh = $window.window.geometry[2,3]
+          $pointoff = [(wh[0]-point[0]), (wh[1]-point[1])]
+          if $window.window.state == Gdk::EventWindowState::MAXIMIZED
+            w, h = [(point[0]+$pointoff[0]), (point[1]+$pointoff[1])]
+            $window.move(0, 0)
+            $window.set_default_size(w-2, h-2)
+            $window.resize(w-2, h-2)
+            $window.unmaximize
+          end
+        end
+        false
+      end
+      resize_eb.signal_connect('motion-notify-event') do |widget, event|
+        if $pointoff
+          point = $window.window.pointer[1,2]
+          $window.resize((point[0]+$pointoff[0]), (point[1]+$pointoff[1]))
+        end
+        false
+      end
+      resize_eb.signal_connect('button-release-event') do |widget, event|
+        if (event.button == 1) and $pointoff
+          window = widget.window
+          $pointoff = nil
+        end
+        false
+      end
+      $window.register_stock(:resize)
+      resize_image = Gtk::Image.new(:resize, Gtk::IconSize::MENU)
+      resize_image.set_padding(0, 0)
+      resize_image.set_alignment(1, 1)
+      resize_eb.add(resize_image)
+      $statusbar.pack_start(resize_eb, false, false, 0)
 
       vbox = Gtk::VBox.new
       vbox.pack_start(menubar, false, false, 0)
