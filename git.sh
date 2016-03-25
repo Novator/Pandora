@@ -30,6 +30,12 @@
 #git daemon --verbose --base-path=/home/vasya --export-all
 #git daemon --detach --base-path=/home/vasya --export-all
 
+## Switch the repo to server mode, back to local mode and update files
+#git config --bool core.bare true
+#rm ./.git/shallow
+#git config --bool core.bare false
+#git reset --hard master
+
 ## Show state
 #git status
 #git remote -v
