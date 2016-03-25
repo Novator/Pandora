@@ -23,7 +23,12 @@
 #git commit -m "first commit"
 #git remote rm origin
 #git remote add origin https://github.com/Novator/Pandora.git
+#git clone --depth=1 git://git.some.site/repo/Pandora
 #git push -u origin master
+
+## Start server (add to auto start)
+#git daemon --verbose --base-path=/home/vasya --export-all
+#git daemon --detach --base-path=/home/vasya --export-all
 
 ## Show state
 #git status
