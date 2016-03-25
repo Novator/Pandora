@@ -5538,6 +5538,7 @@ module PandoraNet
   CS_Stoping       = 2
   CS_StopRead      = 3
   CS_Disconnected  = 4
+  CS_CloseSession  = 5
 
   # Stage of exchange
   # RU: Стадия обмена
@@ -6187,7 +6188,11 @@ module PandoraNet
         if session
           session.conn_mode = (session.conn_mode & (~PandoraNet::CM_Keep))
           session.conn_mode2 = (session.conn_mode2 & (~PandoraNet::CM_Keep))
-          session.conn_state = CS_StopRead if session.conn_state<CS_StopRead
+          session.conn_state = CS_CloseSession if session.conn_state<CS_CloseSession
+          sthread = session.send_thread
+          if sthread and sthread.alive? and sthread.stop?
+            sthread.run
+          end
         end
       end
       if (sessions.size>0) and wait_sec
@@ -6197,6 +6202,23 @@ module PandoraNet
           sleep(0.05)
           Thread.pass
           time2 = Time.now.to_i
+        end
+        i = sessions.size
+        if i>0
+          sleep(0.1)
+          Thread.pass
+          i = sessions.size
+        end
+        while i>0
+          i -= 1
+          session = sessions[i]
+          if session
+            session.conn_state = CS_CloseSession if session.conn_state<CS_CloseSession
+            sthread = session.send_thread
+            if sthread and sthread.alive? and sthread.stop?
+              sthread.exit
+            end
+          end
         end
       end
     end
@@ -6416,7 +6438,7 @@ module PandoraNet
       key_hash = PandoraUtils.simplify_single_array(key_hash)
       nodehash = PandoraUtils.simplify_single_array(nodehash)
       res = nil
-      send_state_add ||= CS_Connecting
+      send_state_add ||= 0
       sessions = sessions_of_personkeybase(person, key_hash, base_id)
       sessions << sessions_of_node(nodehash) if nodehash
       sessions << sessions_of_address(addr) if addr
@@ -7992,7 +8014,7 @@ module PandoraNet
                     id = nil
                     creator = nil
                     created = nil
-                    destination = @rkey[PandoraCrypto::KV_Creator]
+                    destination = mypersonhash
                     text = nil
                     panstate = 0
                     if row.is_a? Array
@@ -8093,7 +8115,7 @@ module PandoraNet
                     pankinds = PandoraCrypto.allowed_kinds(trust, pankinds)
                     p log_mes+'pankinds='+pankinds.inspect
 
-                    questioner = @rkey[PandoraCrypto::KV_Creator]
+                    questioner = mypersonhash
                     answerer = @skey[PandoraCrypto::KV_Creator]
                     key=nil
                     #ph_list = []
@@ -8210,7 +8232,7 @@ module PandoraNet
 
                     two_list = [need_ph_list]
 
-                    questioner = @rkey[PandoraCrypto::KV_Creator] #me
+                    questioner = mypersonhash #me
                     answerer = @skey[PandoraCrypto::KV_Creator]
                     p '[questioner, answerer]='+[questioner, answerer].inspect
                     follower = nil
@@ -8531,7 +8553,7 @@ module PandoraNet
     aconn_mode, anode_id, a_dialog, send_state_add, nodehash=nil, to_person=nil, \
     to_key=nil, to_base_id=nil)
       super()
-      @conn_state  = CS_Connecting
+      @conn_state  = CS_Disconnected
       @stage       = ES_Begin
       @socket      = nil
       @conn_mode   = aconn_mode
@@ -8624,6 +8646,7 @@ module PandoraNet
             port ||= 5577
             port = port.to_i
 
+            @conn_state = CS_Connecting
             asocket = nil
             if (host.is_a? String) and (host.size>0) and port
               @conn_mode = (@conn_mode | CM_Hunter)
@@ -8632,6 +8655,7 @@ module PandoraNet
               # Try to connect
               @conn_thread = Thread.new do
                 begin
+                  @conn_state = CS_Connecting
                   asocket = TCPSocket.open(host, port)
                   @socket = asocket
                 rescue
@@ -8669,7 +8693,8 @@ module PandoraNet
                 mykeyhash = PandoraCrypto.current_user_or_key(false)
                 pool.add_fish_order(self, mypersonhash, mykeyhash, pool.base_id, \
                   to_person, to_key, @recv_models)
-                while (not @socket) and (not active_hook)
+                while (not @socket) and (not active_hook) \
+                and (@conn_state == CS_Connecting)
                   p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
                   Thread.stop
                 end
@@ -8767,7 +8792,7 @@ module PandoraNet
 
                 p log_mes+"Цикл ЧТЕНИЯ сокета. начало"
                 # Цикл обработки команд и блоков данных
-                while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
+                while (@conn_state < CS_StopRead) \
                 and (not socket.closed?)
                   recieved = socket_recv(@max_pack_size)
                   if (not recieved) or (recieved == '')
@@ -8777,8 +8802,8 @@ module PandoraNet
                   #p log_mes+"recieved.size, waitlen="+[recieved.bytesize, waitlen].inspect if recieved
                   rkbuf << AsciiString.new(recieved)
                   processedlen = 0
-                  while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead) \
-                  and (@conn_state != CS_Stoping) and (not socket.closed?) and (rkbuf.bytesize>=waitlen)
+                  while (@conn_state < CS_Stoping) and (not socket.closed?) \
+                  and (rkbuf.bytesize>=waitlen)
                     p log_mes+'readmode, rkbuf.len, waitlen='+[readmode, rkbuf.size, waitlen].inspect
                     processedlen = waitlen
 
@@ -8923,9 +8948,9 @@ module PandoraNet
 
               p log_mes+"Цикл ЧТЕНИЯ начало"
               # Цикл обработки команд и блоков данных
-              while (@conn_state != CS_Disconnected) and (@conn_state != CS_StopRead)
+              while (@conn_state < CS_StopRead)
                 read_segment = @read_queue.get_block_from_queue
-                if (@conn_state != CS_Disconnected) and read_segment
+                if (@conn_state < CS_Disconnected) and read_segment
                   @last_recv_time = pool.time_now
                   @rcmd, @rcode, @rdata = read_segment
                   len = 0
@@ -8972,14 +8997,14 @@ module PandoraNet
             message_model = PandoraUtils.get_model('Message', @send_models)
             p log_mes+'ЦИКЛ ОТПРАВКИ начало: @conn_state='+@conn_state.inspect
 
-            while (@conn_state != CS_Disconnected)
+            while (@conn_state < CS_Disconnected)
               #p '@conn_state='+@conn_state.inspect
 
               # формирование подтверждений
-              if (@conn_state != CS_Disconnected)
+              if (@conn_state < CS_Disconnected)
                 ssbuf = ''
                 confirm_rec = @confirm_queue.get_block_from_queue
-                while (@conn_state != CS_Disconnected) and confirm_rec
+                while (@conn_state < CS_Disconnected) and confirm_rec
                   p log_mes+'send  confirm_rec='+confirm_rec
                   ssbuf << confirm_rec
                   confirm_rec = @confirm_queue.get_block_from_queue
@@ -8991,9 +9016,9 @@ module PandoraNet
               end
 
               # отправка сформированных сегментов и их удаление
-              if (@conn_state != CS_Disconnected)
+              if (@conn_state < CS_Disconnected)
                 send_segment = @send_queue.get_block_from_queue
-                while (@conn_state != CS_Disconnected) and send_segment
+                while (@conn_state < CS_Disconnected) and send_segment
                   #p log_mes+' send_segment='+send_segment.inspect
                   sscmd, sscode, ssbuf = send_segment
                   if ssbuf and (ssbuf.bytesize>0) and @s_encode
@@ -9019,7 +9044,7 @@ module PandoraNet
                     #  socket.close_write
                     #  socket.close
                     #end
-                    @conn_state = CS_Disconnected
+                    @conn_state = CS_CloseSession
                   else
                     if (sscmd==EC_Media)
                       @activity = 2
@@ -9451,16 +9476,20 @@ module PandoraNet
           else
             p 'НЕТ ПОДКЛЮЧЕНИЯ'
           end
+          @conn_state = CS_Disconnected if @conn_state < CS_Disconnected
 
-          need_connect = (((@conn_mode & CM_Keep) != 0) and (not (@socket.is_a? FalseClass)))
-          p 'NEED??? [need_connect, @conn_mode, @socket]='+[need_connect, @conn_mode, @socket].inspect
+          need_connect = (((@conn_mode & CM_Keep) != 0) \
+          and (not (@socket.is_a? FalseClass)) and @conn_state < CS_CloseSession) \
 
-          if need_connect and (not @socket) and work_time and ((Time.now.to_i - work_time.to_i)<15)
+          p 'NEED??? [need_connect, @conn_mode, @socket]='+[need_connect, \
+            @conn_mode, @socket].inspect
+
+          if need_connect and (not @socket) and work_time \
+          and ((Time.now.to_i - work_time.to_i)<15)
             p 'sleep!'
             sleep(3.1+0.5*rand)
           end
 
-          @conn_state = CS_Disconnected
           @socket = nil
 
           attempt += 1
@@ -18771,7 +18800,7 @@ module PandoraGtk
       #else
       #  @fisher_count += diff_count
       #end
-      set_status_field(SF_Conn, hunter_count.to_s+'/'+listener_count.to_s+'/'+fisher_count.to_s)
+      set_status_field(SF_Conn, (hunter_count + listener_count + fisher_count).to_s)
       online = ((@hunter_count>0) or (@listener_count>0) or (@fisher_count>0))
       $statusicon.set_online(online)
     end
