@@ -23,12 +23,11 @@
 #git commit -m "first commit"
 #git remote rm origin
 #git remote add origin https://github.com/Novator/Pandora.git
-#git clone --depth=1 git://git.some.site/repo/Pandora
+#git clone --depth=1 git://git.site.biz/pandora
 #git push -u origin master
 
-## Start server (add to auto start)
-#git daemon --verbose --base-path=/home/vasya --export-all
-#git daemon --detach --base-path=/home/vasya --export-all
+## Auto start server (add to /etc/rc.local)
+#git daemon --detach --verbose --base-path=/home/theuser/pathto/repos --max-connections=3 --syslog --export-all
 
 ## Switch the repo to server mode, back to local mode and update files (bare is not mandatory)
 #git config --bool core.bare true
