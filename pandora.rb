@@ -1560,7 +1560,7 @@ module PandoraUtils
               sql_values << v
             end
           end
-        elsif (filter.size>1) and (filter[0].is_a? String)
+        elsif (filter.size>0) and (filter[0].is_a? String)
           #Example: ['(last_name LIKE ?) OR (last_name=?)', 'Gal*', 'Галюк']
           seq = filter[0].dup
           values = filter[1..-1]
@@ -1579,7 +1579,7 @@ module PandoraUtils
               end
             end
           end
-          sql_values.concat(values)
+          sql_values.concat(values) if values
           #p 'sql_values='+sql_values.inspect
         else
           puts 'Bad filter: '+filter.inspect
@@ -7746,7 +7746,7 @@ module PandoraNet
                           else
                             @stage = ES_Exchange
                             set_max_pack_size(ES_Exchange)
-                            #PandoraUtils.play_mp3('online')
+                            PandoraUtils.play_mp3('online')
                           end
                           @scmd = EC_Data
                           @scode = 0
@@ -8143,7 +8143,7 @@ module PandoraNet
                     if (foll_list.is_a? Array) and (foll_list.size>0)
                       from_time = Time.now.to_i - 7*24*3600
                       kinds = (1..255).to_a - [PandoraModel::PK_Message]
-                      p 'kinds='+kinds.inspect
+                      #p 'kinds='+kinds.inspect
                       foll_list.each do |panhash|
                         if panhash[0].ord==PandoraModel::PK_Person
                           cr_l = PandoraModel.created_records(panhash, from_time, kinds, @send_models)
@@ -10333,12 +10333,14 @@ module PandoraGtk
       @button.can_focus = false
 
       @entry.instance_variable_set('@button', @button)
+
       def @entry.key_event(widget, event)
         res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
           and (event.keyval==65364)))
         @button.activate if res
         false
       end
+
       self.pack_start(entry, true, true, 0)
       align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
       align.add(@button)
@@ -10452,6 +10454,147 @@ module PandoraGtk
       res[0] = esize[0]+1+res[0]
       res
     end
+  end
+
+  # Smile choose box
+  # RU: Поле выбора смайлов
+  class SmileButton < Gtk::ToolButton
+    attr_accessor :preset, :close_on_enter, :on_click_btn, :popwin, :root_vbox
+
+    def renew_smile_box(apreset=nil)
+      @preset = apreset if apreset
+      @smile_box.child.destroy if @smile_box.child
+
+      vbox = Gtk::VBox.new
+      icon_params, icon_file_desc = $window.get_icon_file_params(preset)
+      if icon_params and (icon_params.size>0)
+        popwin.resize(100, 100)
+        row = 0
+        col = 0
+        max_col = Math.sqrt(icon_params.size).round
+        hbox = Gtk::HBox.new
+        icon_params.each do |smile|
+          if col>max_col
+            vbox.pack_start(hbox, false, false, 0)
+            hbox = Gtk::HBox.new
+            col = 0
+            row += 1
+          end
+          col += 1
+          buf = $window.get_icon_buf(smile, preset)
+          aimage = Gtk::Image.new(buf)
+          btn = Gtk::ToolButton.new(aimage, _(smile))
+          btn.signal_connect('clicked') do |widget|
+            @on_click_btn.call(preset, widget.label)
+          end
+          hbox.pack_start(btn, true, true, 0)
+        end
+        vbox.pack_start(hbox, false, false, 0)
+        vbox.show_all
+      end
+      @smile_box.add(vbox)
+    end
+
+    def get_popwidget
+      @root_vbox = Gtk::VBox.new
+      @smile_box = Gtk::Frame.new
+      @smile_box.shadow_type = Gtk::SHADOW_NONE
+      renew_smile_box
+      root_vbox.pack_start(@smile_box, true, true, 0)
+      hbox = Gtk::HBox.new
+      btn = Gtk::Button.new('qip')
+      btn.signal_connect('clicked') do |widget|
+        renew_smile_box('qip')
+      end
+      hbox.pack_start(btn, true, true, 0)
+      btn = Gtk::Button.new('vk')
+      btn.signal_connect('clicked') do |widget|
+        renew_smile_box('vk')
+      end
+      hbox.pack_start(btn, true, true, 0)
+      root_vbox.pack_start(hbox, false, true, 0)
+      root_vbox
+    end
+
+    def initialize(apreset='vk', *args)
+      aimage = $window.get_preset_image('smile')
+      super(aimage, _('smile'))
+      tooltip_text = _('smile')
+      apreset ||= 'vk'
+      @preset = apreset
+      @close_on_enter = true
+
+      @on_click_btn = Proc.new do |*args|
+        yield(*args) if block_given?
+        @popwin.destroy
+        @popwin = nil
+      end
+
+      signal_connect('clicked') do |*args|
+        if @popwin and (not @popwin.destroyed?)
+          @popwin.destroy
+          @popwin = nil
+        else
+          @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
+          popwin = @popwin
+          popwin.transient_for = $window
+          popwin.modal = false
+          popwin.decorated = false
+          popwin.skip_taskbar_hint = true
+
+          popwidget = get_popwidget
+          popwin.add(popwidget)
+          popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
+
+          popwin.signal_connect('focus-out-event') do |win, event|
+            GLib::Timeout.add(200) do
+              if not popwin.destroyed?
+                @popwin.destroy
+                @popwin = nil
+              end
+              false
+            end
+            false
+          end
+
+          popwin.signal_connect('key-press-event') do |widget, event|
+            if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+              if @close_on_enter
+                @popwin.destroy
+                @popwin = nil
+              end
+              false
+            elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+              ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
+              event.keyval) and event.state.control_mask?) #w, W, ц, Ц
+            then
+              @popwin.destroy
+              @popwin = nil
+              false
+            elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
+              event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
+              Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
+              and event.state.control_mask?) #q, Q, й, Й
+            then
+              @popwin.destroy
+              @popwin = nil
+              $window.do_menu_act('Quit')
+              false
+            else
+              false
+            end
+          end
+
+          pos = self.window.origin
+          all = self.allocation.to_a
+          popwin.move(pos[0]+all[0], pos[1]+all[1]+all[3]+1)
+          popwin.show_all
+          popwin.present
+        end
+        false
+      end
+    end
+
   end
 
   # Entry for date
@@ -12895,6 +13038,13 @@ module PandoraGtk
       end
     end
 
+    def get_fld_value_by_id(id)
+      res = nil
+      fld = @fields.detect{ |f| (f[FI_Id].to_s == id) }
+      res = fld[FI_Value] if fld.is_a? Array
+      res
+    end
+
     # Create fields dialog
     # RU: Создать форму с полями
     def initialize(apanobject, afields=[], *args)
@@ -13114,11 +13264,8 @@ module PandoraGtk
                   #bodywin.add(viewport)
                   #viewport.add(bodywid)
                   #format_btn.label
-                  type_fld = @fields.detect{ |f| (f[FI_Id].to_s == 'type') }
-                  if type_fld.is_a? Array
-                    fmt = type_fld[FI_Value]
-                    bodywin.format = fmt.downcase if fmt.is_a? String
-                  end
+                  fmt = get_fld_value_by_id('type')
+                  bodywin.format = fmt.downcase if fmt.is_a? String
                 end
                 bodywin.body_child = bodywid
                 if bodywid.is_a? Gtk::TextView
@@ -13376,29 +13523,35 @@ module PandoraGtk
         end
       end
 
-      #image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
-      image = $window.get_preset_image('relation')
-      image.set_padding(2, 0)
-      label_box2 = TabLabelBox.new(image, _('Relations'), nil, false, 0)
-      pbox = PandoraGtk::PanobjScrolledWindow.new
-      page = notebook.append_page(pbox, label_box2)
-      PandoraGtk.show_panobject_list(PandoraModel::Relation, nil, pbox)
+      panhash = get_fld_value_by_id('panhash')
+      if (panhash.is_a? String) and (panhash.size>0)
+        #image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
+        image = $window.get_preset_image('relation')
+        image.set_padding(2, 0)
+        label_box2 = TabLabelBox.new(image, _('Relations'), nil, false, 0)
+        pbox = PandoraGtk::PanobjScrolledWindow.new
+        page = notebook.append_page(pbox, label_box2)
+        PandoraGtk.show_panobject_list(PandoraModel::Relation, nil, pbox, false, \
+          'first='+panhash+' OR second='+panhash)
 
-      #image = Gtk::Image.new(Gtk::Stock::DIALOG_AUTHENTICATION, Gtk::IconSize::MENU)
-      image = $window.get_preset_image('sign')
-      image.set_padding(2, 0)
-      label_box2 = TabLabelBox.new(image, _('Signs'), nil, false, 0)
-      pbox = PandoraGtk::PanobjScrolledWindow.new
-      page = notebook.append_page(pbox, label_box2)
-      PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox)
+        #image = Gtk::Image.new(Gtk::Stock::DIALOG_AUTHENTICATION, Gtk::IconSize::MENU)
+        image = $window.get_preset_image('sign')
+        image.set_padding(2, 0)
+        label_box2 = TabLabelBox.new(image, _('Signs'), nil, false, 0)
+        pbox = PandoraGtk::PanobjScrolledWindow.new
+        page = notebook.append_page(pbox, label_box2)
+        PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox, false, \
+          'obj_hash='+panhash)
 
-      #image = Gtk::Image.new(Gtk::Stock::DIALOG_INFO, Gtk::IconSize::MENU)
-      image = $window.get_preset_image('opinion')
-      image.set_padding(2, 0)
-      label_box2 = TabLabelBox.new(image, _('Opinions'), nil, false, 0)
-      pbox = PandoraGtk::PanobjScrolledWindow.new
-      page = notebook.append_page(pbox, label_box2)
-      PandoraGtk.show_panobject_list(PandoraModel::Opinion, nil, pbox)
+        #image = Gtk::Image.new(Gtk::Stock::DIALOG_INFO, Gtk::IconSize::MENU)
+        image = $window.get_preset_image('opinion')
+        image.set_padding(2, 0)
+        label_box2 = TabLabelBox.new(image, _('Opinions'), nil, false, 0)
+        pbox = PandoraGtk::PanobjScrolledWindow.new
+        page = notebook.append_page(pbox, label_box2)
+        PandoraGtk.show_panobject_list(PandoraModel::Opinion, nil, pbox, false, \
+          'object='+panhash)
+      end
 
       # create labels, remember them, calc middle char width
       texts_width = 0
@@ -14132,9 +14285,9 @@ module PandoraGtk
       talksw.add(talkview)
 
       @option_box = Gtk::HBox.new
-      image = $window.get_preset_image('smile')
-      smile_btn = Gtk::ToolButton.new(image, _('smile'))
-      smile_btn.tooltip_text = _('smile')
+      smile_btn = SmileButton.new('vk') do |preset, label|
+        editbox.buffer.insert_at_cursor('*'+preset+':'+label+'*')
+      end
       option_box.pack_start(smile_btn, false, false, 2)
 
       crypt_btn = SafeCheckButton.new(_('crypt'), true)
@@ -17148,7 +17301,7 @@ module PandoraGtk
   # ScrolledWindow for panobjects
   # RU: ScrolledWindow для объектов Пандоры
   class PanobjScrolledWindow < Gtk::ScrolledWindow
-    attr_accessor :update_btn, :auto_btn, :arch_btn, :treeview
+    attr_accessor :update_btn, :auto_btn, :arch_btn, :treeview, :filter_box
 
     def initialize
       super(nil, nil)
@@ -17169,7 +17322,17 @@ module PandoraGtk
           #store.clear
           panobject.class.modified = false if panobject.class.modified
           filter = nil
-          filter = ['IFNULL(panstate,0)<?', PandoraModel::PSF_Deleted] if (not arch_btn.active?)
+          filter = filter_box.compose_filter
+          if (not arch_btn.active?)
+            del_bit = PandoraModel::PSF_Deleted
+            del_fil = 'IFNULL(panstate,0)&'+del_bit.to_s+'=0'
+            if filter.nil?
+              filter = del_fil
+            else
+              filter[0] << ' AND '+del_fil
+            end
+          end
+          p 'select filter[sql,values]='+filter.inspect
           sel = panobject.select(filter, false, nil, panobject.sort)
           treeview.sel = sel
           treeview.param_view_col = nil
@@ -17230,18 +17393,18 @@ module PandoraGtk
   # RU: Группа фильтра: поле, операция и значение
   class FilterHBox < Gtk::HBox
     attr_accessor :filters, :field_com, :oper_com, :val_entry, :logic_com, \
-      :del_btn, :add_btn
+      :del_btn, :add_btn, :page_sw
 
     # Remove itself
     # RU: Удалить себя
-    def delete(page_sw)
+    def delete
       @add_btn = nil
       if @filters.size>1
         parent.remove(self)
         filters.delete(self)
         last = filters[filters.size-1]
-        p [last, last.add_btn, filters.size-1]
-        last.add_btn_to(page_sw)
+        #p [last, last.add_btn, filters.size-1]
+        last.add_btn_to
       else
         field_com.entry.text = ''
         while children.size>1
@@ -17251,74 +17414,159 @@ module PandoraGtk
         end
         @add_btn.destroy if @add_btn
         @add_btn = nil
+        @oper_com = nil
       end
       first = filters[0]
+      page_sw.filter_box = first
       if first and first.logic_com
         first.remove(first.logic_com)
         first.logic_com = nil
       end
+      page_sw.update_treeview
     end
 
-    def add_btn_to(page_sw)
-      p '---add_btn_to [add_btn, @add_btn]='+[add_btn, @add_btn].inspect
+    def add_btn_to
+      #p '---add_btn_to [add_btn, @add_btn]='+[add_btn, @add_btn].inspect
       if add_btn.nil? and (children.size>2)
         @add_btn = Gtk::ToolButton.new(Gtk::Stock::ADD, _('Add'))
         add_btn.tooltip_text = _('Add a new filter')
-        hbox = parent
         add_btn.signal_connect('clicked') do |*args|
-          FilterHBox.new(filters, hbox, page_sw)
+          FilterHBox.new(filters, parent, page_sw)
         end
         pack_start(add_btn, false, true, 0)
         add_btn.show_all
       end
     end
 
-    def compose_sql
+    # Compose filter with sql-query and raw values
+    # RU: Составить фильтр с sql-запросом и сырыми значениями
+    def compose_filter
       sql = nil
       values = nil
       @filters.each do |fb|
         fld = fb.field_com.entry.text
-        oper = fb.oper_com.entry.text
-        if fld and oper
-          logic = nil
-          logic = fb.logic_com.entry.text if fb.logic_com
-          if not sql
-            sql = ''
-          else
-            sql << ' '
-            logic = 'AND' if (logic.nil? or (logic != 'OR'))
+        if fb.oper_com and fb.val_entry
+          oper = fb.oper_com.entry.text
+          if fld and oper
+            logic = nil
+            logic = fb.logic_com.entry.text if fb.logic_com
+            if not sql
+              sql = ''
+            else
+              sql << ' '
+              logic = 'AND' if (logic.nil? or (logic != 'OR'))
+            end
+            sql << logic+' ' if logic and (logic.size>0)
+            val = fb.val_entry.text
+            panobject = page_sw.treeview.panobject
+            tab_flds = panobject.tab_fields
+            tab_ind = tab_flds.index{ |tf| tf[0] == fld }
+            if tab_ind
+              fdesc = panobject.tab_fields[tab_ind][PandoraUtils::TI_Desc]
+              view = type = nil
+              if fdesc
+                view = fdesc[PandoraUtils::FI_View]
+                type = fdesc[PandoraUtils::FI_Type]
+                val = PandoraUtils.view_to_val(val, type, view)
+              elsif fld=='id'
+                val = val.to_i
+              end
+              p '[val, type, view]='+[val, type, view].inspect
+              if view.nil? and val.is_a?(String) and (val.index('*') or val.index('?'))
+                PandoraUtils.correct_aster_and_quest!(val)
+                fb.oper_com.entry.text = '=' if (oper != '=')
+                oper = ' LIKE '
+              elsif (view.nil? and val.nil?) or (val.is_a?(String) and val.size==0)
+                fld = 'IFNULL('+fld+",'')"
+                oper << "''"
+                val = nil
+              elsif val.nil? and (oper=='=')
+                oper = ' IS NULL'
+                val = nil
+              end
+              values ||= Array.new
+              sql << fld + oper
+              if not val.nil?
+                sql << '?'
+                values << val
+              end
+            end
           end
-          sql << logic+' ' if logic and (logic.size>0)
-          val = fb.val_entry.text
-          if val.index('*') or val.index('?')
-            PandoraUtils.correct_aster_and_quest!(val)
-            fb.oper_com.entry.text = '=' if (oper != '=')
-            oper = ' LIKE '
-          end
-          sql << fld + oper + '?'
-          values ||= Array.new
-          values << val
         end
       end
       values.insert(0, sql) if values
       values
     end
 
+    def set_filter_by_str(logic, afilter)
+      res = nil
+      p 'set_filter_by_str(logic, afilter)='+[logic, afilter].inspect
+      len = 1
+      i = afilter.index('=')
+      i ||= afilter.index('>')
+      i ||= afilter.index('<')
+      if not i
+        i = afilter.index('<>')
+        len = 2
+      end
+      if i
+        fname = afilter[0, i]
+        oper = afilter[i, len]
+        val = afilter[i+len..-1]
+        field_com.entry.text = fname
+        oper_com.entry.text = oper
+        val_entry.text = val
+        logic_com.entry.text = logic if logic and logic_com
+        res = true
+      end
+      res
+    end
+
+    def set_fix_filter(fix_filter, logic=nil)
+      #p '== set_fix_filter  fix_filter='+fix_filter
+      if fix_filter
+        i = fix_filter.index(' AND ')
+        j = fix_filter.index(' OR ')
+        i = j if (i.nil? or ((not j.nil?) and (j>i)))
+        if i
+          afilter = fix_filter[0, i]
+          fix_filter = fix_filter[i+1..-1]
+        else
+          afilter = fix_filter
+          fix_filter = nil
+        end
+        setted = set_filter_by_str(logic, afilter)
+        #p '--set_fix_filter [logic, afilter, fix_filter]='+[logic, afilter, fix_filter].inspect
+        if fix_filter
+          i = fix_filter.index(' ')
+          logic = nil
+          if i and i<4
+            logic = fix_filter[0, i]
+            fix_filter = fix_filter[i+1..-1]
+          end
+          if setted
+            add_btn_to
+            FilterHBox.new(filters, parent, page_sw)
+          end
+          next_fb = @filters[@filters.size-1]
+          next_fb.set_fix_filter(fix_filter, logic)
+        end
+      end
+    end
+
     # Create new instance
     # RU: Создать новый экземпляр
-    def initialize(a_filters, hbox, page_sw)
+    def initialize(a_filters, hbox, a_page_sw)
 
       def no_filter_frase
         res = '<'+_('filter')+'>'
       end
 
       super()
+      @page_sw = a_page_sw
       @filters = a_filters
-
       filter_box = self
-
       panobject = page_sw.treeview.panobject
-
       tab_flds = panobject.tab_fields
       def_flds = panobject.def_fields
       #def_flds.each do |df|
@@ -17354,12 +17602,12 @@ module PandoraGtk
       field_com.entry.signal_connect('changed') do |entry|
         if filter_box.children.size>2
           if (entry.text == no_filter_frase) or (entry.text == '')
-            delete(page_sw)
+            delete
           end
           false
         elsif (entry.text != no_filter_frase) and (entry.text != '')
           @oper_com = Gtk::Combo.new
-          oper_com.set_popdown_strings(['=','==','<>','>','<'])
+          oper_com.set_popdown_strings(['=','<>','>','<'])
           oper_com.set_size_request(56, -1)
           oper_com.entry.signal_connect('activate') do |*args|
             @val_entry.grab_focus
@@ -17369,7 +17617,7 @@ module PandoraGtk
           @del_btn = Gtk::ToolButton.new(Gtk::Stock::DELETE, _('Delete'))
           del_btn.tooltip_text = _('Delete this filter')
           del_btn.signal_connect('clicked') do |*args|
-            delete(page_sw)
+            delete
           end
           filter_box.pack_start(del_btn, false, true, 0)
 
@@ -17377,12 +17625,11 @@ module PandoraGtk
           val_entry.set_size_request(120, -1)
           filter_box.pack_start(val_entry, false, true, 0)
           val_entry.signal_connect('focus-out-event') do |widget, event|
-            p compose_sql
+            page_sw.update_treeview
             false
           end
 
-          add_btn_to(page_sw)
-
+          add_btn_to
           filter_box.show_all
         end
       end
@@ -17401,7 +17648,8 @@ module PandoraGtk
 
   # Showing panobject list
   # RU: Показ списка панобъектов
-  def self.show_panobject_list(panobject_class, widget=nil, page_sw=nil, auto_create=false)
+  def self.show_panobject_list(panobject_class, widget=nil, page_sw=nil, \
+  auto_create=false, fix_filter=nil)
     notebook = $window.notebook
     single = (page_sw == nil)
     if single
@@ -17584,7 +17832,8 @@ module PandoraGtk
     hbox.pack_start(arch_btn, false, true, 0)
 
     filters = Array.new
-    filter_box = FilterHBox.new(filters, hbox, page_sw)
+    page_sw.filter_box = FilterHBox.new(filters, hbox, page_sw)
+    page_sw.filter_box.set_fix_filter(fix_filter) if fix_filter
 
     pbox.pack_start(hbox, false, true, 0)
     pbox.pack_start(list_sw, true, true, 0)
@@ -17933,7 +18182,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.49'
+    dlg.version = '0.50'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
@@ -18939,8 +19188,6 @@ module PandoraGtk
 
     def get_icon_file_params(preset)
       smile_desc = PandoraUtils.get_param('icons_'+preset)
-      p 'smile_desc='+smile_desc.inspect
-      p 'smile_desc.size='+smile_desc.size.inspect
       icon_params = smile_desc.split('|')
       icon_file_desc = icon_params[0]
       icon_params.delete_at(0)
@@ -19159,6 +19406,7 @@ module PandoraGtk
     # RU: Возвращает Image с заданным размером иконки
     def get_preset_image(iname, isize=Gtk::IconSize::MENU, preset='pan')
       image = nil
+      isize ||= Gtk::IconSize::MENU
       if iname.is_a? String
         iconset = get_preset_iconset(iname, preset)
         image = Gtk::Image.new(iconset, isize)
