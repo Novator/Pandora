@@ -5291,6 +5291,8 @@ module PandoraCrypto
           res = '<'+_('Key not found with panhash')+' ['+\
             PandoraUtils.bytes_to_hex(key_panhash)+']>'
         end
+      elsif not encrypt
+        res = '<'+_('Too short decrypted data')+' ['+data+']>'
       end
     end
     res
@@ -6203,21 +6205,21 @@ module PandoraNet
           Thread.pass
           time2 = Time.now.to_i
         end
+      end
+      i = sessions.size
+      if i>0
+        sleep(0.1)
+        Thread.pass
         i = sessions.size
-        if i>0
-          sleep(0.1)
-          Thread.pass
-          i = sessions.size
-        end
-        while i>0
-          i -= 1
-          session = sessions[i]
-          if session
-            session.conn_state = CS_CloseSession if session.conn_state<CS_CloseSession
-            sthread = session.send_thread
-            if sthread and sthread.alive? and sthread.stop?
-              sthread.exit
-            end
+      end
+      while i>0
+        i -= 1
+        session = sessions[i]
+        if session
+          session.conn_state = CS_CloseSession if session.conn_state<CS_CloseSession
+          sthread = session.send_thread
+          if sthread and sthread.alive? and sthread.stop?
+            sthread.exit
           end
         end
       end
@@ -17271,6 +17273,37 @@ module PandoraGtk
       end
     end
 
+    def compose_sql
+      sql = nil
+      values = nil
+      @filters.each do |fb|
+        fld = fb.field_com.entry.text
+        oper = fb.oper_com.entry.text
+        if fld and oper
+          logic = nil
+          logic = fb.logic_com.entry.text if fb.logic_com
+          if not sql
+            sql = ''
+          else
+            sql << ' '
+            logic = 'AND' if (logic.nil? or (logic != 'OR'))
+          end
+          sql << logic+' ' if logic and (logic.size>0)
+          val = fb.val_entry.text
+          if val.index('*') or val.index('?')
+            PandoraUtils.correct_aster_and_quest!(val)
+            fb.oper_com.entry.text = '=' if (oper != '=')
+            oper = ' LIKE '
+          end
+          sql << fld + oper + '?'
+          values ||= Array.new
+          values << val
+        end
+      end
+      values.insert(0, sql) if values
+      values
+    end
+
     # Create new instance
     # RU: Создать новый экземпляр
     def initialize(a_filters, hbox, page_sw)
@@ -17323,6 +17356,7 @@ module PandoraGtk
           if (entry.text == no_filter_frase) or (entry.text == '')
             delete(page_sw)
           end
+          false
         elsif (entry.text != no_filter_frase) and (entry.text != '')
           @oper_com = Gtk::Combo.new
           oper_com.set_popdown_strings(['=','==','<>','>','<'])
@@ -17342,6 +17376,10 @@ module PandoraGtk
           @val_entry = Gtk::Entry.new
           val_entry.set_size_request(120, -1)
           filter_box.pack_start(val_entry, false, true, 0)
+          val_entry.signal_connect('focus-out-event') do |widget, event|
+            p compose_sql
+            false
+          end
 
           add_btn_to(page_sw)
 
@@ -19399,9 +19437,9 @@ module PandoraGtk
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
           #p PandoraUtils.hex?('ad')
-          p [Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU, Gtk::Stock::OK].inspect
-          p [Gtk::Stock::MEDIA_PLAY.class, Gtk::IconSize::MENU.class, Gtk::Stock::OK.class].inspect
-          p Gtk::IconSize.lookup(Gtk::IconSize::MENU).inspect
+          #p [Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU, Gtk::Stock::OK].inspect
+          #p [Gtk::Stock::MEDIA_PLAY.class, Gtk::IconSize::MENU.class, Gtk::Stock::OK.class].inspect
+          #p Gtk::IconSize.lookup(Gtk::IconSize::MENU).inspect
 
           return
           #from_time = Time.now.to_i - 5*24*3600
