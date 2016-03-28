@@ -10518,31 +10518,33 @@ module PandoraGtk
       renew_smile_box
       root_vbox.pack_start(@smile_box, true, true, 0)
       hbox = Gtk::HBox.new
+
       $window.register_stock(:music, 'qip')
-      @qip_btn = SafeToggleButton.new(:music_qip)
-      PandoraGtk.set_button_text(@qip_btn, 'qip')
-      @qip_btn.safe_signal_clicked do |widget|
-        @vk_btn.safe_set_active(false)
-        renew_smile_box('qip')
+      @qip_btn = GoodButton.new(:music_qip, 'qip', -1) do |*args|
+        if not @qip_btn.active?
+          @qip_btn.set_active(true)
+          @vk_btn.set_active(false)
+          renew_smile_box('qip')
+        end
       end
       hbox.pack_start(@qip_btn, true, true, 0)
       $window.register_stock(:ufo, 'vk')
-      @vk_btn = SafeToggleButton.new(:ufo_vk)
-      PandoraGtk.set_button_text(@vk_btn, 'vk')
-      @vk_btn.safe_signal_clicked do |widget|
-        @qip_btn.safe_set_active(false)
-        renew_smile_box('vk')
+      @vk_btn = GoodButton.new(:ufo_vk, 'vk', -1) do |*args|
+        if not @vk_btn.active?
+          @vk_btn.set_active(true)
+          @qip_btn.set_active(false)
+          renew_smile_box('vk')
+        end
       end
       hbox.pack_start(@vk_btn, true, true, 0)
       $window.register_stock(:bomb, 'qip')
-      @poly_btn = SafeToggleButton.new(:bomb_qip)
-      PandoraGtk.set_button_text(@poly_btn, '')
+      @poly_btn = GoodButton.new(:bomb_qip, nil, false)
       hbox.pack_start(@poly_btn, false, false, 0)
       root_vbox.pack_start(hbox, false, true, 0)
       if preset=='vk'
-        @vk_btn.safe_set_active(true)
+        @vk_btn.set_active(true)
       else
-        @qip_btn.safe_set_active(true)
+        @qip_btn.set_active(true)
       end
       root_vbox
     end
@@ -19018,10 +19020,15 @@ module PandoraGtk
   end
 
   class GoodButton < Gtk::Frame
-    attr_accessor :hbox, :image, :label, :active
+    attr_accessor :hbox, :image, :label, :active, :group_set
 
     def initialize(astock, atitle=nil, atoggle=nil)
       super()
+      @group_set = nil
+      if atoggle.is_a? Integer
+        @group_set = atoggle
+        atoggle = (atoggle>0)
+      end
       @hbox = Gtk::HBox.new
       #align = Gtk::Alignment.new(0.5, 0.5, 0, 0)
       #align.add(@image)
@@ -19061,7 +19068,7 @@ module PandoraGtk
         if (event.button == 1)
           if @active.nil?
             self.shadow_type = Gtk::SHADOW_IN
-          else
+          elsif @group_set.nil?
             @active = (not @active)
             set_active(@active)
           end
@@ -19088,6 +19095,10 @@ module PandoraGtk
 
     def do_on_click
       @proc_on_click.call
+    end
+
+    def active?
+      @active
     end
 
     def set_active(toggle)
@@ -19117,7 +19128,7 @@ module PandoraGtk
         @image.set_padding(2, 2)
         @image.set_alignment(0.5, 0.5)
         @im_evbox.add(@image)
-        @hbox.pack_start(@im_evbox, true, false, 0)
+        @hbox.pack_start(@im_evbox, true, true, 0)
       end
     end
 
@@ -19143,7 +19154,7 @@ module PandoraGtk
           #p style.font_desc.size
           #p style.font_desc.family
           @lab_evbox.add(@label)
-          @hbox.pack_start(@lab_evbox, true, false, 0)
+          @hbox.pack_start(@lab_evbox, true, true, 0)
         end
       end
     end
