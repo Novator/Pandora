@@ -291,6 +291,7 @@ Previous search=>Предыдущий поиск
 Next search=>Следующий поиск
 smile=>улыбка
 game=>игра
+send=>отправить
 require sign=>требовать подпись
 Show/Hide=>Показать/Скрыть
 Version=>Версия
