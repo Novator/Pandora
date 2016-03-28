@@ -6714,7 +6714,7 @@ module PandoraNet
       code ||= 0   #нужно ли??!!
       lengt = 0
       lengt = data.bytesize if data
-      p log_mes+'SEND: [index, cmd, code, lengt]='+[index, cmd, code, lengt].inspect
+      #p log_mes+'SEND: [index, cmd, code, lengt]='+[index, cmd, code, lengt].inspect
       @last_send_time = pool.time_now
       if @socket.is_a? IPSocket
         data ||= ''
@@ -6736,7 +6736,7 @@ module PandoraNet
             end
           end
         end
-        p [segsign, segdata, segsize].inspect
+        #p [segsign, segdata, segsize].inspect
         crc8 = (index & 255) ^ ((index >> 8) & 255) ^ (cmd & 255) ^ (code & 255) \
           ^ (segsign & 255) ^ ((segsign >> 8) & 255)
         #p 'SCAB: '+[segsign, index, cmd, code, crc8].inspect
@@ -8813,7 +8813,7 @@ module PandoraNet
                   processedlen = 0
                   while (@conn_state < CS_Stoping) and (not socket.closed?) \
                   and (rkbuf.bytesize>=waitlen)
-                    p log_mes+'readmode, rkbuf.len, waitlen='+[readmode, rkbuf.size, waitlen].inspect
+                    #p log_mes+'readmode, rkbuf.len, waitlen='+[readmode, rkbuf.size, waitlen].inspect
                     processedlen = waitlen
 
                     # Определимся с данными по режиму чтения
@@ -11629,6 +11629,16 @@ module PandoraGtk
   class SuperTextView < ExtTextView
     #attr_accessor :format
 
+    def format
+      res = nil
+      sw = parent
+      if (sw.is_a? FieldsDialog::BodyScrolledWindow)
+        res = sw.format
+      end
+      res ||= 'bbcode'
+      res
+    end
+
     def initialize(left_border=nil, *args)
       super(*args)
       self.wrap_mode = Gtk::TextTag::WRAP_WORD
@@ -11684,6 +11694,7 @@ module PandoraGtk
       buf.create_tag('large', 'scale' => Pango::AttrScale::X_LARGE)
       buf.create_tag('quote', 'left_margin' => 20, 'background' => '#EFEFEF', \
         'style' => Pango::FontDescription::STYLE_ITALIC)
+
       signal_connect('key-press-event') do |widget, event|
         res = false
         case event.keyval
@@ -11692,18 +11703,18 @@ module PandoraGtk
             btn.active = (not btn.active?) if btn
           when Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769
             if event.state.control_mask?
-              btn = PandoraGtk.find_tool_btn(toolbar, 'Bold')
-              btn.clicked
+              set_tag('bold')
+              res = true
             end
           when Gdk::Keyval::GDK_i, Gdk::Keyval::GDK_I, 1755, 1787
             if event.state.control_mask?
-              btn = PandoraGtk.find_tool_btn(toolbar, 'Italic')
-              btn.clicked
+              set_tag('italic')
+              res = true
             end
           when Gdk::Keyval::GDK_u, Gdk::Keyval::GDK_U, 1735, 1767
             if event.state.control_mask?
-              btn = PandoraGtk.find_tool_btn(toolbar, 'Underline')
-              btn.clicked
+              set_tag('undline')
+              res = true
             end
           when Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter
             if event.state.control_mask?
@@ -12324,6 +12335,60 @@ module PandoraGtk
       end
     end
 
+    def set_tag(tag, aformat=nil)
+      bounds = buffer.selection_bounds
+      ltext = rtext = ''
+      aformat ||= format
+      case aformat
+        when 'bbcode', 'html'
+          t = ''
+          case tag
+            when 'bold'
+              t = 'b'
+            when 'italic'
+              t = 'i'
+            when 'strike'
+              t = 's'
+            when 'undline'
+              t = 'u'
+            else
+              t = tag
+            #end-case-when
+          end
+          open_brek = '['
+          close_brek = ']'
+          if aformat=='html'
+            open_brek = '<'
+            close_brek = '>'
+          end
+          ltext = open_brek+t+close_brek
+          rtext = open_brek+'/'+t+close_brek
+        when 'markdown'
+          case tag
+            when 'bold'
+              ltext = rtext = '*'
+            when 'italic'
+              ltext = rtext = '/'
+            when 'strike'
+              ltext = rtext = '-'
+            when 'undline'
+              ltext = rtext = '_'
+          end
+      end
+      lpos = bounds[0].offset
+      rpos = bounds[1].offset
+      if ltext != ''
+        buffer.insert(buffer.get_iter_at_offset(lpos), ltext)
+        lpos += ltext.length
+        rpos += ltext.length
+      end
+      if rtext != ''
+        buffer.insert(buffer.get_iter_at_offset(rpos), rtext)
+      end
+      buffer.move_mark('selection_bound', buffer.get_iter_at_offset(lpos))
+      buffer.move_mark('insert', buffer.get_iter_at_offset(rpos))
+    end
+
   end
 
 
@@ -12893,65 +12958,12 @@ module PandoraGtk
         bw = get_bodywin
         if bw
           tv = bw.body_child
-          buffer = tv.buffer
-
-          if bw.view_mode #bw.view_buffer==buffer
+          if bw.view_mode
+            buffer = tv.buffer
             bounds = buffer.selection_bounds
-            bw.view_buffer.apply_tag(tag, bounds[0], bounds[1])
+            buffer.apply_tag(tag, bounds[0], bounds[1])
           else
-            bounds = buffer.selection_bounds
-            ltext = rtext = ''
-            case bw.format
-              when 'bbcode', 'html'
-                t = ''
-                case tag
-                  when 'bold'
-                    t = 'b'
-                  when 'italic'
-                    t = 'i'
-                  when 'strike'
-                    t = 's'
-                  when 'undline'
-                    t = 'u'
-                  else
-                    t = tag
-                  #end-case-when
-                end
-                open_brek = '['
-                close_brek = ']'
-                if bw.format=='html'
-                  open_brek = '<'
-                  close_brek = '>'
-                end
-                ltext = open_brek+t+close_brek
-                rtext = open_brek+'/'+t+close_brek
-              when 'markdown'
-                case tag
-                  when 'bold'
-                    ltext = rtext = '*'
-                  when 'italic'
-                    ltext = rtext = '/'
-                  when 'strike'
-                    ltext = rtext = '-'
-                  when 'undline'
-                    ltext = rtext = '_'
-                end
-            end
-            lpos = bounds[0].offset
-            rpos = bounds[1].offset
-            if ltext != ''
-              bw.raw_buffer.insert(bw.raw_buffer.get_iter_at_offset(lpos), ltext)
-              lpos += ltext.length
-              rpos += ltext.length
-            end
-            if rtext != ''
-              bw.raw_buffer.insert(bw.raw_buffer.get_iter_at_offset(rpos), rtext)
-            end
-            p [lpos, rpos]
-            #buffer.selection_bounds = [bounds[0], rpos]
-            bw.raw_buffer.move_mark('selection_bound', bw.raw_buffer.get_iter_at_offset(lpos))
-            bw.raw_buffer.move_mark('insert', bw.raw_buffer.get_iter_at_offset(rpos))
-            #@raw_buffer.get_iter_at_offset(0)
+            tv.set_tag(tag, bw.format)
           end
         end
       end
@@ -14363,7 +14375,7 @@ module PandoraGtk
       talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       talksw.add(talkview)
 
-      @editbox = PandoraGtk::ExtTextView.new
+      @editbox = PandoraGtk::SuperTextView.new
       editbox.wrap_mode = Gtk::TextTag::WRAP_WORD
       editbox.set_size_request(200, 70)
 
@@ -14389,7 +14401,7 @@ module PandoraGtk
       option_box.pack_start(crypt_btn, false, false, 2)
 
       vouch_btn = SafeCheckButton.new(_('vouch'), true)
-      vouch_btn.tooltip_text = 'Ctrl+I'
+      vouch_btn.tooltip_text = 'Ctrl+G'
       option_box.pack_start(vouch_btn, false, false, 0)
 
       adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
@@ -14442,8 +14454,7 @@ module PandoraGtk
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
         and (not event.state.control_mask?) and (not event.state.shift_mask?) \
         and (not event.state.mod1_mask?)
-          send_btn.signal_emit('clicked')
-          #send_btn.activate
+          send_btn.clicked
           true
         elsif (Gdk::Keyval::GDK_Escape==event.keyval)
           editbox.buffer.text = ''
@@ -14452,8 +14463,8 @@ module PandoraGtk
         and event.state.control_mask?) #x, X, ч, Ч
           crypt_btn.active = (not crypt_btn.active?)
           true
-        elsif ([Gdk::Keyval::GDK_i, Gdk::Keyval::GDK_I, 1755, 1787].include?(event.keyval) \
-        and event.state.control_mask?) #i, I, ш, Ш
+        elsif ([Gdk::Keyval::GDK_g, Gdk::Keyval::GDK_G, 1744, 1776].include?(event.keyval) \
+        and event.state.control_mask?) #g, G, п, П
           vouch_btn.active = (not vouch_btn.active?)
           true
         else
@@ -15371,10 +15382,10 @@ module PandoraGtk
               #appsink.signal_connect('new-preroll') do |appsink|
               #appsink.signal_connect('new-sample') do |appsink|
               appsink.signal_connect('new-buffer') do |appsink|
-                p 'appsink new buf!!!'
+                #p 'appsink new buf!!!'
                 #buf = appsink.pull_preroll
                 #buf = appsink.pull_sample
-                p buf = appsink.pull_buffer
+                buf = appsink.pull_buffer
                 if buf
                   data = buf.data
                   $send_media_queues[1].add_block_to_queue(data, $media_buf_size)
@@ -20054,7 +20065,7 @@ module PandoraGtk
       ['Session', 'session:m', 'Sessions', '<control>S'],   #Gtk::Stock::JUSTIFY_FILL
       ['Fisher', 'fish:m', 'Fishers'],
       ['-', nil, '-'],
-      ['Authorize', :auth, 'Authorize', '<control>U', :check], #Gtk::Stock::DIALOG_AUTHENTICATION
+      ['Authorize', :auth, 'Authorize', '<control>O', :check], #Gtk::Stock::DIALOG_AUTHENTICATION
       ['Listen', :listen, 'Listen', '<control>L', :check],  #Gtk::Stock::CONNECT
       ['Hunt', :hunt, 'Hunt', '<control>H', :check],   #Gtk::Stock::REFRESH
       ['Neighbor', :radar, 'Neighbors', '<control>N', :check],  #Gtk::Stock::GO_FORWARD
@@ -20715,7 +20726,7 @@ module PandoraGtk
           continue = (not event.state.shift_mask?)
           PandoraNet.start_or_stop_hunt(continue)
         elsif event.keyval == Gdk::Keyval::GDK_F5
-          PandoraNet.hunt_nodes
+          do_menu_act('Hunt')
         elsif event.state.control_mask? and (Gdk::Keyval::GDK_0..Gdk::Keyval::GDK_9).include?(event.keyval)
           num = $window.notebook.n_pages
           if num>0
