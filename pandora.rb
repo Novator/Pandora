@@ -10513,14 +10513,6 @@ module PandoraGtk
       renew_smile_box
       root_vbox.pack_start(@smile_box, true, true, 0)
       hbox = Gtk::HBox.new
-      $window.register_stock(:ufo, 'vk')
-      @vk_btn = SafeToggleButton.new(:ufo_vk)
-      @vk_btn.set_text('vk')
-      @vk_btn.safe_signal_clicked do |widget|
-        @qip_btn.safe_set_active(false)
-        renew_smile_box('vk')
-      end
-      hbox.pack_start(@vk_btn, true, true, 0)
       $window.register_stock(:music, 'qip')
       @qip_btn = SafeToggleButton.new(:music_qip)
       @qip_btn.set_text('qip')
@@ -10529,11 +10521,19 @@ module PandoraGtk
         renew_smile_box('qip')
       end
       hbox.pack_start(@qip_btn, true, true, 0)
+      $window.register_stock(:ufo, 'vk')
+      @vk_btn = SafeToggleButton.new(:ufo_vk)
+      @vk_btn.set_text('vk')
+      @vk_btn.safe_signal_clicked do |widget|
+        @qip_btn.safe_set_active(false)
+        renew_smile_box('vk')
+      end
+      hbox.pack_start(@vk_btn, true, true, 0)
       root_vbox.pack_start(hbox, false, true, 0)
-      if preset=='qip'
-        @qip_btn.safe_set_active(true)
-      else
+      if preset=='vk'
         @vk_btn.safe_set_active(true)
+      else
+        @qip_btn.safe_set_active(true)
       end
       root_vbox
     end
@@ -10615,7 +10615,9 @@ module PandoraGtk
           y = pos[1]+all[1]+all[3]+1
           popwin.move(x, y)
           popwin.show_all
+          Gtk.main_iteration
           popwin.window.root_origin
+          Thread.pass
           pxy = popwin.window.root_origin
           pwh = popwin.window.geometry[2,2]
           if (y+pwh[1]>sh) and (x+pwh[0]<sw)
@@ -14321,7 +14323,8 @@ module PandoraGtk
       editbox.grab_focus
 
       @option_box = Gtk::HBox.new
-      smile_btn = SmileButton.new('vk') do |preset, label|
+      def_smiles = PandoraUtils.get_param('def_smiles')
+      smile_btn = SmileButton.new(def_smiles) do |preset, label|
         editbox.buffer.insert_at_cursor('*'+preset+':'+label+'*')
       end
       option_box.pack_start(smile_btn, false, false, 2)
