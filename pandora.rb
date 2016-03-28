@@ -460,6 +460,10 @@ module PandoraUtils
     res = (/^[0-9a-fA-F]*$/ === value)
   end
 
+  def self.number?(value)
+    res = (/^[0-9\.]*$/ === value)
+  end
+
   # Convert hex string to bytes
   # RU: Преобразует 16-ю строку в строку байт
   def self.hex_to_bytes(hexstr)
@@ -10509,45 +10513,66 @@ module PandoraGtk
         vbox.show_all
       end
       @smile_box.add(vbox)
+      move_and_show if apreset
     end
 
     def get_popwidget
-      @root_vbox = Gtk::VBox.new
-      @smile_box = Gtk::Frame.new
-      @smile_box.shadow_type = Gtk::SHADOW_NONE
-      renew_smile_box
-      root_vbox.pack_start(@smile_box, true, true, 0)
-      hbox = Gtk::HBox.new
-
-      $window.register_stock(:music, 'qip')
-      @qip_btn = GoodButton.new(:music_qip, 'qip', -1) do |*args|
-        if not @qip_btn.active?
-          @qip_btn.set_active(true)
-          @vk_btn.set_active(false)
-          renew_smile_box('qip')
+      if @root_vbox.nil? or @root_vbox.destroyed?
+        @root_vbox = Gtk::VBox.new
+        @smile_box = Gtk::Frame.new
+        #@smile_box.shadow_type = Gtk::SHADOW_NONE
+        hbox = Gtk::HBox.new
+        $window.register_stock(:music, 'qip')
+        @qip_btn = GoodButton.new(:music_qip, 'qip', -1) do |*args|
+          if not @qip_btn.active?
+            @qip_btn.set_active(true)
+            @vk_btn.set_active(false)
+            renew_smile_box('qip')
+          end
         end
-      end
-      hbox.pack_start(@qip_btn, true, true, 0)
-      $window.register_stock(:ufo, 'vk')
-      @vk_btn = GoodButton.new(:ufo_vk, 'vk', -1) do |*args|
-        if not @vk_btn.active?
+        hbox.pack_start(@qip_btn, true, true, 0)
+        $window.register_stock(:ufo, 'vk')
+        @vk_btn = GoodButton.new(:ufo_vk, 'vk', -1) do |*args|
+          if not @vk_btn.active?
+            @vk_btn.set_active(true)
+            @qip_btn.set_active(false)
+            renew_smile_box('vk')
+          end
+        end
+        hbox.pack_start(@vk_btn, true, true, 0)
+        $window.register_stock(:bomb, 'qip')
+        @poly_btn = GoodButton.new(:bomb_qip, nil, false)
+        @poly_btn.tooltip_text = _('many smiles')
+        hbox.pack_start(@poly_btn, false, false, 0)
+        root_vbox.pack_start(hbox, false, true, 0)
+        if preset=='vk'
           @vk_btn.set_active(true)
-          @qip_btn.set_active(false)
-          renew_smile_box('vk')
+        else
+          @qip_btn.set_active(true)
         end
-      end
-      hbox.pack_start(@vk_btn, true, true, 0)
-      $window.register_stock(:bomb, 'qip')
-      @poly_btn = GoodButton.new(:bomb_qip, nil, false)
-      @poly_btn.tooltip_text = _('many smiles')
-      hbox.pack_start(@poly_btn, false, false, 0)
-      root_vbox.pack_start(hbox, false, true, 0)
-      if preset=='vk'
-        @vk_btn.set_active(true)
-      else
-        @qip_btn.set_active(true)
+        renew_smile_box
+        root_vbox.pack_start(@smile_box, true, true, 0)
       end
       root_vbox
+    end
+
+    def move_and_show
+      borig = self.window.origin
+      brect = self.allocation.to_a
+
+      popwin = @popwin
+      popwidget = get_popwidget
+      popwidget.show_all
+      pwh = popwidget.size_request
+
+      scr = Gdk::Screen.default
+      sw = scr.width
+      sh = scr.height
+      x = brect[0]+borig[0]
+      y = brect[1]+borig[1]-pwh[1]-1
+      popwin.move(x, y)
+      popwin.show_all
+      popwin.present
     end
 
     def initialize(apreset='vk', *args)
@@ -10561,83 +10586,73 @@ module PandoraGtk
       @on_click_btn = Proc.new do |*args|
         yield(*args) if block_given?
         if not @poly_btn.active?
-          @popwin.destroy
-          @popwin = nil
+          #@popwin.destroy
+          #@popwin = nil
+          @popwin.hide
         end
       end
 
       signal_connect('clicked') do |*args|
-        if @popwin and (not @popwin.destroyed?)
-          @popwin.destroy
-          @popwin = nil
+        if @popwin and (not @popwin.destroyed?) and @popwin.visible?
+          #@popwin.destroy
+          #@popwin = nil
+          @popwin.hide
         else
-          @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
-          popwin = @popwin
-          popwin.transient_for = $window
-          popwin.modal = false
-          popwin.decorated = false
-          popwin.skip_taskbar_hint = true
+          if @popwin.nil? or @popwin.destroyed?
+            @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
+            popwin = @popwin
+            popwin.transient_for = $window
+            popwin.modal = false
+            popwin.decorated = false
+            popwin.skip_taskbar_hint = true
 
-          popwidget = get_popwidget
-          popwin.add(popwidget)
-          popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
+            popwidget = get_popwidget
+            popwin.add(popwidget)
+            popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
 
-          popwin.signal_connect('focus-out-event') do |win, event|
-            GLib::Timeout.add(140) do
-              if not popwin.destroyed?
-                @popwin.destroy
-                @popwin = nil
+            popwin.signal_connect('focus-out-event') do |win, event|
+              GLib::Timeout.add(140) do
+                if not popwin.destroyed?
+                  #@popwin.destroy
+                  #@popwin = nil
+                  @popwin.hide
+                end
+                false
               end
               false
             end
-            false
-          end
 
-          popwin.signal_connect('key-press-event') do |widget, event|
-            if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-              if @close_on_enter
+            popwin.signal_connect('key-press-event') do |widget, event|
+              if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+                if @close_on_enter
+                  #@popwin.destroy
+                  #@popwin = nil
+                  @popwin.hide
+                end
+                false
+              elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+                ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
+                event.keyval) and event.state.control_mask?) #w, W, ц, Ц
+              then
+                #@popwin.destroy
+                #@popwin = nil
+                @popwin.hide
+                false
+              elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
+                event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
+                Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
+                and event.state.control_mask?) #q, Q, й, Й
+              then
                 @popwin.destroy
                 @popwin = nil
+                $window.do_menu_act('Quit')
+                false
+              else
+                false
               end
-              false
-            elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
-              ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
-              event.keyval) and event.state.control_mask?) #w, W, ц, Ц
-            then
-              @popwin.destroy
-              @popwin = nil
-              false
-            elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
-              event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
-              Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
-              and event.state.control_mask?) #q, Q, й, Й
-            then
-              @popwin.destroy
-              @popwin = nil
-              $window.do_menu_act('Quit')
-              false
-            else
-              false
             end
           end
-          pos = self.window.origin
-          all = self.allocation.to_a
-          scr = Gdk::Screen.default
-          sw = scr.width
-          sh = scr.height
-          x = pos[0]+all[0]
-          y = pos[1]+all[1]+all[3]+1
-          popwin.move(x, y)
-          popwin.show_all
-          Gtk.main_iteration
-          popwin.window.root_origin
-          Thread.pass
-          pxy = popwin.window.root_origin
-          pwh = popwin.window.geometry[2,2]
-          if (y+pwh[1]>sh) and (x+pwh[0]<sw)
-            popwin.move(x+all[2]+1, pxy[1])
-          end
-          popwin.present
+          move_and_show
         end
         false
       end
@@ -11612,7 +11627,7 @@ module PandoraGtk
   # Window for view body (text or blob)
   # RU: Окно просмотра тела (текста или блоба)
   class SuperTextView < ExtTextView
-    attr_accessor :format
+    #attr_accessor :format
 
     def initialize(left_border=nil, *args)
       super(*args)
@@ -11859,13 +11874,22 @@ module PandoraGtk
         end
       end
 
+      def remove_quotes(str)
+        if str.is_a?(String) and (str.size>1) \
+        and ((str[0]=='"' and str[-1]=='"') or (str[0]=="'" and str[-1]=="'"))
+          str = str[1..-2]
+        end
+        str
+      end
+
       def get_param(params, type=:string)
         res = nil
         if (params.is_a? String) and (params.size>0) and params.index('=').nil?
           res = params
-          if type==:integer
+          res = remove_quotes(res)
+          if type==:number
             begin
-              res.gsub(/[^0-9\.]/, '')
+              res.gsub!(/[^0-9\.]/, '')
               res = res.to_i
             rescue
               res = nil
@@ -11892,7 +11916,7 @@ module PandoraGtk
                 if n and (n.size>0)
                   v = param[j+1..-1]
                   v.strip if v
-                  res[n] = v.strip if v and (v.size>0)
+                  res[n] = remove_quotes(v.strip) if v and (v.size>0)
                   p 'n,v='+[n,v].inspect
                 end
               end
@@ -11910,11 +11934,17 @@ module PandoraGtk
         res
       end
 
+      def correct_color(str)
+        if str.is_a?(String) and (str.size==6) and PandoraUtils.hex?(str)
+          str = '#'+str
+        end
+        str
+      end
+
       aformat ||= 'auto'
       unless ['markdown', 'bbcode', 'html', 'ruby', 'plain'].include?(aformat)
         aformat = 'bbcode' #if aformat=='auto' #need autodetect here
       end
-      @format = aformat
       #p 'str='+str
       case aformat
         when 'markdown'
@@ -12058,7 +12088,7 @@ module PandoraGtk
                         when 'ABBR', 'ACRONYM'
                           tv_tag = nil
                         when 'HR'
-                          count = get_param(params, :integer)
+                          count = get_param(params, :number)
                           count = 50 unless count.is_a? Numeric and (count>0)
                           dest_buf.insert(dest_buf.end_iter, ' '*count)
                           shift_coms(count)
@@ -12070,24 +12100,25 @@ module PandoraGtk
                         'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER'
                           comu = 'CYAN' if comu=='AQUA'
                           tv_tag = comu.downcase
-                        when 'FONT', 'SIZE', 'COLOR', 'COLOUR','STYLE', 'BACK', \
-                        'BACKGROUND', 'BG', 'FORE', 'FOREGROUND', 'FG'
-                          #need parse 'params'
+                        when 'FONT', 'STYLE', 'SIZE', \
+                          'FG', 'FORE', 'FOREGROUND', 'COLOR', 'COLOUR', \
+                          'BG', 'BACK', 'BACKGROUND'
 
                           fg = nil
                           bg = nil
                           sz = nil
                           js = nil #left, right...
+                          fam = nil
                           wt = nil #bold, italic...
 
                           case comu
-                            when 'COLOR', 'COLOUR', 'FORE', 'FOREGROUND', 'FG'
+                            when 'FG', 'FORE', 'FOREGROUND', 'COLOR', 'COLOUR'
                               fg = get_param(params)
-                            when 'BACK', 'BACKGROUND', 'BG'
+                            when 'BG', 'BACK', 'BACKGROUND'
                               bg = get_param(params)
                             else
-                              sz = get_param(params, :integer)
-                              unless sz
+                              sz = get_param(params, :number)
+                              if not sz
                                 param_hash = detect_params(params)
                                 sz = param_hash['size']
                                 sz ||= param_hash['sz']
@@ -12102,13 +12133,28 @@ module PandoraGtk
                                 js = param_hash['js']
                                 js ||= param_hash['justify']
                                 js ||= param_hash['justification']
+                                fam = param_hash['fam']
+                                fam ||= param_hash['family']
+                                fam ||= param_hash['name']
+                                wt = param_hash['wt']
+                                wt ||= param_hash['weight']
+                                wt ||= param_hash['bold']
                               end
                             #end-case-when
                           end
 
+                          fg = correct_color(fg)
+                          bg = correct_color(bg)
+
                           tag_params = {}
 
                           tag_name = 'font'
+                          if fam and (fam.is_a? String) and (fam.size>0)
+                            fam_st = fam.upcase
+                            fam_st.gsub!(' ', '_')
+                            tag_name << '_'+fam_st
+                            tag_params['family'] = fam
+                          end
                           if fg
                             tag_name << '_'+fg
                             tag_params['foreground'] = fg
@@ -12118,9 +12164,13 @@ module PandoraGtk
                             tag_params['background'] = bg
                           end
                           if sz
-                            sz.gsub(/[^0-9\.]/, '') if sz.is_a? String
+                            sz.gsub!(/[^0-9\.]/, '') if sz.is_a? String
                             tag_name << '_sz'+sz.to_s
                             tag_params['size'] = sz.to_i * Pango::SCALE
+                          end
+                          if wt
+                            tag_name << '_wt'+wt.to_s
+                            tag_params['weight'] = wt.to_i
                           end
                           if js
                             js = js.upcase
@@ -12138,10 +12188,6 @@ module PandoraGtk
                               tag_name << '_js'+js
                               tag_params['justification'] = jsv
                             end
-                          end
-                          if wt
-                            #'style' => Pango::FontDescription::STYLE_ITALIC,
-                            #'weight' => Pango::FontDescription::WEIGHT_BOLD,
                           end
 
                           text_tag = dest_buf.tag_table.lookup(tag_name)
@@ -12211,8 +12257,8 @@ module PandoraGtk
                           shift_coms(1)
                         when 'HR'
                           p1 = dest_buf.end_iter.offset
-                          count = get_param(params, :integer)
-                          count = 50 unless count.is_a? Numeric and (count>0)
+                          count = get_param(params, :number)
+                          count = 50 if not (count.is_a? Numeric and (count>0))
                           dest_buf.insert(dest_buf.end_iter, ' '*count)
                           shift_coms(count)
                           dest_buf.apply_tag('undline',
@@ -12760,6 +12806,11 @@ module PandoraGtk
         #  tv.buffer = bw.raw_buffer
         #  text_changed = true
         #end
+
+        @format ||= 'auto'
+        unless ['markdown', 'bbcode', 'html', 'ruby', 'plain'].include?(@format)
+          @format = 'bbcode' #if aformat=='auto' #need autodetect here
+        end
 
         @tv_style ||= tv.modifier_style
         if view_mode
@@ -14064,7 +14115,7 @@ module PandoraGtk
     attr_accessor :room_id, :targets, :online_button, :snd_button, :vid_button, :talkview, \
       :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, :sender_box, \
-      :option_box, :captcha_enter
+      :option_box, :captcha_enter, :editsw
 
     include PandoraGtk
 
@@ -14075,7 +14126,8 @@ module PandoraGtk
       if not @captcha_entry
         @captcha_label = Gtk::Label.new(_('Enter text from picture'))
         label = @captcha_label
-        @sender_box.pack_start(label, false, false, 2)
+        label.set_alignment(0.5, 1.0)
+        @sender_box.pack_start(label, true, true, 2)
 
         @captcha_entry = PandoraGtk::MaskEntry.new
 
@@ -14155,10 +14207,10 @@ module PandoraGtk
         end
 
         captcha_entry.width_request = ew
-        @captcha_align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+        @captcha_align = Gtk::Alignment.new(0.5, 0, 0.0, 0.0)
         @captcha_align.add(captcha_entry)
-        @sender_box.pack_start(@captcha_align, false, false, 2)
-        @editbox.hide
+        @sender_box.pack_start(@captcha_align, true, true, 2)
+        @editsw.hide
         @option_box.hide
         @captcha_label.show
         @captcha_align.show_all
@@ -14181,7 +14233,7 @@ module PandoraGtk
         @captcha_label.destroy
         @captcha_label = nil
         @option_box.show
-        @editbox.show
+        @editsw.show_all
         area_recv.set_expose_event(nil)
         area_recv.queue_draw
         Thread.pass
@@ -14234,25 +14286,26 @@ module PandoraGtk
 
       @online_button = SafeCheckButton.new(_('Online'), true)
       online_button.safe_signal_clicked do |widget|
-        if widget.active? and (not widget.inconsistent?)
-          widget.safe_set_active(false)
+        p 'widget.active?='+widget.active?.inspect
+        if widget.active? #and (not widget.inconsistent?)
+          #widget.safe_set_active(false)
           widget.inconsistent = true
           targets[CSI_Persons].each_with_index do |person, i|
             keys = targets[CSI_Keys]
-            #if keys.is_a? Array
-            #  keys.each do |key|
-            #    $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-            #      person, key, nil, PandoraNet::CM_Captcha)
-            #  end
-            #else
-            #  $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-            #    person, keys, nil, PandoraNet::CM_Captcha)
-            #end
+            if keys.is_a? Array
+              keys.each do |key|
+                $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
+                  person, key, nil, PandoraNet::CM_Captcha)
+              end
+            else
+              $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
+                person, keys, nil, PandoraNet::CM_Captcha)
+            end
           end
         else
           widget.safe_set_active(false)
           widget.inconsistent = false
-          #$window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
+          $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
         end
       end
       online_button.safe_set_active(known_node != nil)
@@ -14315,7 +14368,7 @@ module PandoraGtk
       editbox.set_size_request(200, 70)
 
       #editsw = PandoraGtk::FieldsDialog::BodyScrolledWindow.new(nil, nil)
-      editsw = Gtk::ScrolledWindow.new(nil, nil)
+      @editsw = Gtk::ScrolledWindow.new(nil, nil)
       editsw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       editsw.add(editbox)
 
