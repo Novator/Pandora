@@ -10539,6 +10539,7 @@ module PandoraGtk
       hbox.pack_start(@vk_btn, true, true, 0)
       $window.register_stock(:bomb, 'qip')
       @poly_btn = GoodButton.new(:bomb_qip, nil, false)
+      @poly_btn.tooltip_text = _('many smiles')
       hbox.pack_start(@poly_btn, false, false, 0)
       root_vbox.pack_start(hbox, false, true, 0)
       if preset=='vk'
@@ -10552,7 +10553,7 @@ module PandoraGtk
     def initialize(apreset='vk', *args)
       aimage = $window.get_preset_image('smile')
       super(aimage, _('smile'))
-      tooltip_text = _('smile')
+      self.tooltip_text = _('smile')
       apreset ||= 'vk'
       @preset = apreset
       @close_on_enter = true
@@ -14327,7 +14328,6 @@ module PandoraGtk
         smile_img = ' '+smile_img if editbox.buffer.text != ''
         editbox.buffer.insert_at_cursor(smile_img)
       end
-      smile_btn.tooltip_text = _('smile')
       option_box.pack_start(smile_btn, false, false, 2)
 
       crypt_btn = SafeCheckButton.new(_('crypt'), true)
