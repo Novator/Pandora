@@ -10157,6 +10157,17 @@ module PandoraGtk
       end
     end
 
+    def set_text(text)
+      alig = self.children[0]
+      if alig.is_a? Gtk::Bin
+        hbox = alig.child
+        if (hbox.is_a? Gtk::Box) and (hbox.children.size>1)
+          lab = hbox.children[1]
+          lab.text = text if lab.is_a? Gtk::Label
+        end
+      end
+    end
+
   end
 
   # ToggleToolButton with safety "active" switching
@@ -10483,7 +10494,7 @@ module PandoraGtk
           col += 1
           buf = $window.get_icon_buf(smile, preset)
           aimage = Gtk::Image.new(buf)
-          btn = Gtk::ToolButton.new(aimage, _(smile))
+          btn = Gtk::ToolButton.new(aimage, smile)
           btn.signal_connect('clicked') do |widget|
             @on_click_btn.call(preset, widget.label)
           end
@@ -10502,17 +10513,28 @@ module PandoraGtk
       renew_smile_box
       root_vbox.pack_start(@smile_box, true, true, 0)
       hbox = Gtk::HBox.new
-      btn = Gtk::Button.new('qip')
-      btn.signal_connect('clicked') do |widget|
-        renew_smile_box('qip')
-      end
-      hbox.pack_start(btn, true, true, 0)
-      btn = Gtk::Button.new('vk')
-      btn.signal_connect('clicked') do |widget|
+      $window.register_stock(:ufo, 'vk')
+      @vk_btn = SafeToggleButton.new(:ufo_vk)
+      @vk_btn.set_text('vk')
+      @vk_btn.safe_signal_clicked do |widget|
+        @qip_btn.safe_set_active(false)
         renew_smile_box('vk')
       end
-      hbox.pack_start(btn, true, true, 0)
+      hbox.pack_start(@vk_btn, true, true, 0)
+      $window.register_stock(:music, 'qip')
+      @qip_btn = SafeToggleButton.new(:music_qip)
+      @qip_btn.set_text('qip')
+      @qip_btn.safe_signal_clicked do |widget|
+        @vk_btn.safe_set_active(false)
+        renew_smile_box('qip')
+      end
+      hbox.pack_start(@qip_btn, true, true, 0)
       root_vbox.pack_start(hbox, false, true, 0)
+      if preset=='qip'
+        @qip_btn.safe_set_active(true)
+      else
+        @vk_btn.safe_set_active(true)
+      end
       root_vbox
     end
 
@@ -10547,7 +10569,7 @@ module PandoraGtk
           popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
 
           popwin.signal_connect('focus-out-event') do |win, event|
-            GLib::Timeout.add(200) do
+            GLib::Timeout.add(140) do
               if not popwin.destroyed?
                 @popwin.destroy
                 @popwin = nil
@@ -10584,11 +10606,21 @@ module PandoraGtk
               false
             end
           end
-
           pos = self.window.origin
           all = self.allocation.to_a
-          popwin.move(pos[0]+all[0], pos[1]+all[1]+all[3]+1)
+          scr = Gdk::Screen.default
+          sw = scr.width
+          sh = scr.height
+          x = pos[0]+all[0]
+          y = pos[1]+all[1]+all[3]+1
+          popwin.move(x, y)
           popwin.show_all
+          popwin.window.root_origin
+          pxy = popwin.window.root_origin
+          pwh = popwin.window.geometry[2,2]
+          if (y+pwh[1]>sh) and (x+pwh[0]<sw)
+            popwin.move(x+all[2]+1, pxy[1])
+          end
           popwin.present
         end
         false
@@ -14274,15 +14306,19 @@ module PandoraGtk
       talkview.buffer.create_tag('sys', 'foreground' => $sys_color, 'style' => Pango::FontDescription::STYLE_ITALIC)
       talkview.buffer.create_tag('sys_bold', 'foreground' => $sys_color,  'weight' => Pango::FontDescription::WEIGHT_BOLD)
 
-      @editbox = Gtk::TextView.new
-      editbox.wrap_mode = Gtk::TextTag::WRAP_WORD
-      editbox.set_size_request(200, 70)
-
-      editbox.grab_focus
-
       talksw = Gtk::ScrolledWindow.new(nil, nil)
       talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       talksw.add(talkview)
+
+      @editbox = PandoraGtk::ExtTextView.new
+      editbox.wrap_mode = Gtk::TextTag::WRAP_WORD
+      editbox.set_size_request(200, 70)
+
+      editsw = Gtk::ScrolledWindow.new(nil, nil)
+      editsw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      editsw.add(editbox)
+
+      editbox.grab_focus
 
       @option_box = Gtk::HBox.new
       smile_btn = SmileButton.new('vk') do |preset, label|
@@ -14351,7 +14387,7 @@ module PandoraGtk
 
       @sender_box = Gtk::VBox.new
       sender_box.pack_start(option_box, false, true, 0)
-      sender_box.pack_start(editbox, true, true, 0)
+      sender_box.pack_start(editsw, true, true, 0)
 
       hpaned2.pack2(sender_box, true, true)
 
@@ -19433,19 +19469,25 @@ module PandoraGtk
 
     # Register new stock by name of image preset
     # RU: Регистрирует новый stock по имени пресета иконки
-    def register_stock(stock=:person)
+    def register_stock(stock=:person, preset=nil)
       stock_inf = nil
+      preset ||= 'pan'
+      suff = preset
+      suff = '' if (preset=='pan' or (preset.nil?))
+      reg_stock = stock.to_s
+      if suff and (suff.size>0)
+        reg_stock << '_'+suff.to_s
+      end
+      reg_stock = reg_stock.to_sym
       begin
-        #stock = stock.to_sym
-        stock_inf = Gtk::Stock.lookup(stock)
+        stock_inf = Gtk::Stock.lookup(reg_stock)
       rescue
       end
       if not stock_inf
-        stock_str = stock.to_s
-        icon_set = get_preset_iconset(stock_str)
+        icon_set = get_preset_iconset(stock.to_s, preset)
         if icon_set
-          Gtk::Stock.add(stock, '_'+stock_str.capitalize)
-          @icon_factory.add(stock_str, icon_set)
+          Gtk::Stock.add(reg_stock, '_'+stock.to_s.capitalize)
+          @icon_factory.add(reg_stock.to_s, icon_set)
         end
       end
       stock_inf
