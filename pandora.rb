@@ -6933,7 +6933,7 @@ module PandoraNet
       ascmd = ex_comm
       ascode ||= 0
       asbuf = nil
-      @Radar = 1
+      @activity = 1
       case ex_comm
         when EC_Auth
           #p log_mes+'first key='+key.inspect
@@ -8782,7 +8782,7 @@ module PandoraNet
             # RU: Цикл чтения из сокета
             if @socket
               @socket_thread = Thread.new do
-                @Radar = 0
+                @activity = 0
 
                 readmode = RM_Comm
                 waitlen = CommSize
@@ -9056,7 +9056,7 @@ module PandoraNet
                     @conn_state = CS_CloseSession
                   else
                     if (sscmd==EC_Media)
-                      @Radar = 2
+                      @activity = 2
                     end
                     send_segment = @send_queue.get_block_from_queue
                   end
@@ -9136,7 +9136,7 @@ module PandoraNet
                   rc_queue = dialog.recv_media_queue[cannel]
                   recv_media_chunk = rc_queue.get_block_from_queue($media_buf_size) if rc_queue
                   if recv_media_chunk #and (recv_media_chunk.size>0)
-                    @Radar = 2
+                    @activity = 2
                     #p 'LOAD MED BUF size='+recv_media_chunk.size.to_s
                     buf = Gst::Buffer.new
                     buf.data = recv_media_chunk
@@ -9159,7 +9159,7 @@ module PandoraNet
               #sleep 1
               if (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
-                @Radar = 2
+                @activity = 2
                 @send_state = (send_state & (~CSF_Message))
                 receiver = @skey[PandoraCrypto::KV_Creator]
                 if @skey and receiver
@@ -9218,7 +9218,7 @@ module PandoraNet
               and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
               and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
               or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
-                @Radar = 2
+                @activity = 2
                 #p 'packbuf '+cannel.to_s
                 pointer_ind = PandoraGtk.get_send_ptrind_by_room(dialog.room_id)
                 processed = 0
@@ -9388,7 +9388,7 @@ module PandoraNet
               if (socket and socket.closed?) or (@conn_state == CS_StopRead) \
               and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Empty)
                 @conn_state = CS_Disconnected
-              elsif @Radar == 0
+              elsif @activity == 0
                 #p log_mes+'[pool.time_now, @last_recv_time, @last_send_time, cm, cm2]=' \
                 #+[pool.time_now, @last_recv_time, @last_send_time, $exchange_timeout, \
                 #@conn_mode, @conn_mode2].inspect
@@ -9415,10 +9415,10 @@ module PandoraNet
                   sleep(0.08)
                 end
               else
-                if @Radar == 1
+                if @activity == 1
                   sleep(0.01)
                 end
-                @Radar = 0
+                @activity = 0
               end
               Thread.pass
             end
