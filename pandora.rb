@@ -6630,7 +6630,7 @@ module PandoraNet
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
       :captcha_sw, :hooks, :fish_ind, :notice_ind, \
-      :sess_trust, :notice, :Radar, :search_ind
+      :sess_trust, :notice, :activity, :search_ind
 
     # Set socket options
     # RU: Установить опции сокета
