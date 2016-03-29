@@ -6244,15 +6244,15 @@ module PandoraNet
           @notice_list << res
           @notice_ind += 1
 
-          hpaned = $window.fish_hpaned
+          hpaned = $window.radar_hpaned
           if (hpaned.max_position - hpaned.position) > 24
-            fish_sw = $window.fish_sw
-            fish_sw.update_btn.clicked
+            radar_sw = $window.radar_sw
+            radar_sw.update_btn.clicked
           else
-            PandoraGtk.show_neighbor_panel
+            PandoraGtk.show_radar_panel
           end
         end
-        $window.set_status_field(PandoraGtk::SF_Fish, @notice_list.size.to_s)
+        $window.set_status_field(PandoraGtk::SF_Radar, @notice_list.size.to_s)
       end
       res
     end
@@ -6630,7 +6630,7 @@ module PandoraNet
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
       :captcha_sw, :hooks, :fish_ind, :notice_ind, \
-      :sess_trust, :notice, :activity, :search_ind
+      :sess_trust, :notice, :Radar, :search_ind
 
     # Set socket options
     # RU: Установить опции сокета
@@ -6933,7 +6933,7 @@ module PandoraNet
       ascmd = ex_comm
       ascode ||= 0
       asbuf = nil
-      @activity = 1
+      @Radar = 1
       case ex_comm
         when EC_Auth
           #p log_mes+'first key='+key.inspect
@@ -8782,7 +8782,7 @@ module PandoraNet
             # RU: Цикл чтения из сокета
             if @socket
               @socket_thread = Thread.new do
-                @activity = 0
+                @Radar = 0
 
                 readmode = RM_Comm
                 waitlen = CommSize
@@ -9056,7 +9056,7 @@ module PandoraNet
                     @conn_state = CS_CloseSession
                   else
                     if (sscmd==EC_Media)
-                      @activity = 2
+                      @Radar = 2
                     end
                     send_segment = @send_queue.get_block_from_queue
                   end
@@ -9136,7 +9136,7 @@ module PandoraNet
                   rc_queue = dialog.recv_media_queue[cannel]
                   recv_media_chunk = rc_queue.get_block_from_queue($media_buf_size) if rc_queue
                   if recv_media_chunk #and (recv_media_chunk.size>0)
-                    @activity = 2
+                    @Radar = 2
                     #p 'LOAD MED BUF size='+recv_media_chunk.size.to_s
                     buf = Gst::Buffer.new
                     buf.data = recv_media_chunk
@@ -9159,7 +9159,7 @@ module PandoraNet
               #sleep 1
               if (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
-                @activity = 2
+                @Radar = 2
                 @send_state = (send_state & (~CSF_Message))
                 receiver = @skey[PandoraCrypto::KV_Creator]
                 if @skey and receiver
@@ -9218,7 +9218,7 @@ module PandoraNet
               and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
               and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
               or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
-                @activity = 2
+                @Radar = 2
                 #p 'packbuf '+cannel.to_s
                 pointer_ind = PandoraGtk.get_send_ptrind_by_room(dialog.room_id)
                 processed = 0
@@ -9388,7 +9388,7 @@ module PandoraNet
               if (socket and socket.closed?) or (@conn_state == CS_StopRead) \
               and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Empty)
                 @conn_state = CS_Disconnected
-              elsif @activity == 0
+              elsif @Radar == 0
                 #p log_mes+'[pool.time_now, @last_recv_time, @last_send_time, cm, cm2]=' \
                 #+[pool.time_now, @last_recv_time, @last_send_time, $exchange_timeout, \
                 #@conn_mode, @conn_mode2].inspect
@@ -9415,10 +9415,10 @@ module PandoraNet
                   sleep(0.08)
                 end
               else
-                if @activity == 1
+                if @Radar == 1
                   sleep(0.01)
                 end
-                @activity = 0
+                @Radar = 0
               end
               Thread.pass
             end
@@ -9983,12 +9983,11 @@ module PandoraGtk
   SF_Auth    = 2
   SF_Listen  = 3
   SF_Hunt    = 4
-  SF_Notice  = 5
-  SF_Conn    = 6
-  SF_Fish    = 7
-  SF_Fisher  = 8
-  SF_Search  = 9
-  SF_Harvest = 10
+  SF_Conn    = 5
+  SF_Radar    = 6
+  SF_Fisher  = 7
+  SF_Search  = 8
+  SF_Harvest = 9
 
   # Advanced dialog window
   # RU: Продвинутое окно диалога
@@ -16271,7 +16270,7 @@ module PandoraGtk
 
   # List of fishes
   # RU: Список рыб
-  class FishScrollWin < Gtk::ScrolledWindow
+  class RadarScrollWin < Gtk::ScrolledWindow
     attr_accessor :update_btn
 
     include PandoraGtk
@@ -16485,7 +16484,7 @@ module PandoraGtk
       image.show_all
       align = Gtk::Alignment.new(0.0, 0.5, 0.0, 0.0)
       btn_hbox = Gtk::HBox.new
-      label = Gtk::Label.new(_('Neighbors'))
+      label = Gtk::Label.new(_('Radar'))
       btn_hbox.pack_start(image, false, false, 0)
       btn_hbox.pack_start(label, false, false, 2)
 
@@ -16496,7 +16495,7 @@ module PandoraGtk
       btn.relief = Gtk::RELIEF_NONE
       btn.focus_on_click = false
       btn.signal_connect('clicked') do |*args|
-        PandoraGtk.show_neighbor_panel
+        PandoraGtk.show_radar_panel
       end
       btn.add(btn_hbox)
       align.add(btn)
@@ -18769,26 +18768,26 @@ module PandoraGtk
 
   # Show neighbor list
   # RU: Показать список соседей
-  def self.show_neighbor_panel
-    hpaned = $window.fish_hpaned
-    fish_sw = $window.fish_sw
-    if fish_sw.allocation.width <= 24 #hpaned.position <= 20
-      fish_sw.width_request = 200 if fish_sw.width_request <= 24
-      hpaned.position = hpaned.max_position-fish_sw.width_request
-      fish_sw.update_btn.clicked
+  def self.show_radar_panel
+    hpaned = $window.radar_hpaned
+    radar_sw = $window.radar_sw
+    if radar_sw.allocation.width <= 24 #hpaned.position <= 20
+      radar_sw.width_request = 200 if radar_sw.width_request <= 24
+      hpaned.position = hpaned.max_position-radar_sw.width_request
+      radar_sw.update_btn.clicked
     else
-      fish_sw.width_request = fish_sw.allocation.width
+      radar_sw.width_request = radar_sw.allocation.width
       hpaned.position = hpaned.max_position
     end
     $window.correct_fish_btn_state
     #$window.notebook.children.each do |child|
-    #  if (child.is_a? FishScrollWin)
+    #  if (child.is_a? RadarScrollWin)
     #    $window.notebook.page = $window.notebook.children.index(child)
     #    child.update_btn.clicked
     #    return
     #  end
     #end
-    #sw = FishScrollWin.new
+    #sw = RadarScrollWin.new
 
     #image = Gtk::Image.new(Gtk::Stock::JUSTIFY_LEFT, Gtk::IconSize::MENU)
     #image.set_padding(2, 0)
@@ -19228,8 +19227,8 @@ module PandoraGtk
   # RU: Главное окно
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
-      :pool, :focus_timer, :title_view, :do_on_start, :fish_hpaned, :task_offset, \
-      :fish_sw
+      :pool, :focus_timer, :title_view, :do_on_start, :radar_hpaned, :task_offset, \
+      :radar_sw
 
     include PandoraUtils
 
@@ -19276,15 +19275,15 @@ module PandoraGtk
     # Change listener button state
     # RU: Изменить состояние кнопки слушателя
     def correct_fish_btn_state
-      hpaned = $window.fish_hpaned
+      hpaned = $window.radar_hpaned
       #list_sw = hpaned.children[1]
       an_active = (hpaned.max_position - hpaned.position) > 24
       #(list_sw.allocation.width > 24)
-      #($window.fish_hpaned.position > 24)
-      $window.set_status_field(PandoraGtk::SF_Fish, nil, nil, an_active)
-      #tool_btn = $toggle_buttons[PandoraGtk::SF_Fish]
+      #($window.radar_hpaned.position > 24)
+      $window.set_status_field(PandoraGtk::SF_Radar, nil, nil, an_active)
+      #tool_btn = $toggle_buttons[PandoraGtk::SF_Radar]
       #if tool_btn
-      #  hpaned = $window.fish_hpaned
+      #  hpaned = $window.radar_hpaned
       #  list_sw = hpaned.children[0]
       #  tool_btn.safe_set_active(hpaned.position > 24)
       #end
@@ -19983,8 +19982,8 @@ module PandoraGtk
           PandoraGtk.show_search_panel
         when 'Session'
           PandoraGtk.show_session_panel
-        when 'Neighbor'
-          PandoraGtk.show_neighbor_panel
+        when 'Radar'
+          PandoraGtk.show_radar_panel
         when 'Fisher'
           PandoraGtk.show_fisher_panel
         else
@@ -20068,7 +20067,7 @@ module PandoraGtk
       ['Authorize', :auth, 'Authorize', '<control>O', :check], #Gtk::Stock::DIALOG_AUTHENTICATION
       ['Listen', :listen, 'Listen', '<control>L', :check],  #Gtk::Stock::CONNECT
       ['Hunt', :hunt, 'Hunt', '<control>H', :check],   #Gtk::Stock::REFRESH
-      ['Neighbor', :radar, 'Neighbors', '<control>N', :check],  #Gtk::Stock::GO_FORWARD
+      ['Radar', :radar, 'Radar', '<control>R', :check],  #Gtk::Stock::GO_FORWARD
       ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
       ['Exchange', 'exchange:m', 'Exchange'],
       ['-', nil, '-'],
@@ -20123,8 +20122,8 @@ module PandoraGtk
                   index = SF_Listen
                 when 'Hunt'
                   index = SF_Hunt
-                when 'Neighbor'
-                  index = SF_Fish
+                when 'Radar'
+                  index = SF_Radar
               end
               if index
                 $toggle_buttons[index] = btn
@@ -20535,8 +20534,8 @@ module PandoraGtk
       sw.border_width = 0;
       sw.set_size_request(-1, 40)
 
-      @fish_sw = FishScrollWin.new
-      fish_sw.set_size_request(0, -1)
+      @radar_sw = RadarScrollWin.new
+      radar_sw.set_size_request(0, -1)
 
       #note_sw = Gtk::ScrolledWindow.new(nil, nil)
       #note_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
@@ -20544,22 +20543,22 @@ module PandoraGtk
       #@viewport = Gtk::Viewport.new(nil, nil)
       #sw.add(viewport)
 
-      @fish_hpaned = Gtk::HPaned.new
+      @radar_hpaned = Gtk::HPaned.new
       #note_sw.add_with_viewport(notebook)
-      #@fish_hpaned.pack1(note_sw, true, true)
-      @fish_hpaned.pack1(notebook, true, true)
-      @fish_hpaned.pack2(fish_sw, false, true)
-      #@fish_hpaned.position = 1
-      #p '****'+@fish_hpaned.allocation.width.inspect
-      #@fish_hpaned.position = @fish_hpaned.max_position
-      #@fish_hpaned.position = 0
-      @fish_hpaned.signal_connect('notify::position') do |widget, param|
+      #@radar_hpaned.pack1(note_sw, true, true)
+      @radar_hpaned.pack1(notebook, true, true)
+      @radar_hpaned.pack2(radar_sw, false, true)
+      #@radar_hpaned.position = 1
+      #p '****'+@radar_hpaned.allocation.width.inspect
+      #@radar_hpaned.position = @radar_hpaned.max_position
+      #@radar_hpaned.position = 0
+      @radar_hpaned.signal_connect('notify::position') do |widget, param|
         $window.correct_fish_btn_state
       end
 
       vpaned = Gtk::VPaned.new
       vpaned.border_width = 2
-      vpaned.pack1(fish_hpaned, true, true)
+      vpaned.pack1(radar_hpaned, true, true)
       vpaned.pack2(sw, false, true)
 
       #@cvpaned = CaptchaHPaned.new(vpaned)
@@ -20597,15 +20596,12 @@ module PandoraGtk
       add_status_field(SF_Fisher, '0', :fish) do
         do_menu_act('Fisher')
       end
-      add_status_field(SF_Fish, '0', :radar, false) do
-        do_menu_act('Neighbor')
+      add_status_field(SF_Radar, '0', :radar, false) do
+        do_menu_act('Radar')
       end
       add_status_field(SF_Conn, '0', :session) do
         do_menu_act('Session')
       end
-      #add_status_field(SF_Notice, '-') do
-      #  do_menu_act('Notice')
-      #end
       add_status_field(SF_Harvest, '0', :blob) do
         do_menu_act('Blob')
       end
@@ -20614,8 +20610,7 @@ module PandoraGtk
       end
       resize_eb = Gtk::EventBox.new
       resize_eb.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
-        | Gdk::Event::ENTER_NOTIFY_MASK | Gdk::Event::LEAVE_NOTIFY_MASK \
-        | Gdk::Event::VISIBILITY_NOTIFY_MASK
+        | Gdk::Event::ENTER_NOTIFY_MASK | Gdk::Event::LEAVE_NOTIFY_MASK
       resize_eb.signal_connect('enter-notify-event') do |widget, param|
         window = widget.window
         window.cursor = Gdk::Cursor.new(Gdk::Cursor::BOTTOM_RIGHT_CORNER)
@@ -20660,7 +20655,7 @@ module PandoraGtk
       $window.register_stock(:resize)
       resize_image = Gtk::Image.new(:resize, Gtk::IconSize::MENU)
       resize_image.set_padding(0, 0)
-      resize_image.set_alignment(1, 1)
+      resize_image.set_alignment(1.0, 1.0)
       resize_eb.add(resize_image)
       $statusbar.pack_start(resize_eb, false, false, 0)
 
@@ -20816,7 +20811,7 @@ module PandoraGtk
       $window.maximize
       $window.show_all
 
-      @fish_hpaned.position = @fish_hpaned.max_position
+      @radar_hpaned.position = @radar_hpaned.max_position
 
       #------next must be after show main form ---->>>>
 
