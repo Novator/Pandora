@@ -10503,6 +10503,7 @@ module PandoraGtk
           buf = $window.get_icon_buf(smile, preset)
           aimage = Gtk::Image.new(buf)
           btn = Gtk::ToolButton.new(aimage, smile)
+          btn.tooltip_text = smile
           btn.signal_connect('clicked') do |widget|
             @on_click_btn.call(preset, widget.label)
           end
