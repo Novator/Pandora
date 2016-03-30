@@ -135,6 +135,7 @@
     </Contract>
 
     <Advertisement parent="Blob" kind="80">
+      <name name="Head" />
       <blob name="Body" />
     </Advertisement>
 

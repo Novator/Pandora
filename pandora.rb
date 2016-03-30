@@ -5555,8 +5555,8 @@ module PandoraNet
   ES_Puzzle       = 3
   ES_KeyRequest   = 4
   ES_Sign         = 5
-  ES_Captcha      = 6
-  ES_Greeting     = 7
+  ES_Greeting     = 6
+  ES_Captcha      = 7
   ES_Exchange     = 8
 
   # Max recv pack size for stadies
@@ -6667,6 +6667,12 @@ module PandoraNet
       end
     end
 
+    def hunter?
+      res = nil
+      res = ((@conn_mode & CM_Hunter)>0) if (@conn_mode.is_a? Integer)
+      res
+    end
+
     # Unpack command
     # RU: Распаковать команду
     def unpack_comm(comm)
@@ -7113,7 +7119,7 @@ module PandoraNet
         skey_panhash = params['srckey']
         if (skey_panhash.is_a? String) and (skey_panhash.bytesize>0)
           if first and (@stage == ES_Protocol) and $puzzle_bit_length \
-          and ($puzzle_bit_length>0) and ((@conn_mode & CM_Hunter) == 0)
+          and ($puzzle_bit_length>0) and (not hunter?)
             # first need to puzzle
             phrase, init = get_sphrase(true)
             phrase[-1] = $puzzle_bit_length.chr
@@ -7612,9 +7618,10 @@ module PandoraNet
 
       case rcmd
         when EC_Auth
-          if @stage<=ES_Greeting
+          if @stage<=ES_Captcha
             if rcode<=ECC_Auth_Answer
               if (rcode==ECC_Auth_Hello) and ((@stage==ES_Protocol) or (@stage==ES_Sign))
+              #ECC_Auth_Hello
                 recognize_params
                 if scmd != EC_Bye
                   vers = params['version']
@@ -7633,6 +7640,7 @@ module PandoraNet
                 end
               elsif ((rcode==ECC_Auth_Puzzle) or (rcode==ECC_Auth_Phrase)) \
               and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
+              #ECC_Auth_Puzzle, ECC_Auth_Phrase
                 if rdata and (rdata != '')
                   rphrase = rdata
                   params['rphrase'] = rphrase
@@ -7642,7 +7650,7 @@ module PandoraNet
                 p log_mes+'recived phrase len='+rphrase.bytesize.to_s
                 if rphrase and (rphrase != '')
                   if rcode==ECC_Auth_Puzzle  #phrase for puzzle
-                    if ((@conn_mode & CM_Hunter) == 0)
+                    if (not hunter?)
                       err_scmd('Puzzle to listener is denied')
                     else
                       delay = rphrase[-2].ord
@@ -7683,6 +7691,7 @@ module PandoraNet
                   err_scmd('Empty received phrase')
                 end
               elsif (rcode==ECC_Auth_Answer) and (@stage==ES_Puzzle)
+              #ECC_Auth_Answer
                 interval = nil
                 if $puzzle_sec_delay>0
                   start_time = params['puzzle_start']
@@ -7700,16 +7709,41 @@ module PandoraNet
                     err_scmd('Wrong sha1 solution')
                   end
                 end
+              elsif (rcode==ECC_Auth_Answer) and (@stage==ES_Captcha)
+              #ECC_Auth_Answer
+                captcha = rdata
+                p log_mes+'recived captcha='+captcha if captcha
+                if captcha.downcase==params['captcha']
+                  @stage = ES_Greeting
+                  if not (@skey[PandoraCrypto::KV_Trust].is_a? Float)
+                    if $trust_for_captchaed
+                      @skey[PandoraCrypto::KV_Trust] = 0.01
+                    else
+                      @skey[PandoraCrypto::KV_Trust] = nil
+                    end
+                  end
+                  p log_mes+'Captcha is GONE!  '+@conn_mode.inspect
+                  if not hunter?
+                    p log_mes+'Captcha add_send_segment params[srckey]='+params['srckey'].inspect
+                    add_send_segment(EC_Auth, true, params['srckey'])
+                  end
+                  @scmd = EC_Data
+                  @scode = 0
+                  @sbuf = nil
+                else
+                  send_captcha
+                end
               elsif (rcode==ECC_Auth_Sign) and (@stage==ES_Sign)
+              #ECC_Auth_Sign
                 len = rdata[0].ord
                 sbase_id = rdata[1, len]
                 rsign = rdata[len+1..-1]
-                #p log_mes+'recived rsign len='+rsign.bytesize.to_s
+                p log_mes+'recived rsign len='+rsign.bytesize.to_s
                 @skey = PandoraCrypto.open_key(@skey, @recv_models, true)
                 if @skey and @skey[PandoraCrypto::KV_Obj]
                   if PandoraCrypto.verify_sign(@skey, OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
                     creator = PandoraCrypto.current_user_or_key(true)
-                    if ((@conn_mode & CM_Hunter) != 0) or (not @skey[PandoraCrypto::KV_Creator]) \
+                    if hunter? or (not @skey[PandoraCrypto::KV_Creator]) \
                     or (@skey[PandoraCrypto::KV_Creator] != creator)
                       # check messages if it's not session to myself
                       @send_state = (@send_state | CSF_Message)
@@ -7720,7 +7754,7 @@ module PandoraNet
                       @skey[PandoraCrypto::KV_Panhash], sbase_id)
 
                     if ((@conn_mode & CM_Double) == 0)
-                      if ((@conn_mode & CM_Hunter) == 0)
+                      if (not hunter?)
                         trust = 0 if (not trust) and $trust_for_captchaed
                       elsif $trust_for_listener and (not (trust.is_a? Float))
                         trust = 0.01
@@ -7728,7 +7762,7 @@ module PandoraNet
                       end
                       p log_mes+'----trust='+trust.inspect
                       if ($captcha_length>0) and (trust.is_a? Integer) \
-                      and ((@conn_mode & CM_Hunter) == 0) and ((@sess_mode & CM_Captcha)>0)
+                      and (not hunter?) and ((@sess_mode & CM_Captcha)>0)
                         @skey[PandoraCrypto::KV_Trust] = 0
                         send_captcha
                       elsif trust.is_a? Float
@@ -7744,7 +7778,7 @@ module PandoraNet
                                 @to_base_id, not_trust, not_dep, nick)
                             end
                           end
-                          if (@conn_mode & CM_Hunter) == 0
+                          if not hunter?
                             @stage = ES_Greeting
                             add_send_segment(EC_Auth, true, params['srckey'])
                             set_max_pack_size(ES_Sign)
@@ -7772,6 +7806,7 @@ module PandoraNet
                   err_scmd('Cannot init your key')
                 end
               elsif (rcode==ECC_Auth_Simple) and (@stage==ES_Protocol)
+              #ECC_Auth_Simple
                 p 'ECC_Auth_Simple!'
                 rphrase = rdata
                 #p 'rphrase='+rphrase.inspect
@@ -7788,8 +7823,9 @@ module PandoraNet
                 end
               elsif (rcode==ECC_Auth_Captcha) and ((@stage==ES_Protocol) \
               or (@stage==ES_Greeting))
+              #ECC_Auth_Captcha
                 p log_mes+'CAPTCHA!!!  ' #+params.inspect
-                if ((@conn_mode & CM_Hunter) == 0)
+                if not hunter?
                   err_scmd('Captcha for listener is denied')
                 else
                   clue_length = rdata[0].ord
@@ -7797,8 +7833,9 @@ module PandoraNet
                   captcha_buf = rdata[clue_length+1..-1]
 
                   if $window.visible? #and $window.has_toplevel_focus?
+                    panhashes = [@skey[PandoraCrypto::KV_Panhash], @skey[PandoraCrypto::KV_Creator]]
                     entered_captcha, dlg = PandoraGtk.show_captcha(captcha_buf, \
-                      clue_text, conn_type, @node, @node_id, @recv_models)
+                      clue_text, conn_type, @node, @node_id, @recv_models, panhashes)
                     @dialog ||= dlg
                     @dialog.set_session(self, true) if @dialog
                     if entered_captcha
@@ -7816,31 +7853,8 @@ module PandoraNet
                     err_scmd('User is away')
                   end
                 end
-              elsif (rcode==ECC_Auth_Answer) and (@stage==ES_Captcha)
-                captcha = rdata
-                p log_mes+'recived captcha='+captcha if captcha
-                if captcha.downcase==params['captcha']
-                  @stage = ES_Greeting
-                  if not (@skey[PandoraCrypto::KV_Trust].is_a? Float)
-                    if $trust_for_captchaed
-                      @skey[PandoraCrypto::KV_Trust] = 0.01
-                    else
-                      @skey[PandoraCrypto::KV_Trust] = nil
-                    end
-                  end
-                  p log_mes+'Captcha is GONE!  '+@conn_mode.inspect
-                  if (@conn_mode & CM_Hunter) == 0
-                    p log_mes+'Captcha add_send_segment params[srckey]='+params['srckey'].inspect
-                    add_send_segment(EC_Auth, true, params['srckey'])
-                  end
-                  @scmd = EC_Data
-                  @scode = 0
-                  @sbuf = nil
-                else
-                  send_captcha
-                end
               else
-                err_scmd('Wrong stage for rcode')
+                err_scmd('Wrong rcode for stage')
               end
             else
               err_scmd('Unknown rcode')
@@ -7942,14 +7956,6 @@ module PandoraNet
           else
             err_scmd('Records came on wrong stage')
           end
-        when EC_Lure
-          p log_mes+'EC_Lure'
-          send_segment_to_fish(rcode, rdata, true)
-          #sleep 2
-        when EC_Bite
-          p log_mes+'EC_Bite'
-          send_segment_to_fish(rcode, rdata)
-          #sleep 2
         when EC_Sync
           case rcode
             when ECC_Sync1_NoRecord
@@ -8008,8 +8014,8 @@ module PandoraNet
                 p log_mes+'EC_Message  dialog='+@dialog.inspect
                 if (not @dialog) or @dialog.destroyed?
                   @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
-                  panhash = @skey[PandoraCrypto::KV_Creator]
-                  @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash, conn_type)
+                  panhashes = [@skey[PandoraCrypto::KV_Panhash], @skey[PandoraCrypto::KV_Creator]]
+                  @dialog = PandoraGtk.show_talk_dialog(panhashes, @node_panhash, conn_type)
                   Thread.pass
                   #PandoraUtils.play_mp3('online')
                 end
@@ -8113,6 +8119,14 @@ module PandoraNet
                 end
               when EC_Media
                 process_media_segment(rcode, rdata)
+              when EC_Lure
+                p log_mes+'EC_Lure'
+                send_segment_to_fish(rcode, rdata, true)
+                #sleep 2
+              when EC_Bite
+                p log_mes+'EC_Bite'
+                send_segment_to_fish(rcode, rdata)
+                #sleep 2
               when EC_Query
                 case rcode
                   when ECC_Query_Rel
@@ -8622,7 +8636,7 @@ module PandoraNet
             sess_hook2, rec2 = sess.reg_line(nil, self, nil, sess_hook, fhook)
             if sess_hook2
               #add_hook(asocket, ahost_name)
-              if (@conn_mode & CM_Hunter)>0
+              if hunter?
                 p 'крючок рыбака '+sess_hook.inspect
                 PandoraUtils.log_message(LM_Info, _('Active fisher')+': [sess, hook]='+\
                   [sess.object_id, sess_hook].inspect)
@@ -8722,7 +8736,7 @@ module PandoraNet
 
 
           if @socket
-            if ((@conn_mode & CM_Hunter) == 0)
+            if not hunter?
               PandoraUtils.log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
             else
               PandoraUtils.log_message(LM_Info, _('Connected to listener')+': '+server)
@@ -8772,7 +8786,7 @@ module PandoraNet
 
             @max_pack_size = MPS_Proto
             @log_mes = 'LIS: '
-            if (@conn_mode & CM_Hunter)>0
+            if hunter?
               @log_mes = 'HUN: '
               @max_pack_size = MPS_Captcha
               add_send_segment(EC_Auth, true, to_key)
@@ -9082,7 +9096,7 @@ module PandoraNet
                     mypanhash = PandoraCrypto.current_user_or_key(true)
                     receiver = @skey[PandoraCrypto::KV_Creator]
                     if (receiver.is_a? String) and (receiver.bytesize>0) \
-                    and (((@conn_mode & CM_Hunter) != 0) or (mypanhash != receiver))
+                    and (hunter? or (mypanhash != receiver))
                       filter = {'destination'=>receiver, 'state'=>1}
                       message_model.update({:state=>0}, nil, filter)
                     end
@@ -9440,7 +9454,7 @@ module PandoraNet
               p log_mes+'closed!'
             end
             if socket.is_a? IPSocket
-              if ((@conn_mode & CM_Hunter) == 0)
+              if not hunter?
                 PandoraUtils.log_message(LM_Info, _('Hunter disconnects')+': '+@host_ip.inspect)
               else
                 PandoraUtils.log_message(LM_Info, _('Disconnected from listener')+': '+@host_ip.inspect)
@@ -9575,6 +9589,7 @@ module PandoraNet
   $tcp_listen_thread = nil
   $udp_listen_thread = nil
 
+  $udp_port = nil
   UdpHello = 'pandora:hello:'
 
   def self.listen?
@@ -9698,10 +9713,8 @@ module PandoraNet
 
         # UDP Listener
         udp_port = $udp_port
-        if not udp_port
-          udp_port = PandoraUtils.get_param('udp_port')
-          udp_port ||= 5577
-        end
+        udp_port ||= PandoraUtils.get_param('udp_port')
+        udp_port ||= 5577
         $udp_listen_thread = Thread.new do
           # Init UDP listener
           begin
@@ -9741,9 +9754,12 @@ module PandoraNet
                   udp_server = $udp_listen_thread[:udp_server]
                   if udp_server and (not udp_server.closed?)
                     begin
-                      udp_server.send(hello, 0, '<broadcast>', $udp_port)
+                      udp_server.send(hello, 0, '<broadcast>', udp_port)
+                      PandoraUtils.log_message(LM_Trace, \
+                        'UDP '+_('broadcast to ports')+' '+udp_port.to_s)
                     rescue => err
-                      p 'Cannot send UDP-broadcast: '+err.message
+                      PandoraUtils.log_message(LM_Trace, \
+                        _('Cannot send')+' UDP '+_('broadcast to ports')+' '+udp_port.to_s)
                     end
                   end
                 end
@@ -9760,10 +9776,11 @@ module PandoraNet
               data = addr = nil
             end
             #data, addr = udp_server.recvfrom_nonblock(2000)
+            udp_hello_len = UdpHello.bytesize
             p 'Received UDP-pack ['+data.inspect+'] addr='+addr.inspect
-            if (data.is_a? String) and (data.bytesize > UdpHello.bytesize) \
-            and (data[0, UdpHello.bytesize] == UdpHello)
-              data = data[UdpHello.bytesize..-1]
+            if (data.is_a? String) and (data.bytesize > udp_hello_len) \
+            and (data[0, udp_hello_len] == UdpHello)
+              data = data[udp_hello_len..-1]
               far_ip = addr[3]
               far_port = addr[1]
               hash = PandoraUtils.namepson_to_hash(data)
@@ -16133,7 +16150,7 @@ module PandoraGtk
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
         $window.pool.sessions.each do |session|
-          hunter = ((session.conn_mode & PandoraNet::CM_Hunter)>0)
+          hunter = session.hunter?
           if ((hunted_btn.active? and (not hunter)) \
           or (hunters_btn.active? and hunter) \
           or (fishers_btn.active? and session.active_hook))
@@ -18513,13 +18530,13 @@ module PandoraGtk
   # Show capcha
   # RU: Показать капчу
   def self.show_captcha(captcha_buf=nil, clue_text=nil, conntype=nil, node=nil, \
-  node_id=nil, models=nil)
+  node_id=nil, models=nil, panhashes=nil)
     res = nil
     sw = nil
     p '--recognize_captcha(captcha_buf.size, clue_text, node, node_id, models)='+\
       [captcha_buf.size, clue_text, node, node_id, models].inspect
     if captcha_buf
-      sw = show_talk_dialog(nil, false, conntype, node_id, models)
+      sw = PandoraGtk.show_talk_dialog(panhashes, @node_panhash, conntype, node_id, models)
       if sw
         clue_text ||= ''
         clue, length, symbols = clue_text.split('|')
@@ -18566,8 +18583,8 @@ module PandoraGtk
     targets = [[], [], []]
     persons, keys, nodes = targets
     if nodehash and (panhashes.is_a? String)
-      persons << panhashes
-      nodes << nodehash
+      persons.concat(panhashes)
+      nodes.concat(nodehash)
     else
       extract_targets_from_panhash(targets, panhashes)
     end

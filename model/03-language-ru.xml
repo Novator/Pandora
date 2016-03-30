@@ -115,7 +115,8 @@
     </Contract>
 
     <Advertisement name.ru="Объявление">
-      <blob name.ru="Тело" />
+      <name name.ru="Заголовок" />
+      <blob name.ru="Текст" />
     </Advertisement>
 
     <Order name.ru="Заказ|Заказы">
