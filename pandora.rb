@@ -7741,7 +7741,8 @@ module PandoraNet
                 p log_mes+'recived rsign len='+rsign.bytesize.to_s
                 @skey = PandoraCrypto.open_key(@skey, @recv_models, true)
                 if @skey and @skey[PandoraCrypto::KV_Obj]
-                  if PandoraCrypto.verify_sign(@skey, OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
+                  if PandoraCrypto.verify_sign(@skey, \
+                  OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
                     creator = PandoraCrypto.current_user_or_key(true)
                     if hunter? or (not @skey[PandoraCrypto::KV_Creator]) \
                     or (@skey[PandoraCrypto::KV_Creator] != creator)
