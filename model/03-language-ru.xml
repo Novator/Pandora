@@ -67,7 +67,7 @@
     </Contact>
 
     <Word name.ru="Слово|Слова">
-      <name name.ru="Написание" />
+      <name name.ru="Название" />
       <description name.ru="Описание" />
     </Word>
 

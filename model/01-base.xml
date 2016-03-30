@@ -55,7 +55,7 @@
 
     <Street name="Street|Streets" kind="5">
       <city name="City" type="Panhash(City)" hash="1:coord(4)" />
-      <name name="Name" type="String" size="128" hash="1:phash(16)" />
+      <name name="Name" type="String" size="128" hash="1:hash(16)" />
     </Street>
 
     <Address name="Address|Addresses" kind="6">
@@ -71,8 +71,8 @@
     </Contact>
 
     <Word name="Word|Words" kind="10">
-      <name name="Name" type="String" size="64" />
-      <description name="Description" type="Text" />
+      <name name="Name" type="String" size="64" hash="1:hash(14)" />
+      <description name="Description" type="Text" hash="2:hash(6)" />
     </Word>
 
     <Blob name="File|Files" parent="Created" kind="12">
