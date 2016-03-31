@@ -3983,7 +3983,7 @@ module PandoraModel
     res ||= 0
   end
 
-  # Realtion kinds
+  # Relation kinds
   # RU: Виды связей
   RK_Unknown  = 0
   RK_Equal    = 1
@@ -10560,8 +10560,12 @@ module PandoraGtk
           focus_btn = btn if i==0
           btn.signal_connect('clicked') do |widget|
             btn.grab_focus
+            screen, x, y, mask = Gdk::Display.default.pointer
+            clear_click = (((mask & Gdk::Window::SHIFT_MASK.to_i) == 0) \
+              and ((mask & Gdk::Window::CONTROL_MASK.to_i) == 0) \
+              and ((mask & Gdk::Window::MOD1_MASK.to_i) == 0))
             @on_click_btn.call(preset, widget.label)
-            if not @poly_btn.active?
+            if clear_click and (not @poly_btn.active?)
               @just_leaved = nil
               @popwin.hide
             end
@@ -20715,7 +20719,8 @@ module PandoraGtk
           PandoraNet.start_or_stop_hunt(continue)
         elsif event.keyval == Gdk::Keyval::GDK_F5
           do_menu_act('Hunt')
-        elsif event.state.control_mask? and (Gdk::Keyval::GDK_0..Gdk::Keyval::GDK_9).include?(event.keyval)
+        elsif event.state.control_mask? \
+        and (Gdk::Keyval::GDK_0..Gdk::Keyval::GDK_9).include?(event.keyval)
           num = $window.notebook.n_pages
           if num>0
             n = (event.keyval - Gdk::Keyval::GDK_1)
