@@ -3932,26 +3932,55 @@ module PandoraModel
   Languages = {0=>'all', 1=>'en', 2=>'zh', 3=>'es', 4=>'hi', 5=>'ru', 6=>'ar', \
     7=>'fr', 8=>'pt', 9=>'ja', 10=>'de', 11=>'ko', 12=>'it', 13=>'be', 14=>'id'}
 
+  $lang_code_list = nil
+
+  # Alpha-2 and Pancode codes of languages
+  # RU: Коды языков Альфа-2 и панкод
+  def self.lang_code_list(update=nil)
+    if (not $lang_code_list) or update
+      $lang_code_list = Languages.dup
+      lang_model = PandoraUtils.get_model('Language')
+      sel = lang_model.select(nil, false, 'pancode, alfa2', 'pancode ASC')
+      if sel and (sel.size>0)
+        sel.each do |row|
+          pancode = row[0]
+          alfa2 = row[1]
+          if (pancode and alfa2)
+            pancode = pancode.to_i
+            $lang_code_list[pancode] ||= alfa2
+          end
+        end
+      end
+    end
+    $lang_code_list
+  end
+
+  $lang_list = nil
+
   # Alpha-2 codes of languages
   # RU: Коды языков Альфа-2
-  def self.lang_list
-    res = Languages.values
+  def self.lang_list(update=nil)
+    if (not $lang_list) or update
+      lcl = lang_code_list(update)
+      $lang_list = lcl.values
+    end
+    $lang_list
   end
 
-  # Get Alpha-2 with language code
-  # RU: Взять Альфа-2 по коду языка
+  # Get Alpha-2 with pancode of language
+  # RU: Взять Альфа-2 по панкоду языка
   def self.lang_to_text(lang)
-    res = Languages[lang]
+    res = lang_code_list[lang]
     res ||= ''
   end
 
-  # Get language code with Alpha-2
-  # RU: Взять код языка по Альфа-2
+  # Get language pancode with Alpha-2
+  # RU: Взять панкод языка по Альфа-2
   def self.text_to_lang(text)
-    text.downcase! if text.is_a? String
-    res = Languages.detect{ |n,v| v==text }
+    text = text.downcase if text.is_a? String
+    res = lang_code_list.detect{ |n,v| v==text }
     res = res[0] if res
-    res ||= ''
+    res ||= 0
   end
 
   # Realtion kinds
@@ -5442,6 +5471,9 @@ module PandoraNet
 
   include PandoraUtils
 
+  DefTcpPort = 5577
+  DefUdpPort = 5577
+
   # Network exchange comands
   # RU: Команды сетевого обмена
   EC_Media     = 0     # Медиа данные
@@ -6578,7 +6610,7 @@ module PandoraNet
         proto = node[node.size-3, 3]
       else
         host = node
-        port = 5577
+        port = PandoraNet::DefTcpPort
         proto = 'tcp'
       end
       [host, port, proto]
@@ -7276,7 +7308,7 @@ module PandoraNet
           #p log_mes+'ADDR [addr, host, port, proto]='+[addr, host, port, proto].inspect
           if host and (host != '') and ((not adomain) or (adomain=='')) #and trusted
             adomain = host
-            port = 5577 if (not port) or (port==0)
+            port = PandoraNet::DefTcpPort if (not port) or (port==0)
             proto ||= ''
             atport = port if (proto != 'udp')
             auport = port if (proto != 'tcp')
@@ -7325,7 +7357,7 @@ module PandoraNet
           @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
           #node = PandoraNet.encode_addr(host_ip, port, proto)
           panhash = @skey[PandoraCrypto::KV_Creator]
-          @dialog = PandoraGtk.show_talk_dialog(panhash, @node_panhash, conn_type)
+          @dialog = PandoraGtk.show_dialog(panhash, self, @node_panhash, conn_type)
           dialog.update_state(true)
           Thread.pass
           #PandoraUtils.play_mp3('online')
@@ -7834,9 +7866,9 @@ module PandoraNet
                   captcha_buf = rdata[clue_length+1..-1]
 
                   if $window.visible? #and $window.has_toplevel_focus?
-                    panhashes = [@skey[PandoraCrypto::KV_Panhash], @skey[PandoraCrypto::KV_Creator]]
+                    #panhashes = [@skey[PandoraCrypto::KV_Panhash], @skey[PandoraCrypto::KV_Creator]]
                     entered_captcha, dlg = PandoraGtk.show_captcha(captcha_buf, \
-                      clue_text, conn_type, @node, @node_id, @recv_models, panhashes)
+                      clue_text, conn_type, @node, @node_id, @recv_models, nil, self)
                     @dialog ||= dlg
                     @dialog.set_session(self, true) if @dialog
                     if entered_captcha
@@ -7845,7 +7877,7 @@ module PandoraNet
                       @sbuf = entered_captcha
                       p log_mes + 'CAPCHA ANSWER setted: '+entered_captcha.inspect
                     elsif entered_captcha.nil?
-                      err_scmd('Cannot open dialog')
+                      err_scmd('Cannot open captcha dialog')
                     else
                       err_scmd('Captcha enter canceled')
                       @conn_mode = (@conn_mode & (~PandoraNet::CM_Keep))
@@ -8016,7 +8048,7 @@ module PandoraNet
                 if (not @dialog) or @dialog.destroyed?
                   @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
                   panhashes = [@skey[PandoraCrypto::KV_Panhash], @skey[PandoraCrypto::KV_Creator]]
-                  @dialog = PandoraGtk.show_talk_dialog(panhashes, @node_panhash, conn_type)
+                  @dialog = PandoraGtk.show_dialog(panhashes, self, @node_panhash, conn_type)
                   Thread.pass
                   #PandoraUtils.play_mp3('online')
                 end
@@ -8667,7 +8699,7 @@ module PandoraNet
             host = ahost_ip if ((not host) or (host == ''))
 
             port = aport
-            port ||= 5577
+            port ||= PandoraNet::DefTcpPort
             port = port.to_i
 
             @conn_state = CS_Connecting
@@ -9667,10 +9699,8 @@ module PandoraNet
 
         # TCP Listener
         tcp_port = $tcp_port
-        if not tcp_port
-          tcp_port = PandoraUtils.get_param('tcp_port')
-          tcp_port ||= 5577
-        end
+        tcp_port ||= PandoraUtils.get_param('tcp_port')
+        tcp_port ||= PandoraNet::DefTcpPort
         $tcp_listen_thread = Thread.new do
           begin
             server = TCPServer.open(host, tcp_port)
@@ -9715,7 +9745,7 @@ module PandoraNet
         # UDP Listener
         udp_port = $udp_port
         udp_port ||= PandoraUtils.get_param('udp_port')
-        udp_port ||= 5577
+        udp_port ||= PandoraNet::DefUdpPort
         $udp_listen_thread = Thread.new do
           # Init UDP listener
           begin
@@ -9754,13 +9784,14 @@ module PandoraNet
                 if $udp_listen_thread
                   udp_server = $udp_listen_thread[:udp_server]
                   if udp_server and (not udp_server.closed?)
+                    rcv_udp_port = PandoraNet::DefUdpPort
                     begin
-                      udp_server.send(hello, 0, '<broadcast>', udp_port)
+                      udp_server.send(hello, 0, '<broadcast>', rcv_udp_port)
                       PandoraUtils.log_message(LM_Trace, \
-                        'UDP '+_('broadcast to ports')+' '+udp_port.to_s)
+                        'UDP '+_('broadcast to ports')+' '+rcv_udp_port.to_s)
                     rescue => err
                       PandoraUtils.log_message(LM_Trace, \
-                        _('Cannot send')+' UDP '+_('broadcast to ports')+' '+udp_port.to_s)
+                        _('Cannot send')+' UDP '+_('broadcast to ports')+' '+rcv_udp_port.to_s)
                     end
                   end
                 end
@@ -9894,7 +9925,7 @@ module PandoraNet
                   person = nil
                   panhash = row[4]
                   base_id = row[5]
-                  tport = 5577 if (not tport) or (tport==0) or (tport=='')
+                  tport = PandoraNet::DefTcpPort if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
                   addr = $window.pool.encode_addr(domain, tport, 'tcp')
                   if Thread.current[:active]
@@ -10373,7 +10404,7 @@ module PandoraGtk
 
       def @entry.key_event(widget, event)
         res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
-          and (event.keyval==65364)))
+          and (event.keyval==65364)))  # Space, Shift+Down or Alt+Down
         @button.activate if res
         false
       end
@@ -10496,7 +10527,8 @@ module PandoraGtk
   # Smile choose box
   # RU: Поле выбора смайлов
   class SmileButton < Gtk::ToolButton
-    attr_accessor :preset, :close_on_enter, :on_click_btn, :popwin, :root_vbox
+    attr_accessor :preset, :close_on_enter, :on_click_btn, :popwin, :root_vbox, \
+      :poly_btn
 
     def renew_smile_box(apreset=nil)
       @preset = apreset if apreset
@@ -10504,13 +10536,14 @@ module PandoraGtk
 
       vbox = Gtk::VBox.new
       icon_params, icon_file_desc = $window.get_icon_file_params(preset)
+      focus_btn = nil
       if icon_params and (icon_params.size>0)
         popwin.resize(100, 100)
         row = 0
         col = 0
         max_col = Math.sqrt(icon_params.size).round
         hbox = Gtk::HBox.new
-        icon_params.each do |smile|
+        icon_params.each_with_index do |smile, i|
           if col>max_col
             vbox.pack_start(hbox, false, false, 0)
             hbox = Gtk::HBox.new
@@ -10521,9 +10554,39 @@ module PandoraGtk
           buf = $window.get_icon_buf(smile, preset)
           aimage = Gtk::Image.new(buf)
           btn = Gtk::ToolButton.new(aimage, smile)
+          btn.set_can_focus(true)
           btn.tooltip_text = smile
+          #btn.events = Gdk::Event::ALL_EVENTS_MASK
+          focus_btn = btn if i==0
           btn.signal_connect('clicked') do |widget|
+            btn.grab_focus
             @on_click_btn.call(preset, widget.label)
+            if not @poly_btn.active?
+              @just_leaved = nil
+              @popwin.hide
+            end
+            false
+          end
+          btn.signal_connect('key-press-event') do |widget, event|
+            res = false
+            if [Gdk::Keyval::GDK_space, Gdk::Keyval::GDK_KP_Space].include?(event.keyval)
+              @on_click_btn.call(preset, widget.label)
+              res = true
+            elsif [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+              @on_click_btn.call(preset, widget.label)
+              @just_leaved = nil
+              @popwin.hide
+              res = true
+            end
+            res
+          end
+          btn.signal_connect('expose-event') do |widget, event|
+            if widget.focus?   #STATE_PRELIGHT
+              widget.style.paint_focus(widget.window, Gtk::STATE_NORMAL, \
+                event.area, widget, '', event.area.x+1, event.area.y+1, \
+                event.area.width-2, event.area.height-2)
+            end
+            false
           end
           hbox.pack_start(btn, true, true, 0)
         end
@@ -10531,7 +10594,7 @@ module PandoraGtk
         vbox.show_all
       end
       @smile_box.add(vbox)
-      move_and_show if apreset
+      move_and_show(focus_btn) if apreset
     end
 
     def get_popwidget
@@ -10574,7 +10637,7 @@ module PandoraGtk
       root_vbox
     end
 
-    def move_and_show
+    def move_and_show(focus_btn=nil)
       borig = self.window.origin
       brect = self.allocation.to_a
 
@@ -10591,6 +10654,7 @@ module PandoraGtk
       popwin.move(x, y)
       popwin.show_all
       popwin.present
+      focus_btn.grab_focus if focus_btn
     end
 
     def initialize(apreset='vk', *args)
@@ -10600,18 +10664,14 @@ module PandoraGtk
       apreset ||= 'vk'
       @preset = apreset
       @close_on_enter = true
+      @just_leaved = false
 
       @on_click_btn = Proc.new do |*args|
         yield(*args) if block_given?
-        if not @poly_btn.active?
-          #@popwin.destroy
-          #@popwin = nil
-          @popwin.hide
-        end
       end
 
       signal_connect('clicked') do |*args|
-        if @popwin and (not @popwin.destroyed?) and @popwin.visible?
+        if @popwin and (not @popwin.destroyed?) and (@popwin.visible? or @just_leaved)
           #@popwin.destroy
           #@popwin = nil
           @popwin.hide
@@ -10629,32 +10689,40 @@ module PandoraGtk
             popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
 
             popwin.signal_connect('focus-out-event') do |win, event|
-              GLib::Timeout.add(140) do
-                if not popwin.destroyed?
+              if not @just_leaved.nil?
+                @just_leaved = true
+                if not @popwin.destroyed?
                   #@popwin.destroy
                   #@popwin = nil
                   @popwin.hide
                 end
-                false
+                GLib::Timeout.add(500) do
+                  @just_leaved = false if not popwin.destroyed?
+                  false
+                end
               end
               false
             end
 
             popwin.signal_connect('key-press-event') do |widget, event|
-              if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-                if @close_on_enter
-                  #@popwin.destroy
-                  #@popwin = nil
-                  @popwin.hide
-                end
-                false
-              elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+              if (event.keyval==Gdk::Keyval::GDK_Escape) or \
                 ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
                 event.keyval) and event.state.control_mask?) #w, W, ц, Ц
               then
+                @just_leaved = nil
                 #@popwin.destroy
                 #@popwin = nil
                 @popwin.hide
+                false
+              elsif (event.keyval==Gdk::Keyval::GDK_Tab)
+                if preset=='qip'
+                  @vk_btn.do_on_click
+                else
+                  @qip_btn.do_on_click
+                end
+                true
+              elsif [Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769].include?(event.keyval)
+                @poly_btn.set_active((not @poly_btn.active?))
                 false
               elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
                 event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
@@ -10671,7 +10739,9 @@ module PandoraGtk
             end
           end
           move_and_show
+          @poly_btn.set_active(false)
         end
+        @just_leaved = false
         false
       end
     end
@@ -14251,7 +14321,7 @@ module PandoraGtk
         talkview.after_addition(true)
         talkview.show_all
 
-        @captcha_entry.grab_focus
+        PandoraGtk.hack_grab_focus(@captcha_entry)
       end
     end
 
@@ -14477,6 +14547,9 @@ module PandoraGtk
         elsif (Gdk::Keyval::GDK_Escape==event.keyval)
           editbox.buffer.text = ''
           false
+        elsif ((event.state.shift_mask? or event.state.mod1_mask?) \
+        and (event.keyval==65364))  # Shift+Down or Alt+Down
+          smile_btn.clicked
         elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
         and event.state.control_mask?) #x, X, ч, Ч
           crypt_btn.active = (not crypt_btn.active?)
@@ -14491,7 +14564,7 @@ module PandoraGtk
         end
       end
 
-      PandoraGtk.hack_enter_bug(editbox)
+      #PandoraGtk.hack_enter_bug(editbox)
 
       hpaned2 = Gtk::HPaned.new
       @area_send = ViewDrawingArea.new
@@ -14656,7 +14729,7 @@ module PandoraGtk
       load_history($load_history_count, $sort_history_mode)
 
       $window.notebook.page = $window.notebook.n_pages-1 if not known_node
-      editbox.grab_focus
+      #editbox.grab_focus
     end
 
     # Put message to dialog
@@ -16069,6 +16142,50 @@ module PandoraGtk
     end
   end
 
+  # Common chat
+  # RU: Общий чат
+  class ChatScrollWin < Gtk::ScrolledWindow
+    attr_accessor :panhash, :talkview
+
+    include PandoraGtk
+
+    # Show conversation dialog
+    # RU: Показать диалог общения
+    def initialize(apanhash)
+      super(nil, nil)
+      @panhash = apanhash
+
+      @talkview = PandoraGtk::SuperTextView.new
+      talkview.set_readonly(true)
+      talkview.set_size_request(200, 200)
+      talkview.wrap_mode = Gtk::TextTag::WRAP_WORD
+
+      self.add(talkview)
+
+      aname, afamily = PandoraCrypto.name_and_family_of_person(nil, panhash)
+      title = aname
+      title ||= afamily
+      title ||= _('Chat')
+      image = nil
+      pixbuf = PandoraModel.get_avatar_icon(panhash, self, false)
+      image = Gtk::Image.new(pixbuf) if pixbuf
+      image ||= $window.get_preset_image('chat')
+      image ||= Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU)
+      image.set_padding(2, 0)
+      label_box = TabLabelBox.new(image, title, self, false, 0) do
+        #do on close
+      end
+      page = $window.notebook.append_page(self, label_box)
+      $window.notebook.set_tab_reorderable(self, true)
+
+      show_all
+
+      #load_history($load_history_count, $sort_history_mode)
+      $window.notebook.page = $window.notebook.n_pages-1
+    end
+
+  end
+
   # Profile panel
   # RU: Панель профиля
   class ProfileScrollWin < Gtk::ScrolledWindow
@@ -16438,19 +16555,10 @@ module PandoraGtk
       end
 
       menu = Gtk::Menu.new
-      menu.append(PandoraGtk.create_menu_item(['Create', Gtk::Stock::NEW, _('Create'), 'Insert'], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Edit', Gtk::Stock::EDIT, _('Edit'), 'Return'], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['-', nil, nil], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Dialog', 'dialog', _('Dialog'), '<control>D'], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Opinion', Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace'], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Relate', Gtk::Stock::INDEX, _('Relate'), '<control>R'], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['-', nil, nil], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Convert', Gtk::Stock::CONVERT, _('Convert')], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Import', Gtk::Stock::OPEN, _('Import')], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Export', Gtk::Stock::SAVE, _('Export')], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Dialog', :dialog, _('Dialog'), '<control>D'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Chat', :chat, _('Chat'), '<control>D'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Opinion', :opinion, _('Opinion'), '<control>BackSpace'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Relation', :relation, _('Relate'), '<control>R'], list_tree))
       menu.show_all
 
       list_tree.add_events(Gdk::Event::BUTTON_PRESS_MASK)
@@ -16481,7 +16589,7 @@ module PandoraGtk
             #  person = nil
             #  person = iter[0] if iter
             #  person = PandoraUtils.hex_to_bytes(person)
-            #  PandoraGtk.show_talk_dialog(person) if person
+            #  PandoraGtk.show_dialog(person) if person
             #end
           else
             res = false
@@ -17108,8 +17216,6 @@ module PandoraGtk
         lang ||= 0
       end
 
-      panobj_icon = get_panobject_icon(panobject)
-
       if action=='Delete'
         if id and sel[0]
           info = panobject.show_panhash(panhash0) #.force_encoding('ASCII-8BIT') ASCII-8BIT
@@ -17119,7 +17225,7 @@ module PandoraGtk
             _('Record will be deleted. Sure?')+"\n["+info+']')
           dialog.title = _('Deletion')+': '+panobject.sname
           dialog.default_response = Gtk::Dialog::RESPONSE_OK
-          dialog.icon = panobj_icon if panobj_icon
+          dialog.icon = get_panobject_icon(panobject)
           if dialog.run == Gtk::Dialog::RESPONSE_OK
             res = panobject.update(nil, nil, 'id='+id.to_s)
             tree_view.sel.delete_if {|row| row[0]==id }
@@ -17131,8 +17237,10 @@ module PandoraGtk
           end
           dialog.destroy
         end
-      elsif action=='Dialog'
-        show_talk_dialog(panhash0) if panhash0
+      elsif (action=='Dialog')
+        show_dialog(panhash0) if panhash0
+      elsif (action=='Chat')
+        show_chat(panhash0) if panhash0
       elsif panobject
         # Edit or Insert
 
@@ -17174,7 +17282,7 @@ module PandoraGtk
         end
 
         dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
-        dialog.icon = panobj_icon if panobj_icon
+        dialog.icon = get_panobject_icon(panobject)
 
         dialog.lang_entry.entry.text = PandoraModel.lang_to_text(lang) if lang
 
@@ -18061,9 +18169,10 @@ module PandoraGtk
     menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], treeview))
     menu.append(create_menu_item(['-', nil, nil], treeview))
     menu.append(create_menu_item(['Dialog', 'dialog', _('Dialog'), '<control>D'], treeview))
-    menu.append(create_menu_item(['Opinion', Gtk::Stock::JUMP_TO, _('Opinions'), '<control>BackSpace'], treeview))
+    menu.append(create_menu_item(['Chat', :chat, _('Chat'), '<control>B'], treeview))
+    menu.append(create_menu_item(['Opinion', :opinion, _('Opinion'), '<control>BackSpace'], treeview))
+    menu.append(create_menu_item(['Relation', :relation, _('Relate'), '<control>R'], treeview))
     menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], treeview))
-    menu.append(create_menu_item(['Relate', Gtk::Stock::INDEX, _('Relate'), '<control>R'], treeview))
     menu.append(create_menu_item(['-', nil, nil], treeview))
     menu.append(create_menu_item(['Convert', Gtk::Stock::CONVERT, _('Convert')], treeview))
     menu.append(create_menu_item(['Import', Gtk::Stock::OPEN, _('Import')], treeview))
@@ -18292,7 +18401,7 @@ module PandoraGtk
 
   # Construct room id
   # RU: Создать идентификатор комнаты
-  def self.construct_room_id(persons)
+  def self.construct_room_id(persons, session=nil)
     res = nil
     if (persons.is_a? Array) and (persons.size>0)
       sha1 = Digest::SHA1.new
@@ -18301,6 +18410,7 @@ module PandoraGtk
       end
       res = sha1.digest
     end
+    res ||= session.object_id if session
     res
   end
 
@@ -18347,7 +18457,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.50'
+    dlg.version = '0.51'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
@@ -18375,169 +18485,16 @@ module PandoraGtk
     $window.present
   end
 
-  # Captcha panel
-  # RU: Панель с капчой
-  class CaptchaHPaned < Gtk::HPaned
-    attr_accessor :csw
-
-    # Show panel
-    # RU: Показать панель
-    def initialize(first_child)
-      super()
-      @first_child = first_child
-      self.pack1(@first_child, true, true)
-      @csw = nil
-    end
-
-    # Show capcha
-    # RU: Показать капчу
-    def s1how_c1aptcha(srckey, captcha_buf=nil, clue_text=nil, node=nil)
-      res = nil
-      if captcha_buf and (not @csw)
-        @csw = Gtk::ScrolledWindow.new(nil, nil)
-        csw = @csw
-
-        csw.signal_connect('destroy-event') do
-          s1how_captcha(srckey)
-        end
-
-        @vbox = Gtk::VBox.new
-        vbox = @vbox
-
-        csw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-        csw.add_with_viewport(vbox)
-
-        pixbuf_loader = Gdk::PixbufLoader.new
-        pixbuf_loader.last_write(captcha_buf) if captcha_buf
-
-        label = Gtk::Label.new(_('Far node'))
-        vbox.pack_start(label, false, false, 2)
-        entry = Gtk::Entry.new
-        node_text = PandoraUtils.bytes_to_hex(srckey)
-        node_text = node if (not node_text) or (node_text=='')
-        node_text ||= ''
-        entry.text = node_text
-        entry.editable = false
-        vbox.pack_start(entry, false, false, 2)
-
-        image = Gtk::Image.new(pixbuf_loader.pixbuf)
-        vbox.pack_start(image, false, false, 2)
-
-        clue_text ||= ''
-        clue, length, symbols = clue_text.split('|')
-        #p '    [clue, length, symbols]='+[clue, length, symbols].inspect
-
-        len = 0
-        begin
-          len = length.to_i if length
-        rescue
-        end
-
-        label = Gtk::Label.new(_('Enter text from picture'))
-        vbox.pack_start(label, false, false, 2)
-
-        captcha_entry = PandoraGtk::MaskEntry.new
-        captcha_entry.max_length = len
-        if symbols
-          mask = symbols.downcase+symbols.upcase
-          captcha_entry.mask = mask
-        end
-
-        okbutton = Gtk::Button.new(Gtk::Stock::OK)
-        okbutton.signal_connect('clicked') do
-          text = captcha_entry.text
-          yield(text) if block_given?
-          s1how_captcha(srckey)
-        end
-
-        cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
-        cancelbutton.signal_connect('clicked') do
-          yield(false) if block_given?
-          s1how_captcha(srckey)
-        end
-
-        captcha_entry.signal_connect('key-press-event') do |widget, event|
-          if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-            okbutton.activate
-            true
-          elsif (Gdk::Keyval::GDK_Escape==event.keyval)
-            captcha_entry.text = ''
-            cancelbutton.activate
-            false
-          else
-            false
-          end
-        end
-        PandoraGtk.hack_enter_bug(captcha_entry)
-
-        ew = 150
-        if len>0
-          str = label.text
-          label.text = 'W'*(len+1)
-          ew,lh = label.size_request
-          label.text = str
-        end
-
-        captcha_entry.width_request = ew
-        align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
-        align.add(captcha_entry)
-        vbox.pack_start(align, false, false, 2)
-        #capdialog.def_widget = entry
-
-        hbox = Gtk::HBox.new
-        hbox.pack_start(okbutton, true, true, 2)
-        hbox.pack_start(cancelbutton, true, true, 2)
-
-        vbox.pack_start(hbox, false, false, 2)
-
-        if clue
-          label = Gtk::Label.new(_(clue))
-          vbox.pack_start(label, false, false, 2)
-        end
-        if length
-          label = Gtk::Label.new(_('Length')+'='+length.to_s)
-          vbox.pack_start(label, false, false, 2)
-        end
-        if symbols
-          sym_text = _('Symbols')+': '+symbols.to_s
-          i = 30
-          while i<sym_text.size do
-            sym_text = sym_text[0,i]+"\n"+sym_text[i+1..-1]
-            i += 31
-          end
-          label = Gtk::Label.new(sym_text)
-          vbox.pack_start(label, false, false, 2)
-        end
-
-        csw.border_width = 1;
-        csw.set_size_request(250, -1)
-        self.border_width = 2
-        self.pack2(csw, true, true)  #hpaned3                                      9
-        csw.show_all
-        full_width = $window.allocation.width
-        self.position = full_width-250 #self.max_position #@csw.width_request
-        PandoraGtk.hack_grab_focus(captcha_entry)
-        res = csw
-      else
-        #@csw.width_request = @csw.allocation.width
-        @csw.destroy if (not @csw.destroyed?)
-        @csw = nil
-        self.position = 0
-      end
-      res
-    end
-  end
-
   # Show capcha
   # RU: Показать капчу
   def self.show_captcha(captcha_buf=nil, clue_text=nil, conntype=nil, node=nil, \
-  node_id=nil, models=nil, panhashes=nil)
+  node_id=nil, models=nil, panhashes=nil, session=nil)
     res = nil
     sw = nil
     p '--recognize_captcha(captcha_buf.size, clue_text, node, node_id, models)='+\
       [captcha_buf.size, clue_text, node, node_id, models].inspect
     if captcha_buf
-      sw = PandoraGtk.show_talk_dialog(panhashes, @node_panhash, conntype, node_id, models)
+      sw = PandoraGtk.show_dialog(panhashes, session, @node_panhash, conntype, node_id, models)
       if sw
         clue_text ||= ''
         clue, length, symbols = clue_text.split('|')
@@ -18578,9 +18535,11 @@ module PandoraGtk
 
   # Show conversation dialog
   # RU: Показать диалог общения
-  def self.show_talk_dialog(panhashes, nodehash=nil, conntype=nil, node_id=nil, models=nil)
+  def self.show_dialog(panhashes, session=nil, nodehash=nil, conntype=nil, \
+  node_id=nil, models=nil)
     sw = nil
-    p 'show_talk_dialog: [panhashes, nodehash]='+[panhashes, nodehash].inspect
+    p 'show_talk_dialog: [panhashes, nodehash, node_id, session.object_id, conntype]='+\
+      [panhashes, nodehash, node_id, session.object_id, conntype].inspect
     targets = [[], [], []]
     persons, keys, nodes = targets
     if nodehash and (panhashes.is_a? String)
@@ -18594,7 +18553,7 @@ module PandoraGtk
       list.uniq!
       list.compact!
     end
-    p 'targets='+targets.inspect
+    p 'targets='+[targets].inspect
 
     target_exist = ((persons.size>0) or (nodes.size>0) or (keys.size>0))
     if (not target_exist) and node_id
@@ -18608,9 +18567,9 @@ module PandoraGtk
         target_exist = ((persons.size>0) or (nodes.size>0) or (keys.size>0))
       end
     end
-    if target_exist
+    if target_exist or session
       p '@@@@@@@@@ nodehash, conntype='+[nodehash, conntype].inspect
-      room_id = construct_room_id(persons)
+      room_id = construct_room_id(persons, session)
       if conntype.nil? or (conntype==PandoraNet::ST_Hunter)
         creator = PandoraCrypto.current_user_or_key(true)
         if (persons.size==1) and (persons[0]==creator)
@@ -18629,7 +18588,7 @@ module PandoraGtk
         end
       end
       sw ||= DialogScrollWin.new(nodehash, room_id, targets)
-    elsif nodehash.nil?
+    elsif (nodehash.nil? and session.nil?)
       mes = ''
       mes = _('node') if nodes.size == 0
       if persons.size == 0
@@ -18648,6 +18607,22 @@ module PandoraGtk
       end
       dialog.destroy
     end
+    sw
+  end
+
+  # Show common chat
+  # RU: Показать общий чат
+  def self.show_chat(panhash)
+    sw = nil
+    p 'show_chat(panhash)='+panhash.inspect
+    $window.notebook.children.each do |child|
+      if (child.is_a? ChatScrollWin) and (child.panhash==panhash)
+        $window.notebook.page = $window.notebook.children.index(child)
+        sw = child
+        break
+      end
+    end
+    sw ||= ChatScrollWin.new(panhash)
     sw
   end
 
@@ -19799,7 +19774,7 @@ module PandoraGtk
             close_btn = tab.children[tab.children.size-1].children[0]
             close_btn.clicked
           end
-        when 'Create','Edit','Delete','Copy', 'Dialog', 'Convert', 'Import', 'Export'
+        when 'Create','Edit','Delete','Copy', 'Dialog', 'Convert', 'Import', 'Export', 'Chat'
           p 'act_panobject()  treeview='+treeview.inspect
           if (not treeview) and (notebook.page >= 0)
             sw = notebook.get_nth_page(notebook.page)
@@ -20869,7 +20844,6 @@ module PandoraGtk
         false
       end
 
-      $base_id = PandoraUtils.get_param('base_id')
       check_update = PandoraUtils.get_param('check_update')
       if (check_update==1) or (check_update==true)
         last_check = PandoraUtils.get_param('last_check')
@@ -20975,9 +20949,9 @@ while (ARGV.length>0) or next_arg
       runit += ' '
       puts 'Оriginal Pandora params for examples:'
       puts runit+'-h localhost    - set listen address'
-      puts runit+'-p 5577         - set listen port'
+      puts runit+'-p '+PandoraNet::DefTcpPort.to_s+'         - set listen port'
       puts runit+'-b base/pandora2.sqlite  - set filename of database'
-      puts runit+'-l ua  - set Ukrainian language'
+      puts runit+'-l ua           - set Ukrainian language'
       Kernel.exit!
   end
   val = nil
@@ -21303,6 +21277,7 @@ Thread.abort_on_exception = true
 PandoraUtils.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
 PandoraUtils.detect_mp3_player
+$base_id = PandoraUtils.get_param('base_id')
 PandoraGtk::MainWindow.new(MAIN_WINDOW_TITLE)
 
 # Free unix-socket on exit
