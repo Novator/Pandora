@@ -5362,11 +5362,13 @@ module PandoraCrypto
     elsif (person or key)
       person ||= key[KV_Creator] if key
       kind = PandoraUtils.kind_from_panhash(person)
-      sel = PandoraModel.get_record_by_panhash(kind, person, nil, nil, 'first_name, last_name')
-      #p 'key, person, sel='+[key, person, sel].inspect
-      if (sel.is_a? Array) and (sel.size>0)
-        aname, afamily = [Utf8String.new(sel[0][0]), Utf8String.new(sel[0][1])]
-        key[KV_NameFamily] = [aname, afamily] if key
+      if PandoraUtils.kind_from_panhash(person)==PandoraModel::PK_Person
+        sel = PandoraModel.get_record_by_panhash(kind, person, nil, nil, 'first_name, last_name')
+        #p 'key, person, sel='+[key, person, sel].inspect
+        if (sel.is_a? Array) and (sel.size>0)
+          aname, afamily = [Utf8String.new(sel[0][0]), Utf8String.new(sel[0][1])]
+          key[KV_NameFamily] = [aname, afamily] if key
+        end
       end
       #p '[aname, afamily]='+[aname, afamily].inspect
       if (not aname) and (not afamily) and (key.is_a? Array)
