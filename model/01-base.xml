@@ -91,9 +91,9 @@
     </Relation>
 
     <Opinion name="Opinion" parent="Created" kind="15">
-      <object name="Object" type="Panhash" hash="1:panhash(8)" />
       <creator />
       <created hash="2:integer(4)" />
+      <object name="Object" type="Panhash" hash="1:panhash(8)" />
       <score name="Score" type="Integer" />
       <comment name="Comment" type="Text" hash="4:hash(8)" />
     </Opinion>
@@ -297,7 +297,7 @@
       <speed name="Speed B/s" type="Integer" />
       <bad_attempts name="Bad attempts" type="Integer" />
       <ban_time name="Time of ban" type="Time" />
-      <session_key name="Session key" type="String" size="32" />
+      <session_key name="Session key" type="Panhash(Key)" />
       <try_upnp_time name="UPnP try time" type="Time" />
       <try_natpmp_time name="NAT-PMP try time" type="Time" />
       <query_time name="Time of query" type="Time" />

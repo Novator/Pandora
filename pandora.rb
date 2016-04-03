@@ -4277,7 +4277,7 @@ module PandoraCrypto
     res
   end
 
-  # Convert Pandora type of cifer to OpenSSL name
+  # Convert Pandora type of cipher to OpenSSL name
   # RU: Преобразует тип шифра Пандоры в имя OpenSSL
   def self.pankt_to_openssl(type)
     res = nil
@@ -4296,7 +4296,7 @@ module PandoraCrypto
     res
   end
 
-  # Convert Pandora type of cifer to OpenSSL string
+  # Convert Pandora type of cipher to OpenSSL string
   # RU: Преобразует тип шифра Пандоры в строку OpenSSL
   def self.pankt_len_to_full_openssl(type, len, mode=nil)
     res = pankt_to_openssl(type)
@@ -4329,16 +4329,17 @@ module PandoraCrypto
   # Encode or decode key
   # RU: Зашифровать или расшифровать ключ
   def self.key_recrypt(data, encode=true, cipher_hash=nil, cipherkey=nil)
-    #p '^^^^^^^^^^^^sym_recrypt: [cipher_hash, passwd]='+[cipher_hash, cipherkey].inspect
-    #cipher_hash ||= encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
-    if cipher_hash and (cipher_hash != 0) and data
+    p '^^^^^^^^^^^^key_recrypt(: [cipher_hash, passwd, data.bytesize]='+\
+      [cipher_hash, cipherkey, data.bytesize].inspect
+    if (cipher_hash.is_a? Integer) and (cipher_hash != 0) and data
       ckind, chash = decode_cipher_and_hash(cipher_hash)
       ktype, klen = divide_type_and_klen(ckind)
-      if (ktype == KT_None)  #No cifer, crypt on active RSA
-        key_vec = current_key(false, true)
+      if (ktype == KT_Rsa) or (ktype == KT_Dsa)
+        key_vec = cipherkey
+        key_vec = current_key(false, true) if not (key_vec.is_a? Array)
         if key_vec and key_vec[KV_Obj] and key_vec[KV_Panhash]
           if encode
-            data = recrypt(key_vec, data, encode)
+            data = recrypt(key_vec, data, encode, (not encode))
             if data
               key_and_data = PandoraUtils.rubyobj_to_pson([key_vec[KV_Panhash], data])
               data = key_and_data
@@ -4348,7 +4349,7 @@ module PandoraCrypto
             if key_and_data.is_a? Array
               keyhash, data = key_and_data
               if (keyhash == key_vec[KV_Panhash])
-                data = recrypt(key_vec, data, encode)
+                data = recrypt(key_vec, data, encode, (not encode))
               else
                 data = nil
               end
@@ -4396,7 +4397,7 @@ module PandoraCrypto
 
   # Generate a key or key pair
   # RU: Генерирует ключ или ключевую пару
-  def self.generate_key(type_klen = KT_Rsa | KL_bit2048, cipher_hash=nil, cipherkey=nil)
+  def self.generate_key(type_klen = KT_Rsa | KL_bit2048, cipher_hash=nil, pass=nil)
     key = nil
     keypub = nil
     keypriv = nil
@@ -4409,7 +4410,6 @@ module PandoraCrypto
         bitlen ||= 2048
         bitlen = 2048 if bitlen <= 0
         key = OpenSSL::PKey::RSA.generate(bitlen, RSA_exponent)
-
         #keypub = ''
         #keypub.force_encoding('ASCII-8BIT')
         #keypriv = ''
@@ -4420,13 +4420,10 @@ module PandoraCrypto
         #keypriv = key.params['p']
         #p PandoraUtils.bytes_to_bigin(keypub)
         #p '************8'
-
         #puts key.to_text
         #p key.params
-
         #key_der = key.to_der
         #p key_der.size
-
         #key = OpenSSL::PKey::RSA.new(key_der)
         #p 'pub_seq='+asn_seq2 = OpenSSL::ASN1.decode(key.public_key.to_der).inspect
       else #симметричный ключ
@@ -4437,8 +4434,76 @@ module PandoraCrypto
         #p keypub.size
         #p keypriv.size
     end
-    keypriv = key_recrypt(keypriv, true, cipher_hash, cipherkey)
-    [key, keypub, keypriv, type_klen, cipher_hash, cipherkey]
+    [key, keypub, keypriv, type_klen, cipher_hash, pass]
+  end
+
+  # Divide type and code of length
+  # RU: Разделить тип и код длины
+  def self.symmetric_key?(type_key)
+    type = nil
+    if (type_key.is_a? Integer)
+      type = type_key & 0x0F
+    elsif (type_key.is_a? Array)
+      type_klen = key_vec[KV_Kind]
+      type, klen = divide_type_and_klen(type_klen)
+    end
+    res = (not(type and ((type==KT_Rsa) or (type==KT_Dsa))))
+  end
+
+  # Save key(s) to base
+  # RU: Сохраняет ключ(и) в базу
+  def self.save_key(key_vec, creator=nil, rights=nil, key_model=nil)
+    #p 'key_vec='+key_vec.inspect
+    creator ||= current_user_or_key(true, false)
+    rights ||= (KS_Exchange | KS_Voucher)
+    key_model ||= PandoraUtils.get_model('Key')
+
+    pub  = key_vec[KV_Pub]
+    priv = key_vec[KV_Priv]
+    type_klen = key_vec[KV_Kind]
+    cipher_hash = key_vec[KV_Cipher]
+    passwd = key_vec[KV_Pass]
+
+    time_now = Time.now
+    vals = time_now.to_a
+    y, m, d = [vals[5], vals[4], vals[3]]  #current day
+    expire = Time.local(y+5, m, d).to_i
+
+    time_now = time_now.to_i
+    panstate = PandoraModel::PSF_Support
+
+    type, klen = divide_type_and_klen(type_klen)
+    sym = symmetric_key?(type)
+
+    body = pub
+    if sym
+      #p '-----[priv.bytesize, pub.bytesize]='+[priv.bytesize, pub.bytesize].inspect
+      body = PandoraUtils.rubyobj_to_pson([priv, pub])
+      body = key_recrypt(body, true, cipher_hash, passwd)
+      priv = nil
+    end
+    cipher_hash1 = cipher_hash
+    cipher_hash1 = 0 if (not priv.nil?)
+
+    values = {:panstate=>panstate, :kind=>type_klen, :rights=>rights, :expire=>expire, \
+      :creator=>creator, :created=>time_now, :cipher=>cipher_hash1, \
+      :body=>body, :modified=>time_now}
+    panhash = key_model.panhash(values, rights)
+    values['panhash'] = panhash
+
+    key_vec[KV_Panhash] = panhash
+    key_vec[KV_Creator] = creator
+
+    res = key_model.update(values, nil, nil)
+    if res and priv
+      # save private key separatly
+      priv = key_recrypt(priv, true, cipher_hash, passwd)
+      values[:kind] = KT_Priv
+      values[:body] = priv
+      values[:cipher] = cipher_hash
+      res = key_model.update(values, nil, nil)
+    end
+    res
   end
 
   # Init key or key pair
@@ -4453,6 +4518,7 @@ module PandoraCrypto
       type_klen = key_vec[KV_Kind]
       cipher_hash = key_vec[KV_Cipher]
       pass = key_vec[KV_Pass]
+      keypriv = key_recrypt(keypriv, false, cipher_hash, pass) if keypriv
       type, klen = divide_type_and_klen(type_klen)
       #p [type, klen]
       bitlen = klen_to_bitlen(klen)
@@ -4460,24 +4526,16 @@ module PandoraCrypto
         when KT_None
           key = nil
         when KT_Rsa
-          #p '------'
-          #p key.params
           n = PandoraUtils.bytes_to_bigint(keypub)
-          #p 'n='+n.inspect
           e = OpenSSL::BN.new(RSA_exponent.to_s)
           p0 = nil
           if keypriv
-            #p '[cipher, keypriv]='+[cipher, keypriv].inspect
-            keypriv = key_recrypt(keypriv, false, cipher_hash, pass)
-            #p 'key2='+key2.inspect
-            p0 = PandoraUtils.bytes_to_bigint(keypriv) if keypriv
+            p0 = PandoraUtils.bytes_to_bigint(keypriv)
           else
             p0 = 0
           end
-
           if p0
             pass = 0
-            #p 'n='+n.inspect+'  p='+p0.inspect+'  e='+e.inspect
             begin
               if keypriv
                 q = (n / p0)[0]
@@ -4486,9 +4544,7 @@ module PandoraCrypto
                 dmp1 = d % (p0-1)
                 dmq1 = d % (q-1)
                 iqmp = q.mod_inverse(p0)
-
                 #p '[n,d,dmp1,dmq1,iqmp]='+[n,d,dmp1,dmq1,iqmp].inspect
-
                 seq = OpenSSL::ASN1::Sequence([
                   OpenSSL::ASN1::Integer(pass),
                   OpenSSL::ASN1::Integer(n),
@@ -4506,7 +4562,6 @@ module PandoraCrypto
                   OpenSSL::ASN1::Integer(e),
                 ])
               end
-
               #p asn_seq = OpenSSL::ASN1.decode(key)
               # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
               #seq1 = asn_seq.value[1]
@@ -4518,7 +4573,6 @@ module PandoraCrypto
               # Seq: Int:n, Int:e
               #p 'pub_seq='+asn_seq2 = OpenSSL::ASN1.decode(key.public_key.to_der).inspect
               #p key2.to_s
-
               # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
               key = OpenSSL::PKey::RSA.new(seq.to_der)
               #p key.params
@@ -4537,6 +4591,17 @@ module PandoraCrypto
           ])
         else
           key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
+          p '--111   keypriv='+[keypriv.bytesize].inspect
+          if keypub.nil? and keypriv and (bitlen/8 != keypriv.bytesize)
+            key_iv, len = PandoraUtils.pson_to_rubyobj(keypriv)
+            p '--222   keyiv='+key_iv.inspect
+            if (key_iv.is_a? Array)
+              keypriv, keypub = key_iv
+               p '--333   keypriv, keypub='+[keypriv.bytesize, keypub.bytesize].inspect
+              key_vec[KV_Pub] = keypub
+              key_vec[KV_Priv] = keypriv
+            end
+          end
           key.key = keypriv
           key.iv  = keypub if keypub
       end
@@ -4547,21 +4612,48 @@ module PandoraCrypto
 
   # Create sign
   # RU: Создает подпись
-  def self.make_sign(key, data, hash_len=KH_Sha2 | KL_bit256)
+  def self.make_sign(key_vec, data, hash_len=KH_Sha2 | KL_bit256)
     sign = nil
-    begin
-      sign = key[KV_Obj].sign(pan_kh_to_openssl_hash(hash_len), data) if key[KV_Obj]
-    rescue
-      sign = nil
+    if (key_vec.is_a? Array)
+      key_obj = key_vec[KV_Obj]
+      if key_obj
+        hash_obj = pan_kh_to_openssl_hash(hash_len)
+        if hash_obj
+          type_klen = key_vec[KV_Kind]
+          type, klen = divide_type_and_klen(type_klen)
+          if symmetric_key?(type)
+            data_hash = hash_obj.digest(data)
+            sign = recrypt(key_vec, data_hash, true)
+          else
+            sign = key_obj.sign(hash_obj, data)
+          end
+        end
+      end
     end
     sign
   end
 
   # Verify sign
   # RU: Проверяет подпись
-  def self.verify_sign(key, data, sign, hash_len=KH_Sha2 | KL_bit256)
-    res = false
-    res = key[KV_Obj].verify(pan_kh_to_openssl_hash(hash_len), sign, data) if key[KV_Obj]
+  def self.verify_sign(key_vec, data, sign, hash_len=KH_Sha2 | KL_bit256)
+    res = nil
+    if (key_vec.is_a? Array)
+      key_obj = key_vec[KV_Obj]
+      if key_obj
+        hash_obj = pan_kh_to_openssl_hash(hash_len)
+        if hash_obj
+          type_klen = key_vec[KV_Kind]
+          type, klen = divide_type_and_klen(type_klen)
+          if symmetric_key?(type)
+            data_hash = hash_obj.digest(data)
+            sign_fact = recrypt(key_vec, data_hash, false)
+            res = (sign == sign_fact)
+          else
+            res = key_obj.verify(hash_obj, sign, data)
+          end
+        end
+      end
+    end
     res
   end
 
@@ -4584,11 +4676,11 @@ module PandoraCrypto
   # RU: Зашифровывает или расшифровывает данные
   def self.recrypt(key_vec, data, encrypt=true, private=false)
     recrypted = nil
-    key = key_vec[KV_Obj]
-    #p 'encrypt key='+key.inspect
-    if key.is_a? OpenSSL::Cipher
-      if data
-        data = AsciiString.new(data)
+    if data
+      data = AsciiString.new(data)
+      key = key_vec[KV_Obj]
+      #p 'encrypt key='+key.inspect
+      if key.is_a? OpenSSL::Cipher
         key.reset
         if encrypt
           key.encrypt
@@ -4596,30 +4688,30 @@ module PandoraCrypto
           key.decrypt
         end
         key.key = key_vec[KV_Priv]
-        key.iv = key_vec[KV_Pub] if key_vec[KV_Pub]
+        key.iv = key_vec[KV_Pub]
         begin
           recrypted = key.update(data) + key.final
         rescue
           recrypted = nil
         end
-      end
-    else  #elsif key.is_a? OpenSSL::PKey
-      if encrypt
-        if private
-          recrypted = key.private_encrypt(data)  #for make sign
-        else
-          recrypted = key.public_encrypt(data)   #crypt to transfer
-        end
-      else
-        if private
-          if key_vec[KV_Priv]
-            recrypted = key.private_decrypt(data)  #uncrypt after transfer
+      else  #elsif key.is_a? OpenSSL::PKey
+        if encrypt
+          if private
+            recrypted = key.private_encrypt(data)  #for make sign
           else
-            recrypted = '<Private key needed ['+\
-              PandoraUtils.bytes_to_hex(key_vec[KV_Panhash])+']>'
+            recrypted = key.public_encrypt(data)   #crypt to transfer
           end
         else
-          recrypted = key.public_decrypt(data)   #for check sign
+          if private
+            if key_vec[KV_Priv]
+              recrypted = key.private_decrypt(data)  #uncrypt after transfer
+            else
+              recrypted = '<Private key needed ['+\
+                PandoraUtils.bytes_to_hex(key_vec[KV_Panhash])+']>'
+            end
+          else
+            recrypted = key.public_decrypt(data)   #for check sign
+          end
         end
       end
     end
@@ -4678,6 +4770,10 @@ module PandoraCrypto
 
           type0, klen0 = divide_type_and_klen(kind0)
           cipher = 0
+          priv = nil
+          pub = nil
+          kind = nil
+          creator = nil
           if type0==KT_Priv
             priv = body0
             pub = body1
@@ -4933,43 +5029,9 @@ module PandoraCrypto
               type_klen = KT_Rsa | KL_bit2048
 
               key_vec = generate_key(type_klen, cipher_hash, passwd)
-
-              #p 'key_vec='+key_vec.inspect
-
-              pub  = key_vec[KV_Pub]
-              priv = key_vec[KV_Priv]
-              type_klen = key_vec[KV_Kind]
-              cipher_hash = key_vec[KV_Cipher]
-              #passwd = key_vec[KV_Pass]
-
-              key_vec[KV_Creator] = creator
-
-              time_now = Time.now
-
-              vals = time_now.to_a
-              y, m, d = [vals[5], vals[4], vals[3]]  #current day
-              expire = Time.local(y+5, m, d).to_i
-
-              time_now = time_now.to_i
-              panstate = PandoraModel::PSF_Support
-              values = {:panstate=>panstate, :kind=>type_klen, :rights=>rights, :expire=>expire, \
-                :creator=>creator, :created=>time_now, :cipher=>0, :body=>pub, :modified=>time_now}
-              panhash = key_model.panhash(values, rights)
-              values['panhash'] = panhash
-              key_vec[KV_Panhash] = panhash
-
-              # save public key
-              res = key_model.update(values, nil, nil)
-              if res
-                # save private key
-                values[:kind] = KT_Priv
-                values[:body] = priv
-                values[:cipher] = cipher_hash
-                res = key_model.update(values, nil, nil)
-                if res
-                  #p 'last_auth_key='+panhash.inspect
-                  last_auth_key = panhash
-                end
+              if save_key(key_vec, creator, rights, key_model)
+                last_auth_key = panhash
+                #p 'last_auth_key='+panhash.inspect
               end
             else
               dialog = Gtk::MessageDialog.new($window, \
@@ -5216,13 +5278,22 @@ module PandoraCrypto
             kind = model.field_val('kind', row)
             type, klen = divide_type_and_klen(kind)
             if type != KT_Priv
-              cipher = model.field_val('cipher', row)
               pub = model.field_val('body', row)
+              cipher = model.field_val('cipher', row)
               creator = model.field_val('creator', row)
+              priv = nil
+              if symmetric_key?(type)
+                #priv_pub, len = PandoraUtils.pson_to_rubyobj(pub)
+                #priv, pub = priv_pub if (priv_pub.is_a? Array)
+                priv = pub
+                pub = nil
+              end
 
               key_vec = Array.new
               key_vec[KV_Pub] = pub
+              key_vec[KV_Priv] = priv
               key_vec[KV_Kind] = kind
+              key_vec[KV_Cipher] = cipher
               #key_vec[KV_Pass] = passwd
               key_vec[KV_Panhash] = panhash
               key_vec[KV_Creator] = creator
@@ -5281,7 +5352,7 @@ module PandoraCrypto
           #p '--max_len='+max_len.inspect
           if data_len>max_len
             if encrypt
-              cipher ||= KT_Aes | KL_bit256   #default cipher
+              cipher ||= (KT_Aes | KL_bit256)   #default cipher
               ciphlen = klen_to_bitlen(cipher)/8
               cipher_hash = encode_cipher_and_hash(cipher, 0)
               #key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
@@ -5496,17 +5567,18 @@ module PandoraNet
   # signs only
   EC_Data      = 256   # Ждем данные
 
-  CommSize = 7
-  CommExtSize = 10
+  CommSize     = 7
+  CommExtSize  = 10
   SegNAttrSize = 8
 
   ECC_Auth_Hello       = 0
-  ECC_Auth_Puzzle      = 1
-  ECC_Auth_Phrase      = 2
-  ECC_Auth_Sign        = 3
-  ECC_Auth_Captcha     = 4
-  ECC_Auth_Simple      = 5
-  ECC_Auth_Answer      = 6
+  ECC_Auth_Cipher      = 1
+  ECC_Auth_Puzzle      = 2
+  ECC_Auth_Phrase      = 3
+  ECC_Auth_Sign        = 4
+  ECC_Auth_Captcha     = 5
+  ECC_Auth_Simple      = 6
+  ECC_Auth_Answer      = 7
 
   ECC_Query_Rel        = 0
   ECC_Query_Record     = 1
@@ -5586,12 +5658,13 @@ module PandoraNet
   ES_Begin        = 0
   ES_IpCheck      = 1
   ES_Protocol     = 2
-  ES_Puzzle       = 3
-  ES_KeyRequest   = 4
-  ES_Sign         = 5
-  ES_Greeting     = 6
-  ES_Captcha      = 7
-  ES_Exchange     = 8
+  ES_Cipher       = 3
+  ES_Puzzle       = 4
+  ES_KeyRequest   = 5
+  ES_Sign         = 6
+  ES_Greeting     = 7
+  ES_Captcha      = 8
+  ES_Exchange     = 9
 
   # Max recv pack size for stadies
   # RU: Максимально допустимые порции для стадий
@@ -5812,7 +5885,7 @@ module PandoraNet
         harbit = PandoraModel::PSF_Harvest.to_s
         filter = 'IFNULL(panstate,0)&'+harbit+'='+harbit
         sel = model.select(filter, false, 'sha1, blob', nil, $max_harvesting_files)
-        p '__++== resume_harvest   sel='+sel.inspect
+        #p '__++== resume_harvest   sel='+sel.inspect
         if sel and (sel.size>0)
           res = sel.size
           sel.each do |rec|
@@ -6659,7 +6732,7 @@ module PandoraNet
       :conn_state, :stage, :dialog, \
       :send_thread, :read_thread, :socket, :read_state, :send_state, \
       :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, \
-      :params, \
+      :params, :cipher, \
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
@@ -6966,6 +7039,23 @@ module PandoraNet
       end
     end
 
+    def open_last_cipher(sender_keyhash)
+      res = nil
+      if (sender_keyhash.is_a? String) and (sender_keyhash.bytesize>0)
+        filter = {:key_hash=>sender_keyhash}
+        node_model = PandoraUtils.get_model('Node', @recv_models)
+        sel = node_model.select(filter, false, 'session_key', 'modified DESC', 1)
+        if sel and (sel.size>0)
+          session_key = sel[0][0]
+          if (session_key.is_a? String) and (session_key.bytesize>0)
+            ciph_key = PandoraCrypto.open_key(session_key, @recv_models, false)
+            res = ciph_key if (ciph_key.is_a? Array)
+          end
+        end
+      end
+      res
+    end
+
     # Add segment (chunk, grain, phrase) to pack and send when it's time
     # RU: Добавляет сегмент в пакет и отправляет если пора
     def add_send_segment(ex_comm, last_seg=true, param=nil, ascode=nil)
@@ -6982,13 +7072,19 @@ module PandoraNet
             ascode = EC_Auth
             ascode = ECC_Auth_Hello
             params['mykey'] = key_hash
-            params['tokey'] = param
+            tokey = param
+            params['tokey'] = tokey
             mode = 0
             mode |= CM_GetNotice if $get_notice
             mode |= CM_Captcha if (@conn_mode & CM_Captcha)>0
-            hparams = {:version=>'pandora0', :mode=>mode, :mykey=>key_hash, :tokey=>param, \
+            hparams = {:version=>'pandora0.52', :mode=>mode, :mykey=>key_hash, :tokey=>tokey, \
               :notice=>(($notice_depth << 8) | $notice_trust)}
             hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
+            acipher = open_last_cipher(tokey)
+            if acipher
+              hparams[:cipher] = acipher[PandoraCrypto::KV_Panhash]
+              @cipher = acipher
+            end
             asbuf = PandoraUtils.hash_to_namepson(hparams)
           else
             ascmd = EC_Bye
@@ -7113,6 +7209,7 @@ module PandoraNet
           params['srckey']   = hash['mykey']
           params['dstkey']   = hash['tokey']
           params['notice']   = hash['notice']
+          params['cipher']   = hash['cipher']
         end
         p log_mes+'RECOGNIZE_params: '+hash.inspect
       end
@@ -7134,68 +7231,99 @@ module PandoraNet
         end
       end
 
+      # Generate random phrase
+      # RU: Сгенерировать случайную фразу
+      def get_sphrase(init=false)
+        phrase = params['sphrase'] if not init
+        if init or (not phrase)
+          phrase = OpenSSL::Random.random_bytes(256)
+          params['sphrase'] = phrase
+          init = true
+        end
+        [phrase, init]
+      end
+
       # React to hello
       # RU: Отреагировать на приветствие
       def init_skey_or_error(first=true)
 
-        # Generate random phrase
-        # RU: Сгенерировать случайную фразу
-        def get_sphrase(init=false)
-          phrase = params['sphrase'] if not init
-          if init or (not phrase)
-            phrase = OpenSSL::Random.random_bytes(256)
-            params['sphrase'] = phrase
-            init = true
-          end
-          [phrase, init]
-        end
-
         skey_panhash = params['srckey']
         if (skey_panhash.is_a? String) and (skey_panhash.bytesize>0)
-          if first and (@stage == ES_Protocol) and $puzzle_bit_length \
-          and ($puzzle_bit_length>0) and (not hunter?)
-            # first need to puzzle
-            phrase, init = get_sphrase(true)
-            phrase[-1] = $puzzle_bit_length.chr
-            phrase[-2] = $puzzle_sec_delay.chr
-            @stage = ES_Puzzle
-            @scode = ECC_Auth_Puzzle
-            @scmd  = EC_Auth
-            @sbuf = phrase
-            params['puzzle_start'] = Time.now.to_i
-            set_max_pack_size(ES_Puzzle)
-          else
-            @skey = PandoraCrypto.open_key(skey_panhash, @recv_models, false)
-            # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
-            # or just 4? other later!
-            if (@skey.is_a? Integer) and (@skey==0)
-              # unknown key, need request
-              @scmd = EC_Request
-              kind = PandoraModel::PK_Key
-              @scode = kind
-              @sbuf = nil
-              @stage = ES_KeyRequest
-              set_max_pack_size(ES_Exchange)
-            elsif @skey
-              # ok, send a phrase
-              @stage = ES_Sign
-              @scode = ECC_Auth_Phrase
-              @scmd  = EC_Auth
-              set_max_pack_size(ES_Sign)
-              phrase, init = get_sphrase(false)
-              p log_mes+'send phrase len='+phrase.bytesize.to_s
-              if init
+          if first
+            cipher_phash = params['cipher']
+            if (cipher_phash.is_a? String) and (cipher_phash.bytesize>0)
+              @cipher = PandoraCrypto.open_key(cipher_phash, @recv_models, false)
+              if (@cipher.is_a? Array)
+                phrase, init = get_sphrase(true)
+                @stage = ES_Cipher
+                @scode = ECC_Auth_Cipher
+                @scmd  = EC_Auth
                 @sbuf = phrase
-              else
-                @sbuf = nil
+                set_max_pack_size(ES_Puzzle)
               end
+            end
+          end
+          if (@stage != ES_Cipher)
+            if first and (@stage == ES_Protocol) and $puzzle_bit_length \
+            and ($puzzle_bit_length>0) and (not hunter?)
+              # init puzzle
+              phrase, init = get_sphrase(true)
+              phrase[-1] = $puzzle_bit_length.chr
+              phrase[-2] = $puzzle_sec_delay.chr
+              @stage = ES_Puzzle
+              @scode = ECC_Auth_Puzzle
+              @scmd  = EC_Auth
+              @sbuf = phrase
+              params['puzzle_start'] = Time.now.to_i
+              set_max_pack_size(ES_Puzzle)
             else
-              err_scmd('Key is invalid')
+              @skey = PandoraCrypto.open_key(skey_panhash, @recv_models, false)
+              # key: 1) trusted and inited, 2) stil not trusted, 3) denied, 4) not found
+              # or just 4? other later!
+              if (@skey.is_a? Integer) and (@skey==0)
+                # unknown key, need request
+                @scmd = EC_Request
+                kind = PandoraModel::PK_Key
+                @scode = kind
+                @sbuf = nil
+                @stage = ES_KeyRequest
+                set_max_pack_size(ES_Exchange)
+              elsif @skey
+                # ok, send a phrase
+                @stage = ES_Sign
+                @scode = ECC_Auth_Phrase
+                @scmd  = EC_Auth
+                set_max_pack_size(ES_Sign)
+                phrase, init = get_sphrase(false)
+                p log_mes+'send phrase len='+phrase.bytesize.to_s
+                if init
+                  @sbuf = phrase
+                else
+                  @sbuf = nil
+                end
+              else
+                err_scmd('Key is invalid')
+              end
             end
           end
         else
           err_scmd('Key panhash is required')
         end
+      end
+
+      def open_or_gen_cipher(skey_phash, save=true)
+        res = open_last_cipher(skey_phash)
+        if not res
+          type_klen = (PandoraCrypto::KT_Aes | PandoraCrypto::KL_bit256)
+          cipher_hash = PandoraCrypto::KT_Rsa
+          key_vec = PandoraCrypto.generate_key(type_klen, cipher_hash)
+          res = key_vec
+          if save
+            key_model = PandoraUtils.get_model('Key', @recv_models)
+            PandoraCrypto.save_key(key_vec, mypersonhash, nil, key_model)
+          end
+        end
+        res
       end
 
       # Compose a captcha command
@@ -7222,7 +7350,9 @@ module PandoraNet
       # Update record about node
       # RU: Обновить запись об узле
       def update_node(skey_panhash=nil, sbase_id=nil, trust=nil, session_key=nil)
-        node_model = PandoraUtils.get_model('Node', @recv_models)
+        p log_mes + '++++++++update_node [skey_panhash, sbase_id, trust, session_key]=' \
+          +[skey_panhash, sbase_id, trust, session_key].inspect
+
         time_now = Time.now.to_i
         astate = 0
         asended = 0
@@ -7250,6 +7380,7 @@ module PandoraNet
         #if not trusted
         #  filter[:addr_from] = host_ip
         #end
+        node_model = PandoraUtils.get_model('Node', @recv_models)
         sel = node_model.select(filter, false, readflds, nil, 1)
         if ((not sel) or (sel.size==0)) and @node_id
           filter = {:id => @node_id}
@@ -7300,7 +7431,7 @@ module PandoraNet
         values[:received]     = areceived
         values[:one_ip_count] = aone_ip_count+1
         values[:bad_attempts] = abad_attempts
-        values[:session_key]  = @session_key
+        values[:session_key]  = session_key if session_key
         values[:ban_time]     = aban_time
         values[:modified]     = time_now
 
@@ -7659,7 +7790,7 @@ module PandoraNet
                 recognize_params
                 if scmd != EC_Bye
                   vers = params['version']
-                  if vers=='pandora0'
+                  if vers=='pandora0.52'
                     addr = params['addr']
                     p log_mes+'addr='+addr.inspect
                     # need to change an ip checking
@@ -7671,6 +7802,79 @@ module PandoraNet
                   else
                     err_scmd('Protocol is not supported ('+vers.to_s+')')
                   end
+                end
+              elsif (rcode==ECC_Auth_Cipher) and ((@stage==ES_Protocol) or (@stage==ES_Cipher))
+              #ECC_Auth_Cipher
+                if @cipher
+                  @cipher = PandoraCrypto.open_key(@cipher, @recv_models, true)
+                  if @cipher[PandoraCrypto::KV_Obj]
+                    if hunter?
+                      if (@stage==ES_Protocol)
+                        phrase1 = rdata
+                        phrase1 = OpenSSL::Digest::SHA384.digest(phrase1)
+                        #p log_mes+'===========@cipher='+@cipher.inspect
+                        sign1 = PandoraCrypto.make_sign(@cipher, phrase1)
+                        if sign1
+                          phrase2, init = get_sphrase(true)
+                          @stage = ES_Cipher
+                          @scode = ECC_Auth_Cipher
+                          @scmd  = EC_Auth
+                          sign1_phrase2 = PandoraUtils.rubyobj_to_pson([sign1, phrase2])
+                          @sbuf = sign1_phrase2
+                          set_max_pack_size(ES_Sign)
+                        else
+                          err_scmd('Cannot create sign 1')
+                        end
+                      else
+                        skey_panhash = params['tokey']
+                        #p log_mes+'======skey_panhash='+[params, skey_panhash].inspect
+                        @skey = PandoraCrypto.open_key(skey_panhash, @recv_models, true)
+                        if @skey
+                          @stage = ES_Exchange
+                          set_max_pack_size(ES_Exchange)
+                          PandoraUtils.play_mp3('online')
+                        else
+                          err_scmd('Cannot init skey 1')
+                        end
+                      end
+                    else  #listener
+                      sign1_phrase2, len = PandoraUtils.pson_to_rubyobj(rdata)
+                      if (sign1_phrase2.is_a? Array)
+                        phrase1 = params['sphrase']
+                        sign1, phrase2 = sign1_phrase2
+                        if PandoraCrypto.verify_sign(@cipher, \
+                        OpenSSL::Digest::SHA384.digest(phrase1), sign1)
+                          skey_panhash = params['srckey']
+                          @skey = PandoraCrypto.open_key(skey_panhash, @recv_models, true)
+                          if @skey
+                            phrase2 = OpenSSL::Digest::SHA384.digest(phrase2)
+                            sign2 = PandoraCrypto.make_sign(@cipher, phrase2)
+                            if sign2
+                              phrase2, init = get_sphrase(true)
+                              @scmd  = EC_Auth
+                              @scode = ECC_Auth_Cipher
+                              @sbuf = sign2
+                              @stage = ES_Exchange
+                              set_max_pack_size(ES_Exchange)
+                              PandoraUtils.play_mp3('online')
+                            else
+                              err_scmd('Cannot create sign 2')
+                            end
+                          else
+                            err_scmd('Cannot init skey 2')
+                          end
+                        else
+                          err_scmd('Wrong cipher sign')
+                        end
+                      else
+                        err_scmd('Must be sign and phrase')
+                      end
+                    end
+                  else
+                    err_scmd('Cannot init cipher')
+                  end
+                else
+                  err_scmd('No opened cipher')
                 end
               elsif ((rcode==ECC_Auth_Puzzle) or (rcode==ECC_Auth_Phrase)) \
               and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
@@ -7706,14 +7910,22 @@ module PandoraNet
                     rphrase = OpenSSL::Digest::SHA384.digest(rphrase)
                     sign = PandoraCrypto.make_sign(@rkey, rphrase)
                     if sign
-                      len = $base_id.bytesize
-                      len = 255 if len>255
-                      @sbuf = [len].pack('C')+$base_id[0,len]+sign
+                      @scmd  = EC_Auth
                       @scode = ECC_Auth_Sign
                       if @stage == ES_Greeting
                         @stage = ES_Exchange
+                        acipher = open_or_gen_cipher(@skey[PandoraCrypto::KV_Panhash])
+                        if acipher
+                          @cipher = acipher
+                          acipher = @cipher[PandoraCrypto::KV_Panhash]
+                        end
+                        trust = @skey[PandoraCrypto::KV_Trust]
+                        update_node(to_key, to_base_id, trust, acipher)
+                        @sbuf = PandoraUtils.rubyobj_to_pson([sign, $base_id, acipher])
                         set_max_pack_size(ES_Exchange)
                         PandoraUtils.play_mp3('online')
+                      else
+                        @sbuf = PandoraUtils.rubyobj_to_pson([sign, $base_id, nil])
                       end
                     else
                       err_scmd('Cannot create sign')
@@ -7769,9 +7981,9 @@ module PandoraNet
                 end
               elsif (rcode==ECC_Auth_Sign) and (@stage==ES_Sign)
               #ECC_Auth_Sign
-                len = rdata[0].ord
-                sbase_id = rdata[1, len]
-                rsign = rdata[len+1..-1]
+                rsign, sbase_id, acipher = nil
+                sig_bid_cip, len = PandoraUtils.pson_to_rubyobj(rdata)
+                rsign, sbase_id, acipher = sig_bid_cip if (sig_bid_cip.is_a? Array)
                 p log_mes+'recived rsign len='+rsign.bytesize.to_s
                 @skey = PandoraCrypto.open_key(@skey, @recv_models, true)
                 if @skey and @skey[PandoraCrypto::KV_Obj]
@@ -7803,7 +8015,6 @@ module PandoraNet
                       elsif trust.is_a? Float
                         if trust>=$low_conn_trust
                           @sess_trust = trust
-                          update_node(to_key, sbase_id, trust)
                           if (@notice.is_a? Integer)
                             not_trust = (@notice & 0xFF)
                             not_dep = (@notice >> 8)
@@ -7819,6 +8030,7 @@ module PandoraNet
                             set_max_pack_size(ES_Sign)
                           else
                             @stage = ES_Exchange
+                            update_node(to_key, sbase_id, trust)
                             set_max_pack_size(ES_Exchange)
                             PandoraUtils.play_mp3('online')
                           end
@@ -18463,7 +18675,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.51'
+    dlg.version = '0.52'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
@@ -19404,6 +19616,10 @@ module PandoraGtk
         end
       end
 
+      def transpix?(pix, bg)
+        res = ((pix.size == 4) and (pix[-1] == 0.chr) or (pix == bg))
+      end
+
       if buf.nil? and icon_preset
         index = icon_preset[:names].index(emot)
         if index.nil?
@@ -19449,7 +19665,7 @@ module PandoraGtk
           top = 0
           while (top<height)
             x = 0
-            while (x<w) and (pixs[w*top+x, pix_size]==bg)
+            while (x<w) and transpix?(pixs[w*top+x, pix_size], bg)
               x += pix_size
             end
             if x<w
@@ -19463,7 +19679,7 @@ module PandoraGtk
           bottom = height-1
           while (bottom>top)
             x = 0
-            while (x<w) and (pixs[w*bottom+x, pix_size]==bg)
+            while (x<w) and transpix?(pixs[w*bottom+x, pix_size], bg)
               x += pix_size
             end
             if x<w
@@ -19477,7 +19693,7 @@ module PandoraGtk
           left = 0
           while (left<w)
             y = 0
-            while (y<height) and (pixs[w*y+left, pix_size]==bg)
+            while (y<height) and transpix?(pixs[w*y+left, pix_size], bg)
               y += 1
             end
             if y<height
@@ -19491,7 +19707,7 @@ module PandoraGtk
           right = w - pix_size
           while (right>left)
             y = 0
-            while (y<height) and (pixs[w*y+right, pix_size]==bg)
+            while (y<height) and transpix?(pixs[w*y+right, pix_size], bg)
               y += 1
             end
             if y<height
