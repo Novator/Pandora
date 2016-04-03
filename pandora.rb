@@ -7077,7 +7077,11 @@ module PandoraNet
             mode = 0
             mode |= CM_GetNotice if $get_notice
             mode |= CM_Captcha if (@conn_mode & CM_Captcha)>0
+<<<<<<< HEAD
             hparams = {:version=>'pandora0.52', :mode=>mode, :mykey=>key_hash, :tokey=>tokey, \
+=======
+            hparams = {:version=>'pandora0.1', :mode=>mode, :mykey=>key_hash, :tokey=>param, \
+>>>>>>> 6cff67965a570380ba16da89a5428fdc1f76f53d
               :notice=>(($notice_depth << 8) | $notice_trust)}
             hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
             acipher = open_last_cipher(tokey)
@@ -7785,12 +7789,16 @@ module PandoraNet
         when EC_Auth
           if @stage<=ES_Captcha
             if rcode<=ECC_Auth_Answer
-              if (rcode==ECC_Auth_Hello) and ((@stage==ES_Protocol) or (@stage==ES_Sign))
+              if (rcode==ECC_Auth_Hello) and (@stage==ES_Protocol) #or (@stage==ES_Sign))
               #ECC_Auth_Hello
                 recognize_params
                 if scmd != EC_Bye
                   vers = params['version']
+<<<<<<< HEAD
                   if vers=='pandora0.52'
+=======
+                  if vers=='pandora0.1'
+>>>>>>> 6cff67965a570380ba16da89a5428fdc1f76f53d
                     addr = params['addr']
                     p log_mes+'addr='+addr.inspect
                     # need to change an ip checking
@@ -7913,6 +7921,7 @@ module PandoraNet
                       @scmd  = EC_Auth
                       @scode = ECC_Auth_Sign
                       if @stage == ES_Greeting
+<<<<<<< HEAD
                         @stage = ES_Exchange
                         acipher = open_or_gen_cipher(@skey[PandoraCrypto::KV_Panhash])
                         if acipher
@@ -7922,6 +7931,9 @@ module PandoraNet
                         trust = @skey[PandoraCrypto::KV_Trust]
                         update_node(to_key, to_base_id, trust, acipher)
                         @sbuf = PandoraUtils.rubyobj_to_pson([sign, $base_id, acipher])
+=======
+                        @stage = ES_Exchange    #!!!!!!!!!!!!!!!
+>>>>>>> 6cff67965a570380ba16da89a5428fdc1f76f53d
                         set_max_pack_size(ES_Exchange)
                         PandoraUtils.play_mp3('online')
                       else
@@ -7996,10 +8008,8 @@ module PandoraNet
                       @send_state = (@send_state | CSF_Message)
                     end
                     trust = @skey[PandoraCrypto::KV_Trust]
-
-                    init_and_check_node(@skey[PandoraCrypto::KV_Creator], \
-                      @skey[PandoraCrypto::KV_Panhash], sbase_id)
-
+                    skey_hash = @skey[PandoraCrypto::KV_Panhash]
+                    init_and_check_node(@skey[PandoraCrypto::KV_Creator], skey_hash, sbase_id)
                     if ((@conn_mode & CM_Double) == 0)
                       if (not hunter?)
                         trust = 0 if (not trust) and $trust_for_captchaed
@@ -8011,7 +8021,15 @@ module PandoraNet
                       if ($captcha_length>0) and (trust.is_a? Integer) \
                       and (not hunter?) and ((@sess_mode & CM_Captcha)>0)
                         @skey[PandoraCrypto::KV_Trust] = 0
-                        send_captcha
+                        #send_captcha
+                        if not hunter?
+                          @stage = ES_Greeting
+                          p log_mes+'Hello2 skey_hash='+skey_hash.inspect
+                          add_send_segment(EC_Auth, true, skey_hash)
+                        end
+                        @scmd = EC_Data
+                        @scode = 0
+                        @sbuf = nil
                       elsif trust.is_a? Float
                         if trust>=$low_conn_trust
                           @sess_trust = trust
@@ -18675,7 +18693,11 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
+<<<<<<< HEAD
     dlg.version = '0.52'
+=======
+    dlg.version = '0.51'
+>>>>>>> 6cff67965a570380ba16da89a5428fdc1f76f53d
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
