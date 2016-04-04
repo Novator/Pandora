@@ -4614,7 +4614,7 @@ module PandoraCrypto
   # RU: Создает подпись
   def self.make_sign(key_vec, data, hash_len=KH_Sha2 | KL_bit256)
     sign = nil
-    if (key_vec.is_a? Array)
+    if (key_vec.is_a? Array) and data
       key_obj = key_vec[KV_Obj]
       if key_obj
         hash_obj = pan_kh_to_openssl_hash(hash_len)
@@ -4637,7 +4637,7 @@ module PandoraCrypto
   # RU: Проверяет подпись
   def self.verify_sign(key_vec, data, sign, hash_len=KH_Sha2 | KL_bit256)
     res = nil
-    if (key_vec.is_a? Array)
+    if (key_vec.is_a? Array) and data and sign
       key_obj = key_vec[KV_Obj]
       if key_obj
         hash_obj = pan_kh_to_openssl_hash(hash_len)
@@ -4645,9 +4645,11 @@ module PandoraCrypto
           type_klen = key_vec[KV_Kind]
           type, klen = divide_type_and_klen(type_klen)
           if symmetric_key?(type)
-            data_hash = hash_obj.digest(data)
-            sign_fact = recrypt(key_vec, data_hash, false)
-            res = (sign == sign_fact)
+            hash_came = recrypt(key_vec, sign, false)
+            if hash_came
+              hash_fact = hash_obj.digest(data)
+              res = (hash_came == hash_fact)
+            end
           else
             res = key_obj.verify(hash_obj, sign, data)
           end
@@ -7077,11 +7079,7 @@ module PandoraNet
             mode = 0
             mode |= CM_GetNotice if $get_notice
             mode |= CM_Captcha if (@conn_mode & CM_Captcha)>0
-<<<<<<< HEAD
             hparams = {:version=>'pandora0.52', :mode=>mode, :mykey=>key_hash, :tokey=>tokey, \
-=======
-            hparams = {:version=>'pandora0.1', :mode=>mode, :mykey=>key_hash, :tokey=>param, \
->>>>>>> 6cff67965a570380ba16da89a5428fdc1f76f53d
               :notice=>(($notice_depth << 8) | $notice_trust)}
             hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
             acipher = open_last_cipher(tokey)
@@ -7356,6 +7354,14 @@ module PandoraNet
       def update_node(skey_panhash=nil, sbase_id=nil, trust=nil, session_key=nil)
         p log_mes + '++++++++update_node [skey_panhash, sbase_id, trust, session_key]=' \
           +[skey_panhash, sbase_id, trust, session_key].inspect
+
+        skey_creator = @skey[PandoraCrypto::KV_Creator]
+        init_and_check_node(skey_creator, skey_panhash, sbase_id)
+        creator = PandoraCrypto.current_user_or_key(true)
+        if hunter? or (not skey_creator) or (skey_creator != creator)
+          # check messages if it's not session to myself
+          @send_state = (@send_state | CSF_Message)
+        end
 
         time_now = Time.now.to_i
         astate = 0
@@ -7794,11 +7800,7 @@ module PandoraNet
                 recognize_params
                 if scmd != EC_Bye
                   vers = params['version']
-<<<<<<< HEAD
                   if vers=='pandora0.52'
-=======
-                  if vers=='pandora0.1'
->>>>>>> 6cff67965a570380ba16da89a5428fdc1f76f53d
                     addr = params['addr']
                     p log_mes+'addr='+addr.inspect
                     # need to change an ip checking
@@ -7827,29 +7829,45 @@ module PandoraNet
                           @stage = ES_Cipher
                           @scode = ECC_Auth_Cipher
                           @scmd  = EC_Auth
-                          sign1_phrase2 = PandoraUtils.rubyobj_to_pson([sign1, phrase2])
-                          @sbuf = sign1_phrase2
+                          sign1_phrase2_baseid = PandoraUtils.rubyobj_to_pson([sign1, \
+                            phrase2, pool.base_id])
+                          @sbuf = sign1_phrase2_baseid
                           set_max_pack_size(ES_Sign)
                         else
                           err_scmd('Cannot create sign 1')
                         end
                       else
-                        skey_panhash = params['tokey']
-                        #p log_mes+'======skey_panhash='+[params, skey_panhash].inspect
-                        @skey = PandoraCrypto.open_key(skey_panhash, @recv_models, true)
-                        if @skey
-                          @stage = ES_Exchange
-                          set_max_pack_size(ES_Exchange)
-                          PandoraUtils.play_mp3('online')
+                        sign2_baseid, len = PandoraUtils.pson_to_rubyobj(rdata)
+                        if (sign2_baseid.is_a? Array)
+                          sign2, sbaseid = sign2_baseid
+                          phrase2 = params['sphrase']
+                          if PandoraCrypto.verify_sign(@cipher, \
+                          OpenSSL::Digest::SHA384.digest(phrase2), sign2)
+                            skey_panhash = params['tokey']
+                            #p log_mes+'======skey_panhash='+[params, skey_panhash].inspect
+                            @skey = PandoraCrypto.open_key(skey_panhash, @recv_models, true)
+                            if @skey
+                              @stage = ES_Exchange
+                              set_max_pack_size(ES_Exchange)
+                              trust = @skey[PandoraCrypto::KV_Trust]
+                              update_node(skey_panhash, sbaseid, trust, \
+                                @cipher[PandoraCrypto::KV_Panhash])
+                              PandoraUtils.play_mp3('online')
+                            else
+                              err_scmd('Cannot init skey 1')
+                            end
+                          else
+                            err_scmd('Wrong cipher sign 1')
+                          end
                         else
-                          err_scmd('Cannot init skey 1')
+                          err_scmd('Must be sign and baseid')
                         end
                       end
                     else  #listener
-                      sign1_phrase2, len = PandoraUtils.pson_to_rubyobj(rdata)
-                      if (sign1_phrase2.is_a? Array)
+                      sign1_phrase2_baseid, len = PandoraUtils.pson_to_rubyobj(rdata)
+                      if (sign1_phrase2_baseid.is_a? Array)
                         phrase1 = params['sphrase']
-                        sign1, phrase2 = sign1_phrase2
+                        sign1, phrase2, sbaseid = sign1_phrase2_baseid
                         if PandoraCrypto.verify_sign(@cipher, \
                         OpenSSL::Digest::SHA384.digest(phrase1), sign1)
                           skey_panhash = params['srckey']
@@ -7861,8 +7879,13 @@ module PandoraNet
                               phrase2, init = get_sphrase(true)
                               @scmd  = EC_Auth
                               @scode = ECC_Auth_Cipher
-                              @sbuf = sign2
+                              sign2_baseid = PandoraUtils.rubyobj_to_pson([sign2, \
+                                pool.base_id])
+                              @sbuf = sign2_baseid
                               @stage = ES_Exchange
+                              trust = @skey[PandoraCrypto::KV_Trust]
+                              update_node(skey_panhash, sbaseid, trust, \
+                                @cipher[PandoraCrypto::KV_Panhash])
                               set_max_pack_size(ES_Exchange)
                               PandoraUtils.play_mp3('online')
                             else
@@ -7872,7 +7895,7 @@ module PandoraNet
                             err_scmd('Cannot init skey 2')
                           end
                         else
-                          err_scmd('Wrong cipher sign')
+                          err_scmd('Wrong cipher sign 2')
                         end
                       else
                         err_scmd('Must be sign and phrase')
@@ -7921,7 +7944,6 @@ module PandoraNet
                       @scmd  = EC_Auth
                       @scode = ECC_Auth_Sign
                       if @stage == ES_Greeting
-<<<<<<< HEAD
                         @stage = ES_Exchange
                         acipher = open_or_gen_cipher(@skey[PandoraCrypto::KV_Panhash])
                         if acipher
@@ -7931,9 +7953,6 @@ module PandoraNet
                         trust = @skey[PandoraCrypto::KV_Trust]
                         update_node(to_key, to_base_id, trust, acipher)
                         @sbuf = PandoraUtils.rubyobj_to_pson([sign, $base_id, acipher])
-=======
-                        @stage = ES_Exchange    #!!!!!!!!!!!!!!!
->>>>>>> 6cff67965a570380ba16da89a5428fdc1f76f53d
                         set_max_pack_size(ES_Exchange)
                         PandoraUtils.play_mp3('online')
                       else
@@ -8001,12 +8020,6 @@ module PandoraNet
                 if @skey and @skey[PandoraCrypto::KV_Obj]
                   if PandoraCrypto.verify_sign(@skey, \
                   OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
-                    creator = PandoraCrypto.current_user_or_key(true)
-                    if hunter? or (not @skey[PandoraCrypto::KV_Creator]) \
-                    or (@skey[PandoraCrypto::KV_Creator] != creator)
-                      # check messages if it's not session to myself
-                      @send_state = (@send_state | CSF_Message)
-                    end
                     trust = @skey[PandoraCrypto::KV_Trust]
                     skey_hash = @skey[PandoraCrypto::KV_Panhash]
                     init_and_check_node(@skey[PandoraCrypto::KV_Creator], skey_hash, sbase_id)
@@ -9433,11 +9446,11 @@ module PandoraNet
               # обработка принятых запросов, их удаление
 
               # пакетирование текстовых сообщений
-              processed = 0
-              #p log_mes+'----------send_state1='+send_state.inspect
+              #p log_mes+'----------MESSS [send_state, stage, conn_state]='+[send_state, stage, conn_state].inspect
               #sleep 1
+              processed = 0
               if (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
-              and (((send_state & CSF_Message)>0) or ((send_state & CSF_Messaging)>0))
+              and (((@send_state & CSF_Message)>0) or ((@send_state & CSF_Messaging)>0))
                 @activity = 2
                 @send_state = (send_state & (~CSF_Message))
                 receiver = @skey[PandoraCrypto::KV_Creator]
@@ -10023,7 +10036,8 @@ module PandoraNet
                         'UDP '+_('broadcast to ports')+' '+rcv_udp_port.to_s)
                     rescue => err
                       PandoraUtils.log_message(LM_Trace, \
-                        _('Cannot send')+' UDP '+_('broadcast to ports')+' '+rcv_udp_port.to_s)
+                        _('Cannot send')+' UDP '+_('broadcast to ports')+' '\
+                        +rcv_udp_port.to_s+' ('+err.message+')')
                     end
                   end
                 end
@@ -18693,11 +18707,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-<<<<<<< HEAD
     dlg.version = '0.52'
-=======
-    dlg.version = '0.51'
->>>>>>> 6cff67965a570380ba16da89a5428fdc1f76f53d
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
