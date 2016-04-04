@@ -404,6 +404,18 @@ module PandoraUtils
     res
   end
 
+  # Open web browser or email client
+  # RU: Открывает веб-браузер или email клиент
+  def self.go_web_link(link)
+    a1 = 'xdg-open'
+    a2 = ' &'
+    if PandoraUtils.os_family=='windows'
+      a1 = 'start'
+      a2 = ''
+    end
+    system(a1 + ' ' + link + a2)
+  end
+
   # Panhash is nil?
   # RU: Панхэш нулевой?
   def self.panhash_nil?(panhash)
@@ -3898,7 +3910,7 @@ module PandoraModel
   def self.get_avatar_icon(panhash, pixbuf_parent, its_blob=false, icon_size=16)
     pixbuf = nil
     avatar_hash = panhash
-    avatar_hash = PandoraModel.find_relation(panhash, RK_AvatarFor, true) unless its_blob
+    avatar_hash = PandoraModel.find_relation(panhash, RK_AvatarFor, true) if not its_blob
     if avatar_hash
       #p '--get_avatar_icon [its_blob, avatar_hash]='+[its_blob, avatar_hash].inspect
       proto = 'icon'
@@ -3920,8 +3932,10 @@ module PandoraModel
             h2 = h*w2/w
             pixbuf = pixbuf.scale(w2, h2)
           end
+        elsif its_blob
+          pixbuf = get_avatar_icon(panhash, pixbuf_parent, nil, icon_size)
         end
-        save_image_to_cache(pixbuf, proto, obj_type, avatar_hash)
+        save_image_to_cache(pixbuf, proto, obj_type, avatar_hash) if not its_blob.nil?
       end
     end
     pixbuf
@@ -4455,6 +4469,7 @@ module PandoraCrypto
   def self.save_key(key_vec, creator=nil, rights=nil, key_model=nil)
     #p 'key_vec='+key_vec.inspect
     creator ||= current_user_or_key(true, false)
+    creator ||= key_vec[KV_Creator]
     rights ||= (KS_Exchange | KS_Voucher)
     key_model ||= PandoraUtils.get_model('Key')
 
@@ -4484,12 +4499,13 @@ module PandoraCrypto
     end
     cipher_hash1 = cipher_hash
     cipher_hash1 = 0 if (not priv.nil?)
-
     values = {:panstate=>panstate, :kind=>type_klen, :rights=>rights, :expire=>expire, \
       :creator=>creator, :created=>time_now, :cipher=>cipher_hash1, \
       :body=>body, :modified=>time_now}
-    panhash = key_model.panhash(values, rights)
-    values['panhash'] = panhash
+
+    panhash = key_vec[KV_Panhash]
+    panhash ||= key_model.panhash(values, rights)
+    values[:panhash] = panhash
 
     key_vec[KV_Panhash] = panhash
     key_vec[KV_Creator] = creator
@@ -4508,7 +4524,20 @@ module PandoraCrypto
 
   # Init key or key pair
   # RU: Инициализирует ключ или ключевую пару
-  def self.init_key(key_vec)
+  def self.key_saved?(panhash, key_model=nil)
+    res = nil
+    key_model ||= PandoraUtils.get_model('Key')
+    if key_model
+      panhash = panhash[KV_Panhash] if (panhash.is_a? Array)
+      sel = key_model.select({:panhash=>panhash}, false, 'id', nil, 1)
+      res = (sel and (sel.size>0))
+    end
+    res
+  end
+
+  # Init key or key pair
+  # RU: Инициализирует ключ или ключевую пару
+  def self.init_key(key_vec, recrypt=true)
     key = key_vec[KV_Obj]
     if not key
       keypub  = key_vec[KV_Pub]
@@ -4518,7 +4547,7 @@ module PandoraCrypto
       type_klen = key_vec[KV_Kind]
       cipher_hash = key_vec[KV_Cipher]
       pass = key_vec[KV_Pass]
-      keypriv = key_recrypt(keypriv, false, cipher_hash, pass) if keypriv
+      keypriv = key_recrypt(keypriv, false, cipher_hash, pass) if recrypt and keypriv
       type, klen = divide_type_and_klen(type_klen)
       #p [type, klen]
       bitlen = klen_to_bitlen(klen)
@@ -4591,13 +4620,10 @@ module PandoraCrypto
           ])
         else
           key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
-          p '--111   keypriv='+[keypriv.bytesize].inspect
           if keypub.nil? and keypriv and (bitlen/8 != keypriv.bytesize)
             key_iv, len = PandoraUtils.pson_to_rubyobj(keypriv)
-            p '--222   keyiv='+key_iv.inspect
             if (key_iv.is_a? Array)
               keypriv, keypub = key_iv
-               p '--333   keypriv, keypub='+[keypriv.bytesize, keypub.bytesize].inspect
               key_vec[KV_Pub] = keypub
               key_vec[KV_Priv] = keypriv
             end
@@ -5564,8 +5590,8 @@ module PandoraNet
   EC_Fragment  = 10    # Кусок длинной записи
   EC_Sync      = 11    # !!! Последняя команда в серии, или индикация "живости"
   # --------------------------- EC_Sync must be last
-  EC_Wait      = 254   # Временно недоступен
-  EC_Bye       = 255   # Рассоединение
+  EC_Wait      = 126   # Временно недоступен
+  EC_Bye       = 127   # Рассоединение
   # signs only
   EC_Data      = 256   # Ждем данные
 
@@ -6734,7 +6760,7 @@ module PandoraNet
       :conn_state, :stage, :dialog, \
       :send_thread, :read_thread, :socket, :read_state, :send_state, \
       :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, \
-      :params, :cipher, \
+      :params, :cipher, :ciphering, \
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
@@ -6821,6 +6847,31 @@ module PandoraNet
       @hooks.delete_if {|rec| rec[LHI_Session]==sess }
     end
 
+    def cipher_buf(buf, encode=true)
+      res = buf
+      if @cipher
+        if res
+          #if encode
+          #  p log_mes+'####bef#### CIPHER ENC buf='+res.inspect
+          #else
+          #  p log_mes+'####bef#### CIPHER DEC buf='+res.bytesize.inspect
+          #end
+          res = PandoraCrypto.recrypt(@cipher, res, encode)
+          #if encode
+          #  p log_mes+'#####aff##### CIPHER ENC buf='+res.bytesize.inspect
+          #else
+          #  p log_mes+'#####aff##### CIPHER DEC buf='+res.inspect
+          #end
+        end
+      else
+        p log_mes+'####-=-=--=-=-=-=-==-NO CIPHER buf='+res.inspect
+        @ciphering = nil
+      end
+      res
+    end
+
+    CipherCmdBit   = 0x80
+
     # Send command, code and date (if exists)
     # RU: Отправляет команду, код и данные (если есть)
     def send_comm_and_data(index, cmd, code, data=nil)
@@ -6831,6 +6882,10 @@ module PandoraNet
       lengt = data.bytesize if data
       #p log_mes+'SEND: [index, cmd, code, lengt]='+[index, cmd, code, lengt].inspect
       @last_send_time = pool.time_now
+      if cmd != EC_Media
+        data = cipher_buf(data, true) if @ciphering
+        cmd = (cmd | CipherCmdBit) if @ciphering
+      end
       if @socket.is_a? IPSocket
         data ||= ''
         data = AsciiString.new(data)
@@ -7952,6 +8007,12 @@ module PandoraNet
                         end
                         trust = @skey[PandoraCrypto::KV_Trust]
                         update_node(to_key, to_base_id, trust, acipher)
+                        acipher = [@cipher[PandoraCrypto::KV_Panhash], \
+                          @cipher[PandoraCrypto::KV_Pub], \
+                          @cipher[PandoraCrypto::KV_Priv], \
+                          @cipher[PandoraCrypto::KV_Kind], \
+                          @cipher[PandoraCrypto::KV_Cipher], \
+                          @cipher[PandoraCrypto::KV_Creator]]
                         @sbuf = PandoraUtils.rubyobj_to_pson([sign, $base_id, acipher])
                         set_max_pack_size(ES_Exchange)
                         PandoraUtils.play_mp3('online')
@@ -8061,7 +8122,30 @@ module PandoraNet
                             set_max_pack_size(ES_Sign)
                           else
                             @stage = ES_Exchange
-                            update_node(to_key, sbase_id, trust)
+                            session_key = nil
+                            p log_mes+'---------acipher='+acipher.inspect
+                            p log_mes+'&&&&&&&& @cipher='+@cipher.inspect
+                            if (acipher.is_a? Array) and @cipher.nil?
+                              cip = Array.new
+                              cip[PandoraCrypto::KV_Panhash] = acipher[0]
+                              cip[PandoraCrypto::KV_Pub]     = acipher[1]
+                              cip[PandoraCrypto::KV_Priv]    = acipher[2]
+                              cip[PandoraCrypto::KV_Kind]    = acipher[3]
+                              cip[PandoraCrypto::KV_Cipher]  = acipher[4]
+                              cip[PandoraCrypto::KV_Creator] = acipher[5]
+                              #@cipher = PandoraCrypto.open_key(cipher_phash, @recv_models, false)
+                              @cipher = PandoraCrypto.init_key(cip, false)
+                              if @cipher[PandoraCrypto::KV_Obj]
+                                key_model = PandoraUtils.get_model('Key', @recv_models)
+                                key_phash = cip[PandoraCrypto::KV_Panhash]
+                                if not PandoraCrypto.key_saved?(key_phash, key_model)
+                                  if PandoraCrypto.save_key(cip, mypersonhash, nil, key_model)
+                                    session_key = key_phash
+                                  end
+                                end
+                              end
+                            end
+                            update_node(to_key, sbase_id, trust, session_key)
                             set_max_pack_size(ES_Exchange)
                             PandoraUtils.play_mp3('online')
                           end
@@ -9043,6 +9127,7 @@ module PandoraNet
             @params         = {}
             @media_send     = false
             @node_panhash   = nil
+            @ciphering      = false
             #@base_id        = nil
             if @socket
               set_keepalive(@socket)
@@ -9214,6 +9299,14 @@ module PandoraNet
                           sleep(0.03)
                           Thread.pass
                         end
+                        if (rkcmd & CipherCmdBit)>0
+                          rkcmd = (rkcmd & (~CipherCmdBit))
+                          rkdata = cipher_buf(rkdata, false)
+                          if @ciphering.nil?
+                            PandoraUtils.log_message(LM_Error, _('No cipher for decrypt data'))
+                            @conn_state = CS_Stoping
+                          end
+                        end
                         res = @read_queue.add_block_to_queue([rkcmd, rkcode, rkdata])
                         if not res
                           PandoraUtils.log_message(LM_Error, _('Cannot add socket segment to read queue'))
@@ -9328,7 +9421,11 @@ module PandoraNet
                   end
                   #p log_mes+'MAIN SEND: '+[@sindex, sscmd, sscode, ssbuf].inspect
                   if (sscmd != EC_Bye) or (sscode != ECC_Bye_Silent)
-                    if not send_comm_and_data(@sindex, sscmd, sscode, ssbuf)
+                    if send_comm_and_data(@sindex, sscmd, sscode, ssbuf)
+                      if (not @ciphering) and (@stage>=ES_Exchange) and @cipher
+                        @ciphering = true
+                      end
+                    else
                       @conn_state = CS_Disconnected
                       p log_mes+'err send comm and buf'
                     end
@@ -11960,6 +12057,10 @@ module PandoraGtk
     res
   end
 
+  class LinkTag < Gtk::TextTag
+    attr_accessor :link
+  end
+
   $font_desc = nil
 
   # Window for view body (text or blob)
@@ -12103,33 +12204,34 @@ module PandoraGtk
         false
       end
 
-      signal_connect('event-after') do |body_child, event|
-        if event.kind_of?(Gdk::EventButton) and (event.button == 1)
-          buffer = body_child.buffer
+      signal_connect('event-after') do |tv, event|
+        if event.kind_of?(Gdk::EventButton) \
+        and (event.event_type == Gdk::Event::BUTTON_PRESS) and (event.button == 1)
+          buf = tv.buffer
           # we shouldn't follow a link if the user has selected something
-          range = buffer.selection_bounds
+          range = buf.selection_bounds
           if range and (range[0].offset == range[1].offset)
-            x, y = body_child.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, \
+            x, y = tv.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, \
               event.x, event.y)
-            iter = body_child.get_iter_at_location(x, y)
-            follow_if_link(body_child, iter)
+            iter = tv.get_iter_at_location(x, y)
+            follow_if_link(tv, iter)
           end
         end
         false
       end
 
-      signal_connect('motion-notify-event') do |body_child, event|
-        x, y = body_child.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, \
+      signal_connect('motion-notify-event') do |tv, event|
+        x, y = tv.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, \
           event.x, event.y)
-        set_cursor_if_appropriate(body_child, x, y)
-        body_child.window.pointer
+        set_cursor_if_appropriate(tv, x, y)
+        tv.window.pointer
         false
       end
 
-      signal_connect('visibility-notify-event') do |body_child, event|
-        window, wx, wy = body_child.window.pointer
-        bx, by = body_child.window_to_buffer_coords(Gtk::TextView::WINDOW_WIDGET, wx, wy)
-        set_cursor_if_appropriate(body_child, bx, by)
+      signal_connect('visibility-notify-event') do |tv, event|
+        window, wx, wy = tv.window.pointer
+        bx, by = tv.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, wx, wy)
+        set_cursor_if_appropriate(tv, bx, by)
         false
       end
     end
@@ -12140,20 +12242,19 @@ module PandoraGtk
       res
     end
 
-    def set_cursor_if_appropriate(body_child, x, y)
-      buffer = body_child.buffer
-      iter = body_child.get_iter_at_location(x, y)
+    def set_cursor_if_appropriate(tv, x, y)
+      iter = tv.get_iter_at_location(x, y)
       hovering = false
       tags = iter.tags
-      tags.each do |t|
-        if t.name=='link'
+      tags.each do |tag|
+        if tag.is_a? LinkTag
           hovering = true
           break
         end
       end
       if hovering != @hovering
         @hovering = hovering
-        window = body_child.get_window(Gtk::TextView::WINDOW_TEXT)
+        window = tv.get_window(Gtk::TextView::WINDOW_TEXT)
         if @hovering
           window.cursor = @hand_cursor
         else
@@ -12162,19 +12263,17 @@ module PandoraGtk
       end
     end
 
-    def insert_link(buffer, iter, text, page)
-      tag = buffer.create_tag(nil, {'foreground' => 'blue',
-        'underline' => Pango::AttrUnderline::SINGLE})
-      tag.page = page
-      buffer.insert(iter, text, tag)
-      print("Insert #{tag}:#{page}\n")
-    end
-
     def follow_if_link(body_child, iter)
       tags = iter.tags
       tags.each do |tag|
-        if tag.name=='link'
-          p 'Go to link!'
+        if tag.is_a? LinkTag
+          link = tag.link
+          if (link.is_a? String) and (link.size>0)
+            p 'Go to link: ['+link+']'
+            if (link[0, 4]=='http') or (link[0, 4]=='mail')
+              PandoraUtils.go_web_link(link)
+            end
+          end
         end
       end
     end
@@ -12227,16 +12326,17 @@ module PandoraGtk
         if str.is_a?(String) and (str.size>1) \
         and ((str[0]=='"' and str[-1]=='"') or (str[0]=="'" and str[-1]=="'"))
           str = str[1..-2]
+          str.strip! if str
         end
         str
       end
 
-      def get_param(params, type=:string)
+      def get_tag_param(params, type=:string)
         res = nil
         if (params.is_a? String) and (params.size>0) and params.index('=').nil?
-          res = params
+          res = params.strip
           res = remove_quotes(res)
-          if type==:number
+          if res and (type==:number)
             begin
               res.gsub!(/[^0-9\.]/, '')
               res = res.to_i
@@ -12396,6 +12496,26 @@ module PandoraGtk
                         when 'URL', 'A', 'HREF', 'LINK'
                           tv_tag = 'link'
                           #insert_link(buffer, iter, 'Go back', 1)
+                          params = str[0, i1] unless params and (params.size>0)
+                          params = get_tag_param(params) if params and (params.size>0)
+                          if params and (params.size>0)
+                            trunc_md5 = Digest::MD5.digest(params)[0, 10]
+                            link_id = 'link'+PandoraUtils.bytes_to_hex(trunc_md5)
+                            link_tag = dest_buf.tag_table.lookup(link_id)
+                            #p '--[link_id, link_tag, params]='+[link_id, link_tag, params].inspect
+                            if link_tag
+                              tv_tag = link_tag.name
+                            else
+                              link_tag = LinkTag.new(link_id)
+                              if link_tag
+                                dest_buf.tag_table.add(link_tag)
+                                link_tag.foreground = 'blue'
+                                link_tag.underline = Pango::AttrUnderline::SINGLE
+                                link_tag.link = params
+                                tv_tag = link_id
+                              end
+                            end
+                          end
                         when 'ANCHOR'
                           tv_tag = nil
                         when 'QUOTE', 'BLOCKQUOTE'
@@ -12422,6 +12542,7 @@ module PandoraGtk
                         when 'IMG', 'IMAGE'
                           params = str[0, i1] unless params and (params.size>0)
                           p 'IMG params='+params.inspect
+                          params = get_tag_param(params) if params and (params.size>0)
                           if params and (params.size>0)
                             img_buf = $window.get_icon_buf(params)
                             if img_buf
@@ -12437,7 +12558,7 @@ module PandoraGtk
                         when 'ABBR', 'ACRONYM'
                           tv_tag = nil
                         when 'HR'
-                          count = get_param(params, :number)
+                          count = get_tag_param(params, :number)
                           count = 50 unless count.is_a? Numeric and (count>0)
                           dest_buf.insert(dest_buf.end_iter, ' '*count)
                           shift_coms(count)
@@ -12462,11 +12583,11 @@ module PandoraGtk
 
                           case comu
                             when 'FG', 'FORE', 'FOREGROUND', 'COLOR', 'COLOUR'
-                              fg = get_param(params)
+                              fg = get_tag_param(params)
                             when 'BG', 'BACK', 'BACKGROUND'
-                              bg = get_param(params)
+                              bg = get_tag_param(params)
                             else
-                              sz = get_param(params, :number)
+                              sz = get_tag_param(params, :number)
                               if not sz
                                 param_hash = detect_params(params)
                                 sz = param_hash['size']
@@ -12606,7 +12727,7 @@ module PandoraGtk
                           shift_coms(1)
                         when 'HR'
                           p1 = dest_buf.end_iter.offset
-                          count = get_param(params, :number)
+                          count = get_tag_param(params, :number)
                           count = 50 if not (count.is_a? Numeric and (count>0))
                           dest_buf.insert(dest_buf.end_iter, ' '*count)
                           shift_coms(count)
@@ -13506,7 +13627,7 @@ module PandoraGtk
           bw.set_buffers
         end
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::INDEX, 'Color', true) do |btn|
+      PandoraGtk.add_tool_btn(toolbar, :tags, 'Color tags', true) do |btn|
         bw = get_bodywin
         if bw
           bw.color_mode = btn.active?
@@ -14642,15 +14763,16 @@ module PandoraGtk
           widget.inconsistent = true
           targets[CSI_Persons].each_with_index do |person, i|
             keys = targets[CSI_Keys]
-            if keys.is_a? Array
-              keys.each do |key|
-                $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-                  person, key, nil, PandoraNet::CM_Captcha)
-              end
-            else
+            keys = keys[-1] if (keys.is_a? Array) and (keys.size>0)
+            #if keys.is_a? Array
+            #  keys.each do |key|
+            #    $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
+            #      person, key, nil, PandoraNet::CM_Captcha)
+            #  end
+            #else
               $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
                 person, keys, nil, PandoraNet::CM_Captcha)
-            end
+            #end
           end
         else
           widget.safe_set_active(false)
@@ -18692,12 +18814,10 @@ module PandoraGtk
   # About dialog hooks
   # RU: Обработчики диалога "О программе"
   Gtk::AboutDialog.set_url_hook do |about, link|
-    if PandoraUtils.os_family=='windows' then a1='start'; a2='' else a1='xdg-open'; a2=' &' end;
-    system(a1+' '+link+a2)
+    PandoraUtils.go_web_link(link)
   end
   Gtk::AboutDialog.set_email_hook do |about, link|
-    if PandoraUtils.os_family=='windows' then a1='start'; a2='' else a1='xdg-email'; a2=' &' end;
-    system(a1+' '+link+a2)
+    PandoraUtils.go_web_link(link)
   end
 
   # Show About dialog
@@ -19553,9 +19673,12 @@ module PandoraGtk
     def add_status_field(index, text, stock=nil, toggle=nil)
       separ = Gtk::SeparatorToolItem.new
       $statusbar.pack_start(separ, false, false, 0)
-      btn = GoodButton.new(stock, text, toggle) do |*args|
+      toggle_group = nil
+      toggle_group = -1 if not toggle.nil?
+      btn = GoodButton.new(stock, text, toggle_group) do |*args|
         yield(*args) if block_given?
       end
+      btn.set_active(toggle) if not toggle.nil?
       $statusbar.pack_start(btn, false, false, 0)
       $status_fields[index] = btn
     end
