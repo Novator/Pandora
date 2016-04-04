@@ -20966,11 +20966,11 @@ module PandoraGtk
       add_status_field(SF_Fisher, '0', :fish) do
         do_menu_act('Fisher')
       end
-      add_status_field(SF_Radar, '0', :radar, false) do
-        do_menu_act('Radar')
-      end
       add_status_field(SF_Conn, '0', :session) do
         do_menu_act('Session')
+      end
+      add_status_field(SF_Radar, '0', :radar, false) do
+        do_menu_act('Radar')
       end
       add_status_field(SF_Harvest, '0', :blob) do
         do_menu_act('Blob')
