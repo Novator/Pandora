@@ -90,14 +90,6 @@
       <kind name="Kind" type="Byte" hash="2:byte(1)" />
     </Relation>
 
-    <Opinion name="Opinion" parent="Created" kind="15">
-      <creator />
-      <created hash="2:integer(4)" />
-      <object name="Object" type="Panhash" hash="1:panhash(8)" />
-      <score name="Score" type="Integer" />
-      <comment name="Comment" type="Text" hash="4:hash(8)" />
-    </Opinion>
-
     <Message name="Message" parent="Created" kind="227">
       <creator hash="1:phash(12)" />
       <created hash="2:integer(4)" />

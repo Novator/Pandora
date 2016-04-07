@@ -86,12 +86,11 @@
       <kind name.ru="Вид" />
     </Relation>
 
-    <Opinion name.ru="Мнение|Мнения">
-      <object name.ru="Объект" />
-      <creator name.ru="Создатель" />
-      <score name.ru="Оценка" />
-      <comment name.ru="Комментарий" />
-    </Opinion>
+    <Message name.ru="Сообщение|Сообщения">
+      <destination name.ru="Получатель" />
+      <state name.ru="Состояние" />
+      <text name.ru="Текст" />
+    </Message>
 
   </World>
   <Business name.ru="Дело">
@@ -278,12 +277,6 @@
       <initiator name.ru="Инициатор" />
       <kind name.ru="Тип" />
     </Event>
-
-    <Message name.ru="Сообщение|Сообщения">
-      <destination name.ru="Получатель" />
-      <state name.ru="Состояние" />
-      <text name.ru="Текст" />
-    </Message>
 
     <Task name.ru="Задача">
       <executor name.ru="Исполнитель" />

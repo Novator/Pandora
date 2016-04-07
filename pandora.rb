@@ -14141,8 +14141,8 @@ module PandoraGtk
         label_box2 = TabLabelBox.new(image, _('Opinions'), nil, false, 0)
         pbox = PandoraGtk::PanobjScrolledWindow.new
         page = notebook.append_page(pbox, label_box2)
-        PandoraGtk.show_panobject_list(PandoraModel::Opinion, nil, pbox, false, \
-          'object='+panhash)
+        PandoraGtk.show_panobject_list(PandoraModel::Message, nil, pbox, false, \
+          'destination='+panhash)
       end
 
       signal_connect('key-press-event') do |widget, event|
@@ -16573,50 +16573,6 @@ module PandoraGtk
     end
   end
 
-  # Common chat
-  # RU: Общий чат
-  class ChatScrollWin < Gtk::ScrolledWindow
-    attr_accessor :panhash, :talkview
-
-    include PandoraGtk
-
-    # Show conversation dialog
-    # RU: Показать диалог общения
-    def initialize(apanhash)
-      super(nil, nil)
-      @panhash = apanhash
-
-      @talkview = PandoraGtk::SuperTextView.new
-      talkview.set_readonly(true)
-      talkview.set_size_request(200, 200)
-      talkview.wrap_mode = Gtk::TextTag::WRAP_WORD
-
-      self.add(talkview)
-
-      aname, afamily = PandoraCrypto.name_and_family_of_person(nil, panhash)
-      title = aname
-      title ||= afamily
-      title ||= _('Chat')
-      image = nil
-      pixbuf = PandoraModel.get_avatar_icon(panhash, self, false)
-      image = Gtk::Image.new(pixbuf) if pixbuf
-      image ||= $window.get_preset_image('chat')
-      image ||= Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU)
-      image.set_padding(2, 0)
-      label_box = TabLabelBox.new(image, title, self, false, 0) do
-        #do on close
-      end
-      page = $window.notebook.append_page(self, label_box)
-      $window.notebook.set_tab_reorderable(self, true)
-
-      show_all
-
-      #load_history($load_history_count, $sort_history_mode)
-      $window.notebook.page = $window.notebook.n_pages-1
-    end
-
-  end
-
   # Profile panel
   # RU: Панель профиля
   class ProfileScrollWin < Gtk::ScrolledWindow
@@ -16987,8 +16943,6 @@ module PandoraGtk
 
       menu = Gtk::Menu.new
       menu.append(PandoraGtk.create_menu_item(['Dialog', :dialog, _('Dialog'), '<control>D'], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Chat', :chat, _('Chat'), '<control>D'], list_tree))
-      menu.append(PandoraGtk.create_menu_item(['Opinion', :opinion, _('Opinion'), '<control>BackSpace'], list_tree))
       menu.append(PandoraGtk.create_menu_item(['Relation', :relation, _('Relate'), '<control>R'], list_tree))
       menu.show_all
 
@@ -17673,8 +17627,6 @@ module PandoraGtk
         end
       elsif (action=='Dialog')
         show_dialog(panhash0) if panhash0
-      elsif (action=='Chat')
-        show_chat(panhash0) if panhash0
       elsif panobject
         # Edit or Insert
 
@@ -18602,9 +18554,7 @@ module PandoraGtk
     menu.append(create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], treeview))
     menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], treeview))
     menu.append(create_menu_item(['-', nil, nil], treeview))
-    menu.append(create_menu_item(['Dialog', 'dialog', _('Dialog'), '<control>D'], treeview))
-    menu.append(create_menu_item(['Chat', :chat, _('Chat'), '<control>B'], treeview))
-    menu.append(create_menu_item(['Opinion', :opinion, _('Opinion'), '<control>BackSpace'], treeview))
+    menu.append(create_menu_item(['Dialog', :dialog, _('Dialog'), '<control>D'], treeview))
     menu.append(create_menu_item(['Relation', :relation, _('Relate'), '<control>R'], treeview))
     menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], treeview))
     menu.append(create_menu_item(['-', nil, nil], treeview))
@@ -19039,22 +18989,6 @@ module PandoraGtk
       end
       dialog.destroy
     end
-    sw
-  end
-
-  # Show common chat
-  # RU: Показать общий чат
-  def self.show_chat(panhash)
-    sw = nil
-    p 'show_chat(panhash)='+panhash.inspect
-    $window.notebook.children.each do |child|
-      if (child.is_a? ChatScrollWin) and (child.panhash==panhash)
-        $window.notebook.page = $window.notebook.children.index(child)
-        sw = child
-        break
-      end
-    end
-    sw ||= ChatScrollWin.new(panhash)
     sw
   end
 
@@ -20218,7 +20152,7 @@ module PandoraGtk
             close_btn = tab.children[tab.children.size-1].children[0]
             close_btn.clicked
           end
-        when 'Create','Edit','Delete','Copy', 'Dialog', 'Convert', 'Import', 'Export', 'Chat'
+        when 'Create','Edit','Delete','Copy', 'Dialog', 'Convert', 'Import', 'Export'
           p 'act_panobject()  treeview='+treeview.inspect
           if (not treeview) and (notebook.page >= 0)
             sw = notebook.get_nth_page(notebook.page)
@@ -20454,7 +20388,6 @@ module PandoraGtk
       ['Word', 'word', 'Words'], #Gtk::Stock::SPELL_CHECK
       ['Relation', 'relation:m', 'Relations'],
       ['-', nil, '-'],
-      ['Opinion', 'opinion:m', 'Opinions'],
       ['Task', 'task:m', 'Tasks'],
       ['Message', 'message:m', 'Messages'],
       [nil, nil, '_Business'],
