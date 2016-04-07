@@ -11696,8 +11696,9 @@ module PandoraGtk
         dialog.add_filter(filter)
 
         if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
+          filename0 = @entry.text
           @entry.text = PandoraUtils.relative_path(dialog.filename)
-          yield(@entry.text, @entry, @button) if block_given?
+          yield(@entry.text, @entry, @button, filename0) if block_given?
         end
         dialog.destroy if not dialog.destroyed?
         true
@@ -12168,9 +12169,6 @@ module PandoraGtk
       signal_connect('key-press-event') do |widget, event|
         res = false
         case event.keyval
-          when Gdk::Keyval::GDK_F5, Gdk::Keyval::GDK_F9
-            btn = PandoraGtk.find_tool_btn(toolbar, 'Preview')
-            btn.active = (not btn.active?) if btn
           when Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769
             if event.state.control_mask?
               set_tag('bold')
@@ -12897,6 +12895,10 @@ module PandoraGtk
       attr_accessor :field, :link_name, :body_child, :format, :raw_buffer, :view_buffer, \
         :view_mode, :color_mode
 
+      def parent_win
+        res = parent.parent.parent
+      end
+
       def initialize(*args)
         super(*args)
         @format = nil
@@ -13420,6 +13422,7 @@ module PandoraGtk
         #adj.value = adj.upper   # if add many lines
         #thaw_child_notify
         tv.show
+        tv.grab_focus
       end
 
     end
@@ -13737,7 +13740,6 @@ module PandoraGtk
         run_print_operation
         true
       end
-
 
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
@@ -14143,6 +14145,20 @@ module PandoraGtk
           'object='+panhash)
       end
 
+      signal_connect('key-press-event') do |widget, event|
+        btn = nil
+        case event.keyval
+          when Gdk::Keyval::GDK_F5
+            btn = PandoraGtk.find_tool_btn(toolbar, 'Edit')
+        end
+        if btn.is_a? Gtk::ToggleToolButton
+          btn.active = (not btn.active?)
+        elsif btn.is_a? Gtk::ToolButton
+          btn.clicked
+        end
+        res = (not btn.nil?)
+      end
+
       # create labels, remember them, calc middle char width
       texts_width = 0
       texts_chars = 0
@@ -14200,10 +14216,17 @@ module PandoraGtk
           when 'coord'
             entry = CoordBox.new
           when 'filename', 'blob'
-            entry = FilenameBox.new(window) do |filename, entry, button|
+            entry = FilenameBox.new(window) do |filename, entry, button, filename0|
               name_fld = @panobject.field_des('name')
               if (name_fld.is_a? Array) and (name_fld[FI_Widget].is_a? Gtk::Entry)
-                name_fld[FI_Widget].text = File.basename(filename)
+                name_ent = name_fld[FI_Widget]
+                old_name = File.basename(filename0)
+                old_name2 = File.basename(filename0, '.*')
+                new_name = File.basename(filename)
+                if (name_ent.text.size==0) or (name_ent.text==filename0) \
+                or (name_ent.text==old_name) or (name_ent.text==old_name2)
+                  name_ent.text = new_name
+                end
               end
             end
           when 'base64'
@@ -17245,9 +17268,9 @@ module PandoraGtk
       #btn.active = toggle if toggle
       btn.safe_set_active(toggle) if toggle
     end
-    title = _(title)
-    title.gsub!('_', '')
-    btn.tooltip_text = title
+    lang_title = _(title)
+    lang_title.gsub!('_', '')
+    btn.tooltip_text = lang_title
     btn.label = title
     toolbar.add(btn)
     btn
@@ -17256,9 +17279,12 @@ module PandoraGtk
   def self.find_tool_btn(toolbar, title)
     res = nil
     i = 0
+    #p 'find_tool_btn  toolbar='+toolbar.inspect
     while (i<toolbar.children.size) and (not res)
       ch = toolbar.children[i]
-      res = ch if (ch.is_a? Gtk::ToolButton) and (ch.label == title)
+      if (ch.is_a? Gtk::ToolButton) or (ch.is_a? Gtk::ToggleToolButton)
+        res = ch if (ch.label == title)
+      end
       i += 1
     end
     res
