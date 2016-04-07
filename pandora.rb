@@ -1179,8 +1179,8 @@ module PandoraUtils
     res
   end
 
-  # Pack PanObject fields to PSON binary format
-  # RU: Пакует поля панобъекта в бинарный формат PSON
+  # Pack PanObject fields to Name-PSON binary format
+  # RU: Пакует поля панобъекта в бинарный формат Name-PSON
   def self.hash_to_namepson(fldvalues, pack_empty=false)
     #bytes = ''
     #bytes.force_encoding('ASCII-8BIT')
@@ -1199,8 +1199,8 @@ module PandoraUtils
     bytes = AsciiString.new(bytes)
   end
 
-  # Convert PSON block to PanObject fields
-  # RU: Преобразует PSON блок в поля панобъекта
+  # Convert Name-PSON block to PanObject fields
+  # RU: Преобразует Name-PSON блок в поля панобъекта
   def self.namepson_to_hash(pson)
     hash = {}
     while pson and (pson.bytesize>1)
@@ -10873,75 +10873,105 @@ module PandoraGtk
     attr_accessor :preset, :close_on_enter, :on_click_btn, :popwin, :root_vbox, \
       :poly_btn
 
-    def renew_smile_box(apreset=nil)
-      @preset = apreset if apreset
-      @smile_box.child.destroy if @smile_box.child
-
-      vbox = Gtk::VBox.new
-      icon_params, icon_file_desc = $window.get_icon_file_params(preset)
-      focus_btn = nil
-      if icon_params and (icon_params.size>0)
-        popwin.resize(100, 100)
-        row = 0
-        col = 0
-        max_col = Math.sqrt(icon_params.size).round
-        hbox = Gtk::HBox.new
-        icon_params.each_with_index do |smile, i|
-          if col>max_col
-            vbox.pack_start(hbox, false, false, 0)
-            hbox = Gtk::HBox.new
-            col = 0
-            row += 1
-          end
-          col += 1
-          buf = $window.get_icon_buf(smile, preset)
-          aimage = Gtk::Image.new(buf)
-          btn = Gtk::ToolButton.new(aimage, smile)
-          btn.set_can_focus(true)
-          btn.tooltip_text = smile
-          #btn.events = Gdk::Event::ALL_EVENTS_MASK
-          focus_btn = btn if i==0
-          btn.signal_connect('clicked') do |widget|
-            btn.grab_focus
-            screen, x, y, mask = Gdk::Display.default.pointer
-            clear_click = (((mask & Gdk::Window::SHIFT_MASK.to_i) == 0) \
-              and ((mask & Gdk::Window::CONTROL_MASK.to_i) == 0) \
-              and ((mask & Gdk::Window::MOD1_MASK.to_i) == 0))
-            @on_click_btn.call(preset, widget.label)
-            if clear_click and (not @poly_btn.active?)
-              @just_leaved = nil
-              @popwin.hide
-            end
-            false
-          end
-          btn.signal_connect('key-press-event') do |widget, event|
-            res = false
-            if [Gdk::Keyval::GDK_space, Gdk::Keyval::GDK_KP_Space].include?(event.keyval)
-              @on_click_btn.call(preset, widget.label)
-              res = true
-            elsif [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-              @on_click_btn.call(preset, widget.label)
-              @just_leaved = nil
-              @popwin.hide
-              res = true
-            end
-            res
-          end
-          btn.signal_connect('expose-event') do |widget, event|
-            if widget.focus?   #STATE_PRELIGHT
-              widget.style.paint_focus(widget.window, Gtk::STATE_NORMAL, \
-                event.area, widget, '', event.area.x+1, event.area.y+1, \
-                event.area.width-2, event.area.height-2)
-            end
-            false
-          end
-          hbox.pack_start(btn, true, true, 0)
-        end
-        vbox.pack_start(hbox, false, false, 0)
-        vbox.show_all
+    def self.init_smiles_box(preset, smiles_parent, smile_btn)
+      @@smile_btn = smile_btn if smile_btn
+      @@smile_boxes ||= {}
+      #p '----init_smiles_box   preset='+preset.inspect
+      vbox = nil
+      res = @@smile_boxes[preset]
+      if res
+        vbox = res[0]
+        vbox = nil if vbox.destroyed?
       end
-      @smile_box.add(vbox)
-      move_and_show(focus_btn) if apreset
+      if vbox
+        smile_btn.popwin.resize(100, 100)
+        #p '  vbox.parent='+vbox.parent.inspect
+        if vbox.parent and (not vbox.parent.destroyed?)
+          if (vbox.parent != smiles_parent)
+            #p '  reparent'
+            smiles_parent.remove(smiles_parent.child) if smiles_parent.child
+            vbox.parent.remove(vbox)
+            smiles_parent.add(vbox)
+            vbox.reparent(smiles_parent)
+          end
+        else
+          #p '  set_parent'
+          smiles_parent.remove(smiles_parent.child) if smiles_parent.child
+          vbox.parent = smiles_parent
+        end
+      else
+        smiles_parent.remove(smiles_parent.child) if smiles_parent.child
+        vbox = Gtk::VBox.new
+        icon_params, icon_file_desc = $window.get_icon_file_params(preset)
+        focus_btn = nil
+        if icon_params and (icon_params.size>0)
+          row = 0
+          col = 0
+          max_col = Math.sqrt(icon_params.size).round
+          hbox = Gtk::HBox.new
+          icon_params.each_with_index do |smile, i|
+            if col>max_col
+              vbox.pack_start(hbox, false, false, 0)
+              hbox = Gtk::HBox.new
+              col = 0
+              row += 1
+            end
+            col += 1
+            buf = $window.get_icon_buf(smile, preset)
+            aimage = Gtk::Image.new(buf)
+            btn = Gtk::ToolButton.new(aimage, smile)
+            btn.set_can_focus(true)
+            btn.tooltip_text = smile
+            #btn.events = Gdk::Event::ALL_EVENTS_MASK
+            focus_btn = btn if i==0
+            btn.signal_connect('clicked') do |widget|
+              btn.grab_focus
+              screen, x, y, mask = Gdk::Display.default.pointer
+              clear_click = (((mask & Gdk::Window::SHIFT_MASK.to_i) == 0) \
+                and ((mask & Gdk::Window::CONTROL_MASK.to_i) == 0) \
+                and ((mask & Gdk::Window::MOD1_MASK.to_i) == 0))
+              smile_btn = @@smile_btn
+              smile_btn.on_click_btn.call(preset, widget.label)
+              smile_btn.hide_popwin if clear_click and (not smile_btn.poly_btn.active?)
+              false
+            end
+            btn.signal_connect('key-press-event') do |widget, event|
+              res = false
+              if [Gdk::Keyval::GDK_space, Gdk::Keyval::GDK_KP_Space].include?(event.keyval)
+                smile_btn = @@smile_btn
+                smile_btn.on_click_btn.call(preset, widget.label)
+                res = true
+              elsif [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+                smile_btn = @@smile_btn
+                smile_btn.on_click_btn.call(preset, widget.label)
+                smile_btn.hide_popwin
+                res = true
+              end
+              res
+            end
+            btn.signal_connect('expose-event') do |widget, event|
+              if widget.focus?   #STATE_PRELIGHT
+                widget.style.paint_focus(widget.window, Gtk::STATE_NORMAL, \
+                  event.area, widget, '', event.area.x+1, event.area.y+1, \
+                  event.area.width-2, event.area.height-2)
+              end
+              false
+            end
+            hbox.pack_start(btn, true, true, 0)
+          end
+          vbox.pack_start(hbox, false, false, 0)
+          vbox.show_all
+        end
+        smiles_parent.add(vbox)
+        res = [vbox, focus_btn]
+        @@smile_boxes[preset] = res
+      end
+      res
+    end
+
+    def hide_popwin
+      @just_leaved = nil
+      @popwin.hide
     end
 
     def get_popwidget
@@ -10955,7 +10985,7 @@ module PandoraGtk
           if not @qip_btn.active?
             @qip_btn.set_active(true)
             @vk_btn.set_active(false)
-            renew_smile_box('qip')
+            move_and_show('qip')
           end
         end
         hbox.pack_start(@qip_btn, true, true, 0)
@@ -10964,7 +10994,7 @@ module PandoraGtk
           if not @vk_btn.active?
             @vk_btn.set_active(true)
             @qip_btn.set_active(false)
-            renew_smile_box('vk')
+            move_and_show('vk')
           end
         end
         hbox.pack_start(@vk_btn, true, true, 0)
@@ -10978,13 +11008,16 @@ module PandoraGtk
         else
           @qip_btn.set_active(true)
         end
-        renew_smile_box
+        #move_and_show
         root_vbox.pack_start(@smile_box, true, true, 0)
       end
       root_vbox
     end
 
-    def move_and_show(focus_btn=nil)
+    def move_and_show(apreset=nil)
+      @preset = apreset if apreset
+      vbox, focus_btn = SmileButton.init_smiles_box(@preset, @smile_box, self)
+
       borig = self.window.origin
       brect = self.allocation.to_a
 
@@ -10992,10 +11025,8 @@ module PandoraGtk
       popwidget = get_popwidget
       popwidget.show_all
       pwh = popwidget.size_request
+      popwin.resize(*pwh)
 
-      scr = Gdk::Screen.default
-      sw = scr.width
-      sh = scr.height
       x = brect[0]+borig[0]
       y = brect[1]+borig[1]-pwh[1]-1
       popwin.move(x, y)
@@ -12879,14 +12910,16 @@ module PandoraGtk
         end
       end
 
-      def init_raw_buf(buf=nil)
+      def init_raw_buf(text=nil)
         if (not @raw_buffer)
           buf ||= Gtk::TextBuffer.new
           @raw_buffer = buf
+          buf.text = text if text
           buf.create_tag('string', {'foreground' => '#00f000'})
           buf.create_tag('symbol', {'foreground' => '#008020'})
           buf.create_tag('comment', {'foreground' => '#8080e0'})
-          buf.create_tag('keyword', {'foreground' => '#ffffff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+          buf.create_tag('keyword', {'foreground' => '#ffffff', \
+            'weight' => Pango::FontDescription::WEIGHT_BOLD})
           buf.create_tag('keyword2', {'foreground' => '#ffffff'})
           buf.create_tag('function', {'foreground' => '#f12111'})
           buf.create_tag('number', {'foreground' => '#f050e0'})
@@ -12898,8 +12931,10 @@ module PandoraGtk
           buf.create_tag('instvar', {'foreground' => '#ff85a2'})
           buf.create_tag('classvar', {'foreground' => '#ff79ec'})
           buf.create_tag('operator', {'foreground' => '#ffffff'})
-          buf.create_tag('class', {'foreground' => '#ff1100', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
-          buf.create_tag('module', {'foreground' => '#1111ff', 'weight' => Pango::FontDescription::WEIGHT_BOLD})
+          buf.create_tag('class', {'foreground' => '#ff1100', \
+            'weight' => Pango::FontDescription::WEIGHT_BOLD})
+          buf.create_tag('module', {'foreground' => '#1111ff', \
+            'weight' => Pango::FontDescription::WEIGHT_BOLD})
           buf.create_tag('regex', {'foreground' => '#105090'})
 
           buf.signal_connect('changed') do |buf|  #modified-changed
@@ -12957,7 +12992,8 @@ module PandoraGtk
 
       # Ruby key words
       # Ключевые слова Ruby
-      RUBY_KEYWORDS = 'begin end module class def if then else elsif while unless do case when require yield rescue include'.split
+      RUBY_KEYWORDS = ('begin end module class def if then else elsif' \
+        +' while unless do case when require yield rescue include').split
       RUBY_KEYWORDS2 = 'self true false not and or nil '.split
 
       # Call a code block with the text
@@ -12973,7 +13009,8 @@ module PandoraGtk
         end
 
         def word_char?(c)
-          ('a'..'z').include?(c) or ('A'..'Z').include?(c) or ('0'..'9').include?(c) or (c == '_')
+          ('a'..'z').include?(c) or ('A'..'Z').include?(c) \
+          or ('0'..'9').include?(c) or (c == '_')
         end
 
         def oper_char?(c)
@@ -13824,8 +13861,7 @@ module PandoraGtk
                 bodywin.body_child = bodywid
                 if bodywid.is_a? Gtk::TextView
                   bodywin.init_view_buf(bodywin.body_child.buffer)
-                  bodywin.init_raw_buf
-                  bodywin.raw_buffer.text = field[FI_Value].to_s
+                  bodywin.init_raw_buf(field[FI_Value].to_s)
                   bodywin.set_buffers
                   toolbar.show
                 else
@@ -17179,7 +17215,7 @@ module PandoraGtk
   # RU: Добавить кнопку на панель инструментов
   def self.add_tool_btn(toolbar, stock, title, toggle=nil)
     btn = nil
-    p 'stock='+stock.inspect
+    #p 'stock='+stock.inspect
     if stock.is_a? String
       stock = stock.to_sym
     end
@@ -19744,7 +19780,7 @@ module PandoraGtk
             if preset_buf
               big_width = preset_buf.width
               big_height = preset_buf.height
-              p '[big_width, big_height]='+[big_width, big_height].inspect
+              #p 'get_icon_buf [big_width, big_height]='+[big_width, big_height].inspect
               bord = bord_s.to_i
               padd = padd_s.to_i
               numX = numXs.to_i
@@ -19906,24 +19942,28 @@ module PandoraGtk
       ind = [iname, preset]
       res = $iconsets[ind]
       if res.nil?
-        buf = get_icon_buf(iname, preset)
-        if buf
-          width = buf.width
-          height = buf.height
-          if width==height
-            qbuf = buf
-          else
-            asize = width
-            asize = height if asize<height
-            left = (asize - width)/2
-            top  = (asize - height)/2
-            qbuf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, asize, asize)
-            qbuf.fill!(0xFFFFFF00)
-            buf.copy_area(0, 0, width, height, qbuf, left, top)
+        if (iname.is_a? String)
+          buf = get_icon_buf(iname, preset)
+          if buf
+            width = buf.width
+            height = buf.height
+            if width==height
+              qbuf = buf
+            else
+              asize = width
+              asize = height if asize<height
+              left = (asize - width)/2
+              top  = (asize - height)/2
+              qbuf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, asize, asize)
+              qbuf.fill!(0xFFFFFF00)
+              buf.copy_area(0, 0, width, height, qbuf, left, top)
+            end
+            res = Gtk::IconSet.new(qbuf)
           end
-          res = Gtk::IconSet.new(qbuf)
-          $iconsets[ind] = res
+        elsif iname
+          res = Gtk::IconFactory.lookup_default(iname.to_s)
         end
+        $iconsets[ind] = res if res
       end
       res
     end
@@ -19933,12 +19973,13 @@ module PandoraGtk
     def get_preset_image(iname, isize=Gtk::IconSize::MENU, preset='pan')
       image = nil
       isize ||= Gtk::IconSize::MENU
-      if iname.is_a? String
+      #p 'get_preset_image  iname='+[iname, isize].inspect
+      #if iname.is_a? String
         iconset = get_preset_iconset(iname, preset)
         image = Gtk::Image.new(iconset, isize)
-      else
-        image = Gtk::Image.new(iname, isize)
-      end
+      #else
+      #  p image = Gtk::Image.new(iname, isize)
+      #end
       image.set_alignment(0.5, 0.5)
       image
     end
@@ -19950,7 +19991,7 @@ module PandoraGtk
         stock_opt = mi[1]
         stock, opts = PandoraGtk.detect_icon_opts(stock_opt)
         if stock
-          p 'stock='+stock.inspect
+          #p 'get_panobject_image  stock='+stock.inspect
           res = get_preset_image(stock, isize, preset)
         end
       end
