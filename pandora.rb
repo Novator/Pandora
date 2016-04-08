@@ -9480,7 +9480,8 @@ module PandoraNet
                     # если собеседник неизвестен, запросить анкету
                     creator = @skey[PandoraCrypto::KV_Creator]
                     kind = PandoraUtils.kind_from_panhash(creator)
-                    res = PandoraModel.get_record_by_panhash(kind, creator, nil, @send_models, 'id')
+                    res = PandoraModel.get_record_by_panhash(kind, creator, nil, \
+                      @send_models, 'id')
                     p log_mes+'Whyer: CreatorCheck  creator='+creator.inspect
                     if not res
                       p log_mes+'Whyer: CreatorCheck  Request!'
@@ -14915,7 +14916,7 @@ module PandoraGtk
       option_box.pack_start(smile_btn, false, false, 2)
 
       crypt_btn = SafeCheckButton.new(_('crypt'), true)
-      crypt_btn.tooltip_text = 'Ctrl+X'
+      crypt_btn.tooltip_text = 'Ctrl+K'
       #crypt_btn.active = true
       option_box.pack_start(crypt_btn, false, false, 2)
 
@@ -14981,8 +14982,8 @@ module PandoraGtk
         elsif ((event.state.shift_mask? or event.state.mod1_mask?) \
         and (event.keyval==65364))  # Shift+Down or Alt+Down
           smile_btn.clicked
-        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
-        and event.state.control_mask?) #x, X, ч, Ч
+        elsif ([Gdk::Keyval::GDK_k, Gdk::Keyval::GDK_K, 1740, 1772].include?(event.keyval) \
+        and event.state.control_mask?) #k, K, л, Л
           crypt_btn.active = (not crypt_btn.active?)
           true
         elsif ([Gdk::Keyval::GDK_g, Gdk::Keyval::GDK_G, 1744, 1776].include?(event.keyval) \
@@ -14990,7 +14991,7 @@ module PandoraGtk
           vouch_btn.active = (not vouch_btn.active?)
           true
         else
-          #p event.keyval
+          p event.keyval
           false
         end
       end
