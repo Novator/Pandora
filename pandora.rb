@@ -391,7 +391,7 @@ module PandoraUtils
           #  p 'status.exitstatus='+status.exitstatus.inspect
           #  res = (status and (status.exitstatus==0))
           #end
-          res = win_exec(cmd, 40)
+          res = win_exec(cmd, 15)
           #res = exec(cmd)
           #res = system(cmd)
           p 'unzip: win_exec res='+res.inspect
@@ -537,6 +537,16 @@ module PandoraUtils
       str = res
     end
     str
+  end
+
+  # Add quotes if string has spaces
+  # RU: Добавляет ковычки если строка содержит пробелы
+  def self.add_quotes(str, qts='"')
+    res = str
+    if (res.is_a? String) and res.index(' ')
+      res = qts+res+qts
+    end
+    res
   end
 
   # Convert ruby date to string
@@ -3076,6 +3086,39 @@ module PandoraUtils
       end
     end
     res
+  end
+
+  # Restart the application
+  # RU: Перезапускает программу
+  def self.restart_app
+    require 'rbconfig'
+    inst_par = nil
+    inst_par = 'rubyw_install_name' if PandoraUtils.os_family == 'windows'
+    inst_par = 'ruby_install_name' if inst_par.nil? or (inst_par=='')
+    #p RbConfig::CONFIG
+    ruby_int = File.join(RbConfig::CONFIG['bindir'], \
+      RbConfig::CONFIG[inst_par])
+    p ruby_int = PandoraUtils.add_quotes(ruby_int)
+    script = File.expand_path(__FILE__)
+    p script = PandoraUtils.add_quotes(script)
+    p ARGV
+    args = nil
+    args = ' '+ARGV.join(' ') if ARGV.size>0
+    args ||= ''
+    run_cmd = ruby_int + ' ' + script + args
+    puts '|'+run_cmd+'|'
+    restart_scr = File.join($pandora_util_dir, 'restart.rb')
+    restart_scr = PandoraUtils.add_quotes(restart_scr)
+    restart_cmd = ruby_int + ' ' + restart_scr + ' '+run_cmd
+    puts '|'+restart_cmd+'|'
+    res = nil
+    if PandoraUtils.os_family=='windows'
+      p res = win_exec(restart_cmd)
+    else
+      p res = Process.spawn(restart_cmd)
+      Process.detach(res) if res
+    end
+    $window.do_menu_act('Quit') if res
   end
 
   $poly_play   = false
@@ -17509,7 +17552,9 @@ module PandoraGtk
               PandoraUtils.set_param('last_update', Time.now)
               $window.set_status_field(SF_Update, 'Need restart')
               Thread.stop
-              Kernel.abort('Pandora is updated. Run it again')
+              #Kernel.abort('Pandora is updated. Run it again')
+              puts 'Pandora is updated. Restarting..'
+              PandoraUtils.restart_app
             elsif step<250
               $window.set_status_field(SF_Update, 'Load error')
             end
@@ -20217,6 +20262,8 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
+          PandoraUtils.restart_app
+
           #p PandoraUtils.hex?('ad')
           #p [Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU, Gtk::Stock::OK].inspect
           #p [Gtk::Stock::MEDIA_PLAY.class, Gtk::IconSize::MENU.class, Gtk::Stock::OK.class].inspect
@@ -21282,16 +21329,17 @@ $pandora_files_dir = File.join($pandora_app_dir, 'files')      # Files directory
 arg = nil
 val = nil
 next_arg = nil
-while (ARGV.length>0) or next_arg
+ARGVdup = ARGV.dup
+while (ARGVdup.size>0) or next_arg
   if next_arg
     arg = next_arg
     next_arg = nil
   else
-    arg = ARGV.shift
+    arg = ARGVdup.shift
   end
   if (arg.is_a? String) and (arg[0,1]=='-')
-    if ARGV.length>0
-      next_arg = ARGV.shift
+    if ARGVdup.size>0
+      next_arg = ARGVdup.shift
     end
     if next_arg and next_arg.is_a? String and (next_arg[0,1] != '-')
       val = next_arg
