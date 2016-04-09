@@ -3098,24 +3098,22 @@ module PandoraUtils
     #p RbConfig::CONFIG
     ruby_int = File.join(RbConfig::CONFIG['bindir'], \
       RbConfig::CONFIG[inst_par])
-    p ruby_int = PandoraUtils.add_quotes(ruby_int)
+    ruby_int = PandoraUtils.add_quotes(ruby_int)
     script = File.expand_path(__FILE__)
-    p script = PandoraUtils.add_quotes(script)
-    p ARGV
+    script = PandoraUtils.add_quotes(script)
     args = nil
     args = ' '+ARGV.join(' ') if ARGV.size>0
     args ||= ''
     run_cmd = ruby_int + ' ' + script + args
-    puts '|'+run_cmd+'|'
     restart_scr = File.join($pandora_util_dir, 'restart.rb')
     restart_scr = PandoraUtils.add_quotes(restart_scr)
     restart_cmd = ruby_int + ' ' + restart_scr + ' '+run_cmd
-    puts '|'+restart_cmd+'|'
+    puts 'Execute restart script ['+restart_cmd+']'
     res = nil
     if PandoraUtils.os_family=='windows'
-      p res = win_exec(restart_cmd)
+      res = win_exec(restart_cmd)
     else
-      p res = Process.spawn(restart_cmd)
+      res = Process.spawn(restart_cmd)
       Process.detach(res) if res
     end
     $window.do_menu_act('Quit') if res
@@ -10177,7 +10175,7 @@ module PandoraNet
                     rescue => err
                       PandoraUtils.log_message(LM_Trace, \
                         _('Cannot send')+' UDP '+_('broadcast to ports')+' '\
-                        +rcv_udp_port.to_s+' ('+err.message+')')
+                        +rcv_udp_port.to_s+' ('+Utf8String.new(err.message)+')')
                     end
                   end
                 end
@@ -18884,7 +18882,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.52'
+    dlg.version = '0.53'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
