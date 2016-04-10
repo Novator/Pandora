@@ -542,11 +542,10 @@ module PandoraUtils
   # Add quotes if string has spaces
   # RU: Добавляет ковычки если строка содержит пробелы
   def self.add_quotes(str, qts='"')
-    res = str
-    if (res.is_a? String) and res.index(' ')
-      res = qts+res+qts
+    if (str.is_a? String) and str.index(' ')
+      str = qts+str+qts
     end
-    res
+    str
   end
 
   # Convert ruby date to string
@@ -3116,7 +3115,7 @@ module PandoraUtils
       res = Process.spawn(restart_cmd)
       Process.detach(res) if res
     end
-    $window.do_menu_act('Quit') if res
+    $window.destroy if res
   end
 
   $poly_play   = false
@@ -17552,6 +17551,9 @@ module PandoraGtk
               Thread.stop
               #Kernel.abort('Pandora is updated. Run it again')
               puts 'Pandora is updated. Restarting..'
+              PandoraNet.start_or_stop_listen if PandoraNet.listen?
+              PandoraNet.start_or_stop_hunt(false) if $hunter_thread
+              $window.pool.close_all_session
               PandoraUtils.restart_app
             elsif step<250
               $window.set_status_field(SF_Update, 'Load error')
@@ -20260,6 +20262,9 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
+          PandoraNet.start_or_stop_listen if PandoraNet.listen?
+          PandoraNet.start_or_stop_hunt(false) if $hunter_thread
+          $window.pool.close_all_session
           PandoraUtils.restart_app
 
           #p PandoraUtils.hex?('ad')

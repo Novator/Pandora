@@ -6,11 +6,10 @@
 # RU: 2012 (c) Михаил Галюк
 
 def add_quotes(str, qts='"')
-  res = str
-  if (res.is_a? String) and res.index(' ')
-    res = qts+res+qts
+  if (str.is_a? String) and str.index(' ')
+    str = qts+str+qts
   end
-  res
+  str
 end
 
 if ARGV.size>0
@@ -22,9 +21,8 @@ if ARGV.size>0
     cmd << arg
     i += 1
   end
-  puts 'Wait a sec...'
-  sleep 1
   puts 'Running ['+cmd+']...'
+  sleep 1
   res = Process.spawn(cmd)
   Process.detach(res) if res
 else
