@@ -14953,15 +14953,21 @@ module PandoraGtk
         smile_img = ' '+smile_img if editbox.buffer.text != ''
         editbox.buffer.insert_at_cursor(smile_img)
       end
+      smile_btn.tooltip_text = _('smile')+' (Alt+Down)'
       option_box.pack_start(smile_btn, false, false, 2)
 
-      crypt_btn = SafeCheckButton.new(_('crypt'), true)
-      crypt_btn.tooltip_text = 'Ctrl+K'
+      $window.register_stock(:crypt)
+      crypt_btn = PandoraGtk::SafeToggleToolButton.new(:crypt)
+      crypt_btn.tooltip_text = _('crypt')+' (Ctrl+K)'
+      #crypt_btn.safe_signal_clicked do |*args|
+      #end
       #crypt_btn.active = true
       option_box.pack_start(crypt_btn, false, false, 2)
 
-      vouch_btn = SafeCheckButton.new(_('vouch'), true)
-      vouch_btn.tooltip_text = 'Ctrl+G'
+      #vouch_btn = SafeCheckButton.new(_('vouch'), true)
+      $window.register_stock(:sign)
+      vouch_btn = PandoraGtk::SafeToggleToolButton.new(:sign)
+      vouch_btn.tooltip_text = _('vouch')+' (Ctrl+G)'
       option_box.pack_start(vouch_btn, false, false, 0)
 
       adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
