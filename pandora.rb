@@ -391,7 +391,7 @@ module PandoraUtils
           #  p 'status.exitstatus='+status.exitstatus.inspect
           #  res = (status and (status.exitstatus==0))
           #end
-          res = win_exec(cmd, 40)
+          res = win_exec(cmd, 15)
           #res = exec(cmd)
           #res = system(cmd)
           p 'unzip: win_exec res='+res.inspect
@@ -535,6 +535,15 @@ module PandoraUtils
         res << b
       end
       str = res
+    end
+    str
+  end
+
+  # Add quotes if string has spaces
+  # RU: Добавляет ковычки если строка содержит пробелы
+  def self.add_quotes(str, qts='"')
+    if (str.is_a? String) and str.index(' ')
+      str = qts+str+qts
     end
     str
   end
@@ -3076,6 +3085,37 @@ module PandoraUtils
       end
     end
     res
+  end
+
+  # Restart the application
+  # RU: Перезапускает программу
+  def self.restart_app
+    require 'rbconfig'
+    inst_par = nil
+    inst_par = 'rubyw_install_name' if PandoraUtils.os_family == 'windows'
+    inst_par = 'ruby_install_name' if inst_par.nil? or (inst_par=='')
+    #p RbConfig::CONFIG
+    ruby_int = File.join(RbConfig::CONFIG['bindir'], \
+      RbConfig::CONFIG[inst_par])
+    ruby_int = PandoraUtils.add_quotes(ruby_int)
+    script = File.expand_path(__FILE__)
+    script = PandoraUtils.add_quotes(script)
+    args = nil
+    args = ' '+ARGV.join(' ') if ARGV.size>0
+    args ||= ''
+    run_cmd = ruby_int + ' ' + script + args
+    restart_scr = File.join($pandora_util_dir, 'restart.rb')
+    restart_scr = PandoraUtils.add_quotes(restart_scr)
+    restart_cmd = ruby_int + ' ' + restart_scr + ' '+run_cmd
+    puts 'Execute restart script ['+restart_cmd+']'
+    res = nil
+    if PandoraUtils.os_family=='windows'
+      res = win_exec(restart_cmd)
+    else
+      res = Process.spawn(restart_cmd)
+      Process.detach(res) if res
+    end
+    $window.destroy if res
   end
 
   $poly_play   = false
@@ -10135,7 +10175,7 @@ module PandoraNet
                     rescue => err
                       PandoraUtils.log_message(LM_Trace, \
                         _('Cannot send')+' UDP '+_('broadcast to ports')+' '\
-                        +rcv_udp_port.to_s+' ('+err.message+')')
+                        +rcv_udp_port.to_s+' ('+Utf8String.new(err.message)+')')
                     end
                   end
                 end
@@ -17510,7 +17550,12 @@ module PandoraGtk
               PandoraUtils.set_param('last_update', Time.now)
               $window.set_status_field(SF_Update, 'Need restart')
               Thread.stop
-              Kernel.abort('Pandora is updated. Run it again')
+              #Kernel.abort('Pandora is updated. Run it again')
+              puts 'Pandora is updated. Restarting..'
+              PandoraNet.start_or_stop_listen if PandoraNet.listen?
+              PandoraNet.start_or_stop_hunt(false) if $hunter_thread
+              $window.pool.close_all_session
+              PandoraUtils.restart_app
             elsif step<250
               $window.set_status_field(SF_Update, 'Load error')
             end
@@ -18840,7 +18885,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.52'
+    dlg.version = '0.53'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
@@ -20218,6 +20263,11 @@ module PandoraGtk
           end
           key = PandoraCrypto.current_key(true)
         when 'Wizard'
+          PandoraNet.start_or_stop_listen if PandoraNet.listen?
+          PandoraNet.start_or_stop_hunt(false) if $hunter_thread
+          $window.pool.close_all_session
+          PandoraUtils.restart_app
+
           #p PandoraUtils.hex?('ad')
           #p [Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU, Gtk::Stock::OK].inspect
           #p [Gtk::Stock::MEDIA_PLAY.class, Gtk::IconSize::MENU.class, Gtk::Stock::OK.class].inspect
@@ -21283,16 +21333,17 @@ $pandora_files_dir = File.join($pandora_app_dir, 'files')      # Files directory
 arg = nil
 val = nil
 next_arg = nil
-while (ARGV.length>0) or next_arg
+ARGVdup = ARGV.dup
+while (ARGVdup.size>0) or next_arg
   if next_arg
     arg = next_arg
     next_arg = nil
   else
-    arg = ARGV.shift
+    arg = ARGVdup.shift
   end
   if (arg.is_a? String) and (arg[0,1]=='-')
-    if ARGV.length>0
-      next_arg = ARGV.shift
+    if ARGVdup.size>0
+      next_arg = ARGVdup.shift
     end
     if next_arg and next_arg.is_a? String and (next_arg[0,1] != '-')
       val = next_arg
