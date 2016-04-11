@@ -5779,6 +5779,16 @@ module PandoraNet
   NO_Time            = 7
   NO_Session         = 8
 
+  # Field indexes in a search request
+  # RU: Индексы полей в поисковом запросе
+  SR_Request   = 0
+  SR_Kind      = 1
+  SR_BaseId    = 2
+  SR_Index     = 3
+  SR_Time      = 4
+  SR_Session   = 5
+  SR_Answer    = 6
+
   # Line order array indexes
   # RU: Индексы массива заявок на линию
   LO_Fisher          = 0
@@ -5793,16 +5803,6 @@ module PandoraNet
   # Base ID index of fish in line
   # RU: Индекс Base ID для рыбки в линии
   LN_Fish_Baseid  =   LO_Fish_key + 1
-
-  # Field indexes in a search request
-  # RU: Индексы полей в поисковом запросе
-  SR_Request   = 0
-  SR_Kind      = 1
-  SR_BaseId    = 2
-  SR_Index     = 3
-  SR_Time      = 4
-  SR_Session   = 5
-  SR_Answer    = 6
 
   # Punnet indexes
   # RU: Индексы в корзине
@@ -5825,8 +5825,8 @@ module PandoraNet
   # Pool
   # RU: Пул
   class Pool
-    attr_accessor :window, :sessions, :white_list, :fish_orders, :fish_ind, \
-      :notice_list, :notice_ind, :time_now, :search_requests, :search_answers, \
+    attr_accessor :window, :sessions, :white_list, :time_now, \
+      :fish_orders, :fish_ind, :notice_list, :notice_ind, :search_requests, \
       :search_ind, :found_ind, :punnets
 
     MaxWhiteSize = 500
@@ -5845,7 +5845,6 @@ module PandoraNet
       @fish_orders = Array.new #PandoraUtils::RoundQueue.new(true)
       @notice_list = Array.new
       @search_requests = Array.new
-      @search_answers = Array.new
       @punnets = Hash.new
     end
 
@@ -14947,6 +14946,7 @@ module PandoraGtk
       editbox.grab_focus
 
       @option_box = Gtk::HBox.new
+
       def_smiles = PandoraUtils.get_param('def_smiles')
       smile_btn = SmileButton.new(def_smiles) do |preset, label|
         smile_img = '[img='+preset+'/'+label+']'
@@ -14955,6 +14955,41 @@ module PandoraGtk
       end
       smile_btn.tooltip_text = _('smile')+' (Alt+Down)'
       option_box.pack_start(smile_btn, false, false, 2)
+
+      option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
+
+      $window.register_stock(:dialog)
+      dialog_btn = PandoraGtk::SafeToggleToolButton.new(:dialog)
+      dialog_btn.tooltip_text = _('Dialog')
+      option_box.pack_start(dialog_btn, false, false, 2)
+
+      $window.register_stock(:chat)
+      chat_btn = PandoraGtk::SafeToggleToolButton.new(:chat)
+      chat_btn.tooltip_text = _('Chat')
+      option_box.pack_start(chat_btn, false, false, 2)
+
+      $window.register_stock(:opinion)
+      opinion_btn = PandoraGtk::SafeToggleToolButton.new(:opinion)
+      opinion_btn.tooltip_text = _('Opinion')
+      option_box.pack_start(opinion_btn, false, false, 2)
+
+      option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
+
+      online_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::CONNECT)
+      online_btn.tooltip_text = _('Online')
+      option_box.pack_start(online_btn, false, false, 2)
+
+      $window.register_stock(:webcam)
+      webcam_btn = PandoraGtk::SafeToggleToolButton.new(:webcam)
+      webcam_btn.tooltip_text = _('Video')
+      option_box.pack_start(webcam_btn, false, false, 2)
+
+      $window.register_stock(:mic)
+      mic_btn = PandoraGtk::SafeToggleToolButton.new(:mic)
+      mic_btn.tooltip_text = _('Audio')
+      option_box.pack_start(mic_btn, false, false, 2)
+
+      option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
 
       $window.register_stock(:crypt)
       crypt_btn = PandoraGtk::SafeToggleToolButton.new(:crypt)
@@ -14970,7 +15005,7 @@ module PandoraGtk
       vouch_btn.tooltip_text = _('vouch')+' (Ctrl+G)'
       option_box.pack_start(vouch_btn, false, false, 0)
 
-      adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
+      adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.5, 0)
       trust_scale = Gtk::HScale.new(adjustment)
       trust_scale.set_size_request(90, -1)
       trust_scale.update_policy = Gtk::UPDATE_DELAYED
@@ -14978,13 +15013,14 @@ module PandoraGtk
       trust_scale.draw_value = true
       trust_scale.value = 1.0
       trust_scale.value_pos = Gtk::POS_RIGHT
-      option_box.pack_start(trust_scale, false, false, 0)
+      option_box.pack_start(trust_scale, false, false, 2)
 
-      require_sign_btn = SafeCheckButton.new(_('require sign'), true)
-      require_sign_btn.safe_signal_clicked do |widget|
-        #update_btn.clicked
-      end
-      option_box.pack_start(require_sign_btn, false, false, 0)
+      $window.register_stock(:require)
+      require_sign_btn = PandoraGtk::SafeToggleToolButton.new(:require)
+      require_sign_btn.tooltip_text = _('require sign')
+      option_box.pack_start(require_sign_btn, false, false, 2)
+
+      option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
 
       image = $window.get_preset_image('game')
       game_btn = Gtk::ToolButton.new(image, _('game'))
