@@ -6633,11 +6633,11 @@ module PandoraNet
           session.dialog = nil if (session.dialog and session.dialog.destroyed?)
           session.dialog = dialog if dialog and (i==0)
           if session.dialog and (not session.dialog.destroyed?) \
-          and session.dialog.online_button.active?
+          and session.dialog.online_btn.active?
             session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep)
             if ((session.socket and (not session.socket.closed?)) or session.active_hook)
-              session.dialog.online_button.safe_set_active(true)
-              session.dialog.online_button.inconsistent = false
+              session.dialog.online_btn.safe_set_active(true)
+              #session.dialog.online_btn.inconsistent = false
             end
           end
         end
@@ -7885,6 +7885,20 @@ module PandoraNet
         res
       end
 
+      def set_trust_and_notice(trust=nil)
+        trust ||= @skey[PandoraCrypto::KV_Trust]
+        @sess_trust = trust
+        if (@notice.is_a? Integer)
+          not_trust = (@notice & 0xFF)
+          not_dep = (@notice >> 8)
+          if not_dep >= 0
+            nick = PandoraCrypto.short_name_of_person(@skey, @to_person, 1)
+            pool.add_notice_order(self, @to_person, @to_key, \
+              @to_base_id, not_trust, not_dep, nick)
+          end
+        end
+      end
+
       case rcmd
         when EC_Auth
           if @stage<=ES_Captcha
@@ -7946,6 +7960,7 @@ module PandoraNet
                               trust = @skey[PandoraCrypto::KV_Trust]
                               update_node(skey_panhash, sbaseid, trust, \
                                 @cipher[PandoraCrypto::KV_Panhash])
+                              set_trust_and_notice
                               PandoraUtils.play_mp3('online')
                             else
                               err_scmd('Cannot init skey 1')
@@ -7980,6 +7995,7 @@ module PandoraNet
                               trust = @skey[PandoraCrypto::KV_Trust]
                               update_node(skey_panhash, sbaseid, trust, \
                                 @cipher[PandoraCrypto::KV_Panhash])
+                              set_trust_and_notice
                               set_max_pack_size(ES_Exchange)
                               PandoraUtils.play_mp3('online')
                             else
@@ -8145,16 +8161,7 @@ module PandoraNet
                         @sbuf = nil
                       elsif trust.is_a? Float
                         if trust>=$low_conn_trust
-                          @sess_trust = trust
-                          if (@notice.is_a? Integer)
-                            not_trust = (@notice & 0xFF)
-                            not_dep = (@notice >> 8)
-                            if not_dep >= 0
-                              nick = PandoraCrypto.short_name_of_person(@skey, @to_person, 1)
-                              pool.add_notice_order(self, @to_person, @to_key, \
-                                @to_base_id, not_trust, not_dep, nick)
-                            end
-                          end
+                          set_trust_and_notice(trust)
                           if not hunter?
                             @stage = ES_Greeting
                             add_send_segment(EC_Auth, true, params['srckey'])
@@ -9175,10 +9182,10 @@ module PandoraNet
             if a_dialog and (not a_dialog.destroyed?)
               @dialog = a_dialog
               @dialog.set_session(self, true)
-              if @dialog and (not @dialog.destroyed?) and @dialog.online_button \
+              if @dialog and (not @dialog.destroyed?) and @dialog.online_btn \
               and ((@socket and (not @socket.closed?)) or active_hook)
-                @dialog.online_button.safe_set_active(true)
-                @dialog.online_button.inconsistent = false
+                @dialog.online_btn.safe_set_active(true)
+                #@dialog.online_btn.inconsistent = false
               end
             end
 
@@ -9645,8 +9652,8 @@ module PandoraNet
               if ($send_media_queues.size>0) and $send_media_rooms \
               and (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & CSF_Message) == 0) and dialog and (not dialog.destroyed?) and dialog.room_id \
-              and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
-              or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
+              and ((dialog.webcam_btn and (not dialog.webcam_btn.destroyed?) and dialog.webcam_btn.active?) \
+              or (dialog.mic_btn and (not dialog.mic_btn.destroyed?) and dialog.mic_btn.active?))
                 @activity = 2
                 #p 'packbuf '+cannel.to_s
                 pointer_ind = PandoraGtk.get_send_ptrind_by_room(dialog.room_id)
@@ -9656,8 +9663,8 @@ module PandoraNet
                 and ((send_state & CSF_Message) == 0) and (processed<$media_block_count) \
                 and (cannel<$send_media_queues.size) \
                 and dialog and (not dialog.destroyed?) \
-                and ((dialog.vid_button and (not dialog.vid_button.destroyed?) and dialog.vid_button.active?) \
-                or (dialog.snd_button and (not dialog.snd_button.destroyed?) and dialog.snd_button.active?))
+                and ((dialog.webcam_btn and (not dialog.webcam_btn.destroyed?) and dialog.webcam_btn.active?) \
+                or (dialog.mic_btn and (not dialog.mic_btn.destroyed?) and dialog.mic_btn.active?))
                   processed += 1
                   sc_queue = $send_media_queues[cannel]
                   send_media_chunk = nil
@@ -9935,9 +9942,9 @@ module PandoraNet
           attempt += 1
         end
         pool.del_session(self)
-        if dialog and (not dialog.destroyed?) #and (not dialog.online_button.destroyed?)
+        if dialog and (not dialog.destroyed?) #and (not dialog.online_btn.destroyed?)
           dialog.set_session(self, false)
-          #dialog.online_button.active = false
+          #dialog.online_btn.active = false
         else
           @dialog = nil
         end
@@ -12919,6 +12926,37 @@ module PandoraGtk
 
   end
 
+  class TrustScale < Gtk::HScale
+    def initialize(*args)
+      adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
+      super(adjustment)
+      set_size_request(140, -1)
+      update_policy = Gtk::UPDATE_DELAYED
+      digits = 1
+      draw_value = true
+
+      signal_connect('value-changed') do |widget|
+        val = widget.value
+        trust = (val*127).round
+        r = 0
+        g = 0
+        b = 0
+        if trust==0
+          b = 40000
+        else
+          mul = ((trust.fdiv(127))*45000).round
+          if trust>0
+            g = mul+20000
+          else
+            r = -mul+20000
+          end
+        end
+        color = Gdk::Color.new(r, g, b)
+        widget.modify_fg(Gtk::STATE_NORMAL, color)
+        widget.tooltip_text = val.to_s
+      end
+    end
+  end
 
   # Dialog with enter fields
   # RU: Диалог с полями ввода
@@ -13988,65 +14026,7 @@ module PandoraGtk
       end
       trust_box.pack_start(vouch_btn, false, false, 0)
 
-      #@scale_button = Gtk::ScaleButton.new(Gtk::IconSize::BUTTON)
-      #@scale_button.set_icons(['gtk-goto-bottom', 'gtk-goto-top', 'gtk-execute'])
-      #@scale_button.signal_connect('value-changed') { |widget, value| puts "value changed: #{value}" }
-
-      tips = nil
-      j = nil
-      if @panobject.ider=='Person'
-        tips = [_('very destructive'), _('harmful'), _('critic'), _('neutral'), \
-          _('constructive'), _('useful'), _('very creative')]
-        j = (tips.size-1)/2
-      end
-
-      #@trust ||= (127*0.4).round
-      #val = trust/127.0
-      adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
-      @trust_scale = Gtk::HScale.new(adjustment)
-      trust_scale.set_size_request(140, -1)
-      trust_scale.update_policy = Gtk::UPDATE_DELAYED
-      trust_scale.digits = 1
-      trust_scale.draw_value = true
-      trust_scale.signal_connect('value-changed') do |widget|
-        #val = (widget.value*20).round/20.0
-        val = widget.value
-        #widget.value = val #if (val-widget.value).abs>0.05
-        trust = (val*127).round
-        #vouch_lab.text = sprintf('%2.1f', val) #trust.fdiv(127))
-        r = 0
-        g = 0
-        b = 0
-        if trust==0
-          b = 40000
-        else
-          mul = ((trust.fdiv(127))*45000).round
-          if trust>0
-            g = mul+20000
-          else
-            r = -mul+20000
-          end
-        end
-        tip = val.to_s
-        color = Gdk::Color.new(r, g, b)
-        widget.modify_fg(Gtk::STATE_NORMAL, color)
-        @vouch_btn.modify_bg(Gtk::STATE_ACTIVE, color)
-        if tips
-          i = ((trust+127)/127.0*j).round
-          if (i == j) and (trust != 0)
-            if trust>0
-              i += 1
-            else
-              i -= 1
-            end
-          end
-          tip = tips[i]
-        end
-        widget.tooltip_text = tip
-      end
-      #scale.signal_connect('change-value') do |widget|
-      #  true
-      #end
+      @trust_scale = TrustScale.new
       trust_box.pack_start(trust_scale, false, false, 0)
       hbox.pack_start(trust_box, false, false, 0)
 
@@ -14076,46 +14056,7 @@ module PandoraGtk
       end
       public_box.pack_start(public_btn, false, false, 0)
 
-      #@lang_entry = Gtk::ComboBoxEntry.new(true)
-      #lang_entry.set_size_request(60, 15)
-      #lang_entry.append_text('0')
-      #lang_entry.append_text('1')
-      #lang_entry.append_text('5')
-
-      #@lang_entry = Gtk::Combo.new
-      #@lang_entry.set_popdown_strings(['0','1','5'])
-      #@lang_entry.entry.text = ''
-      #@lang_entry.entry.select_region(0, -1)
-      #@lang_entry.set_size_request(50, -1)
-      #public_box.pack_start(lang_entry, true, true, 5)
-
-      adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
-      @public_scale = Gtk::HScale.new(adjustment)
-      public_scale.set_size_request(140, -1)
-      public_scale.update_policy = Gtk::UPDATE_DELAYED
-      public_scale.digits = 1
-      public_scale.draw_value = true
-      public_scale.signal_connect('value-changed') do |widget|
-        val = widget.value
-        trust = (val*10).round
-        r = 0
-        g = 0
-        b = 0
-        if trust==0
-          b = 40000
-        else
-          mul = ((trust.fdiv(10))*45000).round
-          if trust>0
-            g = mul+20000
-          else
-            r = -mul+20000
-          end
-        end
-        color = Gdk::Color.new(r, g, b)
-        widget.modify_fg(Gtk::STATE_NORMAL, color)
-        @vouch_btn.modify_bg(Gtk::STATE_ACTIVE, color)
-        widget.tooltip_text = val.to_s
-      end
+      @public_scale = TrustScale.new
       public_box.pack_start(public_scale, false, false, 0)
 
       hbox.pack_start(public_box, false, false, 0)
@@ -14682,10 +14623,10 @@ module PandoraGtk
   # Talk dialog
   # RU: Диалог разговора
   class DialogScrollWin < Gtk::ScrolledWindow
-    attr_accessor :room_id, :targets, :online_button, :snd_button, :vid_button, :talkview, \
+    attr_accessor :room_id, :targets, :online_btn, :mic_btn, :webcam_btn, :talkview, \
       :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, :sender_box, \
-      :option_box, :captcha_enter, :editsw
+      :option_box, :captcha_enter, :editsw, :trust_scale
 
     include PandoraGtk
 
@@ -14836,85 +14777,28 @@ module PandoraGtk
       hpaned = Gtk::HPaned.new
       add_with_viewport(hpaned)
 
-      vpaned1 = Gtk::VPaned.new
+      #vpaned1 = Gtk::VPaned.new
       vpaned2 = Gtk::VPaned.new
 
       @area_recv = ViewDrawingArea.new
-      area_recv.set_size_request(320, 240)
-      area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
+      #area_recv.set_size_request(320, 240)
+      area_recv.set_size_request(0, -1)
+      area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
 
       res = area_recv.signal_connect('expose-event') do |*args|
         #p 'area_recv '+area_recv.window.xid.inspect
         false
       end
 
-      hbox = Gtk::HBox.new
+      #hbox = Gtk::HBox.new
+      #bbox = Gtk::HBox.new
+      #bbox.border_width = 5
+      #bbox.spacing = 5
+      #hbox.pack_start(bbox, false, false, 1.0)
 
-      bbox = Gtk::HBox.new
-      bbox.border_width = 5
-      bbox.spacing = 5
-
-      @online_button = SafeCheckButton.new(_('Online'), true)
-      online_button.safe_signal_clicked do |widget|
-        p 'widget.active?='+widget.active?.inspect
-        if widget.active? #and (not widget.inconsistent?)
-          #widget.safe_set_active(false)
-          widget.inconsistent = true
-          targets[CSI_Persons].each_with_index do |person, i|
-            keys = targets[CSI_Keys]
-            keys = keys[-1] if (keys.is_a? Array) and (keys.size>0)
-            #if keys.is_a? Array
-            #  keys.each do |key|
-            #    $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-            #      person, key, nil, PandoraNet::CM_Captcha)
-            #  end
-            #else
-              $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-                person, keys, nil, PandoraNet::CM_Captcha)
-            #end
-          end
-        else
-          widget.safe_set_active(false)
-          widget.inconsistent = false
-          $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
-        end
-      end
-      online_button.safe_set_active(known_node != nil)
-
-      bbox.pack_start(online_button, false, false, 0)
-
-      @snd_button = SafeCheckButton.new(_('Sound'), true)
-      snd_button.safe_signal_clicked do |widget|
-        if widget.active?
-          if init_audio_sender(true)
-            online_button.active = true
-          end
-        else
-          init_audio_sender(false, true)
-          init_audio_sender(false)
-        end
-      end
-      bbox.pack_start(snd_button, false, false, 0)
-
-      @vid_button = SafeCheckButton.new(_('Video'), true)
-      vid_button.safe_signal_clicked do |widget|
-        if widget.active?
-          if init_video_sender(true)
-            online_button.active = true
-          end
-        else
-          init_video_sender(false, true)
-          init_video_sender(false)
-        end
-      end
-
-      bbox.pack_start(vid_button, false, false, 0)
-
-      hbox.pack_start(bbox, false, false, 1.0)
-
-      vpaned1.pack1(area_recv, false, true)
-      vpaned1.pack2(hbox, false, true)
-      vpaned1.set_size_request(350, 270)
+      #vpaned1.pack1(area_recv, false, true)
+      #vpaned1.pack2(hbox, false, true)
+      #vpaned1.set_size_request(350, 270)
 
       @talkview = PandoraGtk::SuperTextView.new
       talkview.set_readonly(true)
@@ -14975,18 +14859,56 @@ module PandoraGtk
 
       option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
 
-      online_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::CONNECT)
+      @online_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::CONNECT)
       online_btn.tooltip_text = _('Online')
+      online_btn.safe_signal_clicked do |widget|
+        p 'widget.active?='+widget.active?.inspect
+        if widget.active? #and (not widget.inconsistent?)
+          #widget.safe_set_active(false)
+          #widget.inconsistent = true
+          targets[CSI_Persons].each_with_index do |person, i|
+            keys = targets[CSI_Keys]
+            keys = keys[-1] if (keys.is_a? Array) and (keys.size>0)
+            $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
+              person, keys, nil, PandoraNet::CM_Captcha)
+          end
+        else
+          widget.safe_set_active(false)
+          widget.inconsistent = false
+          $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
+        end
+      end
+      online_btn.safe_set_active(known_node != nil)
       option_box.pack_start(online_btn, false, false, 2)
 
       $window.register_stock(:webcam)
-      webcam_btn = PandoraGtk::SafeToggleToolButton.new(:webcam)
+      @webcam_btn = PandoraGtk::SafeToggleToolButton.new(:webcam)
       webcam_btn.tooltip_text = _('Video')
+      webcam_btn.safe_signal_clicked do |widget|
+        if widget.active?
+          if init_video_sender(true)
+            online_btn.active = true
+          end
+        else
+          init_video_sender(false, true)
+          init_video_sender(false)
+        end
+      end
       option_box.pack_start(webcam_btn, false, false, 2)
 
       $window.register_stock(:mic)
-      mic_btn = PandoraGtk::SafeToggleToolButton.new(:mic)
+      @mic_btn = PandoraGtk::SafeToggleToolButton.new(:mic)
       mic_btn.tooltip_text = _('Audio')
+      mic_btn.safe_signal_clicked do |widget|
+        if widget.active?
+          if init_audio_sender(true)
+            online_btn.active = true
+          end
+        else
+          init_audio_sender(false, true)
+          init_audio_sender(false)
+        end
+      end
       option_box.pack_start(mic_btn, false, false, 2)
 
       option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
@@ -14994,8 +14916,6 @@ module PandoraGtk
       $window.register_stock(:crypt)
       crypt_btn = PandoraGtk::SafeToggleToolButton.new(:crypt)
       crypt_btn.tooltip_text = _('crypt')+' (Ctrl+K)'
-      #crypt_btn.safe_signal_clicked do |*args|
-      #end
       #crypt_btn.active = true
       option_box.pack_start(crypt_btn, false, false, 2)
 
@@ -15003,16 +14923,27 @@ module PandoraGtk
       $window.register_stock(:sign)
       vouch_btn = PandoraGtk::SafeToggleToolButton.new(:sign)
       vouch_btn.tooltip_text = _('vouch')+' (Ctrl+G)'
+      trust0 = nil
+      vouch_btn.signal_connect('clicked') do |widget|
+        if not widget.destroyed?
+          trust_scale.sensitive = widget.active?
+          if widget.active?
+            trust0 ||= 1.0
+            trust_scale.value = trust0
+            trust_scale.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
+          else
+            trust0 = trust_scale.value
+            trust_scale.modify_bg(Gtk::STATE_NORMAL, nil)
+          end
+        end
+      end
       option_box.pack_start(vouch_btn, false, false, 0)
 
-      adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.5, 0)
-      trust_scale = Gtk::HScale.new(adjustment)
-      trust_scale.set_size_request(90, -1)
-      trust_scale.update_policy = Gtk::UPDATE_DELAYED
-      trust_scale.digits = 1
-      trust_scale.draw_value = true
+      @trust_scale = TrustScale.new
+      trust_scale.set_size_request(95, -1)
       trust_scale.value = 1.0
       trust_scale.value_pos = Gtk::POS_RIGHT
+      trust_scale.sensitive = vouch_btn.active?
       option_box.pack_start(trust_scale, false, false, 2)
 
       $window.register_stock(:require)
@@ -15073,7 +15004,7 @@ module PandoraGtk
           vouch_btn.active = (not vouch_btn.active?)
           true
         else
-          p event.keyval
+          #p event.keyval
           false
         end
       end
@@ -15082,8 +15013,9 @@ module PandoraGtk
 
       hpaned2 = Gtk::HPaned.new
       @area_send = ViewDrawingArea.new
-      area_send.set_size_request(120, 90)
-      area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.new(0, 0, 0))
+      #area_send.set_size_request(120, 90)
+      area_send.set_size_request(0, -1)
+      area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
       hpaned2.pack1(area_send, false, true)
 
       @sender_box = Gtk::VBox.new
@@ -15186,7 +15118,8 @@ module PandoraGtk
       vpaned2.pack1(hpaned3, true, true)
       vpaned2.pack2(hpaned2, false, true)
 
-      hpaned.pack1(vpaned1, false, true)
+      #hpaned.pack1(vpaned1, false, true)
+      hpaned.pack1(area_recv, false, true)
       hpaned.pack2(vpaned2, true, true)
 
       area_recv.signal_connect('visibility_notify_event') do |widget, event_visibility|
@@ -15460,14 +15393,14 @@ module PandoraGtk
         session.dialog = nil
       end
       active = (@sessions.size>0)
-      online_button.safe_set_active(active) if (not online_button.destroyed?)
+      online_btn.safe_set_active(active) if (not online_btn.destroyed?)
       if active
-        online_button.inconsistent = false if (not online_button.destroyed?)
+        #online_btn.inconsistent = false if (not online_btn.destroyed?)
       else
-        snd_button.active = false if (not snd_button.destroyed?) and snd_button.active?
-        vid_button.active = false if (not vid_button.destroyed?) and vid_button.active?
-        #snd_button.safe_set_active(false) if (not snd_button.destroyed?)
-        #vid_button.safe_set_active(false) if (not vid_button.destroyed?)
+        mic_btn.active = false if (not mic_btn.destroyed?) and mic_btn.active?
+        webcam_btn.active = false if (not webcam_btn.destroyed?) and webcam_btn.active?
+        #mic_btn.safe_set_active(false) if (not mic_btn.destroyed?)
+        #webcam_btn.safe_set_active(false) if (not webcam_btn.destroyed?)
       end
     end
 
@@ -15477,7 +15410,7 @@ module PandoraGtk
       res = false
       creator = PandoraCrypto.current_user_or_key(true)
       if creator
-        online_button.active = true if (not online_button.active?)
+        online_btn.active = true if (not online_btn.active?)
         #Thread.pass
         time_now = Time.now.to_i
         state = 0
@@ -15904,7 +15837,7 @@ module PandoraGtk
           end
         end
         #Thread.pass
-      elsif (not self.destroyed?) and (not vid_button.destroyed?) and vid_button.active? \
+      elsif (not self.destroyed?) and (not webcam_btn.destroyed?) and webcam_btn.active? \
       and area_send and (not area_send.destroyed?)
         if not video_pipeline
           begin
@@ -16004,7 +15937,7 @@ module PandoraGtk
             mes = 'Camera init exception'
             PandoraUtils.log_message(LM_Warning, _(mes))
             puts mes+': '+err.message
-            vid_button.active = false
+            webcam_btn.active = false
           end
         end
 
@@ -16139,7 +16072,7 @@ module PandoraGtk
             mes = 'Video receiver init exception'
             PandoraUtils.log_message(LM_Warning, _(mes))
             puts mes+': '+err.message
-            vid_button.active = false
+            webcam_btn.active = false
           end
         end
 
@@ -16192,14 +16125,14 @@ module PandoraGtk
     # RU: Инициализирует отправителя аудио
     def init_audio_sender(start=true, just_upd_area=false)
       audio_pipeline = $send_media_pipelines['audio']
-      #p 'init_audio_sender pipe='+audio_pipeline.inspect+'  btn='+snd_button.active?.inspect
+      #p 'init_audio_sender pipe='+audio_pipeline.inspect+'  btn='+mic_btn.active?.inspect
       if not start
         #count = PandoraGtk.nil_send_ptrind_by_room(room_id)
         #if audio_pipeline and (count==0) and (audio_pipeline.get_state != Gst::STATE_NULL)
         if audio_pipeline and (not PandoraUtils::elem_stopped?(audio_pipeline))
           audio_pipeline.stop
         end
-      elsif (not self.destroyed?) and (not snd_button.destroyed?) and snd_button.active?
+      elsif (not self.destroyed?) and (not mic_btn.destroyed?) and mic_btn.active?
         if not audio_pipeline
           begin
             Gst.init
@@ -16274,7 +16207,7 @@ module PandoraGtk
             mes = 'Microphone init exception'
             PandoraUtils.log_message(LM_Warning, _(mes))
             puts mes+': '+err.message
-            snd_button.active = false
+            mic_btn.active = false
           end
         end
 
@@ -16372,7 +16305,7 @@ module PandoraGtk
             mes = 'Audio receiver init exception'
             PandoraUtils.log_message(LM_Warning, _(mes))
             puts mes+': '+err.message
-            snd_button.active = false
+            mic_btn.active = false
           end
           recv_media_pipeline[0].stop if recv_media_pipeline[0]  #this is a hack, else doesn't work!
         end
@@ -18891,7 +18824,7 @@ module PandoraGtk
   def self.find_another_active_sender(not_this=nil)
     res = nil
     $window.notebook.children.each do |child|
-      if (child != not_this) and (child.is_a? DialogScrollWin) and child.vid_button.active?
+      if (child != not_this) and (child.is_a? DialogScrollWin) and child.webcam_btn.active?
         return child
       end
     end
@@ -18927,7 +18860,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.53'
+    dlg.version = '0.54'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
@@ -19050,8 +18983,8 @@ module PandoraGtk
       $window.notebook.children.each do |child|
         if (child.is_a? DialogScrollWin) and (child.room_id==room_id)
           child.targets = targets
-          #child.online_button.safe_set_active(nodehash != nil)
-          #child.online_button.inconsistent = false
+          #child.online_btn.safe_set_active(nodehash != nil)
+          #child.online_btn.inconsistent = false
           $window.notebook.page = $window.notebook.children.index(child) if conntype.nil?
           sw = child
           break
