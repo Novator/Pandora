@@ -3945,6 +3945,34 @@ module PandoraModel
     res
   end
 
+  def self.scale_buf_to_size(pixbuf, icon_size, center=false)
+    if pixbuf
+      w = pixbuf.width
+      h = pixbuf.height
+      w2, h2 = icon_size, icon_size
+      if (h>h2) and (h >= w)
+        w2 = w*h2/h
+        pixbuf = pixbuf.scale(w2, h2)
+      elsif w>w2
+        h2 = h*w2/w
+        pixbuf = pixbuf.scale(w2, h2)
+      end
+      if center
+        w = pixbuf.width
+        h = pixbuf.height
+        asize = w
+        asize = h if asize<h
+        left = (asize - w)/2
+        top  = (asize - h)/2
+        qbuf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, asize, asize)
+        qbuf.fill!(0xFFFFFF00)
+        pixbuf.copy_area(0, 0, w, h, qbuf, left, top)
+        pixbuf = qbuf
+      end
+    end
+    pixbuf
+  end
+
   # Obtain avatar icon by panhash
   # RU: Добыть иконку-аватар по панхэшу
   def self.get_avatar_icon(panhash, pixbuf_parent, its_blob=false, icon_size=16)
@@ -3961,17 +3989,7 @@ module PandoraModel
         pixbuf = PandoraModel.get_image_from_url(ava_url, nil, pixbuf_parent)
         #p 'pixbuf='+pixbuf.inspect
         if pixbuf
-          w = pixbuf.width
-          h = pixbuf.height
-          #p 'w,h='+[w,h].inspect
-          w2, h2 = icon_size, icon_size
-          if (h>h2) and (h >= w)
-            w2 = w*h2/h
-            pixbuf = pixbuf.scale(w2, h2)
-          elsif w>w2
-            h2 = h*w2/w
-            pixbuf = pixbuf.scale(w2, h2)
-          end
+          pixbuf = scale_buf_to_size(pixbuf, icon_size)
         elsif its_blob
           pixbuf = get_avatar_icon(panhash, pixbuf_parent, nil, icon_size)
         end
@@ -12240,45 +12258,6 @@ module PandoraGtk
       end
 
       set_border_window_size(Gtk::TextView::WINDOW_LEFT, left_border) if left_border
-      $font_desc ||= Pango::FontDescription.new('Monospace 11')
-      signal_connect('expose-event') do |widget, event|
-        tv = widget
-        type = nil
-        event_win = nil
-        begin
-          left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
-          #right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
-          event_win = event.window
-        rescue Exception
-          event_win = nil
-        end
-        if event_win and left_win and (event_win == left_win)
-          type = Gtk::TextView::WINDOW_LEFT
-          target = left_win
-          sw = tv.scrollwin
-          view_mode = true
-          view_mode = sw.view_mode if sw and (sw.is_a? FieldsDialog::BodyScrolledWindow)
-          if not view_mode
-            first_y = event.area.y
-            last_y = first_y + event.area.height
-            x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
-            x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
-            numbers = []
-            pixels = []
-            count = get_lines(tv, first_y, last_y, pixels, numbers)
-            # Draw fully internationalized numbers!
-            layout = widget.create_pango_layout
-            count.times do |i|
-              x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
-              str = numbers[i].to_s
-              layout.text = str
-              widget.style.paint_layout(target, widget.state, false,
-                nil, widget, nil, 2, pos, layout)
-            end
-          end
-        end
-        false
-      end
 
       signal_connect('event-after') do |tv, event|
         if event.kind_of?(Gdk::EventButton) \
@@ -12354,7 +12333,7 @@ module PandoraGtk
       end
     end
 
-    def get_lines(tv, first_y, last_y, buffer_coords, numbers)
+    def get_lines(tv, first_y, last_y, y_coords, numbers, with_height=false)
       # Get iter at first y
       iter, top = tv.get_line_at_y(first_y)
       # For each iter, get its location and add it to the arrays.
@@ -12365,7 +12344,11 @@ module PandoraGtk
       while (line < tv.buffer.line_count)
         #iter = tv.buffer.get_iter_at_line(line)
         y, height = tv.get_line_yrange(iter)
-        buffer_coords << y
+        if with_height
+          y_coords << [y, height]
+        else
+          y_coords << y
+        end
         line += 1
         numbers << line
         count += 1
@@ -12926,6 +12909,141 @@ module PandoraGtk
 
   end
 
+  # Editor TextView
+  # RU: TextView редактора
+  class EditorTextView < SuperTextView
+
+    def initialize(*args)
+      super(*args)
+      $font_desc ||= Pango::FontDescription.new('Monospace 11')
+      signal_connect('expose-event') do |widget, event|
+        tv = widget
+        type = nil
+        event_win = nil
+        begin
+          left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
+          #right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
+          event_win = event.window
+        rescue Exception
+          event_win = nil
+        end
+        if event_win and left_win and (event_win == left_win)
+          type = Gtk::TextView::WINDOW_LEFT
+          target = left_win
+          sw = tv.scrollwin
+          view_mode = true
+          view_mode = sw.view_mode if sw and (sw.is_a? FieldsDialog::BodyScrolledWindow)
+          if not view_mode
+            first_y = event.area.y
+            last_y = first_y + event.area.height
+            x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
+            x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
+            numbers = []
+            pixels = []
+            count = get_lines(tv, first_y, last_y, pixels, numbers)
+            # Draw fully internationalized numbers!
+            layout = widget.create_pango_layout
+            count.times do |i|
+              x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
+              str = numbers[i].to_s
+              layout.text = str
+              widget.style.paint_layout(target, widget.state, false,
+                nil, widget, nil, 2, pos, layout)
+            end
+          end
+        end
+        false
+      end
+    end
+  end
+
+  class ChatTextView < SuperTextView
+
+    def initialize(*args)
+      super(*args)
+      @@save_buf ||= $window.get_icon_scale_buf('save', 'pan', 16)
+      @@gogo_buf ||= $window.get_icon_scale_buf('gogo', 'pan', 16)
+      @@recv_buf ||= $window.get_icon_scale_buf('recv', 'pan', 16)
+      @@crypt_buf ||= $window.get_icon_scale_buf('crypt', 'pan', 16)
+      @@sign_buf ||= $window.get_icon_scale_buf('sign', 'pan', 16)
+      signal_connect('expose-event') do |widget, event|
+        tv = widget
+        type = nil
+        event_win = nil
+        begin
+          left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
+          #right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
+          event_win = event.window
+        rescue Exception
+          event_win = nil
+        end
+        if event_win and left_win and (event_win == left_win)
+          type = Gtk::TextView::WINDOW_LEFT
+          target = left_win
+          sw = tv.scrollwin
+          first_y = event.area.y
+          last_y = first_y + event.area.height
+          x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
+          x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
+          numbers = []
+          pixels = []
+          count = get_lines(tv, first_y, last_y, pixels, numbers, true)
+          #layout = widget.create_pango_layout
+          #cr = widget.cairo_context
+
+          cr = target.create_cairo_context
+
+          count.times do |i|
+            y1, h1 = pixels[i]
+            x, y = tv.buffer_to_window_coords(type, 0, y1)
+            str = numbers[i].to_s
+            attr = 1
+            if attr>0
+              #layout.text = str
+              #widget.style.paint_layout(target, widget.state, false,
+              #  nil, widget, nil, 2, y, layout)
+
+              #widget.style.paint_focus(widget.window, Gtk::STATE_NORMAL, \
+              #  event.area, widget, '', event.area.x+1, event.area.y+1, \
+              #  event.area.width-2, event.area.height-2)
+
+              #cm = Gdk::Colormap.system
+              #width = context.width
+              #height = context.height
+              #min_width = width
+              #min_width = tv.allocation.width if tv.allocation.width < min_width
+              #min_height = height - (HEADER_HEIGHT + HEADER_GAP)
+              #min_height = tv.allocation.height if tv.allocation.height < min_height
+
+
+              #cr.set_source_color(Gdk::Color.new(65535, 65535, 65535))
+              #cr.gdk_rectangle(Gdk::Rectangle.new(0, HEADER_HEIGHT + HEADER_GAP, \
+              #  context.width, height - (HEADER_HEIGHT + HEADER_GAP)))
+              #cr.fill
+
+              cr.set_source_pixbuf(@@save_buf, 0, y+h1-@@save_buf.height)
+              cr.paint
+              cr.set_source_pixbuf(@@crypt_buf, 18, y+h1-@@crypt_buf.height)
+              cr.paint
+              cr.set_source_pixbuf(@@sign_buf, 35, y+h1-@@sign_buf.height)
+              cr.paint
+              #Gdk::RGB.draw_rgb_32_image(target,
+              #  widget.style.black_gc,
+              #  20, y,
+              #  pixbuf.width, pixbuf.height,
+              #  Gdk::RGB::Dither::NORMAL,
+              #  pixbuf.pixels, pixbuf.rowstride)
+
+            end
+          end
+        end
+        false
+      end
+    end
+  end
+
+  # Trust change Scale
+  # RU: Шкала для изменения доверия
   class TrustScale < Gtk::HScale
     def initialize(*args)
       adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
@@ -13918,7 +14036,7 @@ module PandoraGtk
                   link_name = nil
                 end
 
-                bodywid ||= PandoraGtk::SuperTextView.new(54)
+                bodywid ||= PandoraGtk::EditorTextView.new(54)
 
                 if not field[FI_Widget2]
                   field[FI_Widget2] = bodywid
@@ -14800,10 +14918,11 @@ module PandoraGtk
       #vpaned1.pack2(hbox, false, true)
       #vpaned1.set_size_request(350, 270)
 
-      @talkview = PandoraGtk::SuperTextView.new
+      @talkview = PandoraGtk::ChatTextView.new(54)
       talkview.set_readonly(true)
       talkview.set_size_request(200, 200)
       talkview.wrap_mode = Gtk::TextTag::WRAP_WORD
+      #talkview.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
       #view.cursor_visible = false
       #view.editable = false
 
@@ -19913,6 +20032,11 @@ module PandoraGtk
         end
       end
       buf
+    end
+
+    def get_icon_scale_buf(emot='smile', preset='pan', icon_size=16, center=true)
+      buf = get_icon_buf(emot, preset)
+      buf = PandoraModel.scale_buf_to_size(buf, icon_size, center)
     end
 
     $iconsets = {}
