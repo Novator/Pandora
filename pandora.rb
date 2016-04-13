@@ -3115,7 +3115,8 @@ module PandoraUtils
       res = Process.spawn(restart_cmd)
       Process.detach(res) if res
     end
-    $window.destroy if res
+    #$window.destroy if res
+    Kernel.exit if res
   end
 
   $poly_play   = false
@@ -13014,11 +13015,11 @@ module PandoraGtk
     attr_accessor :mes_ids, :numbers, :pixels
 
     def initialize(*args)
-      @@save_buf ||= $window.get_icon_scale_buf('save', 'pan', 16)
-      @@gogo_buf ||= $window.get_icon_scale_buf('gogo', 'pan', 16)
-      @@recv_buf ||= $window.get_icon_scale_buf('recv', 'pan', 16)
-      @@crypt_buf ||= $window.get_icon_scale_buf('crypt', 'pan', 16)
-      @@sign_buf ||= $window.get_icon_scale_buf('sign', 'pan', 16)
+      @@save_buf ||= $window.get_icon_scale_buf('save', 'pan', 14)
+      @@gogo_buf ||= $window.get_icon_scale_buf('gogo', 'pan', 14)
+      @@recv_buf ||= $window.get_icon_scale_buf('recv', 'pan', 14)
+      @@crypt_buf ||= $window.get_icon_scale_buf('crypt', 'pan', 14)
+      @@sign_buf ||= $window.get_icon_scale_buf('sign', 'pan', 14)
       super(*args)
       @mes_ids = Array.new
       @numbers = Array.new
