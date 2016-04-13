@@ -21051,6 +21051,8 @@ module PandoraGtk
       $group = Gtk::AccelGroup.new
       $window.add_accel_group($group)
 
+      $window.register_stock(:save)
+
       menubar = Gtk::MenuBar.new
       fill_menubar(menubar)
 
