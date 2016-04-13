@@ -112,9 +112,8 @@ module PandoraUtils
           log_view.buffer.delete(first, last)
         end
         log_view.after_addition
-      else
-        puts mes
       end
+      puts 'log: '+mes
     end
   end
 
@@ -6943,7 +6942,8 @@ module PandoraNet
     def cipher_buf(buf, encode=true)
       res = buf
       if @cipher
-        if res
+        key = @cipher[PandoraCrypto::KV_Obj]
+        if res and key and (not (key.is_a? Integer))
           #if encode
           #  p log_mes+'####bef#### CIPHER ENC buf='+res.inspect
           #else
@@ -6973,7 +6973,7 @@ module PandoraNet
       code ||= 0   #нужно ли??!!
       lengt = 0
       lengt = data.bytesize if data
-      #p log_mes+'SEND: [index, cmd, code, lengt]='+[index, cmd, code, lengt].inspect
+      p log_mes+'->>SEND [cmd, code, lengt] stage='+[cmd, code, lengt].inspect+' '+@stage.to_s
       @last_send_time = pool.time_now
       if cmd != EC_Media
         data = cipher_buf(data, true) if @ciphering
@@ -7968,7 +7968,7 @@ module PandoraNet
                     # need to change an ip checking
                     pool.check_incoming_addr(addr, host_ip) if addr
                     @sess_mode = params['mode']
-                    p log_mes+'--------@sess_mode='+@sess_mode.inspect
+                    p log_mes+'ECC_Auth_Hello @sess_mode='+@sess_mode.inspect
                     @notice = params['notice']
                     init_skey_or_error(true)
                   else
@@ -8200,19 +8200,19 @@ module PandoraNet
                         trust = 0.01
                         @skey[PandoraCrypto::KV_Trust] = trust
                       end
-                      p log_mes+'----trust='+trust.inspect
+                      p log_mes+'ECC_Auth_Sign trust='+trust.inspect
                       if ($captcha_length>0) and (trust.is_a? Integer) \
                       and (not hunter?) and ((@sess_mode & CM_Captcha)>0)
                         @skey[PandoraCrypto::KV_Trust] = 0
-                        #send_captcha
-                        if not hunter?
-                          @stage = ES_Greeting
-                          p log_mes+'Hello2 skey_hash='+skey_hash.inspect
-                          add_send_segment(EC_Auth, true, skey_hash)
-                        end
-                        @scmd = EC_Data
-                        @scode = 0
-                        @sbuf = nil
+                        send_captcha
+                        #if not hunter?
+                        #  @stage = ES_Greeting
+                        #  p log_mes+'ECC_Auth_Sign Hello2 skey_hash='+skey_hash.inspect
+                        #  add_send_segment(EC_Auth, true, skey_hash)
+                        #end
+                        #@scmd = EC_Data
+                        #@scode = 0
+                        #@sbuf = nil
                       elsif trust.is_a? Float
                         if trust>=$low_conn_trust
                           set_trust_and_notice(trust)
@@ -8223,8 +8223,8 @@ module PandoraNet
                           else
                             @stage = ES_Exchange
                             session_key = nil
-                            p log_mes+'---------acipher='+acipher.inspect
-                            p log_mes+'&&&&&&&& @cipher='+@cipher.inspect
+                            p log_mes+'ECC_Auth_Sign  acipher='+acipher.inspect
+                            p log_mes+'ECC_Auth_Sign  @cipher='+@cipher.inspect
                             if (acipher.is_a? Array) and @cipher.nil?
                               cip = Array.new
                               cip[PandoraCrypto::KV_Panhash] = acipher[0]
@@ -9414,6 +9414,9 @@ module PandoraNet
                             @conn_state = CS_Stoping
                           end
                         end
+                        rkdata_size = 0
+                        rkdata_size = rkdata.bytesize if rkdata
+                        p log_mes+'<<-RECV [rkcmd/rkcode, rkdata.size] stage='+[rkcmd, rkcode, rkdata_size].inspect+' '+@stage.to_s
                         res = @read_queue.add_block_to_queue([rkcmd, rkcode, rkdata])
                         if not res
                           PandoraUtils.log_message(LM_Error, _('Cannot add socket segment to read queue'))
@@ -10184,7 +10187,7 @@ module PandoraNet
                 host_name = socket.peeraddr[3]
                 port = socket.peeraddr[1]
                 proto = 'tcp'
-                p 'LISTEN: '+[host_name, host_ip, port, proto].inspect
+                p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
                 session = Session.new(socket, host_name, host_ip, port, proto, \
                   0, nil, nil, nil, nil)
               else
@@ -14817,7 +14820,7 @@ module PandoraGtk
     attr_accessor :room_id, :targets, :online_btn, :mic_btn, :webcam_btn, :talkview, \
       :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, :sender_box, \
-      :option_box, :captcha_enter, :editsw, :trust_scale
+      :option_box, :captcha_enter, :editsw, :trust_scale, :hpaned
 
     include PandoraGtk
 
@@ -14916,6 +14919,10 @@ module PandoraGtk
         @option_box.hide
         @captcha_label.show
         @captcha_align.show_all
+
+        if area_recv.allocation.width <= 24
+          hpaned.position = pixbuf.width+20
+        end
         area_recv.queue_draw
 
         Thread.pass
@@ -14938,6 +14945,7 @@ module PandoraGtk
         @editsw.show_all
         area_recv.set_expose_event(nil)
         area_recv.queue_draw
+        hpaned.position = 0
         Thread.pass
         talkview.after_addition(true)
         @editbox.grab_focus
@@ -14965,7 +14973,7 @@ module PandoraGtk
       #sw.add(treeview)
       border_width = 0
 
-      hpaned = Gtk::HPaned.new
+      @hpaned = Gtk::HPaned.new
       add_with_viewport(hpaned)
 
       #vpaned1 = Gtk::VPaned.new
