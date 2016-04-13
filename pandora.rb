@@ -3957,7 +3957,7 @@ module PandoraModel
         h2 = h*w2/w
         pixbuf = pixbuf.scale(w2, h2)
       end
-      if center
+      if center and pixbuf
         w = pixbuf.width
         h = pixbuf.height
         asize = w
@@ -8404,7 +8404,11 @@ module PandoraNet
                   id = confirms[i+1, 4].unpack('N')
                   p log_mes+'update confirm  kind,id='+[kind, id].inspect
                   res = model.update({:state=>2}, nil, {:id=>id})
-                  if not res
+                  if res
+                    talkview = nil
+                    talkview = @dialog.talkview if @dialog
+                    talkview.update_lines_with_id(id) if talkview
+                  else
                     PandoraUtils.log_message(LM_Warning, _('Cannot update record of confirm')+' kind,id='+[kind,id].inspect)
                   end
                   i += 5
@@ -8450,14 +8454,14 @@ module PandoraNet
                   if row.is_a? String
                     row, len = PandoraUtils.pson_to_rubyobj(row)
                     time_now = Time.now.to_i
-                    id = nil
+                    id0 = nil
                     creator = nil
                     created = nil
                     destination = mypersonhash
                     text = nil
                     panstate = 0
                     if row.is_a? Array
-                      id = row[0]
+                      id0 = row[0]
                       creator = row[1]
                       created = row[2]
                       text = row[3]
@@ -8478,12 +8482,12 @@ module PandoraNet
                     panhash = model.panhash(values)
                     values['panhash'] = panhash
                     res = model.update(values, nil, nil)
-                    if res and (id.is_a? Integer)
+                    if res and (id0.is_a? Integer)
                       while (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) do
                         sleep(0.02)
                       end
                       @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
-                        +[id].pack('N'))
+                        +[id0].pack('N'))
                     end
 
                     talkview = nil
@@ -8499,7 +8503,10 @@ module PandoraNet
                       #talkview.after_addition
                       #talkview.show_all
                       #dialog.update_state(true)
-                      dialog.add_mes_to_view(text, panstate, nil, @skey, myname, time_now, created)
+                      sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
+                      id = nil
+                      id = sel[0][0] if sel and (sel.size > 0)
+                      dialog.add_mes_to_view(text, id, panstate, nil, @skey, myname, time_now, created)
                     else
                       PandoraUtils.log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
                     end
@@ -9623,6 +9630,10 @@ module PandoraNet
                   if sel and (sel.size>0)
                     @send_state = (send_state | CSF_Messaging)
                     i = 0
+                    talkview = nil
+                    talkview = @dialog.talkview if @dialog
+                    ids = nil
+                    ids = [] if talkview
                     while sel and (i<sel.size) and (processed<$mes_block_count) \
                     and (@conn_state == CS_Connected) \
                     and (@send_queue.single_read_state != PandoraUtils::RoundQueue::SQS_Full)
@@ -9642,7 +9653,9 @@ module PandoraNet
                       if add_send_segment(EC_Message, true, row)
                         id = row[0]
                         res = message_model.update({:state=>1}, nil, {:id=>id})
-                        if not res
+                        if res
+                          ids << id if ids
+                        else
                           PandoraUtils.log_message(LM_Error, _('Updating state of sent message')+' id='+id.to_s)
                         end
                       else
@@ -9658,6 +9671,7 @@ module PandoraNet
                       #  end
                       #end
                     end
+                    talkview.update_lines_with_id(ids) if ids and (ids.size>0)
                   else
                     @send_state = (send_state & (~CSF_Messaging))
                   end
@@ -12958,88 +12972,107 @@ module PandoraGtk
   end
 
   class ChatTextView < SuperTextView
+    attr_accessor :mes_ids, :numbers, :pixels
 
     def initialize(*args)
-      super(*args)
       @@save_buf ||= $window.get_icon_scale_buf('save', 'pan', 16)
       @@gogo_buf ||= $window.get_icon_scale_buf('gogo', 'pan', 16)
       @@recv_buf ||= $window.get_icon_scale_buf('recv', 'pan', 16)
       @@crypt_buf ||= $window.get_icon_scale_buf('crypt', 'pan', 16)
       @@sign_buf ||= $window.get_icon_scale_buf('sign', 'pan', 16)
+      super(*args)
+      @mes_ids = Array.new
+      @numbers = Array.new
+      @pixels = Array.new
+      @mes_model = PandoraUtils.get_model('Message')
+
       signal_connect('expose-event') do |widget, event|
-        tv = widget
         type = nil
         event_win = nil
         begin
-          left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
-          #right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
+          left_win = widget.get_window(Gtk::TextView::WINDOW_LEFT)
           event_win = event.window
         rescue Exception
           event_win = nil
         end
         if event_win and left_win and (event_win == left_win)
           type = Gtk::TextView::WINDOW_LEFT
-          target = left_win
-          sw = tv.scrollwin
           first_y = event.area.y
           last_y = first_y + event.area.height
-          x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
-          x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
-          numbers = []
-          pixels = []
-          count = get_lines(tv, first_y, last_y, pixels, numbers, true)
-          #layout = widget.create_pango_layout
-          #cr = widget.cairo_context
-
-          cr = target.create_cairo_context
+          x, first_y = widget.window_to_buffer_coords(type, 0, first_y)
+          x, last_y = widget.window_to_buffer_coords(type, 0, last_y)
+          pixels.clear
+          numbers.clear
+          count = get_lines(widget, first_y, last_y, pixels, numbers, true)
+          cr = left_win.create_cairo_context
 
           count.times do |i|
             y1, h1 = pixels[i]
-            x, y = tv.buffer_to_window_coords(type, 0, y1)
-            str = numbers[i].to_s
+            x, y = widget.buffer_to_window_coords(type, 0, y1)
+            line = numbers[i]
             attr = 1
-            if attr>0
-              #layout.text = str
-              #widget.style.paint_layout(target, widget.state, false,
-              #  nil, widget, nil, 2, y, layout)
-
-              #widget.style.paint_focus(widget.window, Gtk::STATE_NORMAL, \
-              #  event.area, widget, '', event.area.x+1, event.area.y+1, \
-              #  event.area.width-2, event.area.height-2)
-
-              #cm = Gdk::Colormap.system
-              #width = context.width
-              #height = context.height
-              #min_width = width
-              #min_width = tv.allocation.width if tv.allocation.width < min_width
-              #min_height = height - (HEADER_HEIGHT + HEADER_GAP)
-              #min_height = tv.allocation.height if tv.allocation.height < min_height
-
-
-              #cr.set_source_color(Gdk::Color.new(65535, 65535, 65535))
-              #cr.gdk_rectangle(Gdk::Rectangle.new(0, HEADER_HEIGHT + HEADER_GAP, \
-              #  context.width, height - (HEADER_HEIGHT + HEADER_GAP)))
-              #cr.fill
-
-              cr.set_source_pixbuf(@@save_buf, 0, y+h1-@@save_buf.height)
-              cr.paint
-              cr.set_source_pixbuf(@@crypt_buf, 18, y+h1-@@crypt_buf.height)
-              cr.paint
-              cr.set_source_pixbuf(@@sign_buf, 35, y+h1-@@sign_buf.height)
-              cr.paint
-              #Gdk::RGB.draw_rgb_32_image(target,
-              #  widget.style.black_gc,
-              #  20, y,
-              #  pixbuf.width, pixbuf.height,
-              #  Gdk::RGB::Dither::NORMAL,
-              #  pixbuf.pixels, pixbuf.rowstride)
-
+            id = mes_ids[line]
+            if id
+              sel = @mes_model.select({:id=>id}, false, 'state, panstate', nil, 1)
+              if sel and (sel.size > 0)
+                state = sel[0][0]
+                panstate = sel[0][1]
+                if state
+                  if state==0
+                    cr.set_source_pixbuf(@@save_buf, 0, y+h1-@@save_buf.height)
+                    cr.paint
+                  elsif state==1
+                    cr.set_source_pixbuf(@@gogo_buf, 0, y+h1-@@gogo_buf.height)
+                    cr.paint
+                  elsif state==2
+                    cr.set_source_pixbuf(@@recv_buf, 0, y+h1-@@recv_buf.height)
+                    cr.paint
+                  end
+                end
+                if panstate
+                  if (panstate & PandoraModel::PSF_Crypted) > 0
+                    cr.set_source_pixbuf(@@crypt_buf, 18, y+h1-@@crypt_buf.height)
+                    cr.paint
+                  end
+                  if (panstate & PandoraModel::PSF_Verified) > 0
+                    cr.set_source_pixbuf(@@sign_buf, 35, y+h1-@@sign_buf.height)
+                    cr.paint
+                  end
+                end
+              end
             end
           end
         end
         false
       end
     end
+
+    # Update status icon border if visible lines contain id or ids
+    # RU: Обновляет бордюр с иконками статуса, если видимые строки содержат ids
+    def update_lines_with_id(ids=nil)
+      need_redraw = nil
+      if ids
+        if ids.is_a? Array
+          ids.each do |id|
+            line = mes_ids.index(id)
+            if line and numbers.include?(line)
+              need_redraw = true
+              break
+            end
+          end
+        else
+          line = mes_ids.index(ids)
+          need_redraw = true if line and numbers.include?(line)
+        end
+      else
+        need_redraw = true
+      end
+      if need_redraw
+        left_win = self.get_window(Gtk::TextView::WINDOW_LEFT)
+        left_win.invalidate(left_win.frame_extents, true)
+      end
+    end
+
   end
 
   # Trust change Scale
@@ -14993,7 +15026,7 @@ module PandoraGtk
           end
         else
           widget.safe_set_active(false)
-          widget.inconsistent = false
+          #widget.inconsistent = false
           $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
         end
       end
@@ -15300,7 +15333,7 @@ module PandoraGtk
 
     # Put message to dialog
     # RU: Добавляет сообщение в диалог
-    def add_mes_to_view(mes, panstate=nil, to_end=nil, key_or_panhash=nil, \
+    def add_mes_to_view(mes, id, panstate=nil, to_end=nil, key_or_panhash=nil, \
     myname=nil, modified=nil, created=nil)
 
       if mes
@@ -15379,6 +15412,9 @@ module PandoraGtk
         talkview.buffer.insert(talkview.buffer.end_iter, time_str+' ', time_style)
         talkview.buffer.insert(talkview.buffer.end_iter, user_name+':', name_style)
 
+        line = talkview.buffer.line_count
+        talkview.mes_ids[line] = id
+
         talkview.buffer.insert(talkview.buffer.end_iter, ' ')
         talkview.insert_taged_str_to_buffer(mes, talkview.buffer, 'bbcode')
         talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
@@ -15393,7 +15429,7 @@ module PandoraGtk
     def load_history(max_message=6, sort_mode=0)
       if talkview and max_message and (max_message>0)
         messages = []
-        fields = 'creator, created, destination, state, text, panstate, modified'
+        fields = 'creator, created, destination, state, text, panstate, modified, id'
 
         mypanhash = PandoraCrypto.current_user_or_key(true)
         myname = PandoraCrypto.short_name_of_person(nil, mypanhash)
@@ -15453,11 +15489,12 @@ module PandoraGtk
           mes = message[4]
           panstate = message[5]
           modified = message[6]
+          id = message[7]
 
           key_or_panhash = nil
           key_or_panhash = creator if (creator != mypanhash)
 
-          add_mes_to_view(mes, panstate, false, key_or_panhash, myname, modified, created)
+          add_mes_to_view(mes, id, panstate, false, key_or_panhash, myname, modified, created)
           i += 1
         end
         talkview.after_addition(true)
@@ -15554,12 +15591,15 @@ module PandoraGtk
           values[:panhash] = panhash
           res = model.update(values, nil, nil, sign)
           if res
+            sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
+            id = nil
+            id = sel[0][0] if sel and (sel.size>0)
             if sign
               namesvalues = model.namesvalues
               namesvalues[:text] = text   #restore pure text for sign
               PandoraCrypto.sign_panobject(model, sign_trust)
             end
-            add_mes_to_view(crypt_text, panstate, true)
+            add_mes_to_view(crypt_text, id, panstate, true)
           end
         end
         dlg_sessions = $window.pool.sessions_on_dialog(self)
@@ -18979,7 +19019,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.54'
+    dlg.version = '0.55'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
