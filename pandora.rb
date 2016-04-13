@@ -6973,9 +6973,9 @@ module PandoraNet
       code ||= 0   #нужно ли??!!
       lengt = 0
       lengt = data.bytesize if data
-      p log_mes+'->>SEND [cmd, code, lengt] stage='+[cmd, code, lengt].inspect+' '+@stage.to_s
       @last_send_time = pool.time_now
       if cmd != EC_Media
+        p log_mes+'->>SEND [cmd, code, lengt] stage='+[cmd, code, lengt].inspect+' '+@stage.to_s
         data = cipher_buf(data, true) if @ciphering
         cmd = (cmd | CipherCmdBit) if @ciphering
       end
@@ -7671,7 +7671,7 @@ module PandoraNet
             #buf.timestamp = Time.now.to_i * Gst::NSECOND
             appsrc = dialog.appsrcs[cannel]
             appsrc.push_buffer(buf)
-            appsrc.play if (not PandoraUtils::elem_playing?(appsrc))
+            appsrc.play if (not PandoraUtils.elem_playing?(appsrc))
           else  #video puts to queue
             recv_buf.add_block_to_queue(mediabuf, $media_buf_size)
           end
@@ -14789,10 +14789,11 @@ module PandoraGtk
   # DrawingArea for video output
   # RU: DrawingArea для вывода видео
   class ViewDrawingArea < Gtk::DrawingArea
-    attr_accessor :expose_event
+    attr_accessor :expose_event, :dialog
 
-    def initialize
-      super
+    def initialize(adialog, *args)
+      super(*args)
+      @dialog = adialog
       #set_size_request(100, 100)
       #@expose_event = signal_connect('expose-event') do
       #  alloc = self.allocation
@@ -14803,9 +14804,22 @@ module PandoraGtk
 
     # Set expose event handler
     # RU: Устанавливает обработчик события expose
-    def set_expose_event(value)
+    def set_expose_event(value, width=nil)
       signal_handler_disconnect(@expose_event) if @expose_event
       @expose_event = value
+      if value.nil?
+        if self==dialog.area_recv
+          dialog.hide_recv_area
+        else
+          dialog.hide_send_area
+        end
+      else
+        if self==dialog.area_recv
+          dialog.show_recv_area(width)
+        else
+          dialog.show_send_area(width)
+        end
+      end
     end
   end
 
@@ -14820,12 +14834,34 @@ module PandoraGtk
     attr_accessor :room_id, :targets, :online_btn, :mic_btn, :webcam_btn, :talkview, \
       :editbox, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, :sender_box, \
-      :option_box, :captcha_enter, :editsw, :trust_scale, :hpaned
+      :option_box, :captcha_enter, :editsw, :trust_scale, :hpaned, :hpaned2
 
     include PandoraGtk
 
     CL_Online = 0
     CL_Name   = 1
+
+    def show_recv_area(width=nil)
+      if area_recv.allocation.width <= 24
+        width ||= 320
+        hpaned.position = width
+      end
+    end
+
+    def hide_recv_area
+      hpaned.position = 0
+    end
+
+    def show_send_area(width=nil)
+      if area_send.allocation.width <= 24
+        width ||= 120
+        hpaned2.position = width
+      end
+    end
+
+    def hide_send_area
+      hpaned2.position = 0
+    end
 
     def init_captcha_entry(pixbuf, length=nil, symbols=nil, clue=nil, node_text=nil)
       if not @captcha_entry
@@ -14882,7 +14918,7 @@ module PandoraGtk
           cr.paint
           true
         end
-        area_recv.set_expose_event(res)
+        area_recv.set_expose_event(res, pixbuf.width+20)
 
         captcha_entry.signal_connect('key-press-event') do |widget, event|
           if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
@@ -14920,9 +14956,6 @@ module PandoraGtk
         @captcha_label.show
         @captcha_align.show_all
 
-        if area_recv.allocation.width <= 24
-          hpaned.position = pixbuf.width+20
-        end
         area_recv.queue_draw
 
         Thread.pass
@@ -14945,7 +14978,6 @@ module PandoraGtk
         @editsw.show_all
         area_recv.set_expose_event(nil)
         area_recv.queue_draw
-        hpaned.position = 0
         Thread.pass
         talkview.after_addition(true)
         @editbox.grab_focus
@@ -14979,10 +15011,10 @@ module PandoraGtk
       #vpaned1 = Gtk::VPaned.new
       vpaned2 = Gtk::VPaned.new
 
-      @area_recv = ViewDrawingArea.new
+      @area_recv = ViewDrawingArea.new(self)
       #area_recv.set_size_request(320, 240)
       area_recv.set_size_request(0, -1)
-      area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
+      area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#707070'))
 
       res = area_recv.signal_connect('expose-event') do |*args|
         #p 'area_recv '+area_recv.window.xid.inspect
@@ -15211,11 +15243,11 @@ module PandoraGtk
 
       #PandoraGtk.hack_enter_bug(editbox)
 
-      hpaned2 = Gtk::HPaned.new
-      @area_send = ViewDrawingArea.new
+      @hpaned2 = Gtk::HPaned.new
+      @area_send = ViewDrawingArea.new(self)
       #area_send.set_size_request(120, 90)
       area_send.set_size_request(0, -1)
-      area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
+      area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#707070'))
       hpaned2.pack1(area_send, false, true)
 
       @sender_box = Gtk::VBox.new
@@ -15307,7 +15339,7 @@ module PandoraGtk
           when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
             init_video_sender(true, true) if not area_send.destroyed?
           when Gdk::EventVisibility::FULLY_OBSCURED
-            init_video_sender(false, true) if not area_send.destroyed?
+            init_video_sender(false, true, false) if not area_send.destroyed?
         end
       end
 
@@ -15328,7 +15360,7 @@ module PandoraGtk
           when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
             init_video_receiver(true, true, false) if not area_recv.destroyed?
           when Gdk::EventVisibility::FULLY_OBSCURED
-            init_video_receiver(false) if not area_recv.destroyed?
+            init_video_receiver(false, true) if not area_recv.destroyed?
         end
       end
 
@@ -15352,8 +15384,6 @@ module PandoraGtk
       image ||= Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU)
       image.set_padding(2, 0)
       label_box = TabLabelBox.new(image, title, self, false, 0) do
-        #init_video_sender(false)
-        #init_video_receiver(false, false)
         area_send.destroy if not area_send.destroyed?
         area_recv.destroy if not area_recv.destroyed?
 
@@ -15364,8 +15394,6 @@ module PandoraGtk
       $window.notebook.set_tab_reorderable(self, true)
 
       self.signal_connect('delete-event') do |*args|
-        #init_video_sender(false)
-        #init_video_receiver(false, false)
         area_send.destroy if not area_send.destroyed?
         area_recv.destroy if not area_recv.destroyed?
       end
@@ -16018,14 +16046,14 @@ module PandoraGtk
 
     # Initialize video sender
     # RU: Инициализирует отправщика видео
-    def init_video_sender(start=true, just_upd_area=false)
+    def init_video_sender(start=true, just_upd_area=false, init=true)
       video_pipeline = $send_media_pipelines['video']
       if not start
-        if $webcam_xvimagesink and (PandoraUtils::elem_playing?($webcam_xvimagesink))
+        if $webcam_xvimagesink and (PandoraUtils.elem_playing?($webcam_xvimagesink))
           $webcam_xvimagesink.pause
         end
         if just_upd_area
-          area_send.set_expose_event(nil)
+          area_send.set_expose_event(nil) if init
           tsw = PandoraGtk.find_another_active_sender(self)
           if $webcam_xvimagesink and (not $webcam_xvimagesink.destroyed?) and tsw \
           and tsw.area_send and tsw.area_send.window
@@ -16166,7 +16194,7 @@ module PandoraGtk
           #  link_sink_to_area($webcam_xvimagesink, area_send)
           #end
           if just_upd_area
-            video_pipeline.play if (not PandoraUtils::elem_playing?(video_pipeline))
+            video_pipeline.play if (not PandoraUtils.elem_playing?(video_pipeline))
           else
             ptrind = PandoraGtk.set_send_ptrind_by_room(room_id)
             count = PandoraGtk.nil_send_ptrind_by_room(nil)
@@ -16174,8 +16202,8 @@ module PandoraGtk
               #Gtk.main_iteration
               #???
               p 'PLAAAAAAAAAAAAAAY 1'
-              p PandoraUtils::elem_playing?(video_pipeline)
-              video_pipeline.play if (not PandoraUtils::elem_playing?(video_pipeline))
+              p PandoraUtils.elem_playing?(video_pipeline)
+              video_pipeline.play if (not PandoraUtils.elem_playing?(video_pipeline))
               p 'PLAAAAAAAAAAAAAAY 2'
               #p '==*** PLAY'
             end
@@ -16213,15 +16241,16 @@ module PandoraGtk
     # Initialize video receiver
     # RU: Инициализирует приёмщика видео
     def init_video_receiver(start=true, can_play=true, init=true)
+      p '--init_video_receiver [start, can_play, init]='+[start, can_play, init].inspect
       if not start
-        if ximagesink and (PandoraUtils::elem_playing?(ximagesink))
+        if ximagesink and PandoraUtils.elem_playing?(ximagesink)
           if can_play
             ximagesink.pause
           else
             ximagesink.stop
           end
         end
-        if not can_play
+        if (not can_play) or (not ximagesink)
           p 'Disconnect HANDLER !!!'
           area_recv.set_expose_event(nil)
         end
@@ -16283,14 +16312,14 @@ module PandoraGtk
           end
         end
 
-        if @ximagesink #and area_recv.window
-          link_sink_to_area(@ximagesink, area_recv,  recv_media_pipeline[1])
+        if @ximagesink and init #and area_recv.window
+          link_sink_to_area(@ximagesink, area_recv, recv_media_pipeline[1])
         end
 
         #p '[recv_media_pipeline[1], can_play]='+[recv_media_pipeline[1], can_play].inspect
         if recv_media_pipeline[1] and can_play and area_recv.window
           #if (not area_recv.expose_event) and
-          if (not PandoraUtils::elem_playing?(recv_media_pipeline[1])) or (not PandoraUtils::elem_playing?(ximagesink))
+          if (not PandoraUtils.elem_playing?(recv_media_pipeline[1])) or (not PandoraUtils.elem_playing?(ximagesink))
             #p 'PLAYYYYYYYYYYYYYYYYYY!!!!!!!!!! '
             #ximagesink.stop
             #recv_media_pipeline[1].stop
@@ -16982,10 +17011,12 @@ module PandoraGtk
       #  menuitem = Gtk::CheckMenuItem.new(mi[2])
       #  label = menuitem.children[0]
       #  #label.set_text(mi[2], true)
+      stock = nil
+      opts = nil
       if mi[1]
         stock = mi[1]
         stock, opts = PandoraGtk.detect_icon_opts(stock)
-        if stock and opts.index('m')
+        if stock and opts and opts.index('m')
           if stock.is_a? String
             stock = stock.to_sym
             #image = $window.get_preset_image(stock)
@@ -17008,6 +17039,7 @@ module PandoraGtk
           menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE) if key
         end
         menuitem.name = mi[0]
+        PandoraGtk.set_bold_to_menuitem(menuitem) if opts and opts.index('b')
         menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget, treeview) }
       end
     end
@@ -17165,7 +17197,7 @@ module PandoraGtk
       end
 
       menu = Gtk::Menu.new
-      menu.append(PandoraGtk.create_menu_item(['Dialog', :dialog, _('Dialog'), '<control>D'], list_tree))
+      menu.append(PandoraGtk.create_menu_item(['Dialog', 'dialog:mb', _('Dialog'), '<control>D'], list_tree))
       menu.append(PandoraGtk.create_menu_item(['Relation', :relation, _('Relate'), '<control>R'], list_tree))
       menu.show_all
 
@@ -18779,7 +18811,7 @@ module PandoraGtk
 
     menu = Gtk::Menu.new
     menu.append(create_menu_item(['Create', Gtk::Stock::NEW, _('Create'), 'Insert'], treeview))
-    menu.append(create_menu_item(['Edit', Gtk::Stock::EDIT, _('Edit'), 'Return'], treeview))
+    menu.append(create_menu_item(['Edit', Gtk::Stock::EDIT.to_s+':mb', _('Edit'), 'Return'], treeview))
     menu.append(create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], treeview))
     menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], treeview))
     menu.append(create_menu_item(['-', nil, nil], treeview))
@@ -19154,8 +19186,8 @@ module PandoraGtk
     targets = [[], [], []]
     persons, keys, nodes = targets
     if nodehash and (panhashes.is_a? String)
-      persons.concat(panhashes)
-      nodes.concat(nodehash)
+      persons << panhashes
+      nodes << nodehash
     else
       extract_targets_from_panhash(targets, panhashes)
     end
@@ -19411,6 +19443,19 @@ module PandoraGtk
     $window.notebook.page = $window.notebook.n_pages-1
   end
 
+  # Set bold weight of MenuItem
+  # RU: Ставит жирный шрифт у MenuItem
+  def self.set_bold_to_menuitem(menuitem)
+    label = menuitem.children[0]
+    if (label.is_a? Gtk::Label)
+      text = label.text
+      if text and (not text.include?('<b>'))
+        label.use_markup = true
+        label.set_markup('<b>'+text+'</b>') if label.use_markup?
+      end
+    end
+  end
+
   # Status icon
   # RU: Иконка в трее
   class PandoraStatusIcon < Gtk::StatusIcon
@@ -19523,6 +19568,7 @@ module PandoraGtk
       menu.append(menuitem)
 
       menuitem = Gtk::MenuItem.new(_('Show/Hide'))
+      PandoraGtk.set_bold_to_menuitem(menuitem)
       menuitem.signal_connect('activate') do |w|
         icon_activated(false)
       end
@@ -21121,7 +21167,8 @@ module PandoraGtk
       #@notebook.set_tab_reorderable(frame, true)
       notebook.signal_connect('switch-page') do |widget, page, page_num|
         cur_page = notebook.get_nth_page(page_num)
-        if $last_page and (cur_page != $last_page) and ($last_page.is_a? PandoraGtk::DialogScrollWin)
+        if $last_page and (cur_page != $last_page) \
+        and ($last_page.is_a? PandoraGtk::DialogScrollWin)
           $last_page.init_video_sender(false, true) if not $last_page.area_send.destroyed?
           $last_page.init_video_receiver(false) if not $last_page.area_recv.destroyed?
         end
