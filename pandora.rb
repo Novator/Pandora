@@ -4401,8 +4401,8 @@ module PandoraCrypto
   # Encode or decode key
   # RU: Зашифровать или расшифровать ключ
   def self.key_recrypt(data, encode=true, cipher_hash=nil, cipherkey=nil)
-    p '^^^^^^^^^^^^key_recrypt(: [cipher_hash, passwd, data.bytesize]='+\
-      [cipher_hash, cipherkey, data.bytesize].inspect
+    #p '^^^^^^^^^^^^key_recrypt(: [cipher_hash, passwd, data.bytesize]='+\
+    #  [cipher_hash, cipherkey, data.bytesize].inspect
     if (cipher_hash.is_a? Integer) and (cipher_hash != 0) and data
       ckind, chash = decode_cipher_and_hash(cipher_hash)
       ktype, klen = divide_type_and_klen(ckind)
@@ -4438,7 +4438,7 @@ module PandoraCrypto
         #p 'hash='+hash.inspect
         cipherkey ||= ''
         cipherkey = hash.digest(cipherkey) if hash
-        #p 'cipherkey.hash='+cipherkey.inspect
+        #p '^^cipherkey=hash='+cipherkey.inspect
         cipher_vec = Array.new
         cipher_vec[KV_Priv] = cipherkey
         cipher_vec[KV_Kind] = ckind
@@ -4577,6 +4577,7 @@ module PandoraCrypto
       values[:cipher] = cipher_hash
       res = key_model.update(values, nil, nil)
     end
+    res = panhash if res
     res
   end
 
@@ -4605,7 +4606,9 @@ module PandoraCrypto
       type_klen = key_vec[KV_Kind]
       cipher_hash = key_vec[KV_Cipher]
       pass = key_vec[KV_Pass]
-      keypriv = key_recrypt(keypriv, false, cipher_hash, pass) if recrypt and keypriv
+      if recrypt and keypriv
+        keypriv = key_recrypt(keypriv, false, cipher_hash, pass)
+      end
       type, klen = divide_type_and_klen(type_klen)
       #p [type, klen]
       bitlen = klen_to_bitlen(klen)
@@ -4662,6 +4665,15 @@ module PandoraCrypto
               #p key2.to_s
               # Seq: Int:pass, Int:n, Int:e, Int:d, Int:p, Int:q, Int:dmp1, Int:dmq1, Int:iqmp
               key = OpenSSL::PKey::RSA.new(seq.to_der)
+              if key and keypriv
+                #Test private key by sign creation
+                test_data = OpenSSL::Random.random_bytes(16)
+                key_vec[KV_Obj] = key
+                sign = make_sign(key_vec, test_data)
+                if not (sign and verify_sign(key_vec, test_data, sign))
+                  key = nil
+                end
+              end
               #p key.params
             rescue
               key = nil
@@ -4677,7 +4689,6 @@ module PandoraCrypto
             OpenSSL::ASN1::Integer(key.priv_key)
           ])
         else
-          key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
           if keypub.nil? and keypriv and (bitlen/8 != keypriv.bytesize)
             key_iv, len = PandoraUtils.pson_to_rubyobj(keypriv)
             if (key_iv.is_a? Array)
@@ -4686,8 +4697,11 @@ module PandoraCrypto
               key_vec[KV_Priv] = keypriv
             end
           end
-          key.key = keypriv
-          key.iv  = keypub if keypub
+          if keypriv
+            key = OpenSSL::Cipher.new(pankt_len_to_full_openssl(type, bitlen))
+            key.key = keypriv
+            key.iv  = keypub if keypub
+          end
       end
       key_vec[KV_Obj] = key
     end
@@ -4709,7 +4723,12 @@ module PandoraCrypto
             data_hash = hash_obj.digest(data)
             sign = recrypt(key_vec, data_hash, true)
           else
-            sign = key_obj.sign(hash_obj, data)
+            begin
+              sign = key_obj.sign(hash_obj, data)
+            rescue => err
+              sign = nil
+              p 'SIGN CREATE ERROR: '+err.message
+            end
           end
         end
       end
@@ -4842,7 +4861,7 @@ module PandoraCrypto
 
     # Read a key from database
     # RU: Считывает ключ из базы
-    def self.read_key(panhash, passwd, key_model)
+    def self.read_key_and_set_pass(panhash, passwd, key_model)
       key_vec = nil
       cipher = nil
       if panhash and (panhash != '')
@@ -4891,7 +4910,7 @@ module PandoraCrypto
     # RU: Перекодирует ключ
     def self.recrypt_key(key_model, key_vec, cipher, panhash, passwd, newpasswd)
       if not key_vec
-        key_vec, cipher = read_key(panhash, passwd, key_model)
+        key_vec, cipher = read_key_and_set_pass(panhash, passwd, key_model)
       end
       if key_vec
         key2 = key_vec[KV_Priv]
@@ -4945,7 +4964,7 @@ module PandoraCrypto
         sel = key_model.select(filter, false, 'id', nil, 1)
         if sel and (sel.size>0)
           getting = false
-          key_vec, cipher = read_key(last_auth_key, passwd, key_model)
+          key_vec, cipher = read_key_and_set_pass(last_auth_key, passwd, key_model)
           #p '[key_vec, cipher]='+[key_vec, cipher].inspect
           if (not key_vec) or (not cipher) or (cipher != 0) or (not $first_key_init)
             dialog = PandoraGtk::AdvancedDialog.new(_('Key init'))
@@ -4959,16 +4978,33 @@ module PandoraCrypto
             key_entry = PandoraGtk::PanhashBox.new('Panhash(Key)')
             key_entry.text = PandoraUtils.bytes_to_hex(last_auth_key)
             #key_entry.editable = false
+
             vbox.pack_start(key_entry, false, false, 2)
 
             label = Gtk::Label.new(_('Password'))
             vbox.pack_start(label, false, false, 2)
             pass_entry = Gtk::Entry.new
             pass_entry.visibility = false
-            if (not cipher) or (cipher == 0)
-              pass_entry.editable = false
-              pass_entry.sensitive = false
+
+            dialog_timer = nil
+            key_entry.entry.signal_connect('changed') do |widget, event|
+              if dialog_timer.nil?
+                dialog_timer = GLib::Timeout.add(1000) do
+                  panhash2 = PandoraModel.hex_to_panhash(key_entry.text)
+                  key_vec2, cipher = read_key_and_set_pass(panhash2, \
+                    passwd, key_model)
+                  nopass = ((not cipher) or (cipher == 0))
+                  PandoraGtk.set_readonly(pass_entry, nopass)
+                  pass_entry.grab_focus if not nopass
+                  dialog_timer = nil
+                  false
+                end
+              end
+              false
             end
+
+            nopass = ((not cipher) or (cipher == 0))
+            PandoraGtk.set_readonly(pass_entry, nopass)
             pass_entry.width_request = 200
             align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
             align.add(pass_entry)
@@ -5027,10 +5063,10 @@ module PandoraCrypto
                   key_vec, cipher, passwd = recrypt_key(key_model, key_vec, cipher, panhash, \
                     passwd, new_pass_entry.text)
                 end
-                #p 'key_vec='+key_vec.inspect
+                #p '-------------key_vec='+key_vec.inspect
                 if (last_auth_key != panhash) or (not key_vec)
                   last_auth_key = panhash
-                  key_vec, cipher = read_key(last_auth_key, passwd, key_model)
+                  key_vec, cipher = read_key_and_set_pass(last_auth_key, passwd, key_model)
                   if not key_vec
                     getting = true
                     key_vec = []
@@ -5115,10 +5151,8 @@ module PandoraCrypto
               type_klen = KT_Rsa | KL_bit2048
 
               key_vec = generate_key(type_klen, cipher_hash, passwd)
-              if save_key(key_vec, creator, rights, key_model)
-                last_auth_key = panhash
-                #p 'last_auth_key='+panhash.inspect
-              end
+              panhash = save_key(key_vec, creator, rights, key_model)
+              last_auth_key = panhash if panhash
             else
               dialog = Gtk::MessageDialog.new($window, \
                 Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
@@ -5135,9 +5169,10 @@ module PandoraCrypto
           end
         end
         if key_vec and (key_vec != [])
-          #p 'key_vec='+key_vec.inspect
+          #p '===========key_vec='+key_vec.inspect
           key_vec = init_key(key_vec)
           if key_vec and key_vec[KV_Obj]
+            #p '2===========key_vec='+key_vec.inspect
             self.the_current_key = key_vec
             panhash = key_vec[KV_Panhash]
             panhash ||= last_auth_key
@@ -10589,6 +10624,10 @@ module PandoraGtk
       if @def_widget
         #focus = @def_widget
         @def_widget.grab_focus
+        self.present
+        GLib::Timeout.add(200) do
+          @def_widget.grab_focus
+        end
       end
 
       while (not destroyed?) and (@response == 0) do
@@ -17323,12 +17362,13 @@ module PandoraGtk
 
   # Set readonly mode to widget
   # RU: Установить виджету режим только для чтения
-  def self.set_readonly(widget, value=true, sensitive=true)
+  def self.set_readonly(widget, value=true, set_sensitive=true)
     value = (not value)
     widget.editable = value if widget.class.method_defined? 'editable?'
-    widget.sensitive = value if sensitive and (widget.class.method_defined? 'sensitive?')
+    widget.sensitive = value if set_sensitive and (widget.class.method_defined? 'sensitive?')
     #widget.can_focus = value
-    widget.has_focus = value if widget.class.method_defined? 'has_focus?'
+    #widget.has_focus = value if widget.class.method_defined? 'has_focus?'
+    #widget.can_focus = (not value) if widget.class.method_defined? 'can_focus?'
   end
 
   # Correct bug with dissapear Enter press event
