@@ -3612,10 +3612,12 @@ module PandoraModel
   # RU: Вернуть список панхэшей нужных записей из предлагаемых
   def self.needed_records(ph_list, models=nil)
     need_list = []
-    ph_list.each do |panhash|
-      kind = PandoraUtils.kind_from_panhash(panhash)
-      res = PandoraModel.get_record_by_panhash(kind, panhash, nil, models, 'id')
-      need_list << panhash if (not res)  #add if record was not found
+    if ph_list.is_a? Array
+      ph_list.each do |panhash|
+        kind = PandoraUtils.kind_from_panhash(panhash)
+        res = PandoraModel.get_record_by_panhash(kind, panhash, nil, models, 'id')
+        need_list << panhash if (not res)  #add if record was not found
+      end
     end
     p 'needed_records='+need_list.inspect
     need_list
@@ -5785,7 +5787,8 @@ module PandoraNet
   ES_Sign         = 6
   ES_Greeting     = 7
   ES_Captcha      = 8
-  ES_Exchange     = 9
+  ES_PreExchange  = 9
+  ES_Exchange     = 10
 
   # Max recv pack size for stadies
   # RU: Максимально допустимые порции для стадий
@@ -6974,8 +6977,9 @@ module PandoraNet
       lengt = 0
       lengt = data.bytesize if data
       @last_send_time = pool.time_now
-      if cmd != EC_Media
-        p log_mes+'->>SEND [cmd, code, lengt] stage='+[cmd, code, lengt].inspect+' '+@stage.to_s
+      if (cmd != EC_Media)
+        p log_mes+'->>SEND [cmd, code, lengt] [stage, ciphering]='+\
+          [cmd, code, lengt].inspect+' '+[@stage, @ciphering].inspect
         data = cipher_buf(data, true) if @ciphering
         cmd = (cmd | CipherCmdBit) if @ciphering
       end
@@ -7376,7 +7380,7 @@ module PandoraNet
             @max_pack_size = MPS_Sign
           when ES_Captcha
             @max_pack_size = MPS_Captcha
-          when ES_Exchange
+          when ES_PreExchange, ES_Exchange
             @max_pack_size = MPS_Exchange
         end
       end
@@ -8045,7 +8049,7 @@ module PandoraNet
                               sign2_baseid = PandoraUtils.rubyobj_to_pson([sign2, \
                                 pool.base_id])
                               @sbuf = sign2_baseid
-                              @stage = ES_Exchange
+                              @stage = ES_PreExchange
                               trust = @skey[PandoraCrypto::KV_Trust]
                               update_node(skey_panhash, sbaseid, trust, \
                                 @cipher[PandoraCrypto::KV_Panhash])
@@ -8081,7 +8085,7 @@ module PandoraNet
                   rphrase = params['rphrase']
                 end
                 p log_mes+'recived phrase len='+rphrase.bytesize.to_s
-                if rphrase and (rphrase != '')
+                if rphrase and (rphrase.bytesize>0)
                   if rcode==ECC_Auth_Puzzle  #phrase for puzzle
                     if (not hunter?)
                       err_scmd('Puzzle to listener is denied')
@@ -8108,7 +8112,6 @@ module PandoraNet
                       @scmd  = EC_Auth
                       @scode = ECC_Auth_Sign
                       if @stage == ES_Greeting
-                        @stage = ES_Exchange
                         acipher = open_or_gen_cipher(@skey[PandoraCrypto::KV_Panhash])
                         if acipher
                           @cipher = acipher
@@ -8123,6 +8126,7 @@ module PandoraNet
                           @cipher[PandoraCrypto::KV_Cipher], \
                           @cipher[PandoraCrypto::KV_Creator]]
                         @sbuf = PandoraUtils.rubyobj_to_pson([sign, $base_id, acipher])
+                        @stage = ES_PreExchange
                         set_max_pack_size(ES_Exchange)
                         PandoraUtils.play_mp3('online')
                       else
@@ -8185,7 +8189,7 @@ module PandoraNet
                 rsign, sbase_id, acipher = nil
                 sig_bid_cip, len = PandoraUtils.pson_to_rubyobj(rdata)
                 rsign, sbase_id, acipher = sig_bid_cip if (sig_bid_cip.is_a? Array)
-                p log_mes+'recived rsign len='+rsign.bytesize.to_s
+                p log_mes+'recived [rsign, sbase_id, acipher] len='+[rsign, sbase_id, acipher].inspect
                 @skey = PandoraCrypto.open_key(@skey, @recv_models, true)
                 if @skey and @skey[PandoraCrypto::KV_Obj]
                   if PandoraCrypto.verify_sign(@skey, \
@@ -8218,10 +8222,9 @@ module PandoraNet
                           set_trust_and_notice(trust)
                           if not hunter?
                             @stage = ES_Greeting
-                            add_send_segment(EC_Auth, true, params['srckey'])
                             set_max_pack_size(ES_Sign)
+                            add_send_segment(EC_Auth, true, params['srckey'])
                           else
-                            @stage = ES_Exchange
                             session_key = nil
                             p log_mes+'ECC_Auth_Sign  acipher='+acipher.inspect
                             p log_mes+'ECC_Auth_Sign  @cipher='+@cipher.inspect
@@ -8247,6 +8250,7 @@ module PandoraNet
                             end
                             update_node(to_key, sbase_id, trust, session_key)
                             set_max_pack_size(ES_Exchange)
+                            @stage = ES_Exchange
                             PandoraUtils.play_mp3('online')
                           end
                           @scmd = EC_Data
@@ -8847,9 +8851,11 @@ module PandoraNet
                       #end
                     end
                   when ECC_News_Notice
-                    p log_mes+'==ECC_News_Notice'
                     notic, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    pool.add_notice_order(self, *notic)
+                    p log_mes+'==ECC_News_Notice [rdata, notic, len]='+[rdata, notic, len].inspect
+                    if (notic.is_a? Array) and (notic.size==5)
+                      pool.add_notice_order(self, *notic)
+                    end
                   when ECC_News_SessMode
                     p log_mes + 'ECC_News_SessMode'
                     @conn_mode2 = rdata[0].ord if rdata.bytesize>0
@@ -9532,6 +9538,7 @@ module PandoraNet
                   #p log_mes+'MAIN SEND: '+[@sindex, sscmd, sscode, ssbuf].inspect
                   if (sscmd != EC_Bye) or (sscode != ECC_Bye_Silent)
                     if send_comm_and_data(@sindex, sscmd, sscode, ssbuf)
+                      @stage = ES_Exchange if @stage==ES_PreExchange
                       if (not @ciphering) and (@stage>=ES_Exchange) and @cipher
                         @ciphering = true
                       end
@@ -9765,18 +9772,14 @@ module PandoraNet
                 and (@notice_ind <= pool.notice_ind)
                   notice_order = pool.notice_list[@notice_ind]
                   if notice_order
-                    p log_mes+'======notice_order='+notice_order[NO_Person..NO_Nick].inspect
-                    p log_mes+'======[to_person, to_key, @sess_trust, notice_order[NO_Notice_trust], notice_order[NO_Session], self]='\
-                      +[@to_person, @to_key, @sess_trust, notice_order[NO_Notice_trust], \
-                      notice_order[NO_Session].object_id, self.object_id].inspect
+                    notic = notice_order[NO_Person..NO_Nick]
                     if notice_order and (notice_order[NO_Session] != self) \
                     and @sess_trust and (@sess_trust >= PandoraModel.transform_trust(notice_order[NO_Notice_trust], false)) \
                     and ((@to_key and (notice_order[NO_Key] != @to_key)) \
                     or (@to_person and (notice_order[NO_Person] != @to_person)) \
                     or (@to_base_id and (notice_order[NO_Baseid] != @to_base_id)))
-                      p log_mes+'=====New notice order: '+notice_order[NO_Person..NO_Nick].inspect
-                      #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                      notic = PandoraUtils.rubyobj_to_pson(notice_order[NO_Person..NO_Nick])
+                      p log_mes+'=====Send notice order: '+notic.inspect
+                      notic = PandoraUtils.rubyobj_to_pson(notic)
                       add_send_segment(EC_News, true, notic, ECC_News_Notice)
                     end
                     processed += 1
