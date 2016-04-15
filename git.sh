@@ -45,12 +45,12 @@
 
 ## Push files from local to repository
 #git add --all
-git commit -a -m "version 0.55 alpha"
-git push -u bitbuc master
-git push -u github master
+git commit -a -m "version 0.56 alpha"
+#git push -u bitbuc master
+#git push -u github master
 #git push -u robux master
-#git push -u bitbuc develop
-#git push -u github develop
+git push -u bitbuc develop
+git push -u github develop
 
 ##Cancel last commit with save current files
 #git reset --soft HEAD~1
