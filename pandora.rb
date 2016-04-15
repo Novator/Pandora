@@ -4971,6 +4971,7 @@ module PandoraCrypto
           if (not key_vec) or (not cipher) or (cipher != 0) or (not $first_key_init)
             dialog = PandoraGtk::AdvancedDialog.new(_('Key init'))
             dialog.set_default_size(420, 190)
+            dialog.icon = $window.get_preset_icon('auth')
 
             vbox = Gtk::VBox.new
             dialog.viewport.add(vbox)
@@ -5085,6 +5086,7 @@ module PandoraCrypto
           getting = false
           dialog = PandoraGtk::AdvancedDialog.new(_('Key generation'))
           dialog.set_default_size(420, 250)
+          dialog.icon = $window.get_preset_icon('key')
 
           vbox = Gtk::VBox.new
           dialog.viewport.add(vbox)
@@ -5198,10 +5200,14 @@ module PandoraCrypto
             dialog.icon = $window.icon
             getting = (dialog.run == Gtk::Dialog::RESPONSE_OK)
             dialog.destroy
-            key_vec = deactivate_key(key_vec) if (not getting)
+            if (not getting)
+              key_vec = deactivate_key(key_vec)
+              reset_current_key
+            end
           end
         else
           key_vec = deactivate_key(key_vec)
+          reset_current_key
         end
       end
     end
@@ -10579,21 +10585,19 @@ module PandoraGtk
       bbox.border_width = 2
       bbox.spacing = 4
 
-      @okbutton = Gtk::Button.new(Gtk::Stock::OK)
-      okbutton.width_request = 110
-      okbutton.signal_connect('clicked') { |*args|
-        @response=2
-        #finish
-      }
-      bbox.pack_start(okbutton, false, false, 0)
-
       @cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
       cancelbutton.width_request = 110
-      cancelbutton.signal_connect('clicked') { |*args|
+      cancelbutton.signal_connect('clicked') do |*args|
         @response=1
-        #finish
-      }
+      end
       bbox.pack_start(cancelbutton, false, false, 0)
+
+      @okbutton = Gtk::Button.new(Gtk::Stock::OK)
+      okbutton.width_request = 110
+      okbutton.signal_connect('clicked') do |*args|
+        @response=2
+      end
+      bbox.pack_start(okbutton, false, false, 0)
 
       hbox.pack_start(bbox, true, false, 1.0)
 
@@ -14204,7 +14208,13 @@ module PandoraGtk
       keep_box.pack_start(keep_btn, false, false, 0)
       @follow_btn = Gtk::CheckButton.new(_('follow'), true)
       follow_btn.signal_connect('clicked') do |widget|
-        if widget.active?
+        if widget.inconsistent?
+          if PandoraCrypto.current_user_or_key(false)
+            widget.inconsistent = false
+            widget.active = true
+          end
+        end
+        if (not widget.inconsistent?) and widget.active?
           @keep_btn.active = true
         end
       end
@@ -20204,10 +20214,14 @@ module PandoraGtk
     # Return Image with defined icon size
     # RU: Возвращает Image с заданным размером иконки
     def get_preset_iconset(iname, preset='pan')
-      ind = [iname, preset]
+      ind = [iname.to_s, preset]
       res = $iconsets[ind]
       if res.nil?
-        if (iname.is_a? String)
+        if (iname.is_a? Symbol)
+          res = Gtk::IconFactory.lookup_default(iname.to_s)
+          iname = iname.to_s if res.nil?
+        end
+        if res.nil?
           buf = get_icon_buf(iname, preset)
           if buf
             width = buf.width
@@ -20225,10 +20239,19 @@ module PandoraGtk
             end
             res = Gtk::IconSet.new(qbuf)
           end
-        elsif iname
-          res = Gtk::IconFactory.lookup_default(iname.to_s)
         end
         $iconsets[ind] = res if res
+      end
+      res
+    end
+
+    def get_preset_icon(iname, preset='pan')
+      res = nil
+      iconset = get_preset_iconset(iname, preset)
+      if iconset
+        style = Gtk::Widget.default_style
+        res = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
+          Gtk::STATE_NORMAL, Gtk::IconSize::DIALOG)  #Gtk::IconSize::LARGE_TOOLBAR)
       end
       res
     end
@@ -20521,6 +20544,10 @@ module PandoraGtk
             self.pool.close_all_session
           end
           key = PandoraCrypto.current_key(true)
+          #btn = $toggle_buttons[PandoraGtk::SF_Auth]
+          #if btn and (btn.is_a? SafeToggleToolButton)
+          #  btn.safe_set_active((key and key[PandoraCrypto::KV_Obj]))
+          #end
         when 'Wizard'
           PandoraNet.start_or_stop_listen if PandoraNet.listen?
           PandoraNet.start_or_stop_hunt(false) if $hunter_thread
