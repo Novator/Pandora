@@ -5840,55 +5840,42 @@ module PandoraNet
   # RU: Тип запроса
   RQK_Fishing    = 1      # рыбалка
 
-  # Notice order array indexes #(size of data)
-  # RU: Индексы массива заявок на уведомления
-  NO_Index           = 0  #4
-  NO_Person          = 1  #22
-  NO_Key             = 2  #22
-  NO_Baseid          = 3  #16
-  NO_Time            = 7  #4
-  #---------------------------head: 68
-  NO_Session         = 8
+  # Common field indexes of mass record array  #(size of field)
+  # RU: Общие индексы полей в векторе массовых записей
+  MR_Index           = 0  #4
+  MR_Person          = 1  #22
+  MR_Key             = 2  #22
+  MR_Baseid          = 3  #16
+  MR_Time            = 7  #4
+  MR_Trust           = 4  #1
+  MR_Depth           = 5  #1
+  #---------------------------head: 70
+  MR_Session         = 8  #not sending
 
-  NO_Notice_trust    = 4  #1
-  NO_Notice_depth    = 5  #1
-  NO_Nick            = 6  #~30    #sum: 68+(~32)= ~100
+  NO_Nick            = 6  #~30    #sum: 70+(~30)= ~100
 
-  # Chat mass orders
-  # RU: Чатовые массовые записи
-  #----Head sum: 68
-  CH_Comm    = 0  #1 (open, shut, mess)
-  CH_Body    = 0  #22 or ~40 (panhash or message)   #sum: 68+(23/~41)=  91/~111
+  # Chat field indexes
+  # RU: Чатовые индексы полей
+  #----Head sum: 70
+  MRC_Comm    = 0  #1 (open, shut, mess)
+  MRC_Body    = 0  #22 or ~40 (panhash or message)   #sum: 70+(23/~41)=  93/~111
 
-  # Field indexes in a search request
-  # RU: Индексы полей в поисковом запросе
-  SR_Index     = 3
-  SR_BaseId    = 2
-  SR_Time      = 4
-  SR_Session   = 5   #head: 68
+  # Search request and answer field indexes
+  # RU: Индексы полей в поисковом и ответом запросе
+  #----Head sum: 70
+  MRS_Kind      = 1    #1
+  MRS_Request   = 0    #~60    #sum: 70+(~61)=  ~131
+  MRA_Answer    = 6    #~22
 
-  SR_Kind      = 1    #1
-  SR_Request   = 0    #~60    #sum: 68+
-  SA_Answer    = 6    #~22
+  # Fishing order and line building field indexes
+  # RU: Индексы полей в заявках на рыбалку и постройке линии
+  #----Head sum: 70
+  MRF_Fish            = 3   #22
+  MRF_Fish_key        = 4   #22    #sum: 70+44=  114
+  MRL_Fish_Baseid  =  MRF_Fish_key + 1
 
-  # Line order array indexes
-  # RU: Индексы массива заявок на линию
-  LO_Index           = 5
-  LO_Fisher          = 0
-  LO_Fisher_key      = 1
-  LO_Fisher_baseid   = 2
-  LO_Time            = 7
-  LO_Session         = 6   #sum: 68
-
-  LO_Fish            = 3   #22
-  LO_Fish_key        = 4   #22
-
-  # Base ID index of fish in line
-  # RU: Индекс Base ID для рыбки в линии
-  LN_Fish_Baseid  =   LO_Fish_key + 1
-
-  # Punnet indexes
-  # RU: Индексы в корзине
+  # Punnet field indexes
+  # RU: Индексы полей в корзине
   PI_FragsFile   = 0
   PI_Frags       = 1
   PI_FileName    = 2
@@ -5900,6 +5887,7 @@ module PandoraNet
   PI_HoldFrags   = 8
 
   # Session types
+  # RU: Типы сессий
   ST_Hunter   = 0
   ST_Listener = 1
   ST_Fisher   = 2
@@ -5909,8 +5897,7 @@ module PandoraNet
   # RU: Пул
   class Pool
     attr_accessor :window, :sessions, :white_list, :time_now, \
-      :mass_orders, :fish_ind, :notice_list, :notice_ind, :search_requests, \
-      :search_ind, :found_ind, :punnets
+      :mass_orders, :mass_ind, :found_ind, :punnets
 
     MaxWhiteSize = 500
     FishQueueSize = 100
@@ -5921,13 +5908,13 @@ module PandoraNet
       @time_now = Time.now.to_i
       @sessions = Array.new
       @white_list = Array.new
-      @fish_ind = -1
-      @notice_ind = -1
-      @search_ind = -1
+      @mass_ind = -1
+      @mass_ind = -1
+      @mass_ind = -1
       @found_ind = 0
       @mass_orders = Array.new #PandoraUtils::RoundQueue.new(true)
-      @notice_list = Array.new
-      @search_requests = Array.new
+      @mass_orders = Array.new
+      @mass_orders = Array.new
       @punnets = Hash.new
     end
 
@@ -5961,7 +5948,7 @@ module PandoraNet
     # Find search request in queue
     # RU: Найти поисковый запрос в очереди
     def find_search_request(request, kind)
-      res = @search_requests.select do |sr|
+      res = @mass_orders.select do |sr|
         (sr.is_a? Array) and (sr[SR_Request] == request) and (sr[SR_Kind] == kind)
       end
       res
@@ -5979,9 +5966,9 @@ module PandoraNet
         p '---add_search_request  NEW REQUEST'
         abase_id ||= base_id
         time = Time.now.to_i
-        @search_requests << [request, kind, abase_id, @search_ind+1, time, sess]
-        @search_ind += 1
-        $window.set_status_field(PandoraGtk::SF_Search, @search_requests.size.to_s)
+        @mass_orders << [request, kind, abase_id, @mass_ind+1, time, sess]
+        @mass_ind += 1
+        $window.set_status_field(PandoraGtk::SF_Search, @mass_orders.size.to_s)
         res = find_search_request(request, kind)
       end
       PandoraNet.start_hunt if hunt
@@ -6497,9 +6484,9 @@ module PandoraNet
         if ((not (res.is_a? Array)) or (res.size == 0))
           notice_depth -= 1
           p '=====NOTICE ADD [person, key, baseid, notice_trust, notice_depth, nick]='+[person, key, baseid, notice_trust, notice_depth, nick].inspect
-          res = [@notice_ind+1, person, key, baseid, notice_trust, notice_depth, nick, time, session]
-          @notice_list << res
-          @notice_ind += 1
+          res = [@mass_ind+1, person, key, baseid, notice_trust, notice_depth, nick, time, session]
+          @mass_orders << res
+          @mass_ind += 1
 
           hpaned = $window.radar_hpaned
           if (hpaned.max_position - hpaned.position) > 24
@@ -6509,7 +6496,7 @@ module PandoraNet
             PandoraGtk.show_radar_panel
           end
         end
-        $window.set_status_field(PandoraGtk::SF_Radar, @notice_list.size.to_s)
+        $window.set_status_field(PandoraGtk::SF_Radar, @mass_orders.size.to_s)
       end
       res
     end
@@ -6523,8 +6510,8 @@ module PandoraNet
 
     def find_notice_order(person, key, baseid, time=nil)
       time ||= Time.now.to_i
-      clear_list(@notice_list, NO_Time, $not_live_per, time)
-      res = @notice_list.select do |no|
+      clear_list(@mass_orders, NO_Time, $not_live_per, time)
+      res = @mass_orders.select do |no|
         ((person.nil? or (no[PandoraNet::NO_Person] == person)) and \
         (key.nil? or (no[PandoraNet::NO_Key] == key)) and \
         (baseid.nil? or (no[PandoraNet::NO_Baseid] == baseid)))
@@ -6555,15 +6542,15 @@ module PandoraNet
       clear_list(@mass_orders, LO_Time, $fish_live_per, time)
       res = find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
       if (not res) or (res.size==0)
-        res = [fisher, fisher_key, fisher_baseid, fish, fish_key, @fish_ind+1, session, time]
+        res = [fisher, fisher_key, fisher_baseid, fish, fish_key, @mass_ind+1, session, time]
         @mass_orders << res
-        @fish_ind += 1
+        @mass_ind += 1
         $window.set_status_field(PandoraGtk::SF_Fisher, @mass_orders.size.to_s)
         info = ''
         info << PandoraUtils.bytes_to_hex(fish) if fish
         info << ', '+PandoraUtils.bytes_to_hex(fish_key) if fish_key.is_a? String
         PandoraUtils.log_message(PandoraUtils::LM_Trace, _('Bob is generated')+ \
-          ' '+@fish_ind.to_s+':['+info+']')
+          ' '+@mass_ind.to_s+':['+info+']')
       end
       #model = PandoraUtils.get_model('Request', models)
       #filter = [['creator=', fisher], ['kind=', PandoraNet::RQK_Fishing]]
@@ -6886,8 +6873,8 @@ module PandoraNet
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
-      :captcha_sw, :hooks, :fish_ind, :notice_ind, \
-      :sess_trust, :notice, :activity, :search_ind
+      :captcha_sw, :hooks, :mass_ind, :mass_ind, \
+      :sess_trust, :notice, :activity, :mass_ind
 
     # Set socket options
     # RU: Установить опции сокета
@@ -9088,9 +9075,9 @@ module PandoraNet
       @read_state  = 0
       send_state_add  ||= 0
       @send_state     = send_state_add
-      @fish_ind       = 0
-      @notice_ind     = 0
-      @search_ind   = 0
+      @mass_ind       = 0
+      @mass_ind     = 0
+      @mass_ind   = 0
       @punnet_ind   = 0
       @frag_ind     = 0
       #@fishes         = Array.new
@@ -9797,8 +9784,8 @@ module PandoraNet
                 while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
                 and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
                 and (processed<$notice_block_count) \
-                and (@notice_ind <= pool.notice_ind)
-                  notice_order = pool.notice_list[@notice_ind]
+                and (@mass_ind <= pool.mass_ind)
+                  notice_order = pool.mass_orders[@mass_ind]
                   if notice_order
                     notic = notice_order[NO_Person..NO_Nick]
                     if notice_order and (notice_order[NO_Session] != self) \
@@ -9812,7 +9799,7 @@ module PandoraNet
                     end
                     processed += 1
                   end
-                  @notice_ind += 1
+                  @mass_ind += 1
                 end
               end
 
@@ -9821,9 +9808,9 @@ module PandoraNet
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
               and (processed<$fish_block_count) \
-              and (@fish_ind <= pool.fish_ind)
-                fish_order = pool.mass_orders[@fish_ind]
-                p '++++pool.mass_orders[size, @fish_ind, fo]='+[pool.mass_orders.size, @fish_ind, \
+              and (@mass_ind <= pool.mass_ind)
+                fish_order = pool.mass_orders[@mass_ind]
+                p '++++pool.mass_orders[size, @mass_ind, fo]='+[pool.mass_orders.size, @mass_ind, \
                   fish_order.object_id].inspect
                 if fish_order
                   p log_mes+'fish_order='+fish_order[LO_Fisher..LO_Fish_key].inspect
@@ -9853,7 +9840,7 @@ module PandoraNet
                   end
                   processed += 1
                 end
-                @fish_ind += 1
+                @mass_ind += 1
               end
 
               # проверка новых поисковых запросов
@@ -9861,10 +9848,10 @@ module PandoraNet
               while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
               and (processed<$search_block_count) \
-              and (@search_ind <= pool.search_ind) \
+              and (@mass_ind <= pool.mass_ind) \
               and (questioner_step>QS_ResetMessage)
-                search_req = pool.search_requests[@search_ind]
-                p '++++pool.search_requests[size, @search_ind, obj_id]='+[pool.search_requests.size, @search_ind, \
+                search_req = pool.mass_orders[@mass_ind]
+                p '++++pool.mass_orders[size, @mass_ind, obj_id]='+[pool.mass_orders.size, @mass_ind, \
                   search_req.object_id].inspect
                 if search_req
                   req = search_req[SR_Request..SR_BaseId]
@@ -9884,7 +9871,7 @@ module PandoraNet
                   end
                   processed += 1
                 end
-                @search_ind += 1
+                @mass_ind += 1
               end
 
               # проверка незаполненных корзин
@@ -16596,9 +16583,9 @@ module PandoraGtk
 
     def show_all_reqs(reqs=nil)
       pool = $window.pool
-      if reqs or (not @last_search_ind) or (@last_search_ind < pool.search_ind)
+      if reqs or (not @last_mass_ind) or (@last_mass_ind < pool.mass_ind)
         @list_store.clear
-        reqs ||= pool.search_requests
+        reqs ||= pool.mass_orders
         reqs.each do |sr|
           if sr.is_a? Array
             user_iter = @list_store.append
@@ -16609,9 +16596,9 @@ module PandoraGtk
           end
         end
         if reqs
-          @last_search_ind = nil
+          @last_mass_ind = nil
         else
-          @last_search_ind = pool.search_ind
+          @last_mass_ind = pool.mass_ind
         end
       end
     end
@@ -16667,9 +16654,9 @@ module PandoraGtk
         if empty
           show_all_reqs
         else
-          if @last_search_ind
+          if @last_mass_ind
             @list_store.clear
-            @last_search_ind = nil
+            @last_mass_ind = nil
           end
         end
         false
@@ -17144,7 +17131,7 @@ module PandoraGtk
       list_sw.shadow_type = Gtk::SHADOW_NONE
       list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
 
-      #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+      #mass_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
       list_store = Gtk::ListStore.new(String, String, String, String, Integer, Integer, \
         Integer, Integer, String, Integer)
@@ -17152,7 +17139,7 @@ module PandoraGtk
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
         if $window.pool
-          $window.pool.notice_list.each do |no|
+          $window.pool.mass_orders.each do |no|
             p '---no:'
             p no[0..6]
             sess_iter = list_store.append
@@ -17175,7 +17162,7 @@ module PandoraGtk
       #list_tree.rules_hint = true
       #list_tree.search_column = CL_Name
 
-      #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+      #mass_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
       renderer = Gtk::CellRendererText.new
       column = Gtk::TreeViewColumn.new(_('Nick'), renderer, 'text' => 0)
@@ -17352,7 +17339,7 @@ module PandoraGtk
       list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
       list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
 
-      #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+      #mass_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
       list_store = Gtk::ListStore.new(Integer, Integer, String, String, String, String, \
         String, String)
@@ -17377,7 +17364,7 @@ module PandoraGtk
       #list_tree.rules_hint = true
       #list_tree.search_column = CL_Name
 
-      #fish_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
+      #mass_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
       renderer = Gtk::CellRendererText.new
       column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 0)
@@ -18041,12 +18028,6 @@ module PandoraGtk
         dialog.title += ' ('+titadd+')' if titadd and (titadd != '')
 
         dialog.run2 do
-          # take value from form
-          dialog.fields.each do |field|
-            entry = field[FI_Widget]
-            field[FI_Value] = entry.text
-          end
-
           # fill hash of values
           flds_hash = {}
           file_way = nil
@@ -18054,7 +18035,8 @@ module PandoraGtk
           dialog.fields.each do |field|
             type = field[FI_Type]
             view = field[FI_View]
-            val = field[FI_Value]
+            entry = field[FI_Widget]
+            val = entry.text
 
             if (panobject.kind==PK_Parameter) and (field[FI_Id]=='value')
               par_type = panobject.field_val('type', sel[0])
@@ -18087,14 +18069,19 @@ module PandoraGtk
             p 'fld, val, type, view='+[field[FI_Id], val, type, view].inspect
             val = PandoraUtils.view_to_val(val, type, view)
             if (view=='blob') or (view=='text')
-              if val and (val != '')
+              if val and (val.size>0)
                 file_way = PandoraUtils.absolute_path(val)
                 file_way_exist = File.exist?(file_way)
                 p 'file_way1='+file_way.inspect
                 val = '@'+val
+                flds_hash[field[FI_Id]] = val
+                field[FI_Value] = val
+                #p '----TEXT ENTR!!!!!!!!!!!'
               end
+            else
+              flds_hash[field[FI_Id]] = val
+              field[FI_Value] = val
             end
-            flds_hash[field[FI_Id]] = val
           end
 
           # text and blob fields
@@ -18107,24 +18094,27 @@ module PandoraGtk
               scrolwin = scrolwin.parent if scrolwin and (not scrolwin.destroyed?) \
                 and not (scrolwin.is_a? FieldsDialog::BodyScrolledWindow)
               text = nil
-              if scrolwin and (not scrolwin.destroyed?) #and (textview.is_a? Gtk::TextView)
+              if scrolwin and (not scrolwin.destroyed?) and scrolwin.raw_buffer
                 #text = textview.buffer.text
                 text = scrolwin.raw_buffer.text
                 if text and (text.size>0)
+                  #p '===TEXT BUF!!!!!!!!!!!'
                   field[FI_Value] = text
                   flds_hash[field[FI_Id]] = text
+                  type_fld = panobject.field_des('type')
+                  flds_hash['type'] = dialog.format_btn.label.upcase if type_fld
+                else
+                  text = nil
                 end
               end
+              text ||= field[FI_Value]
               text ||= ''
               sha1_fld = panobject.field_des('sha1')
               flds_hash['sha1'] = Digest::SHA1.digest(text) if sha1_fld
               md5_fld = panobject.field_des('md5')
               flds_hash['md5'] = Digest::MD5.digest(text) if md5_fld
-
               size_fld = panobject.field_des('size')
               flds_hash['size'] = text.size if size_fld
-              type_fld = panobject.field_des('type')
-              flds_hash['type'] = dialog.format_btn.label.upcase if type_fld
             end
           end
 
@@ -21009,11 +20999,11 @@ module PandoraGtk
             end
 
             # Search spider
-            if (pool.found_ind <= pool.search_ind)
+            if (pool.found_ind <= pool.mass_ind)
               processed = SearchTrain
-              while (processed > 0) and (pool.found_ind <= pool.search_ind)
-                search_req = pool.search_requests[pool.found_ind]
-                p '####  Search spider  [size, @found_ind, obj_id]='+[pool.search_requests.size, \
+              while (processed > 0) and (pool.found_ind <= pool.mass_ind)
+                search_req = pool.mass_orders[pool.found_ind]
+                p '####  Search spider  [size, @found_ind, obj_id]='+[pool.mass_orders.size, \
                   pool.found_ind, search_req.object_id].inspect
                 if search_req and (not search_req[PandoraNet::SA_Answer])
                   req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
@@ -21067,12 +21057,12 @@ module PandoraGtk
               cur_time = Time.now.to_i
               processed = SearchGarbTrain
               while (processed > 0)
-                if (@search_garb_ind < pool.search_requests.size)
-                  search_req = pool.search_requests[@search_garb_ind]
+                if (@search_garb_ind < pool.mass_orders.size)
+                  search_req = pool.mass_orders[@search_garb_ind]
                   if search_req
                     time = search_req[PandoraNet::SR_Time]
                     if (not time.is_a? Integer) or (time+$search_live_time<cur_time)
-                      pool.search_requests[@search_garb_ind] = nil
+                      pool.mass_orders[@search_garb_ind] = nil
                     end
                   end
                   @search_garb_ind += 1
