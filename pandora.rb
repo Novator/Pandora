@@ -6450,48 +6450,62 @@ module PandoraNet
       end
     end
 
-    def clear_list(list, time_ind, live_per, time=nil)
-      time ||= Time.now.to_i
-      list.delete_if {|e| (e.is_a? Array) and (e[time_ind] < time-live_per) }
-    end
+    $mass_rec_life_sec = 10*60
 
-    # Find search request in queue
-    # RU: Найти поисковый запрос в очереди
-    def find_search_request(request, kind)
-      res = @mass_records.select do |mr|
-        (mr.is_a? Array) and (mr[MR_Kind] == MRK_Search) and (mr[MRS_Kind] == kind) \
-          and (mr[MRS_Request] == request)
+    def delete_old_mass_records(cur_time=nil)
+      cur_time ||= Time.now.to_i
+      @mass_records.delete_if do |mr|
+        (mr.is_a? Array) and (mr[PandoraNet::MR_Time].nil? \
+          or (mr[PandoraNet::MR_Time] < cur_time-$mass_rec_life_sec))
       end
-      res
     end
 
-    $not_live_per  = 30*60
-    $fish_live_per = 10*60
+    #def find_search_request(request, kind)
+    #def find_notice_order(person, key, baseid, time=nil)
+    #def find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
 
-    def find_notice_order(person, key, baseid, time=nil)
-      time ||= Time.now.to_i
-      clear_list(@mass_records, PandoraNet::MR_Time, $not_live_per, time)
-      res = @mass_records.select do |no|
-        ((person.nil? or (no[PandoraNet::MR_Person] == person)) and \
-        (key.nil? or (no[PandoraNet::MR_Key] == key)) and \
-        (baseid.nil? or (no[PandoraNet::MR_Baseid] == baseid)))
-      end
-      res
-    end
-
-    def find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
-      res = @mass_records.select do |fo|
-        ((fisher.nil? or (fo[PandoraNet::LO_Fisher] == fisher)) and \
-        (fisher_key.nil? or (fo[PandoraNet::LO_Fisher_key] == fisher_key)) and \
-        (fisher_baseid.nil? or (fo[PandoraNet::LO_Fisher_baseid] == fisher_baseid)) and \
-        (fish.nil? or (fo[PandoraNet::LO_Fish] == fish)) and \
-        (fish_key.nil? or (fo[PandoraNet::LO_Fish_key] == fish_key)))
+    def find_mass_record(akind, aperson, akey, abaseid, param1, param2=nil)
+      res = nil
+      case akind
+        when MRK_Presence
+          res = @mass_records.select do |mr|
+            ((aperson.nil? or (mr[PandoraNet::MR_Person] == aperson)) and \
+            (akey.nil? or (fo[PandoraNet::MR_Key] == akey)) and \
+            (abaseid.nil? or (fo[PandoraNet::MR_Baseid] == abaseid)) and \
+            (param1.nil? or (fo[PandoraNet::MRP_Nick] == param1)))
+          end
+        when MRK_Fishing
+          res = @mass_records.select do |mr|
+            ((aperson.nil? or (mr[PandoraNet::MR_Person] == aperson)) and \
+            (akey.nil? or (fo[PandoraNet::MR_Key] == akey)) and \
+            (abaseid.nil? or (fo[PandoraNet::MR_Baseid] == abaseid)) and \
+            (param1.nil? or (fo[PandoraNet::MRF_Fish] == param1)) and \
+            (param2.nil? or (fo[PandoraNet::MRF_Fish_key] == param2)))
+          end
+        when MRK_Search
+          param2 = AsciiString.new(param2)
+          res = @mass_records.select do |mr|
+            ((aperson.nil? or (mr[PandoraNet::MR_Person] == aperson)) and \
+            (akey.nil? or (fo[PandoraNet::MR_Key] == akey)) and \
+            (abaseid.nil? or (fo[PandoraNet::MR_Baseid] == abaseid)) and \
+            (param1.nil? or (fo[PandoraNet::MRS_Kind] == param1)) and \
+            (param2.nil? or (fo[PandoraNet::MRS_Request] == param2)))
+          end
+        when MRK_Chat
+          res = @mass_records.select do |mr|
+            ((aperson.nil? or (mr[PandoraNet::MR_Person] == aperson)) and \
+            (akey.nil? or (fo[PandoraNet::MR_Key] == akey)) and \
+            (abaseid.nil? or (fo[PandoraNet::MR_Baseid] == abaseid)) and \
+            (param1.nil? or (fo[PandoraNet::MRC_Comm] == param1)) and \
+            (param2.nil? or (fo[PandoraNet::MRC_Body] == param2)))
+          end
       end
       res
     end
 
     #def add_search_request(request, kind, abase_id=nil, sess=nil, hunt=false)
     #def add_notice_order(session, person, key, baseid, notice_trust, notice_depth, nick=nil)
+    #def add_fish_order(session, fisher, fisher_key, fisher_baseid, fish, fish_key, models=nil)
 
     # Add mass record to queue
     # RU: Добавить массовую запись в очередь
@@ -6499,17 +6513,16 @@ module PandoraNet
     param1, param2, models=nil, hunt=nil)
       if adepth>0
         time = Time.now.to_i
+        delete_old_mass_records(time)
         case akind
           when MRK_Presence
           when MRK_Fishing
-            clear_list(@mass_records, PandoraNet::MR_Time, $fish_live_per, time)
           when MRK_Search
             param2 = AsciiString.new(param2)
           when MRK_Chat
         end
         abase_id ||= base_id
-        res = find_mass_record(asession, akind, aperson, akey, abaseid, \
-          param1, param2, models)
+        res = find_mass_record(akind, aperson, akey, abaseid, param1, param2)
         if (not res) or (res.size==0)
           res = Array.new
           adepth -= 1
