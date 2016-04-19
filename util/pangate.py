@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# The Pandora gate. It collects connections for owner of gate
+# The Pandora Gate. It collects connections for owner of gate
 # RU: Шлюз Пандоры. Собирает соединения для владельца шлюза
 #
 # This program is distributed under the GNU GPLv2
@@ -12,6 +12,7 @@ import time, datetime, termios, fcntl, sys, os, socket, threading, struct, binas
 
 config = None
 
+# Get config parameter value
 def getparam(sect, name, atype='str'):
   global config
   res = None
@@ -28,6 +29,7 @@ def getparam(sect, name, atype='str'):
     res = None
   return res
 
+# Read config file
 config = ConfigParser.SafeConfigParser()
 res = config.read('./pangate.conf')
 if len(res):
@@ -41,6 +43,7 @@ if len(res):
   max_size = getparam('logfile', 'max_size', 'int')
   flush_interval = getparam('logfile', 'flush_interval', 'int')
 
+# Default config values
 if not host: host = '0.0.0.0'
 if not port: port = 5577
 if not log_prefix: log_prefix = './pangate'
@@ -52,7 +55,10 @@ if not flush_interval: flush_interval = 2
 password = hashlib.sha256(password).digest()
 if keyhash: keyhash = keyhash.decode('hex')
 
+# Current path
 ROOT_PATH = os.path.abspath('.')
+
+# Client socket options
 KEEPALIVE = 1 #(on/off)
 KEEPIDLE = 5  #(after, sec)
 KEEPINTVL = 1 #(every, sec)
@@ -815,7 +821,7 @@ oldflags = fcntl.fcntl(fd, fcntl.F_GETFL)
 fcntl.fcntl(fd, fcntl.F_SETFL, oldflags | os.O_NONBLOCK)
 
 try:
-  print('The Pandora gate.')
+  print('The Pandora Gate 0.1 (protocol: pandora0)')
 
   # Start server socket
   try:
@@ -839,7 +845,7 @@ try:
     pool.listener = listener
     listener.start()
     print('Working thread is active...')
-    print('Press Q to stop server.')
+    print('Press Q to stop and quit.')
     print('(screen: Ctrl+a+d - detach, Ctrl+a+k - kill, "screen -r" to resume)')
     working = True
     while working:

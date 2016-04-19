@@ -14,6 +14,6 @@ cd "$CURDIR"
 
 screen -x "pangate"
 if [ "$?" != "0" ]; then
-  screen -S "pangate" /usr/bin/python ./pangate.py
+  screen -S "pangate" `which python` ./pangate.py
 fi
 

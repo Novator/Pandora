@@ -6464,7 +6464,7 @@ module PandoraNet
     #def find_notice_order(person, key, baseid, time=nil)
     #def find_fish_order(fisher, fisher_key, fisher_baseid, fish, fish_key)
 
-    def find_mass_record(akind, aperson, akey, abaseid, param1, param2=nil)
+    def find_mass_record(akind, param1, param2=nil, aperson=nil, akey=nil, abaseid=nil)
       res = nil
       case akind
         when MRK_Presence
@@ -6509,8 +6509,8 @@ module PandoraNet
 
     # Add mass record to queue
     # RU: Добавить массовую запись в очередь
-    def add_mass_record(asession, akind, aperson, akey, abaseid, atrust, adepth, \
-    param1, param2, models=nil, hunt=nil)
+    def add_mass_record(akind, param1, param2=nil, asession=nil, aperson=nil, \
+    akey=nil, abaseid=nil, atrust=nil, adepth=nil, hunt=nil, models=nil)
       if adepth>0
         time = Time.now.to_i
         delete_old_mass_records(time)
@@ -6522,7 +6522,7 @@ module PandoraNet
           when MRK_Chat
         end
         abase_id ||= base_id
-        res = find_mass_record(akind, aperson, akey, abaseid, param1, param2)
+        res = find_mass_record(akind, param1, param2, aperson, akey, abaseid)
         if (not res) or (res.size==0)
           res = Array.new
           adepth -= 1
