@@ -5842,10 +5842,10 @@ module PandoraNet
 
   # Mass record kinds
   # RU: Типы массовых записей
-  MRK_Presence   = 1
-  MRK_Fishing    = 2
-  MRK_Search     = 3
-  MRK_Chat       = 4
+  MK_Presence   = 1
+  MK_Fishing    = 2
+  MK_Search     = 3
+  MK_Chat       = 4
 
   # Common field indexes of mass record array  #(size of field)
   # RU: Общие индексы полей в векторе массовых записей
@@ -5854,7 +5854,7 @@ module PandoraNet
   MR_Index           = 2  #4
   MR_Person          = 3  #22
   MR_Key             = 4  #22
-  MR_Baseid          = 5  #16
+  MR_BaseId          = 5  #16
   MR_Time            = 6  #4
   MR_Trust           = 7  #1
   MR_Depth           = 8  #1
@@ -6467,37 +6467,37 @@ module PandoraNet
     def find_mass_record(akind, param1, param2=nil, aperson=nil, akey=nil, abaseid=nil)
       res = nil
       case akind
-        when MRK_Presence
+        when MK_Presence
           res = @mass_records.select do |mr|
             ((aperson.nil? or (mr[PandoraNet::MR_Person] == aperson)) and \
-            (akey.nil? or (fo[PandoraNet::MR_Key] == akey)) and \
-            (abaseid.nil? or (fo[PandoraNet::MR_Baseid] == abaseid)) and \
-            (param1.nil? or (fo[PandoraNet::MRP_Nick] == param1)))
+            (akey.nil? or (mr[PandoraNet::MR_Key] == akey)) and \
+            (abaseid.nil? or (mr[PandoraNet::MR_BaseId] == abaseid)) and \
+            (param1.nil? or (mr[PandoraNet::MRP_Nick] == param1)))
           end
-        when MRK_Fishing
+        when MK_Fishing
           res = @mass_records.select do |mr|
             ((aperson.nil? or (mr[PandoraNet::MR_Person] == aperson)) and \
-            (akey.nil? or (fo[PandoraNet::MR_Key] == akey)) and \
-            (abaseid.nil? or (fo[PandoraNet::MR_Baseid] == abaseid)) and \
-            (param1.nil? or (fo[PandoraNet::MRF_Fish] == param1)) and \
-            (param2.nil? or (fo[PandoraNet::MRF_Fish_key] == param2)))
+            (akey.nil? or (mr[PandoraNet::MR_Key] == akey)) and \
+            (abaseid.nil? or (mr[PandoraNet::MR_BaseId] == abaseid)) and \
+            (param1.nil? or (mr[PandoraNet::MRF_Fish] == param1)) and \
+            (param2.nil? or (mr[PandoraNet::MRF_Fish_key] == param2)))
           end
-        when MRK_Search
+        when MK_Search
           param2 = AsciiString.new(param2)
           res = @mass_records.select do |mr|
             ((aperson.nil? or (mr[PandoraNet::MR_Person] == aperson)) and \
-            (akey.nil? or (fo[PandoraNet::MR_Key] == akey)) and \
-            (abaseid.nil? or (fo[PandoraNet::MR_Baseid] == abaseid)) and \
-            (param1.nil? or (fo[PandoraNet::MRS_Kind] == param1)) and \
-            (param2.nil? or (fo[PandoraNet::MRS_Request] == param2)))
+            (akey.nil? or (mr[PandoraNet::MR_Key] == akey)) and \
+            (abaseid.nil? or (mr[PandoraNet::MR_BaseId] == abaseid)) and \
+            (param1.nil? or (mr[PandoraNet::MRS_Kind] == param1)) and \
+            (param2.nil? or (mr[PandoraNet::MRS_Request] == param2)))
           end
-        when MRK_Chat
+        when MK_Chat
           res = @mass_records.select do |mr|
             ((aperson.nil? or (mr[PandoraNet::MR_Person] == aperson)) and \
-            (akey.nil? or (fo[PandoraNet::MR_Key] == akey)) and \
-            (abaseid.nil? or (fo[PandoraNet::MR_Baseid] == abaseid)) and \
-            (param1.nil? or (fo[PandoraNet::MRC_Comm] == param1)) and \
-            (param2.nil? or (fo[PandoraNet::MRC_Body] == param2)))
+            (akey.nil? or (mr[PandoraNet::MR_Key] == akey)) and \
+            (abaseid.nil? or (mr[PandoraNet::MR_BaseId] == abaseid)) and \
+            (param1.nil? or (mr[PandoraNet::MRC_Comm] == param1)) and \
+            (param2.nil? or (mr[PandoraNet::MRC_Body] == param2)))
           end
       end
       res
@@ -6515,11 +6515,11 @@ module PandoraNet
         time = Time.now.to_i
         delete_old_mass_records(time)
         case akind
-          when MRK_Presence
-          when MRK_Fishing
-          when MRK_Search
+          when MK_Presence
+          when MK_Fishing
+          when MK_Search
             param2 = AsciiString.new(param2)
-          when MRK_Chat
+          when MK_Chat
         end
         abase_id ||= base_id
         res = find_mass_record(akind, param1, param2, aperson, akey, abaseid)
@@ -6530,20 +6530,20 @@ module PandoraNet
           res[MR_Kind]     = akind
           res[MR_Person]   = aperson
           res[MR_Key]      = akey
-          res[MR_Baseid]   = abaseid
+          res[MR_BaseId]   = abaseid
           res[MR_Time]     = time
           res[MR_Trust]    = atrust
           res[MR_Depth]    = adepth
           case akind
-            when MRK_Presence
+            when MK_Presence
               res[MRP_Nick] = param1
-            when MRK_Fishing
+            when MK_Fishing
               res[MRF_Fish]     = param1
               res[MRF_Fish_key] = param2
-            when MRK_Search
+            when MK_Search
               res[MRS_Kind]    = param1
               res[MRS_Request] = param2
-            when MRK_Chat
+            when MK_Chat
               res[MRC_Comm] = param1
               res[MRC_Body] = param2
           end
@@ -6553,7 +6553,7 @@ module PandoraNet
           end
           @mass_records << res
           case akind
-            when MRK_Presence
+            when MK_Presence
               $window.set_status_field(PandoraGtk::SF_Radar, @mass_records.size.to_s)
               hpaned = $window.radar_hpaned
               if (hpaned.max_position - hpaned.position) > 24
@@ -6562,17 +6562,19 @@ module PandoraNet
               else
                 PandoraGtk.show_radar_panel
               end
-            when MRK_Fishing
+            when MK_Fishing
               $window.set_status_field(PandoraGtk::SF_Fisher, @mass_records.size.to_s)
               info = ''
+              fish = param1
+              fish_key = param2
               info << PandoraUtils.bytes_to_hex(fish) if fish
               info << ', '+PandoraUtils.bytes_to_hex(fish_key) if fish_key.is_a? String
               PandoraUtils.log_message(PandoraUtils::LM_Trace, _('Bob is generated')+ \
                 ' '+@mass_ind.to_s+':['+info+']')
-            when MRK_Search
+            when MK_Search
               $window.set_status_field(PandoraGtk::SF_Search, @mass_records.size.to_s)
               PandoraNet.start_hunt if hunt
-            when MRK_Chat
+            when MK_Chat
               #
           end
         end
@@ -6858,8 +6860,7 @@ module PandoraNet
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, \
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, \
-      :captcha_sw, :hooks, :mass_ind, :mass_ind, \
-      :sess_trust, :notice, :activity, :mass_ind
+      :captcha_sw, :hooks, :mass_ind, :sess_trust, :notice, :activity
 
     # Set socket options
     # RU: Установить опции сокета
@@ -7768,8 +7769,8 @@ module PandoraNet
                 sessions = Session.new(111)
               end
               line = line_order.dup
-              line[LO_Fish] ||= mypersonhash
-              line[LO_Fish_key] ||= mykeyhash
+              line[MR_Fish] ||= mypersonhash
+              line[MR_Fish_key] ||= mykeyhash
               line[LN_Fish_Baseid] = pool.base_id
               p log_mes+' line='+line.inspect
               #session = connect_sessions_to_hook([session], self, hook)
@@ -7807,15 +7808,15 @@ module PandoraNet
               p 'FOUND fishers/fishes: '+sessions.size.to_s
               line = line_order.dup
               if fisher_sess
-                line[LO_Fish] = @to_person if (not fish)
-                line[LO_Fish_key] = @to_key if (not fish_key)
+                line[MR_Fish] = @to_person if (not fish)
+                line[MR_Fish_key] = @to_key if (not fish_key)
                 line[LN_Fish_Baseid] = @to_base_id
               end
               sessions.each do |session|
                 p log_mes+'--Fisher/Fish session='+[session.object_id, session.to_key].inspect
                 if not fisher_sess
-                  line[LO_Fish] = session.to_person if (not fish)
-                  line[LO_Fish_key] = session.to_key if (not fish_key)
+                  line[MR_Fish] = session.to_person if (not fish)
+                  line[MR_Fish_key] = session.to_key if (not fish_key)
                   line[LN_Fish_Baseid] = session.to_base_id
                 end
                 p log_mes+' reg.line='+line.inspect
@@ -7951,8 +7952,10 @@ module PandoraNet
           not_dep = (@notice >> 8)
           if not_dep >= 0
             nick = PandoraCrypto.short_name_of_person(@skey, @to_person, 1)
-            pool.add_notice_order(self, @to_person, @to_key, \
-              @to_base_id, not_trust, not_dep, nick)
+            #pool.add_notice_order(self, @to_person, @to_key, \
+            #  @to_base_id, not_trust, not_dep, nick)
+            pool.add_mass_record(MK_Presence, nick, nil, self, @to_person, @to_key, \
+              @to_base_id, not_trust, not_dep)
           end
         end
       end
@@ -8807,7 +8810,7 @@ module PandoraNet
                         p '!!это узел-посредник, пробросить по истории заявок'
                         mass_records = pool.find_fish_order(*line[0..4])
                         mass_records.each do |fo|
-                          sess = fo[PandoraNet::LO_Session]
+                          sess = mr[PandoraNet::MR_Session]
                           if sess
                             sess.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
                               ECC_News_Hook)
@@ -8854,7 +8857,9 @@ module PandoraNet
                     notic, len = PandoraUtils.pson_to_rubyobj(rdata)
                     p log_mes+'==ECC_News_Notice [rdata, notic, len]='+[rdata, notic, len].inspect
                     if (notic.is_a? Array) and (notic.size==5)
-                      pool.add_notice_order(self, *notic)
+                      #pool.add_notice_order(self, *notic)
+                      pool.add_mass_record(MK_Presence, nick, nil, self, @to_person, @to_key, \
+                        @to_base_id, not_trust, not_dep)
                     end
                   when ECC_News_SessMode
                     p log_mes + 'ECC_News_SessMode'
@@ -9017,15 +9022,9 @@ module PandoraNet
     # Number of requests per cicle
     # RU: Число запросов за цикл
     $inquire_block_count = 1
-    # Number of notice orders per cicle
-    # RU: Число запросов уведомлений за цикл
-    $notice_block_count = 2
-    # Number of fish orders per cicle
-    # RU: Число запросов на рабылку за цикл
-    $fish_block_count = 2
-    # Number of search requests per cicle
-    # RU: Число поисковых запросов за цикл
-    $search_block_count = 2
+    # Number of mass send per cicle
+    # RU: Число массовых рассылок за цикл
+    $mass_block_count = 2
     # Search request live time (sec)
     # RU: Время жизни поискового запроса
     $search_live_time = 10*60
@@ -9060,9 +9059,7 @@ module PandoraNet
       @read_state  = 0
       send_state_add  ||= 0
       @send_state     = send_state_add
-      @mass_ind       = 0
       @mass_ind     = 0
-      @mass_ind   = 0
       @punnet_ind   = 0
       @frag_ind     = 0
       #@fishes         = Array.new
@@ -9188,9 +9185,12 @@ module PandoraNet
             if not @socket
               # Add fish order and wait donor
               if to_person or to_key
-                mykeyhash = PandoraCrypto.current_user_or_key(false)
-                pool.add_fish_order(self, mypersonhash, mykeyhash, pool.base_id, \
-                  to_person, to_key, @recv_models)
+                #pool.add_fish_order(self, mypersonhash, mykeyhash, pool.base_id, \
+                #  to_person, to_key, @recv_models)
+                fish_trust = 0.0
+                fish_dep = 2
+                pool.add_mass_record(MK_Fishing, to_person, to_key, self, mypersonhash, \
+                  mykeyhash, pool.base_id, fish_trust, fish_dep, nil, @recv_models)
                 while (not @socket) and (not active_hook) \
                 and (@conn_state == CS_Connecting)
                   p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
@@ -9763,100 +9763,47 @@ module PandoraNet
                 end
               end
 
-              # проверка новых уведомлений
-              if (@sess_mode.is_a? Integer) and ((@sess_mode & CM_GetNotice)>0)
+              # рассылка массовых записей
+              if (@sess_mode.is_a? Integer) and ((@sess_mode & CM_GetNotice)>0) \
+              and @to_key and @to_person and @to_base_id and @sess_trust \
+              and (questioner_step>QS_ResetMessage)
                 processed = 0
                 while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
                 and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
-                and (processed<$notice_block_count) \
+                and (processed<$mass_block_count) \
                 and (@mass_ind <= pool.mass_ind)
-                  notice_order = pool.mass_records[@mass_ind]
-                  if notice_order
-                    notic = notice_order[NO_Person..NO_Nick]
-                    if notice_order and (notice_order[NO_Session] != self) \
-                    and @sess_trust and (@sess_trust >= PandoraModel.transform_trust(notice_order[NO_Notice_trust], false)) \
-                    and ((@to_key and (notice_order[NO_Key] != @to_key)) \
-                    or (@to_person and (notice_order[NO_Person] != @to_person)) \
-                    or (@to_base_id and (notice_order[NO_Baseid] != @to_base_id)))
-                      p log_mes+'=====Send notice order: '+notic.inspect
-                      notic = PandoraUtils.rubyobj_to_pson(notic)
-                      add_send_segment(EC_News, true, notic, ECC_News_Notice)
+                  mass_rec = pool.mass_records[@mass_ind]
+                  if mass_rec and (mass_rec[MR_Session] != self) \
+                  and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], false)) \
+                  and ((mass_rec[MR_Key] != @to_key) \
+                  or (mass_rec[MR_Person] != @to_person) \
+                  or (mass_rec[MR_BaseId] != @to_base_id))
+                    case mass_rec[MR_Kind]
+                      when MK_Presence
+                        p log_mes+'=====Send mass record: '+notic.inspect
+                        notic = PandoraUtils.rubyobj_to_pson(notic)
+                        add_send_segment(EC_News, true, notic, ECC_News_Notice11mass)
+                      when MK_Fishing
+                        line = fish_order[MR_Fisher..MR_Fish_key]
+                        if init_line(line) == false
+                          p log_mes+'Fish order to send: '+line.inspect
+                          PandoraUtils.log_message(LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
+                            +[PandoraUtils.bytes_to_hex(fish_order[MR_Fish]), \
+                            PandoraUtils.bytes_to_hex(fish_order[MR_Fish_key]), \
+                            @host_ip, @port].inspect)
+                          line_raw = PandoraUtils.rubyobj_to_pson(line)
+                          add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish)
+                        end
+                      when MK_Search
+                        p log_mes+'Send search request: '+req.inspect
+                        req_raw = PandoraUtils.rubyobj_to_pson(req)
+                        add_send_segment(EC_Query, true, req_raw, ECC_Query_Search)
+                      when MK_Chat
                     end
                     processed += 1
                   end
                   @mass_ind += 1
                 end
-              end
-
-              # проверка новых заявок на рыбалку
-              processed = 0
-              while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
-              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
-              and (processed<$fish_block_count) \
-              and (@mass_ind <= pool.mass_ind)
-                fish_order = pool.mass_records[@mass_ind]
-                p '++++pool.mass_records[size, @mass_ind, fo]='+[pool.mass_records.size, @mass_ind, \
-                  fish_order.object_id].inspect
-                if fish_order
-                  p log_mes+'fish_order='+fish_order[LO_Fisher..LO_Fish_key].inspect
-                  p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
-                  if fish_order and (fish_order[LO_Session] != self) \
-                  and not((fish_order[LO_Fisher] == @to_person) \
-                  and (fish_order[LO_Fisher_key] == @to_key) \
-                  and (fish_order[LO_Fisher_baseid] == @to_base_id))
-                    # fish order is not from me
-                    line = fish_order[LO_Fisher..LO_Fish_key]
-                    #if (fish_order[LO_Fisher] == mykeyhash) \
-                    #or (fish_order[LO_Fisher_key] == pool.base_id) \
-                    #or (@to_person and ((fish_order[LO_Fisher] == @to_person) or (fish_order[LO_Fish] == @to_person))) \
-                    #or (@to_key and ((fish_order[LO_Fisher_key] == @to_key) or (fish_order[LO_Fish_key] == @to_key)))
-                      # fishing to me or neighbor
-                    if init_line(line) == false
-                      # fishing not to the session
-                      p log_mes+'Fish order to send: '+line.inspect
-                      #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                      PandoraUtils.log_message(LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
-                        +[PandoraUtils.bytes_to_hex(fish_order[LO_Fish]), \
-                        PandoraUtils.bytes_to_hex(fish_order[LO_Fish_key]), \
-                        @host_ip, @port].inspect)
-                      line_raw = PandoraUtils.rubyobj_to_pson(line)
-                      add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish)
-                    end
-                  end
-                  processed += 1
-                end
-                @mass_ind += 1
-              end
-
-              # проверка новых поисковых запросов
-              processed = 0
-              while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
-              and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
-              and (processed<$search_block_count) \
-              and (@mass_ind <= pool.mass_ind) \
-              and (questioner_step>QS_ResetMessage)
-                search_req = pool.mass_records[@mass_ind]
-                p '++++pool.mass_records[size, @mass_ind, obj_id]='+[pool.mass_records.size, @mass_ind, \
-                  search_req.object_id].inspect
-                if search_req
-                  req = search_req[SR_Request..SR_BaseId]
-                  p log_mes+'search_req2='+req.inspect
-                  p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
-                  if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
-                    # search request is not from this session/node, need resend
-                    #res = search_in_bases(search_req[SR_Request], search_req[SR_Kind])
-                    #if res and (res.size>0)
-                    p log_mes+'Send search request: '+req.inspect
-                    #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                    #PandoraUtils.log_message(LM_Trace, _('Fishing to')+': [fish,host,port]' \
-                    #    +[PandoraUtils.bytes_to_hex(fish_order[LO_Fish]), \
-                    #    @host_ip, @port].inspect)
-                    req_raw = PandoraUtils.rubyobj_to_pson(req)
-                    add_send_segment(EC_Query, true, req_raw, ECC_Query_Search)
-                  end
-                  processed += 1
-                end
-                @mass_ind += 1
               end
 
               # проверка незаполненных корзин
@@ -9870,21 +9817,6 @@ module PandoraNet
                 p '***!!pool.get_next_frag='+next_frag.inspect
                 if next_frag
                   punn, frag = next_frag
-                  #req = search_req[SR_Request..SR_BaseId]
-                  #p log_mes+'search_req2='+req.inspect
-                  #p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
-                  #if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
-                    # search request is not from this session/node, need resend
-                    #res = search_in_bases(search_req[SR_Request], search_req[SR_Kind])
-                    #if res and (res.size>0)
-                  #  p log_mes+'Send search request: '+req.inspect
-                    #mykeyhash = PandoraCrypto.current_user_or_key(false)
-                    #PandoraUtils.log_message(LM_Trace, _('Fishing to')+': [fish,host,port]' \
-                    #    +[PandoraUtils.bytes_to_hex(fish_order[LO_Fish]), \
-                    #    @host_ip, @port].inspect)
-                  #  req_raw = PandoraUtils.rubyobj_to_pson(req)
-                  #  add_send_segment(EC_Query, true, req_raw, ECC_Query_Search)
-                  #end
                   processed += 1
                 else
                   processed = -1
@@ -17131,7 +17063,7 @@ module PandoraGtk
             sess_iter[0] = mr[PandoraNet::MRP_Nick]
             sess_iter[1] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Person])
             sess_iter[2] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Key])
-            sess_iter[3] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Baseid])
+            sess_iter[3] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_BaseId])
             sess_iter[4] = mr[PandoraNet::MR_Trust]
             sess_iter[5] = mr[PandoraNet::MR_Depth]
             sess_iter[6] = 0 #distance
@@ -17331,16 +17263,16 @@ module PandoraGtk
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
-        $window.pool.mass_records.each do |fo|
+        $window.pool.mass_records.each do |mr|
           sess_iter = list_store.append
-          sess_iter[0] = fo[PandoraNet::LO_Index]
-          sess_iter[1] = fo[PandoraNet::LO_Session].object_id
-          sess_iter[2] = PandoraUtils.bytes_to_hex(fo[PandoraNet::LO_Fisher])
-          sess_iter[3] = PandoraUtils.bytes_to_hex(fo[PandoraNet::LO_Fisher_key])
-          sess_iter[4] = PandoraUtils.bytes_to_hex(fo[PandoraNet::LO_Fisher_baseid])
-          sess_iter[5] = PandoraUtils.bytes_to_hex(fo[PandoraNet::LO_Fish])
-          sess_iter[6] = PandoraUtils.bytes_to_hex(fo[PandoraNet::LO_Fish_key])
-          sess_iter[7] = PandoraUtils.time_to_str(fo[PandoraNet::LO_Time])
+          sess_iter[0] = mr[PandoraNet::MR_Index]
+          sess_iter[1] = mr[PandoraNet::MR_Session].object_id
+          sess_iter[2] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Person])
+          sess_iter[3] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Key])
+          sess_iter[4] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_BaseId])
+          sess_iter[5] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MRF_Fish])
+          sess_iter[6] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MRF_Fish_key])
+          sess_iter[7] = PandoraUtils.time_to_str(mr[PandoraNet::MR_Time])
         end
       end
 
@@ -20984,7 +20916,7 @@ module PandoraGtk
             end
 
             # Search spider
-            if (pool.found_ind <= pool.mass_ind)
+            if (pool.found_ind <= pool.mass_ind) and false #OFFFFF !!!!!
               processed = MassTrain
               while (processed > 0) and (pool.found_ind <= pool.mass_ind)
                 search_req = pool.mass_records[pool.found_ind]
@@ -21045,7 +20977,7 @@ module PandoraGtk
                 if (@mass_garb_ind < pool.mass_records.size)
                   search_req = pool.mass_records[@mass_garb_ind]
                   if search_req
-                    time = search_req[PandoraNet::SR_Time]
+                    time = search_req[PandoraNet::MR_Time]
                     if (not time.is_a? Integer) or (time+$search_live_time<cur_time)
                       pool.mass_records[@mass_garb_ind] = nil
                     end
