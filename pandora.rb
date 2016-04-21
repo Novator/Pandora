@@ -3596,7 +3596,7 @@ module PandoraModel
       end
       p '--save_rec5   harvest_blob='+harvest_blob.inspect
       if (harvest_blob.is_a? String)
-        reqs = $window.pool.add_search_request(harvest_blob, PandoraModel::PK_BlobBody)
+        reqs = $window.pool.add_mass_record(MK_Search, PandoraModel::PK_BlobBody, harvest_blob)
       end
     else
       PandoraUtils.log_message(LM_Warning, _('Non-equal panhashes ')+' '+ \
@@ -6020,7 +6020,7 @@ module PandoraNet
             blob = rec[1]
             if (blob.is_a? String) and (blob.size>1) and (blob[0]=='@') \
             and (sha1.is_a? String) and (sha1.size>1)
-              add_search_request(sha1, PandoraModel::PK_BlobBody)
+              add_mass_record(MK_Search, PandoraModel::PK_BlobBody, sha1)
             end
           end
         end
@@ -6525,6 +6525,8 @@ module PandoraNet
     # RU: Добавить массовую запись в очередь
     def add_mass_record(akind, param1, param2=nil, asession=nil, aperson=nil, \
     akey=nil, abaseid=nil, atrust=nil, adepth=nil, hunt=nil, models=nil)
+      atrust ||= 0
+      adepth ||= 2
       if adepth>0
         time = Time.now.to_i
         delete_old_mass_records(time)
@@ -6538,34 +6540,34 @@ module PandoraNet
         abase_id ||= base_id
         res = find_mass_record(akind, param1, param2, aperson, akey, abaseid)
         if (not res) or (res.size==0)
-          res = Array.new
+          mr = Array.new
           adepth -= 1
-          res[MR_Session]  = asession
-          res[MR_Kind]     = akind
-          res[MR_Person]   = aperson
-          res[MR_Key]      = akey
-          res[MR_BaseId]   = abaseid
-          res[MR_Time]     = time
-          res[MR_Trust]    = atrust
-          res[MR_Depth]    = adepth
+          mr[MR_Session]  = asession
+          mr[MR_Kind]     = akind
+          mr[MR_Person]   = aperson
+          mr[MR_Key]      = akey
+          mr[MR_BaseId]   = abaseid
+          mr[MR_Time]     = time
+          mr[MR_Trust]    = atrust
+          mr[MR_Depth]    = adepth
           case akind
             when MK_Presence
-              res[MRP_Nick] = param1
+              mr[MRP_Nick] = param1
             when MK_Fishing
-              res[MRF_Fish]     = param1
-              res[MRF_Fish_key] = param2
+              mr[MRF_Fish]     = param1
+              mr[MRF_Fish_key] = param2
             when MK_Search
-              res[MRS_Kind]    = param1
-              res[MRS_Request] = param2
+              mr[MRS_Kind]    = param1
+              mr[MRS_Request] = param2
             when MK_Chat
-              res[MRC_Comm] = param1
-              res[MRC_Body] = param2
+              mr[MRC_Comm] = param1
+              mr[MRC_Body] = param2
           end
           ind_mutex.synchronize do
             @mass_ind += 1
-            res[MR_Index] = @mass_ind
+            mr[MR_Index] = @mass_ind
           end
-          @mass_records << res
+          @mass_records << mr
           case akind
             when MK_Presence
               $window.set_status_field(PandoraGtk::SF_Radar, @mass_records.size.to_s)
@@ -6591,6 +6593,7 @@ module PandoraNet
             when MK_Chat
               #
           end
+          res = find_mass_record(akind, param1, param2, aperson, akey, abaseid)
         end
       end
       res
@@ -8708,8 +8711,10 @@ module PandoraNet
                       abase_id ||= @to_base_id
                       if abase_id != pool.base_id
                         p log_mes+'ADD search req to pool list'
-                        pool.add_search_request(search_req[SR_Request], \
-                          search_req[SR_Kind], abase_id, self)
+                        #pool.add_search_request(search_req[SR_Request], \
+                        #  search_req[SR_Kind], abase_id, self)
+                        pool.add_mass_record(MK_Search, search_req[SR_Kind], \
+                          search_req[SR_Request], self, nil, nil, abase_id)
                       end
                     end
                   when ECC_Query_Fragment
@@ -9799,24 +9804,24 @@ module PandoraNet
                   or (mass_rec[MR_BaseId] != @to_base_id))
                     case mass_rec[MR_Kind]
                       when MK_Presence
-                        p log_mes+'=====Send mass record: '+notic.inspect
-                        notic = PandoraUtils.rubyobj_to_pson(notic)
-                        add_send_segment(EC_News, true, notic, ECC_News_Notice11mass)
+                        p log_mes+'Notice send: '+notic.inspect
+                        #notic = PandoraUtils.rubyobj_to_pson(notic)
+                        #add_send_segment(EC_News, true, notic, ECC_News_Notice11mass)
                       when MK_Fishing
-                        line = fish_order[MR_Fisher..MR_Fish_key]
-                        if init_line(line) == false
-                          p log_mes+'Fish order to send: '+line.inspect
-                          PandoraUtils.log_message(LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
-                            +[PandoraUtils.bytes_to_hex(fish_order[MR_Fish]), \
-                            PandoraUtils.bytes_to_hex(fish_order[MR_Fish_key]), \
-                            @host_ip, @port].inspect)
-                          line_raw = PandoraUtils.rubyobj_to_pson(line)
-                          add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish)
-                        end
+                        #line = fish_order[MR_Fisher..MR_Fish_key]
+                        #if init_line(line) == false
+                        #  p log_mes+'Fish order to send: '+line.inspect
+                        #  PandoraUtils.log_message(LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
+                        #    +[PandoraUtils.bytes_to_hex(fish_order[MR_Fish]), \
+                        #    PandoraUtils.bytes_to_hex(fish_order[MR_Fish_key]), \
+                        #    @host_ip, @port].inspect)
+                        #  line_raw = PandoraUtils.rubyobj_to_pson(line)
+                        #  add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish)
+                        #end
                       when MK_Search
-                        p log_mes+'Send search request: '+req.inspect
-                        req_raw = PandoraUtils.rubyobj_to_pson(req)
-                        add_send_segment(EC_Query, true, req_raw, ECC_Query_Search)
+                        #p log_mes+'Send search request: '+req.inspect
+                        #req_raw = PandoraUtils.rubyobj_to_pson(req)
+                        #add_send_segment(EC_Query, true, req_raw, ECC_Query_Search)
                       when MK_Chat
                     end
                     processed += 1
@@ -16522,13 +16527,14 @@ module PandoraGtk
       if reqs or (not @last_mass_ind) or (@last_mass_ind < pool.mass_ind)
         @list_store.clear
         reqs ||= pool.mass_records
-        reqs.each do |sr|
-          if sr.is_a? Array
+        p '-----------reqs='+reqs.inspect
+        reqs.each do |mr|
+          if mr.is_a? Array
             user_iter = @list_store.append
-            user_iter[0] = sr[PandoraNet::SR_Index]
-            user_iter[1] = Utf8String.new(sr[PandoraNet::SR_Request])
-            user_iter[2] = Utf8String.new(sr[PandoraNet::SR_Kind])
-            user_iter[3] = Utf8String.new(sr[PandoraNet::SA_Answer].inspect)
+            user_iter[0] = mr[PandoraNet::MR_Index]
+            user_iter[1] = Utf8String.new(mr[PandoraNet::MRS_Request])
+            user_iter[2] = Utf8String.new(mr[PandoraNet::MRS_Kind])
+            user_iter[3] = Utf8String.new(mr[PandoraNet::MRA_Answer].inspect)
           end
         end
         if reqs
@@ -16712,7 +16718,8 @@ module PandoraGtk
             request = PandoraUtils.hex_to_bytes(request)
             p 'Search: Detect blob search  kind,sha1='+[kind,request].inspect
           end
-          reqs = $window.pool.add_search_request(request, kind, nil, nil, true)
+          #reqs = $window.pool.add_search_request(request, kind, nil, nil, true)
+          reqs = $window.pool.add_mass_record(PandoraNet::MK_Search, kind, request)
           show_all_reqs(reqs)
           PandoraGtk.set_readonly(stop_btn, true)
           PandoraGtk.set_readonly(widget, false)
