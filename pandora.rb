@@ -1383,6 +1383,20 @@ module PandoraUtils
     filename
   end
 
+  # Calc hex md5 of file
+  # RU: Вычисляет шестнадцатиричный md5 файла
+  def self.file_md5(filename=nil)
+    res = nil
+    filename ||= File.expand_path(__FILE__)   #pandora.rb
+    begin
+      md5 = Digest::MD5.file(filename)
+      res = md5.hexdigest
+    rescue
+    end
+    res ||= 'fail'
+    res
+  end
+
   # Abstract database adapter
   # RU:Абстрактный адаптер к БД
   class DatabaseSession
@@ -6848,6 +6862,11 @@ module PandoraNet
   $keep_intvl = 1  #(every, sec)
   $keep_cnt   = 4  #(count)
 
+  # Version of application and protocol (may be different)
+  # RU: Версия программы и протокола (могут отличаться)
+  AppVersion   = '0.56'
+  ProtoVersion = 'pandora0.56'
+
   class Session
 
     include PandoraUtils
@@ -7232,7 +7251,7 @@ module PandoraNet
             mode = 0
             mode |= CM_GetNotice if $get_notice
             mode |= CM_Captcha if (@conn_mode & CM_Captcha)>0
-            hparams = {:version=>'pandora0.56', :mode=>mode, :mykey=>key_hash, :tokey=>tokey, \
+            hparams = {:version=>ProtoVersion, :mode=>mode, :mykey=>key_hash, :tokey=>tokey, \
               :notice=>(($notice_depth << 8) | $notice_trust)}
             hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
             acipher = open_last_cipher(tokey)
@@ -7969,7 +7988,7 @@ module PandoraNet
                 recognize_params
                 if scmd != EC_Bye
                   vers = params['version']
-                  if vers=='pandora0.56'
+                  if vers==ProtoVersion
                     addr = params['addr']
                     p log_mes+'addr='+addr.inspect
                     # need to change an ip checking
@@ -7979,7 +7998,7 @@ module PandoraNet
                     @notice = params['notice']
                     init_skey_or_error(true)
                   else
-                    err_scmd('Protocol is not supported ('+vers.to_s+')')
+                    err_scmd('Protocol "'+vers.to_s+'" is not supported, must be "'+ProtoVersion+'"')
                   end
                 end
               elsif (rcode==ECC_Auth_Cipher) and ((@stage==ES_Protocol) or (@stage==ES_Cipher))
@@ -19042,12 +19061,15 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = '0.56'
+    dlg.version = PandoraNet::AppVersion
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
+    #dlg.documenters = dlg.authors
+    #dlg.translator_credits = dlg.authors.join("\n")
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
     dlg.comments = _('P2P folk network')
-    dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
+    dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')+\
+      "\n"+'(md5: '+PandoraUtils.file_md5+')'
     begin
       file = File.open(File.join($pandora_app_dir, 'LICENSE.TXT'), 'r')
       gpl_text = '================='+_('Full text')+" LICENSE.TXT==================\n"+file.read
