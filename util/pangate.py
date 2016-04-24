@@ -67,14 +67,15 @@ KEEPCNT = 4   #(count)
 # Internal constants
 MaxPackSize = 1500
 MaxSegSize  = 1200
-CommSize = 7
-CommExtSize = 10
+
+CommSize     = 7
+CommExtSize  = 10
 SegNAttrSize = 8
 
 # Network exchange comands
 # RU: Команды сетевого обмена
 EC_Media     = 0     # Медиа данные
-EC_Init      = 1     # Инициализация диалога (версия протокола, сжатие, авторизация, шифрование)
+EC_Auth      = 1     # Инициализация диалога (версия протокола, сжатие, авторизация, шифрование)
 EC_Message   = 2     # Мгновенное текстовое сообщение
 EC_Channel   = 3     # Запрос открытия медиа-канала
 EC_Query     = 4     # Запрос пачки сортов или пачки панхэшей
@@ -83,19 +84,27 @@ EC_Request   = 6     # Запрос записи/патча/миниатюры
 EC_Record    = 7     # Выдача записи
 EC_Lure      = 8     # Запрос рыбака (наживка)
 EC_Bite      = 9     # Ответ рыбки (поклевка)
-EC_Sync      = 10    # Последняя команда в серии, или индикация "живости"
-EC_Wait      = 254   # Временно недоступен
-EC_Bye       = 255   # Рассоединение
+EC_Fragment  = 10    # Кусок длинной записи
+EC_Mass      = 11    # Массовые уведомления
+EC_Presence  = 12    # Уведомление присутствия (пришел, ушел)
+EC_Fishing   = 13    # Уведомление о рыбалке
+EC_Search    = 14    # Уведомление поиска (запрос)
+EC_Chat      = 15    # Уведомление чата (открыл, закрыл, сообщение)
+EC_Sync      = 16    # !!! Последняя команда в серии, или индикация "живости"
+# --------------------------- EC_Sync must be last
+EC_Wait      = 126   # Временно недоступен
+EC_Bye       = 127   # Рассоединение
 # signs only
 EC_Data      = 256   # Ждем данные
 
-ECC_Init_Hello       = 0
-ECC_Init_Puzzle      = 1
-ECC_Init_Phrase      = 2
-ECC_Init_Sign        = 3
-ECC_Init_Captcha     = 4
-ECC_Init_Simple      = 5
-ECC_Init_Answer      = 6
+ECC_Auth_Hello       = 0
+ECC_Auth_Cipher      = 1
+ECC_Auth_Puzzle      = 2
+ECC_Auth_Phrase      = 3
+ECC_Auth_Sign        = 4
+ECC_Auth_Captcha     = 5
+ECC_Auth_Simple      = 6
+ECC_Auth_Answer      = 7
 
 ECC_Query0_Kinds      = 0
 ECC_Query255_AllChanges = 255
@@ -494,8 +503,8 @@ class ClientThread(threading.Thread):
   # RU: Принять полученный сегмент
   def accept_segment(self):
     #print('accept_segment:  self.rcmd, self.rcode, self.stage', self.rcmd, self.rcode, self.stage)
-    if (self.rcmd==EC_Init):
-      if (self.rcode==ECC_Init_Hello) and (self.stage==ST_Protocol):
+    if (self.rcmd==EC_Auth):
+      if (self.rcode==ECC_Auth_Hello) and (self.stage==ST_Protocol):
         print('self.rdata: ', self.rdata)
         if self.pool.collector:
           hole = self.pool.collector.add_hole_for_fisher(self)
@@ -511,15 +520,15 @@ class ClientThread(threading.Thread):
             self.srckey = self.rdata[i+7: i+7+22]
             #print('self.srckey', self.srckey, len(self.srckey), len(self.pool.keyhash))
             if (not self.pool.keyhash) or (self.srckey == self.pool.keyhash):
-              self.scmd = EC_Init
-              self.scode = ECC_Init_Simple
+              self.scmd = EC_Auth
+              self.scode = ECC_Auth_Simple
               self.sphrase = str(os.urandom(256))
               self.sbuf = self.sphrase
             else:
               self.err_scmd('Owner is offline')
           else:
             self.err_scmd('Bad hello')
-      elif (self.rcode==ECC_Init_Answer) and (self.stage==ST_Protocol):
+      elif (self.rcode==ECC_Auth_Answer) and (self.stage==ST_Protocol):
         sanswer = self.rdata
         fanswer = hashlib.sha256(self.sphrase+self.pool.password).digest()
         #print('phrase,answer: ', self.sphrase, PASSWORD_HASH, fanswer)
@@ -673,6 +682,8 @@ class ClientThread(threading.Thread):
           if (self.scmd != EC_Bye) and (self.scmd != EC_Wait): self.scmd = EC_Data
           # Обработаем поступившие команды и блоки данных
           rdata0 = self.rdata
+          if (self.scmd != EC_Media):
+            print('-->>>> before accept: [rcmd, rcode, rdata.size]=', self.rcmd, self.rcode, len(self.rdata))
           if (self.scmd != EC_Bye) and (self.scmd != EC_Wait) and (nextreadmode == RM_Comm):
             #print('-->>>> before accept: [rcmd, rcode, rdata.size]=', self.rcmd, self.rcode, len(self.rdata))
             #if self.rdata and (len(self.rdata)>0) and @r_encode
@@ -703,7 +714,7 @@ class ClientThread(threading.Thread):
           if self.scmd != EC_Data:
             #@sbuf = '' if scmd == EC_Bye
             #p log_mes+'add to queue [scmd, scode, sbuf]='+[scmd, scode, @sbuf].inspect
-            print('-->>>> before accept: [rcmd, rcode, rdata.size]=', self.rcmd, self.rcode, len(self.rdata))
+            #print('-->>>> before accept: [rcmd, rcode, rdata.size]=', self.rcmd, self.rcode, len(self.rdata))
             print('after accept ==>>>: [scmd, scode, sbuf.size]=', self.scmd, self.scode, len(self.sbuf))
             #print('recv/send: =', self.rcmd, self.rcode, len(rdata0), '/', self.scmd, self.scode, self.sbuf)
             #while PandoraGUI.get_queue_state(@send_queue) == QS_Full do

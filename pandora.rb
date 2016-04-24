@@ -5690,6 +5690,10 @@ module PandoraNet
   DefTcpPort = 5577
   DefUdpPort = 5577
 
+  CommSize     = 7
+  CommExtSize  = 10
+  SegNAttrSize = 8
+
   # Network exchange comands
   # RU: Команды сетевого обмена
   EC_Media     = 0     # Медиа данные
@@ -5714,10 +5718,6 @@ module PandoraNet
   EC_Bye       = 127   # Рассоединение
   # signs only
   EC_Data      = 256   # Ждем данные
-
-  CommSize     = 7
-  CommExtSize  = 10
-  SegNAttrSize = 8
 
   ECC_Auth_Hello       = 0
   ECC_Auth_Cipher      = 1
