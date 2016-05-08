@@ -1346,12 +1346,12 @@ module PandoraUtils
 
     change_path = Proc.new do |way,func|
       res = false
-      prefix = filename[0, way.size]
+      prefix = filename[0, way.size+1]
       if os_family=='windows'
         prefix.upcase!
         way = way.upcase
       end
-      if way==prefix
+      if ((way+'/')==prefix) or ((way+"\\")==prefix)
         func = '['+func+']' if func.size>1
         filename = File.join(func, filename[way.size..-1])
         res = true
@@ -6867,7 +6867,7 @@ module PandoraNet
 
   # Version of application and protocol (may be different)
   # RU: Версия программы и протокола (могут отличаться)
-  AppVersion   = '0.56'
+  AppVersion   = '0.57'
   ProtoVersion = 'pandora0.56'
 
   class Session
@@ -12283,7 +12283,7 @@ module PandoraGtk
             x, y = tv.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, \
               event.x, event.y)
             iter = tv.get_iter_at_location(x, y)
-            follow_if_link(tv, iter)
+            follow_if_link(iter)
           end
         end
         false
@@ -12332,7 +12332,7 @@ module PandoraGtk
       end
     end
 
-    def follow_if_link(body_child, iter)
+    def follow_if_link(iter)
       tags = iter.tags
       tags.each do |tag|
         if tag.is_a? LinkTag
@@ -12378,7 +12378,10 @@ module PandoraGtk
       'RED', 'GREEN', 'BLUE', 'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', \
       'LIME', 'AQUA', 'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER', \
       'URL', 'A', 'HREF', 'LINK', 'ANCHOR', 'QUOTE', 'BLOCKQUOTE', 'LIST', \
-      'CUT', 'SPOILER', 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', \
+      'CUT', 'SPOILER', 'CODE', 'INLINE', \
+      'INPUT', 'BUTTON', 'SPIN', 'INTEGER', 'HEX', 'REAL', 'DATETIME', 'DATE', \
+      'COORD', 'FILENAME', 'BASE64', 'PANHASH', 'BYTELIST', \
+      'PRE', 'SOURCE', 'MONO', 'MONOSPACE', \
       'IMG', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'SUB', 'SUP', \
       'ABBR', 'ACRONYM', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', \
       'LEFT', 'CENTER', 'RIGHT', 'FILL', 'IMAGES', 'SLIDE', 'SLIDESHOW', \
@@ -12461,6 +12464,13 @@ module PandoraGtk
           str = '#'+str
         end
         str
+      end
+
+      i = children.size
+      while i>0
+        i -= 1
+        child = children[i]
+        child.destroy if child and (not child.destroyed?)
       end
 
       aformat ||= 'auto'
@@ -12605,9 +12615,9 @@ module PandoraGtk
                           expander.add(etv)
                           iter = dest_buf.end_iter
                           anchor = dest_buf.create_child_anchor(iter)
-                          p 'CUT [body_child, expander, anchor]='+
-                            [body_child, expander, anchor].inspect
-                          body_child.add_child_at_anchor(expander, anchor)
+                          #p 'CUT [body_child, expander, anchor]='+
+                          #  [body_child, expander, anchor].inspect
+                          add_child_at_anchor(expander, anchor)
                           shift_coms(1)
                           expander.show_all
                         when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE'
@@ -12833,6 +12843,53 @@ module PandoraGtk
                                   #body_child.add_child_at_anchor(wid, anchor)
                                   #wid.show_all
                                 end
+                              when 'INPUT', 'BUTTON', 'SPIN', 'INTEGER', 'HEX', \
+                              'REAL', 'DATETIME', 'DATE', 'COORD', 'FILENAME', \
+                              'BASE64', 'PANHASH', 'BYTELIST'
+                                param = get_tag_param(params)
+                                widget = nil
+                                if comu=='INPUT'
+                                  widget = Gtk::Entry.new
+                                  widget.text = param if param
+                                elsif comu=='SPIN'
+                                  param ||= 100.0
+                                  widget = Gtk::SpinButton.new(0.0, param.to_f, 1.0)
+                                elsif comu=='INTEGER'
+                                  widget = IntegerEntry.new
+                                elsif comu=='HEX'
+                                  widget = HexEntry.new
+                                elsif comu=='REAL'
+                                  widget = FloatEntry.new
+                                elsif comu=='DATETIME'
+                                  #DateTimeEntry.new
+                                  widget = DateTimeBox.new
+                                elsif comu=='DATE'
+                                  widget = DateEntry.new
+                                elsif comu=='COORD'
+                                  widget = CoordBox.new
+                                elsif comu=='FILENAME'
+                                  widget = FilenameBox.new(window)
+                                elsif comu=='BASE64'
+                                  widget = Base64Entry.new
+                                elsif comu=='PANHASH'
+                                  widget = PanhashBox.new(param)
+                                elsif comu=='BYTELIST'
+                                  widget = ByteListEntry.new(PandoraModel::RelationNames)
+                                else
+                                  param ||= _('OK')
+                                  widget = Gtk::Button.new(param)
+                                end
+                                #etv.buffer.text = str[0, i1]
+                                #expander.add(etv)
+                                iter = dest_buf.end_iter
+                                p '----------children  widget='+widget.inspect
+                                p anchor = dest_buf.create_child_anchor(iter)
+                                #p 'CUT [body_child, expander, anchor]='+
+                                #  [body_child, expander, anchor].inspect
+                                p add_child_at_anchor(widget, anchor)
+                                shift_coms(1)
+                                widget.show_all
+                                p children
                               #end-case-when
                             end
                           end
@@ -13225,7 +13282,7 @@ module PandoraGtk
       # Ключевые слова Ruby
       RUBY_KEYWORDS = ('begin end module class def if then else elsif' \
         +' while unless do case when require yield rescue include').split
-      RUBY_KEYWORDS2 = 'self true false not and or nil '.split
+      RUBY_KEYWORDS2 = 'self nil true false not and or'.split
 
       # Call a code block with the text
       # RU: Вызвать блок кода по тексту
@@ -13245,18 +13302,20 @@ module PandoraGtk
         end
 
         def oper_char?(c)
-          '.+,-=*^%$()<>&[]:!?~{}|/\\'.include?(c)
+          ".+,-=*^%()<>&[]!?~{}|/\\".include?(c)
         end
 
         def rewind_ident(str, i, ss, pc, prev_kw=nil)
 
           def check_func(prev_kw, c, i, ss, str)
-            if (prev_kw=='def') and (c=='.')
-              yield(:operator, i, i+1)
-              i += 1
+            if (prev_kw=='def') and (c.nil? or (c=='.'))
+              if not c.nil?
+                yield(:operator, i, i+1)
+                i += 1
+              end
               i1 = i
               i += 1 while (i<ss) and ident_char?(str[i])
-              i += 1 if (i<ss) and ('?!'.include?(str[i]))
+              i += 1 if (i<ss) and ('=?!'.include?(str[i]))
               i2 = i
               yield(:function, i1, i2)
             end
@@ -13288,7 +13347,11 @@ module PandoraGtk
               yield(:module, i1, i2)
             else
               if big_cons
-                yield(:big_constant, i1, i2)
+                if ['TRUE', 'FALSE'].include?(str[i1, i2-i1])
+                  yield(:keyword2, i1, i2)
+                else
+                  yield(:big_constant, i1, i2)
+                end
               else
                 yield(:constant, i1, i2)
               end
@@ -13308,11 +13371,13 @@ module PandoraGtk
             elsif pc=='$'
               yield(:global, i1-1, i2)
             else
+              can_keyw = (((i1<=0) or " \t\n({}[]=|+&,".include?(str[i1-1])) \
+                and ((i2>=ss) or " \t\n(){}[]=|+&,.".include?(str[i2])))
               s = str[i1, i2-i1]
-              if RUBY_KEYWORDS.include?(s)
+              if can_keyw and RUBY_KEYWORDS.include?(s)
                 yield(:keyword, i1, i2)
                 kw = s
-              elsif RUBY_KEYWORDS2.include?(s)
+              elsif can_keyw and RUBY_KEYWORDS2.include?(s)
                 yield(:keyword2, i1, i2)
                 if (s=='self') and (prev_kw=='def')
                   i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
@@ -13322,7 +13387,16 @@ module PandoraGtk
               else
                 i += 1 if (i<ss) and ('?!'.include?(str[i]))
                 if prev_kw=='def'
-                  yield(:function, i1, i)
+                  if (i<ss) and (str[i]=='.')
+                    yield(:identifer, i1, i)
+                    i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
+                      yield(tag, id1, id2)
+                    end
+                  else
+                    i = check_func(prev_kw, nil, i1, ss, str) do |tag, id1, id2|
+                      yield(tag, id1, id2)
+                    end
+                  end
                 else
                   yield(:identifer, i1, i)
                 end
@@ -13401,17 +13475,11 @@ module PandoraGtk
                   i += 2
                   yield(:global, index + i1, index + i)
                   pc = ' '
-                elsif ((c==':') or (c=='$')) and (i+1<ss) and (ident_char?(str[i+1]))
-                  i += 1
-                  pc = c
-                  i, kw2 = rewind_ident(str, i, ss, pc) do |tag, id1, id2|
-                    yield(tag, index + id1, index + id2)
-                  end
-                  pc = ' '
-                elsif oper_char?(c)
+                elsif oper_char?(c) or ((pc==':') and (c==':'))
                   i1 = i
+                  i1 -=1 if (i1>0) and (c==':')
                   i += 1
-                  while (i<ss) and oper_char?(str[i])
+                  while (i<ss) and (oper_char?(str[i]) or (str[i]==':'))
                     i += 1
                   end
                   if i<ss
@@ -13419,6 +13487,13 @@ module PandoraGtk
                     c = str[i]
                   end
                   yield(:operator, index + i1, index + i)
+                elsif ((c==':') or (c=='$')) and (i+1<ss) and (ident_char?(str[i+1]))
+                  i += 1
+                  pc = c
+                  i, kw2 = rewind_ident(str, i, ss, pc) do |tag, id1, id2|
+                    yield(tag, index + id1, index + id2)
+                  end
+                  pc = ' '
                 elsif ('0'..'9').include?(c)
                   i1 = i
                   i += 1
@@ -13610,8 +13685,8 @@ module PandoraGtk
           tv.modify_font(nil)
           tv.hide
           view_buffer.text = ''
-          tv.insert_taged_str_to_buffer(raw_buffer.text, view_buffer, @format)
           tv.buffer = view_buffer
+          tv.insert_taged_str_to_buffer(raw_buffer.text, view_buffer, @format)
           tv.show
           #if text_changed
           #  bw.raw_buffer.text = bw.view_buffer.text
@@ -21152,7 +21227,6 @@ module PandoraGtk
 
       @notebook = Gtk::Notebook.new
       @notebook.scrollable = true
-      #@notebook.set_tab_reorderable(frame, true)
       notebook.signal_connect('switch-page') do |widget, page, page_num|
         cur_page = notebook.get_nth_page(page_num)
         if $last_page and (cur_page != $last_page) \
