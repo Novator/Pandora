@@ -11310,7 +11310,7 @@ module PandoraGtk
       vbox.pack_start(cal, false, false, 0)
 
       cal.can_default = true
-      cal.grab_default
+      #cal.grab_default
       cal.grab_focus
 
       vbox
@@ -12924,12 +12924,14 @@ module PandoraGtk
       end
     end
 
-    def set_tag(tag, aformat=nil)
+    def set_tag(tag, params=nil, aformat=nil)
       bounds = buffer.selection_bounds
       ltext = rtext = ''
       aformat ||= format
       case aformat
         when 'bbcode', 'html'
+          noclose = (tag and (tag[-1]=='/'))
+          tag = tag[0..-2] if noclose
           t = ''
           case tag
             when 'bold'
@@ -12950,8 +12952,13 @@ module PandoraGtk
             open_brek = '<'
             close_brek = '>'
           end
-          ltext = open_brek+t+close_brek
-          rtext = open_brek+'/'+t+close_brek
+          if params
+            params = '='+params
+          else
+            params = ''
+          end
+          ltext = open_brek+t+params+close_brek
+          rtext = open_brek+'/'+t+close_brek if not noclose
         when 'markdown'
           case tag
             when 'bold'
@@ -13756,7 +13763,7 @@ module PandoraGtk
 
     # Set tag for selection
     # RU: Задать тэг для выделенного
-    def set_tag(tag)
+    def set_tag(tag, params=nil)
       if tag
         bw = get_bodywin
         if bw
@@ -13766,7 +13773,7 @@ module PandoraGtk
             bounds = buffer.selection_bounds
             buffer.apply_tag(tag, bounds[0], bounds[1])
           else
-            tv.set_tag(tag, bw.format)
+            tv.set_tag(tag, params, bw.format)
           end
         end
       end
@@ -14028,14 +14035,14 @@ module PandoraGtk
         set_tag('fill')
       end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SELECT_COLOR, 'Color') do |*args|
-        set_tag('color')
+        set_tag('color', 'red')
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE, 'Save')
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OPEN, 'Open')
+      PandoraGtk.add_tool_btn(toolbar, :image, 'Image') do |*args|
+        set_tag('img/', 'pandora://0c05b2fac4ded5538dbb8efdb3c98d189eeb161d14c6')
+      end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link') do |*args|
-        set_tag('link')
+        set_tag('link', 'http://google.ru')
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::HOME, 'Image')
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Preview') do |btn|
         run_print_operation(true)
         true
@@ -14045,6 +14052,7 @@ module PandoraGtk
         true
       end
 
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE, 'Save')
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
 
@@ -20542,8 +20550,8 @@ module PandoraGtk
           PandoraNet.start_or_stop_listen
         when 'Hunt'
           screen, x, y, mask = Gdk::Display.default.pointer
-          continue = ((mask & Gdk::Window::SHIFT_MASK.to_i) == 0) \
-            and ((mask & Gdk::Window::CONTROL_MASK.to_i) == 0)
+          continue = (((mask & Gdk::Window::SHIFT_MASK.to_i) != 0) \
+            or ((mask & Gdk::Window::CONTROL_MASK.to_i) != 0))
           PandoraNet.start_or_stop_hunt(continue)
         #when 'Notice'
         #  $window.show_notice(true)
@@ -21093,6 +21101,7 @@ module PandoraGtk
                   processed = 0
                 end
               end
+              pool.mass_records.compact!
             end
             @mass_garb_offset += @scheduler_step
 
