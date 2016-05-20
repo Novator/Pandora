@@ -10826,33 +10826,40 @@ module PandoraGtk
       @entry = entry_class.new
       stock ||= :list
 
-      $window.register_stock(stock)
-      @button = Gtk::Button.new(stock)
-      PandoraGtk.set_button_text(@button)
-
-      #@button = GoodButton.new(stock, nil, nil) do
-      #  do_on_click
-      #end
-
       #@button = Gtk::ToolButton.new(:date)
       #buf = $window.get_icon_scale_buf(stock.to_s, 'pan', 15)
       #aimage = Gtk::Image.new(buf)
       #@button = Gtk::ToolButton.new(aimage, nil)
 
-      tooltip ||= stock.to_s.capitalize
-      @button.tooltip_text = _(tooltip)
-      @button.signal_connect('clicked') do |*args|
-        do_on_click
+      if PandoraUtils.os_family=='windows'
+        @button = GoodButton.new(stock, nil, nil) do
+          do_on_click
+        end
+      else
+        $window.register_stock(stock)
+        @button = Gtk::Button.new(stock)
+        PandoraGtk.set_button_text(@button)
+        
+        tooltip ||= stock.to_s.capitalize
+        @button.tooltip_text = _(tooltip)
+        @button.signal_connect('clicked') do |*args|
+          do_on_click
+        end
       end
-
+      
       @button.can_focus = false
 
       @entry.instance_variable_set('@button', @button)
-
       def @entry.key_event(widget, event)
         res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
           and (event.keyval==65364)))  # Space, Shift+Down or Alt+Down
-        @button.activate if res
+        if res
+          if @button.is_a? GoodButton
+            parent.do_on_click
+          else
+            @button.activate 
+          end
+        end
         false
       end
 
