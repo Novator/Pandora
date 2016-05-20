@@ -10612,13 +10612,19 @@ module PandoraGtk
     end
   end
 
-  def self.set_button_text(btn, text)
+  def self.set_button_text(btn, text=nil)
     alig = btn.children[0]
     if alig.is_a? Gtk::Bin
       hbox = alig.child
       if (hbox.is_a? Gtk::Box) and (hbox.children.size>1)
         lab = hbox.children[1]
-        lab.text = text if lab.is_a? Gtk::Label
+        if lab.is_a? Gtk::Label
+          if text.nil?
+            lab.destroy
+          else
+            lab.text = text
+          end
+        end
       end
     end
   end
@@ -10814,12 +10820,31 @@ module PandoraGtk
   class BtnEntry < Gtk::HBox
     attr_accessor :entry, :button, :close_on_enter
 
-    def initialize(entry_class, popup=true, *args)
+    def initialize(entry_class, stock=nil, tooltip=nil, *args)
       super(*args)
       @close_on_enter = true
       @entry = entry_class.new
+      stock ||= :list
 
-      @button = Gtk::Button.new('...')
+      $window.register_stock(stock)
+      @button = Gtk::Button.new(stock)
+      PandoraGtk.set_button_text(@button)
+
+      #@button = GoodButton.new(stock, nil, nil) do
+      #  do_on_click
+      #end
+
+      #@button = Gtk::ToolButton.new(:date)
+      #buf = $window.get_icon_scale_buf(stock.to_s, 'pan', 15)
+      #aimage = Gtk::Image.new(buf)
+      #@button = Gtk::ToolButton.new(aimage, nil)
+
+      tooltip ||= stock.to_s.capitalize
+      @button.tooltip_text = _(tooltip)
+      @button.signal_connect('clicked') do |*args|
+        do_on_click
+      end
+
       @button.can_focus = false
 
       @entry.instance_variable_set('@button', @button)
@@ -10838,73 +10863,72 @@ module PandoraGtk
       esize = entry.size_request
       h = esize[1]-2
       @button.set_size_request(h, h)
+    end
 
-      if popup
-        button.signal_connect('clicked') do |*args|
-          @entry.grab_focus
-          if @popwin and (not @popwin.destroyed?)
-            @popwin.destroy
-            @popwin = nil
-          else
-            @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
-            popwin = @popwin
-            popwin.transient_for = $window
-            popwin.modal = true
-            popwin.decorated = false
-            popwin.skip_taskbar_hint = true
+    def do_on_click
+      res = false
+      @entry.grab_focus
+      if @popwin and (not @popwin.destroyed?)
+        @popwin.destroy
+        @popwin = nil
+      else
+        @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
+        popwin = @popwin
+        popwin.transient_for = $window
+        popwin.modal = true
+        popwin.decorated = false
+        popwin.skip_taskbar_hint = true
 
-            popwidget = get_popwidget
-            popwin.add(popwidget)
-            popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
+        popwidget = get_popwidget
+        popwin.add(popwidget)
+        popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
 
-            popwin.signal_connect('focus-out-event') do |win, event|
-              GLib::Timeout.add(100) do
-                if not popwin.destroyed?
-                  @popwin.destroy
-                  @popwin = nil
-                end
-                false
-              end
-              false
+        popwin.signal_connect('focus-out-event') do |win, event|
+          GLib::Timeout.add(100) do
+            if not popwin.destroyed?
+              @popwin.destroy
+              @popwin = nil
             end
-
-            popwin.signal_connect('key-press-event') do |widget, event|
-              if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-                if @close_on_enter
-                  @popwin.destroy
-                  @popwin = nil
-                end
-                false
-              elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
-                ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
-                event.keyval) and event.state.control_mask?) #w, W, ц, Ц
-              then
-                @popwin.destroy
-                @popwin = nil
-                false
-              elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
-                event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
-                Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
-                and event.state.control_mask?) #q, Q, й, Й
-              then
-                @popwin.destroy
-                @popwin = nil
-                $window.do_menu_act('Quit')
-                false
-              else
-                false
-              end
-            end
-
-            pos = @entry.window.origin
-            all = @entry.allocation.to_a
-            popwin.move(pos[0], pos[1]+all[3]+1)
-
-            popwin.show_all
+            false
           end
           false
         end
+
+        popwin.signal_connect('key-press-event') do |widget, event|
+          if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+            if @close_on_enter
+              @popwin.destroy
+              @popwin = nil
+            end
+            false
+          elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+            ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
+            event.keyval) and event.state.control_mask?) #w, W, ц, Ц
+          then
+            @popwin.destroy
+            @popwin = nil
+            false
+          elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
+            event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
+            Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
+            and event.state.control_mask?) #q, Q, й, Й
+          then
+            @popwin.destroy
+            @popwin = nil
+            $window.do_menu_act('Quit')
+            false
+          else
+            false
+          end
+        end
+
+        pos = @entry.window.origin
+        all = @entry.allocation.to_a
+        popwin.move(pos[0], pos[1]+all[3]+1)
+
+        popwin.show_all
       end
+      res
     end
 
     def get_popwidget   # Example widget
@@ -11211,12 +11235,11 @@ module PandoraGtk
     attr_accessor :cal
 
     def initialize(*args)
-      super(MaskEntry, true, *args)
+      super(MaskEntry, :date, 'Date', *args)
       @close_on_enter = false
       @entry.mask = '0123456789.'
       @entry.max_length = 10
       @entry.tooltip_text = 'DD.MM.YYYY'
-      @button.label = 'D'
     end
 
     def update_mark(month, year, time_now=nil)
@@ -11323,11 +11346,10 @@ module PandoraGtk
     attr_accessor :hh_spin, :mm_spin, :ss_spin
 
     def initialize(*args)
-      super(MaskEntry, true, *args)
+      super(MaskEntry, :time, 'Time', *args)
       @entry.mask = '0123456789:'
       @entry.max_length = 8
       @entry.tooltip_text = 'hh:mm:ss'
-      @button.label = 'T'
     end
 
     def get_time(update_spin=nil)
@@ -11445,13 +11467,12 @@ module PandoraGtk
   class ByteListEntry < BtnEntry
 
     def initialize(code_name_list, *args)
-      super(MaskEntry, true, *args)
+      super(MaskEntry, :list, 'List', *args)
       @close_on_enter = false
       @code_name_list = code_name_list
       @entry.mask = '0123456789'
       @entry.max_length = 3
       @entry.tooltip_text = 'NNN'
-      @button.label = 'L'
     end
 
     def get_popwidget
@@ -11553,53 +11574,53 @@ module PandoraGtk
     attr_accessor :types, :panclasses
 
     def initialize(panhash_type, *args)
-      super(HexEntry, false, *args)
+      super(HexEntry, :panhash, 'Panhash', *args)
       @types = panhash_type
+    end
 
-      @button.signal_connect('clicked') do |*args|
-        @entry.grab_focus
-        set_classes
-        dialog = PandoraGtk::AdvancedDialog.new(_('Choose object'))
-        dialog.skip_taskbar_hint = true
-        dialog.set_default_size(600, 400)
-        auto_create = true
-        panclasses.each_with_index do |panclass, i|
-          title = _(PandoraUtils.get_name_or_names(panclass.name, true))
-          dialog.main_sw.destroy if i==0
-          image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
-          image.set_padding(2, 0)
-          label_box2 = TabLabelBox.new(image, title, nil, false, 0)
-          pbox = PandoraGtk::PanobjScrolledWindow.new
-          page = dialog.notebook.append_page(pbox, label_box2)
-          auto_create = PandoraGtk.show_panobject_list(panclass, nil, pbox, auto_create)
-          if panclasses.size>MaxPanhashTabs
-            break
-          end
+    def do_on_click
+      @entry.grab_focus
+      set_classes
+      dialog = PandoraGtk::AdvancedDialog.new(_('Choose object'))
+      dialog.skip_taskbar_hint = true
+      dialog.set_default_size(600, 400)
+      auto_create = true
+      panclasses.each_with_index do |panclass, i|
+        title = _(PandoraUtils.get_name_or_names(panclass.name, true))
+        dialog.main_sw.destroy if i==0
+        image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
+        image.set_padding(2, 0)
+        label_box2 = TabLabelBox.new(image, title, nil, false, 0)
+        pbox = PandoraGtk::PanobjScrolledWindow.new
+        page = dialog.notebook.append_page(pbox, label_box2)
+        auto_create = PandoraGtk.show_panobject_list(panclass, nil, pbox, auto_create)
+        if panclasses.size>MaxPanhashTabs
+          break
         end
-        dialog.notebook.page = 0
-        dialog.run2 do
-          panhash = nil
-          pbox = dialog.notebook.get_nth_page(dialog.notebook.page)
-          treeview = pbox.treeview
-          if treeview.is_a? SubjTreeView
-            path, column = treeview.cursor
-            panobject = treeview.panobject
-            if path and panobject
-              store = treeview.model
-              iter = store.get_iter(path)
-              id = iter[0]
-              sel = panobject.select('id='+id.to_s, false, 'panhash')
-              panhash = sel[0][0] if sel and (sel.size>0)
-            end
-          end
-          if PandoraUtils.panhash_nil?(panhash)
-            @entry.text = ''
-          else
-            @entry.text = PandoraUtils.bytes_to_hex(panhash) if (panhash.is_a? String)
-          end
-        end
-        true
       end
+      dialog.notebook.page = 0
+      dialog.run2 do
+        panhash = nil
+        pbox = dialog.notebook.get_nth_page(dialog.notebook.page)
+        treeview = pbox.treeview
+        if treeview.is_a? SubjTreeView
+          path, column = treeview.cursor
+          panobject = treeview.panobject
+          if path and panobject
+            store = treeview.model
+            iter = store.get_iter(path)
+            id = iter[0]
+            sel = panobject.select('id='+id.to_s, false, 'panhash')
+            panhash = sel[0][0] if sel and (sel.size>0)
+          end
+        end
+        if PandoraUtils.panhash_nil?(panhash)
+          @entry.text = ''
+        else
+          @entry.text = PandoraUtils.bytes_to_hex(panhash) if (panhash.is_a? String)
+        end
+      end
+      true
     end
 
     # Define allowed pandora object classes
@@ -11751,37 +11772,36 @@ module PandoraGtk
     attr_accessor :window
 
     def initialize(parent, *args)
-      super(Gtk::Entry, false, *args)
-
+      super(Gtk::Entry, Gtk::Stock::OPEN, 'File', *args)
       @window = parent
-      @button.signal_connect('clicked') do |*args|
-        @entry.grab_focus
-        fn = PandoraUtils.absolute_path(@entry.text)
+    end
 
-        dialog = GoodFileChooserDialog.new(fn, true, nil, @window)
+    def do_on_click
+      @entry.grab_focus
+      fn = PandoraUtils.absolute_path(@entry.text)
+      dialog = GoodFileChooserDialog.new(fn, true, nil, @window)
 
-        filter = Gtk::FileFilter.new
-        filter.name = _('Pictures')+' (*.png,*.jpg,*.gif)'
-        filter.add_pattern('*.png')
-        filter.add_pattern('*.jpg')
-        filter.add_pattern('*.jpeg')
-        filter.add_pattern('*.gif')
-        dialog.add_filter(filter)
+      filter = Gtk::FileFilter.new
+      filter.name = _('Pictures')+' (*.png,*.jpg,*.gif)'
+      filter.add_pattern('*.png')
+      filter.add_pattern('*.jpg')
+      filter.add_pattern('*.jpeg')
+      filter.add_pattern('*.gif')
+      dialog.add_filter(filter)
 
-        filter = Gtk::FileFilter.new
-        filter.name = _('Sounds')+' (*.mp3,*.wav)'
-        filter.add_pattern('*.mp3')
-        filter.add_pattern('*.wav')
-        dialog.add_filter(filter)
+      filter = Gtk::FileFilter.new
+      filter.name = _('Sounds')+' (*.mp3,*.wav)'
+      filter.add_pattern('*.mp3')
+      filter.add_pattern('*.wav')
+      dialog.add_filter(filter)
 
-        if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
-          filename0 = @entry.text
-          @entry.text = PandoraUtils.relative_path(dialog.filename)
-          yield(@entry.text, @entry, @button, filename0) if block_given?
-        end
-        dialog.destroy if not dialog.destroyed?
-        true
+      if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
+        filename0 = @entry.text
+        @entry.text = PandoraUtils.relative_path(dialog.filename)
+        yield(@entry.text, @entry, @button, filename0) if block_given?
       end
+      dialog.destroy if not dialog.destroyed?
+      true
     end
 
     def width_request=(wr)

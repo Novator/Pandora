@@ -386,3 +386,7 @@ many smiles=>много смайлов
 broadcast to ports=>оповещение на порты
 Cannot send=>Не могу послать
 Color tags=>Цветные теги
+Date=>Дата
+List=>Список
+Panhash=>Панхэш
+File=>Файл
