@@ -10839,14 +10839,14 @@ module PandoraGtk
         $window.register_stock(stock)
         @button = Gtk::Button.new(stock)
         PandoraGtk.set_button_text(@button)
-        
+
         tooltip ||= stock.to_s.capitalize
         @button.tooltip_text = _(tooltip)
         @button.signal_connect('clicked') do |*args|
           do_on_click
         end
       end
-      
+
       @button.can_focus = false
 
       @entry.instance_variable_set('@button', @button)
@@ -10857,7 +10857,7 @@ module PandoraGtk
           if @button.is_a? GoodButton
             parent.do_on_click
           else
-            @button.activate 
+            @button.activate
           end
         end
         false
@@ -11589,21 +11589,27 @@ module PandoraGtk
       @entry.grab_focus
       set_classes
       dialog = PandoraGtk::AdvancedDialog.new(_('Choose object'))
+
+      $window.register_stock(:panhash)
+      iconset = Gtk::IconFactory.lookup_default('panhash')
+      style = Gtk::Widget.default_style  #Gtk::Style.new
+      anicon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
+        Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
+      dialog.icon = anicon
+
       dialog.skip_taskbar_hint = true
       dialog.set_default_size(600, 400)
       auto_create = true
       panclasses.each_with_index do |panclass, i|
         title = _(PandoraUtils.get_name_or_names(panclass.name, true))
         dialog.main_sw.destroy if i==0
-        image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
+        #image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
+        image = $window.get_panobject_image(panclass.ider, Gtk::IconSize::MENU)
         image.set_padding(2, 0)
         label_box2 = TabLabelBox.new(image, title, nil, false, 0)
         pbox = PandoraGtk::PanobjScrolledWindow.new
         page = dialog.notebook.append_page(pbox, label_box2)
         auto_create = PandoraGtk.show_panobject_list(panclass, nil, pbox, auto_create)
-        if panclasses.size>MaxPanhashTabs
-          break
-        end
       end
       dialog.notebook.page = 0
       dialog.run2 do
@@ -11630,10 +11636,10 @@ module PandoraGtk
       true
     end
 
-    # Define allowed pandora object classes
-    # RU: Определить допустимые классы Пандоры
+    # Define panobject class list
+    # RU: Определить список классов панобъектов
     def set_classes
-      if not panclasses
+      if not @panclasses
         #p '=== types='+types.inspect
         @panclasses = []
         @types.strip!
@@ -11644,11 +11650,25 @@ module PandoraGtk
           @types.each do |ptype|
             ptype.strip!
             if PandoraModel.const_defined? ptype
-              panclasses << PandoraModel.const_get(ptype)
+              @panclasses << PandoraModel.const_get(ptype)
             end
           end
         end
-        #p 'panclasses='+panclasses.inspect
+        if @panclasses.size==0
+          kind_list = PandoraModel.get_kind_list
+          kind_list.each do |rec|
+            ptype = rec[1]
+            ptype.strip!
+            p '---ptype='+ptype.inspect
+            if PandoraModel.const_defined? ptype
+              @panclasses << PandoraModel.const_get(ptype)
+            end
+            if @panclasses.size>MaxPanhashTabs
+              break
+            end
+          end
+        end
+        p '====panclasses='+panclasses.inspect
       end
     end
 
