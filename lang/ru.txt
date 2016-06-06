@@ -390,3 +390,5 @@ Date=>Дата
 List=>Список
 Panhash=>Панхэш
 File=>Файл
+Image=>Картинка
+Link=>Ссылка

@@ -467,6 +467,29 @@ module PandoraUtils
     res
   end
 
+  # Convert color to hex string
+  # RU: Преобразует цвет в 16-й формат
+  def self.color_to_str(color)
+    res = nil
+    if color
+      res = '#'
+      colors = color.to_a
+      colors.each do |c|
+        c = c/256 if c>255
+        res << ('%02x' % c)
+      end
+      case res
+        when '#ff0000'
+          res = 'red'
+        when '#00ff00'
+          res = 'green'
+        when '#0000ff'
+          res = 'blue'
+      end
+    end
+    res
+  end
+
   def self.hex?(value)
     res = (/^[0-9a-fA-F]*$/ === value)
   end
@@ -5857,9 +5880,9 @@ module PandoraNet
   # Mass record kinds
   # RU: Типы массовых записей
   MK_Presence   = 1
-  MK_Fishing    = 2
+  MK_Chat       = 2
   MK_Search     = 3
-  MK_Chat       = 4
+  MK_Fishing    = 4
 
   # Common field indexes of mass record array  #(size of field)
   # RU: Общие индексы полей в векторе массовых записей
@@ -5895,7 +5918,7 @@ module PandoraNet
   #----Head sum: 70
   MRF_Fish            = 9    #22
   MRF_Fish_key        = 10   #22    #sum: 71+44=  115
-  MRL_Fish_Baseid  =  MRF_Fish_key + 1
+  MRL_Fish_Baseid     = 11   #16
 
   # Punnet field indexes
   # RU: Индексы полей в корзине
@@ -5963,6 +5986,66 @@ module PandoraNet
     # RU: Ip в черном списке?
     def is_black?(ip)
       false
+    end
+
+    # Open or close local port and register tunnel
+    # RU: Открыть или закрыть локальный порт и зарегать туннель
+    def local_port(add, from, proto, session)
+      #control_tunnel
+      port = 22
+      host = nil
+      i = from.index(':')
+      if i
+        host = from[0, i]
+        port = from[i+1..-1]
+      else
+        port = from
+      end
+      host ||= Socket::INADDR_ANY
+      if port and host
+        port = port.to_i
+        Thread.new do
+          begin
+            server = TCPServer.open(host, port)
+            addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
+            PandoraUtils.log_message(LM_Info, _('Tunnel listen')+': '+addr_str)
+          rescue
+            server = nil
+            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' TCP '+host.to_s+':'+tcp_port.to_s)
+          end
+          thread = Thread.current
+          thread[:tcp_server] = server
+          thread[:listen_tcp] = (server != nil)
+          while thread[:listen_tcp] and server and (not server.closed?)
+            socket = get_listener_client_or_nil(server)
+            while thread[:listen_tcp] and not server.closed? and not socket
+              sleep 0.05
+              #Thread.pass
+              #Gtk.main_iteration
+              socket = get_listener_client_or_nil(server)
+            end
+
+            if Thread.current[:listen_tcp] and (not server.closed?) and socket
+              host_ip = socket.peeraddr[2]
+              unless $window.pool.is_black?(host_ip)
+                host_name = socket.peeraddr[3]
+                port = socket.peeraddr[1]
+                proto = 'tcp'
+                p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
+                session = Session.new(socket, host_name, host_ip, port, proto, \
+                  0, nil, nil, nil, nil)
+              else
+                PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
+              end
+            end
+          end
+          server.close if server and (not server.closed?)
+          PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
+          #$window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
+          #$tcp_listen_thread = nil
+          #$window.correct_lis_btn_state
+        end
+      end
     end
 
     # Check is whole file exist
@@ -7524,6 +7607,22 @@ module PandoraNet
         end
       end
 
+      # Add or delete tunnel
+      # RU: Добавить или удалить туннель
+      def control_tunnel(direct, add, from, to, proto='tcp')
+        if direct
+          tunnel = pool.local_port(add, from, proto, self)
+          if tunnel
+            @scmd = EC_Channel
+            @scode = ECC_Channel1_Opened
+            @sbuf = PandoraUtils.rubyobj_to_pson([add, from, to, proto, tunnel])
+          else
+            err_scmd('Cannot rule local port')+': [add, from, proto]='+[add, from, proto].inspect
+          end
+        else
+        end
+      end
+
       # Update record about node
       # RU: Обновить запись об узле
       def update_node(skey_panhash=nil, sbase_id=nil, trust=nil, session_key=nil)
@@ -8599,6 +8698,21 @@ module PandoraNet
                             $window.do_menu_act(chat_par)
                           when 'sound'
                             PandoraUtils.play_mp3(chat_par, nil, true)
+                          when 'tunnel'
+                            params = PandoraUtils.parse_params(chat_par)
+                            from = params[:from]
+                            from ||= params[:from_here]
+                            direct = nil
+                            if from
+                              direct = true
+                            else
+                              direct = false
+                              from = params[:from_there]
+                            end
+                            if not direct.nil?
+                              add = (not (params.has_key?(:del) or params.has_key?(:delete)))
+                              control_tunnel(direct, add, from, params[:to], params[:proto])
+                            end
                           else
                             PandoraUtils.log_message(LM_Info, _('Unknown chat command')+': '+chat_com)
                         end
@@ -12473,34 +12587,34 @@ module PandoraGtk
 
       def detect_params(params)
         res = {}
-        if (params.is_a? String) and (params.size>0)
-          i = params.index(' ')
-          i ||= params.size
-          while i
-            p 'params,i='+[params,i].inspect
-            param = params[0, i]
+        while (params.is_a? String) and (params.size>0)
+          params.strip if params
+          n = nil
+          v = nil
+          i = params.index('=')
+          if i and (i>0)
+            n = params[0, i]
             params = params[i+1..-1]
             params.strip if params
-            if (param.is_a? String) and (param.size>0)
-              j = param.index('=')
-              if j and (j>0)
-                n = param[0, j].strip.downcase
-                if n and (n.size>0)
-                  v = param[j+1..-1]
-                  v.strip if v
-                  res[n] = remove_quotes(v.strip) if v and (v.size>0)
-                  p 'n,v='+[n,v].inspect
-                end
-              end
-            end
-            if params
-              i = params.index(' ')
-              i ||= params.size
-              i = nil if (i<=0)
+            i = params.size
+            j = params.index(' ')
+            k = params.index('"', 1)
+            if (i>0) and (params[0]=='"') and k
+              v = params[0..k]
+              params = params[k+1..-1]
+            elsif j
+              v = params[0, j]
+              params = params[j+1..-1]
             else
-              i = nil
+              v = params
+              params = ''
             end
+          else
+            n = params
+            params = ''
           end
+          n = n.strip.downcase
+          res[n] = remove_quotes(v.strip) if v and (v.size>0)
         end
         p 'detect_params(params)res='+[params, res].inspect
         res
@@ -12709,7 +12823,8 @@ module PandoraGtk
                           sz = nil
                           js = nil #left, right...
                           fam = nil
-                          wt = nil #bold, italic...
+                          wt = nil #bold
+                          st = nil #italic...
 
                           case comu
                             when 'FG', 'FORE', 'FOREGROUND', 'COLOR', 'COLOUR'
@@ -12735,10 +12850,14 @@ module PandoraGtk
                                 js ||= param_hash['justification']
                                 fam = param_hash['fam']
                                 fam ||= param_hash['family']
+                                fam ||= param_hash['font']
                                 fam ||= param_hash['name']
                                 wt = param_hash['wt']
                                 wt ||= param_hash['weight']
                                 wt ||= param_hash['bold']
+                                st = param_hash['st']
+                                st ||= param_hash['style']
+                                st ||= param_hash['italic']
                               end
                             #end-case-when
                           end
@@ -12771,6 +12890,10 @@ module PandoraGtk
                           if wt
                             tag_name << '_wt'+wt.to_s
                             tag_params['weight'] = wt.to_i
+                          end
+                          if st
+                            tag_name << '_st'+st.to_s
+                            tag_params['style'] = st.to_i
                           end
                           if js
                             js = js.upcase
@@ -12971,7 +13094,7 @@ module PandoraGtk
       end
     end
 
-    def set_tag(tag, params=nil, aformat=nil)
+    def set_tag(tag, params=nil, defval=nil, aformat=nil)
       bounds = buffer.selection_bounds
       ltext = rtext = ''
       aformat ||= format
@@ -12999,8 +13122,15 @@ module PandoraGtk
             open_brek = '<'
             close_brek = '>'
           end
-          if params
+          if params.is_a? String
             params = '='+params
+          elsif params.is_a? Hash
+            all = ''
+            params.each do |k,v|
+              all << ' '
+              all << k.to_s + '="' + v.to_s + '"'
+            end
+            params = all
           else
             params = ''
           end
@@ -13020,6 +13150,10 @@ module PandoraGtk
       end
       lpos = bounds[0].offset
       rpos = bounds[1].offset
+      if (lpos==rpos) and (defval.is_a? String)
+        buffer.insert(buffer.get_iter_at_offset(lpos), defval)
+        rpos += defval.size
+      end
       if ltext != ''
         buffer.insert(buffer.get_iter_at_offset(lpos), ltext)
         lpos += ltext.length
@@ -13795,22 +13929,31 @@ module PandoraGtk
 
     # Add menu item
     # RU: Добавляет пункт меню
-    def add_menu_item(btn, menu, text)
-      mi = Gtk::MenuItem.new(text)
+    def add_menu_item(btn, menu, stock, text=nil)
+      mi = nil
+      if stock.is_a? String
+        mi = Gtk::MenuItem.new(stock)
+      else
+        mi = Gtk::ImageMenuItem.new(stock)
+        mi.label = _(text) if text
+      end
       menu.append(mi)
       mi.signal_connect('activate') do |mi|
-        btn.label = mi.label
-        if bw = get_bodywin
-          bw.format = mi.label.to_s
-          p 'format changed to: '+bw.format.to_s
-          bw.set_buffers
+        if block_given?
+          yield
+        else
+          btn.label = mi.label
+          if bw = get_bodywin
+            bw.format = mi.label.to_s
+            bw.set_buffers
+          end
         end
       end
     end
 
     # Set tag for selection
     # RU: Задать тэг для выделенного
-    def set_tag(tag, params=nil)
+    def set_tag(tag, params=nil, defval=nil)
       if tag
         bw = get_bodywin
         if bw
@@ -13820,7 +13963,7 @@ module PandoraGtk
             bounds = buffer.selection_bounds
             buffer.apply_tag(tag, bounds[0], bounds[1])
           else
-            tv.set_tag(tag, params, bw.format)
+            tv.set_tag(tag, params, defval, bw.format)
           end
         end
       end
@@ -14051,57 +14194,194 @@ module PandoraGtk
       menu.show_all
       toolbar.add(btn)
 
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::BOLD, 'Bold') do |*args|
+      toolbar.add(Gtk::SeparatorToolItem.new)
+
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::BOLD) do |*args|
         set_tag('bold')
       end
 
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::ITALIC, 'Italic') do |*args|
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::ITALIC, nil, 0) do |*args|
         set_tag('italic')
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::STRIKETHROUGH, 'Strike') do |*args|
-        set_tag('strike')
-      end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::UNDERLINE, 'Underline') do |*args|
+      menu = Gtk::Menu.new
+      btn.menu = menu
+      add_menu_item(btn, menu, Gtk::Stock::UNDERLINE) do
         set_tag('undline')
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::UNDO, 'Undo')
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::REDO, 'Redo')
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::COPY, 'Copy')
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::CUT, 'Cut')
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::FIND, 'Find')
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_LEFT, 'Left') do |*args|
-        set_tag('left')
+      add_menu_item(btn, menu, Gtk::Stock::STRIKETHROUGH) do
+        set_tag('strike')
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_RIGHT, 'Right') do |*args|
-        set_tag('right')
+      add_menu_item(btn, menu, Gtk::Stock::UNDERLINE) do
+        set_tag('d')
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_CENTER, 'Center') do |*args|
+      menu.show_all
+
+      @selected_color = 'red'
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SELECT_COLOR, nil, 0) do |*args|
+        set_tag('color', @selected_color)
+      end
+      menu = Gtk::Menu.new
+      btn.menu = menu
+      add_menu_item(btn, menu, Gtk::Stock::SELECT_COLOR) do
+        screen, x, y, mask = Gdk::Display.default.pointer
+        shift_or_ctrl = (((mask & Gdk::Window::SHIFT_MASK.to_i) != 0) \
+          or ((mask & Gdk::Window::CONTROL_MASK.to_i) != 0))
+        dialog = Gtk::ColorSelectionDialog.new
+        dialog.set_transient_for(self)
+        colorsel = dialog.colorsel
+        color = Gdk::Color.parse(@selected_color)
+        colorsel.set_previous_color(color)
+        colorsel.set_current_color(color)
+        colorsel.set_has_palette(true)
+        if dialog.run == Gtk::Dialog::RESPONSE_OK
+          color = colorsel.current_color
+          if shift_or_ctrl
+            @selected_color = color.to_s
+          else
+            @selected_color = PandoraUtils.color_to_str(color)
+          end
+          set_tag('color', @selected_color)
+        end
+        dialog.destroy
+      end
+      @selected_font = 'Sans 10'
+      add_menu_item(btn, menu, Gtk::Stock::SELECT_FONT) do
+        dialog = Gtk::FontSelectionDialog.new
+        dialog.font_name = @selected_font
+        #dialog.preview_text = 'P2P folk network Pandora'
+        if dialog.run == Gtk::Dialog::RESPONSE_OK
+          @selected_font = dialog.font_name
+          desc = Pango::FontDescription.new(@selected_font)
+          params = {'family'=>desc.family, 'size'=>desc.size/Pango::SCALE}
+          params['style']='1' if desc.style==Pango::FontDescription::STYLE_OBLIQUE
+          params['style']='2' if desc.style==Pango::FontDescription::STYLE_ITALIC
+          params['weight']='600' if desc.weight==Pango::FontDescription::WEIGHT_BOLD
+          set_tag('font', params)
+        end
+        dialog.destroy
+      end
+      menu.show_all
+
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_CENTER, nil, 0) do |*args|
         set_tag('center')
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_FILL, 'Fill') do |*args|
+      menu = Gtk::Menu.new
+      btn.menu = menu
+      add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_RIGHT) do
+        set_tag('right')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_FILL) do
         set_tag('fill')
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SELECT_COLOR, 'Color') do |*args|
-        set_tag('color', 'red')
+      add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_LEFT) do
+        set_tag('left')
       end
+      menu.show_all
+
       PandoraGtk.add_tool_btn(toolbar, :image, 'Image') do |*args|
         set_tag('img/', 'pandora://0c05b2fac4ded5538dbb8efdb3c98d189eeb161d14c6')
       end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link') do |*args|
-        set_tag('link', 'http://google.ru')
-      end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, 'Preview') do |btn|
-        run_print_operation(true)
-        true
-      end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT, 'Print') do |btn|
-        run_print_operation
-        true
+        set_tag('link', 'http://priroda.su', 'Priroda.SU')
       end
 
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE, 'Save')
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::INDENT, 'h1', 0) do |*args|
+        set_tag('h1')
+      end
+      menu = Gtk::Menu.new
+      btn.menu = menu
+      add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h2') do
+        set_tag('h2')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h3') do
+        set_tag('h3')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h4') do
+        set_tag('h4')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h5') do
+        set_tag('h5')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h6') do
+        set_tag('h6')
+      end
+      menu.show_all
+
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::INDEX, 'mono', 0) do |*args|
+        set_tag('mono')
+      end
+      menu = Gtk::Menu.new
+      btn.menu = menu
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'quote') do
+        set_tag('quote')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'cut') do
+        set_tag('cut')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'hr') do
+        set_tag('hr', '150')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'sub') do
+        set_tag('sub')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'sup') do
+        set_tag('sup')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'small') do
+        set_tag('small')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'large') do
+        set_tag('large')
+      end
+      menu.show_all
+
+      toolbar.add(Gtk::SeparatorToolItem.new)
+
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::FIND, nil, 0) do |*args|
+        #find
+      end
+      menu = Gtk::Menu.new
+      btn.menu = menu
+      add_menu_item(btn, menu, Gtk::Stock::FIND_AND_REPLACE) do
+        #replace
+      end
+      menu.show_all
+
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, nil, 0) do |*args|
+        run_print_operation(true)
+      end
+      menu = Gtk::Menu.new
+      btn.menu = menu
+      add_menu_item(btn, menu, Gtk::Stock::PRINT) do
+        run_print_operation
+      end
+      add_menu_item(btn, menu, Gtk::Stock::PAGE_SETUP) do
+        #page_setup
+      end
+      menu.show_all
+
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::UNDO, nil, 0) do |*args|
+        #do undo
+      end
+      menu = Gtk::Menu.new
+      btn.menu = menu
+      add_menu_item(btn, menu, Gtk::Stock::REDO) do
+        #redo
+      end
+      add_menu_item(btn, menu, Gtk::Stock::COPY) do
+        #copy
+      end
+      add_menu_item(btn, menu, Gtk::Stock::CUT) do
+        #cut
+      end
+      add_menu_item(btn, menu, Gtk::Stock::PASTE) do
+        #paste
+      end
+      menu.show_all
+
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE)
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) { |*args| @response=2 }
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::CANCEL) { |*args| @response=1 }
 
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ADD, 'Add')
       PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::DELETE, 'Delete')
@@ -15170,6 +15450,8 @@ module PandoraGtk
       $window.register_stock(:dialog)
       dialog_btn = PandoraGtk::SafeToggleToolButton.new(:dialog)
       dialog_btn.tooltip_text = _('Dialog')
+      #dialog_btn.safe_set_active(true)
+      dialog_btn.active = true
       option_box.pack_start(dialog_btn, false, false, 2)
 
       $window.register_stock(:chat)
@@ -17541,7 +17823,7 @@ module PandoraGtk
 
   # Add button to toolbar
   # RU: Добавить кнопку на панель инструментов
-  def self.add_tool_btn(toolbar, stock, title, toggle=nil)
+  def self.add_tool_btn(toolbar, stock, title=nil, toggle=nil)
     btn = nil
     #p 'stock='+stock.inspect
     if stock.is_a? String
@@ -17558,11 +17840,16 @@ module PandoraGtk
     if toggle.nil?
       #btn = Gtk::ToolButton.new(iconset, _(title))
       #btn = Gtk::ToolButton.new(image, _(title))
-      btn = Gtk::ToolButton.new(stock, _(title))
+      btn = Gtk::ToolButton.new(stock) #, _(title))
       btn.signal_connect('clicked') do |*args|
         yield(*args) if block_given?
       end
       #btn.label = title
+    elsif toggle.is_a? Integer
+      btn = Gtk::MenuToolButton.new(stock)
+      btn.signal_connect('clicked') do |*args|
+        yield(*args) if block_given?
+      end
     else
       btn = SafeToggleToolButton.new(stock)
       #btn = Gtk::ToolButton.new(image, _(title))
@@ -17573,10 +17860,21 @@ module PandoraGtk
       #btn.active = toggle if toggle
       btn.safe_set_active(toggle) if toggle
     end
-    lang_title = _(title)
-    lang_title.gsub!('_', '')
-    btn.tooltip_text = lang_title
-    btn.label = title
+    if title
+      lang_title = _(title)
+      lang_title.gsub!('_', '')
+      btn.tooltip_text = lang_title
+      btn.label = title
+    elsif stock
+      stock_info = Gtk::Stock.lookup(stock)
+      if (stock_info.is_a? Array) and (stock_info.size>0)
+        label = stock_info[1]
+        if label
+          label.gsub!('_', '')
+          btn.tooltip_text = label
+        end
+      end
+    end
     toolbar.add(btn)
     btn
   end
