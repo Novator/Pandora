@@ -213,15 +213,16 @@
     <Expenditure parent="Debenture" kind="156">
     </Expenditure>
 
-    <Offense parent="Created" kind="157">
+    <Offense parent="Blob" kind="157">
     </Offense>
 
-    <Punishment parent="Created" kind="158">
+    <Punishment parent="Blob" kind="158">
+      <offense name="Offense" type="Panhash(Offense)" />
     </Punishment>
 
     <Delegation parent="Created" kind="159">
       <delegate name="Delegate" type="Panhash(Person)" hash="2:panhash(5)" />
-      <target name="Target" type="Panhash(Project, Resolution, Law)" hash="3:panhash(5)" />
+      <target name="Target" type="Panhash(Project, Resolution, Law, Punishment)" hash="3:panhash(5)" />
       <creator hash="1:phash(5)" />
       <created hash="2:integer(4)" />
       <expire name="Expire" type="Time" />

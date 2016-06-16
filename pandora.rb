@@ -11237,7 +11237,7 @@ module PandoraGtk
         hbox.pack_start(@vk_btn, true, true, 0)
         $window.register_stock(:bomb, 'qip')
         @poly_btn = GoodButton.new(:bomb_qip, nil, false)
-        @poly_btn.tooltip_text = _('many smiles')
+        @poly_btn.tooltip_text = _('Many smiles')
         hbox.pack_start(@poly_btn, false, false, 0)
         root_vbox.pack_start(hbox, false, true, 0)
         if preset=='vk'
@@ -14631,14 +14631,14 @@ module PandoraGtk
       #rbvbox = Gtk::VBox.new
 
       keep_box = Gtk::VBox.new
-      @keep_btn = Gtk::CheckButton.new(_('keep'), true)
+      @keep_btn = Gtk::CheckButton.new(_('Keep'), true)
       #keep_btn.signal_connect('toggled') do |widget|
       #  p "keep"
       #end
       #rbvbox.pack_start(keep_btn, false, false, 0)
       #@rate_label = Gtk::Label.new('-')
       keep_box.pack_start(keep_btn, false, false, 0)
-      @follow_btn = Gtk::CheckButton.new(_('follow'), true)
+      @follow_btn = Gtk::CheckButton.new(_('Follow'), true)
       follow_btn.signal_connect('clicked') do |widget|
         if widget.inconsistent?
           if PandoraCrypto.current_user_or_key(false)
@@ -14665,7 +14665,7 @@ module PandoraGtk
 
       trust0 = nil
       @trust_scale = nil
-      @vouch_btn = Gtk::CheckButton.new(_('vouch'), true)
+      @vouch_btn = Gtk::CheckButton.new(_('Vouch'), true)
       vouch_btn.signal_connect('clicked') do |widget|
         if not widget.destroyed?
           if widget.inconsistent?
@@ -14693,7 +14693,7 @@ module PandoraGtk
 
       pub_lev0 = nil
       public_box = Gtk::VBox.new
-      @public_btn = Gtk::CheckButton.new(_('public'), true)
+      @public_btn = Gtk::CheckButton.new(_('Public'), true)
       public_btn.signal_connect('clicked') do |widget|
         if not widget.destroyed?
           if widget.inconsistent?
@@ -15536,8 +15536,21 @@ module PandoraGtk
         smile_img = ' '+smile_img if editbox.buffer.text != ''
         editbox.buffer.insert_at_cursor(smile_img)
       end
-      smile_btn.tooltip_text = _('smile')+' (Alt+Down)'
+      smile_btn.tooltip_text = _('Smile')+' (Alt+Down)'
       option_box.pack_start(smile_btn, false, false, 2)
+
+      record_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::MEDIA_RECORD)
+      record_btn.tooltip_text = _('Record')
+      record_btn.safe_signal_clicked do |widget|
+        if widget.active?
+          #start record video and audio
+          sleep(0.5)
+          widget.safe_set_active(false)
+        else
+          #stop record, save the file and add a link to editbox
+        end
+      end
+      option_box.pack_start(record_btn, false, false, 2)
 
       option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
 
@@ -15584,7 +15597,7 @@ module PandoraGtk
 
       $window.register_stock(:webcam)
       @webcam_btn = PandoraGtk::SafeToggleToolButton.new(:webcam)
-      webcam_btn.tooltip_text = _('Video')
+      webcam_btn.tooltip_text = _('Webcam')
       webcam_btn.safe_signal_clicked do |widget|
         if widget.active?
           if init_video_sender(true)
@@ -15599,7 +15612,7 @@ module PandoraGtk
 
       $window.register_stock(:mic)
       @mic_btn = PandoraGtk::SafeToggleToolButton.new(:mic)
-      mic_btn.tooltip_text = _('Audio')
+      mic_btn.tooltip_text = _('Mic')
       mic_btn.safe_signal_clicked do |widget|
         if widget.active?
           if init_audio_sender(true)
@@ -15616,14 +15629,13 @@ module PandoraGtk
 
       $window.register_stock(:crypt)
       crypt_btn = PandoraGtk::SafeToggleToolButton.new(:crypt)
-      crypt_btn.tooltip_text = _('crypt')+' (Ctrl+K)'
+      crypt_btn.tooltip_text = _('Crypt')+' (Ctrl+K)'
       #crypt_btn.active = true
       option_box.pack_start(crypt_btn, false, false, 2)
 
-      #vouch_btn = SafeCheckButton.new(_('vouch'), true)
       $window.register_stock(:sign)
       vouch_btn = PandoraGtk::SafeToggleToolButton.new(:sign)
-      vouch_btn.tooltip_text = _('vouch')+' (Ctrl+G)'
+      vouch_btn.tooltip_text = _('Vouch')+' (Ctrl+G)'
       trust0 = nil
       vouch_btn.signal_connect('clicked') do |widget|
         if not widget.destroyed?
@@ -15649,19 +15661,19 @@ module PandoraGtk
 
       $window.register_stock(:require)
       require_sign_btn = PandoraGtk::SafeToggleToolButton.new(:require)
-      require_sign_btn.tooltip_text = _('require sign')
+      require_sign_btn.tooltip_text = _('Require sign')
       option_box.pack_start(require_sign_btn, false, false, 2)
 
       option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
 
       image = $window.get_preset_image('game')
-      game_btn = Gtk::ToolButton.new(image, _('game'))
-      game_btn.tooltip_text = _('game')
+      game_btn = Gtk::ToolButton.new(image, _('Game'))
+      game_btn.tooltip_text = _('Game')
       option_box.pack_start(game_btn, false, false, 2)
 
       $window.register_stock(:send)
       send_btn = Gtk::ToolButton.new(:send)
-      send_btn.tooltip_text = _('send')
+      send_btn.tooltip_text = _('Send')
       send_btn.sensitive = false
       option_box.pack_start(send_btn, false, false, 2)
 

@@ -202,6 +202,7 @@
     </Offense>
 
     <Punishment name.ru="Наказание">
+      <offense name.ru="Преступление" />
     </Punishment>
 
     <Delegation name.ru="Делегирование|Делегирования">
