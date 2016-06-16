@@ -72,6 +72,10 @@
 
   <Region>
 
+    <Delegation>
+      <expire view="datetime" />
+    </Delegation>
+
     <Registry>
       <creator pos="1" />
       <recipient pos="|2" />

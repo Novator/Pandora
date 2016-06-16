@@ -2293,6 +2293,14 @@ module PandoraUtils
         @name = x
       end
 
+      def sname
+        _(PandoraUtils.get_name_or_names(@name))
+      end
+
+      def pname
+        _(PandoraUtils.get_name_or_names(@name, true))
+      end
+
       def repositories
         $repositories
       end
@@ -2362,11 +2370,11 @@ module PandoraUtils
     end
 
     def sname
-      _(PandoraUtils.get_name_or_names(name))
+      self.class.sname
     end
 
     def pname
-      _(PandoraUtils.get_name_or_names(name, true))
+      self.class.pname
     end
 
     attr_accessor :namesvalues
@@ -11723,8 +11731,26 @@ module PandoraGtk
     attr_accessor :types, :panclasses
 
     def initialize(panhash_type, *args)
-      super(HexEntry, :panhash, 'Panhash', *args)
+      @panclasses = nil
       @types = panhash_type
+      set_classes
+      title = nil
+      stock = nil
+      if (panclasses.is_a? Array) and (panclasses.size>0) and (panclasses.size<MaxPanhashTabs)
+        stock = $window.get_panobject_stock(panclasses[0].ider)
+        panclasses.each do |panclass|
+          if title
+            title << ', '
+          else
+            title = ''
+          end
+          title << panclass.sname
+        end
+      end
+      stock ||= :panhash
+      stock = stock.to_sym
+      title ||= 'Panhash'
+      super(HexEntry, stock, title, *args)
     end
 
     def do_on_click
@@ -18255,7 +18281,9 @@ module PandoraGtk
     def self.get_panobject_icon(panobj)
       panobj_icon = nil
       if panobj
-        image = $window.get_panobject_image(panobj.ider, Gtk::IconSize::DIALOG)
+        ider = panobj
+        ider = panobj.ider if (not panobj.is_a? String)
+        image = $window.get_panobject_image(ider, Gtk::IconSize::DIALOG)
         style = Gtk::Widget.default_style
         panobj_icon = image.icon_set.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
           Gtk::STATE_NORMAL, Gtk::IconSize::DIALOG)
@@ -20723,17 +20751,21 @@ module PandoraGtk
       image
     end
 
-    def get_panobject_image(panobject_ider, isize=Gtk::IconSize::MENU, preset='pan')
-      res = nil
-      mi = MENU_ITEMS.detect {|mi| mi[0]==panobject_ider }
+    def get_panobject_stock(panobject_ider)
+      res = panobject_ider
+      mi = MENU_ITEMS.detect {|mi| mi[0]==res }
       if mi
         stock_opt = mi[1]
         stock, opts = PandoraGtk.detect_icon_opts(stock_opt)
-        if stock
-          #p 'get_panobject_image  stock='+stock.inspect
-          res = get_preset_image(stock, isize, preset)
-        end
+        res = stock if stock
       end
+      res
+    end
+
+    def get_panobject_image(panobject_ider, isize=Gtk::IconSize::MENU, preset='pan')
+      res = nil
+      stock = get_panobject_stock(panobject_ider)
+      res = get_preset_image(stock, isize, preset) if stock
       res
     end
 
@@ -21406,43 +21438,43 @@ module PandoraGtk
                       task_icon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
                         Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
                       dialog.icon = task_icon
-                      
+
                       dialog.set_default_size(500, 350)
                       vbox = Gtk::VBox.new
                       dialog.viewport.add(vbox)
-                      
+
                       treeview = Gtk::TreeView.new(store)
                       treeview.rules_hint = true
                       treeview.search_column = 0
                       treeview.border_width = 10
-                      
+
                       renderer = Gtk::CellRendererText.new
                       column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 0)
                       column.set_sort_column_id(0)
                       treeview.append_column(column)
-                      
+
                       renderer = Gtk::CellRendererText.new
                       column = Gtk::TreeViewColumn.new(_('Mode'), renderer, 'text' => 1)
                       column.set_sort_column_id(1)
                       treeview.append_column(column)
-                      
+
                       renderer = Gtk::CellRendererText.new
                       column = Gtk::TreeViewColumn.new(_('Text'), renderer, 'text' => 2)
                       column.set_sort_column_id(2)
                       treeview.append_column(column)
-                      
+
                       vbox.pack_start(treeview, false, false, 2)
-                      
+
                       dialog.def_widget = treeview
-                      
+
                       dialog.run2(true) do
                         @task_list.each do |row|
                           id = row[0]
                           @task_model.update({:mode=>0}, nil, {:id=>id})
                         end
                       end
-                      @task_dialog = nil      
-                    end                                                       
+                      @task_dialog = nil
+                    end
                   end
                   Thread.pass
                 end
