@@ -9009,8 +9009,8 @@ module PandoraNet
                     p log_mes+'==ECC_News_Notice [rdata, notic, len]='+[rdata, notic, len].inspect
                     if (notic.is_a? Array) and (notic.size==5)
                       #pool.add_notice_order(self, *notic)
-                      pool.add_mass_record(MK_Presence, nick, nil, self, @to_person, @to_key, \
-                        @to_base_id, not_trust, not_dep)
+                      pool.add_mass_record(MK_Presence, nick, nil, self, @to_person, \
+                        @to_key, @to_base_id, not_trust, not_dep)
                     end
                   when ECC_News_SessMode
                     p log_mes + 'ECC_News_SessMode'
@@ -17529,6 +17529,52 @@ module PandoraGtk
     menuitem
   end
 
+  # Add button to toolbar
+  # RU: Добавить кнопку на панель инструментов
+  def self.add_tool_btn(toolbar, stock, title=nil, toggle=nil)
+    btn = nil
+    stock = stock.to_sym if stock.is_a? String
+    $window.register_stock(stock)
+    if toggle.nil?
+      btn = Gtk::ToolButton.new(stock)
+      btn.signal_connect('clicked') do |*args|
+        yield(*args) if block_given?
+      end
+    elsif toggle.is_a? Integer
+      btn = Gtk::MenuToolButton.new(stock)
+      btn.signal_connect('clicked') do |*args|
+        yield(*args) if block_given?
+      end
+    else
+      btn = SafeToggleToolButton.new(stock)
+      btn.safe_signal_clicked do |*args|
+        yield(*args) if block_given?
+      end
+      btn.safe_set_active(toggle) if toggle
+    end
+    if title
+      lang_title = _(title)
+      lang_title.gsub!('_', '')
+      btn.tooltip_text = lang_title
+      btn.label = title
+    elsif stock
+      stock_info = Gtk::Stock.lookup(stock)
+      if (stock_info.is_a? Array) and (stock_info.size>0)
+        label = stock_info[1]
+        if label
+          label.gsub!('_', '')
+          btn.tooltip_text = label
+        end
+      end
+    end
+    if toolbar.is_a? Gtk::Toolbar
+      toolbar.add(btn)
+    else
+      toolbar.pack_start(btn, false, false, 0)
+    end
+    btn
+  end
+
   # List of fishes
   # RU: Список рыб
   class RadarScrollWin < Gtk::ScrolledWindow
@@ -17925,64 +17971,6 @@ module PandoraGtk
   def self.set_statusbar_text(statusbar, text)
     statusbar.pop(0)
     statusbar.push(0, text)
-  end
-
-  # Add button to toolbar
-  # RU: Добавить кнопку на панель инструментов
-  def self.add_tool_btn(toolbar, stock, title=nil, toggle=nil)
-    btn = nil
-    #p 'stock='+stock.inspect
-    if stock.is_a? String
-      stock = stock.to_sym
-    end
-    $window.register_stock(stock)
-      #image = $window.get_preset_image(stock)
-      #p buf = $window.get_icon_buf(stock, 'pan')
-      #iconset = Gtk::IconSet.new(buf)
-      #image = Gtk::Image.new(iconset, Gtk::IconSize::MENU)
-    #else
-    #  image = Gtk::Image.new(stock, Gtk::IconSize::MENU)
-    #end
-    if toggle.nil?
-      #btn = Gtk::ToolButton.new(iconset, _(title))
-      #btn = Gtk::ToolButton.new(image, _(title))
-      btn = Gtk::ToolButton.new(stock) #, _(title))
-      btn.signal_connect('clicked') do |*args|
-        yield(*args) if block_given?
-      end
-      #btn.label = title
-    elsif toggle.is_a? Integer
-      btn = Gtk::MenuToolButton.new(stock)
-      btn.signal_connect('clicked') do |*args|
-        yield(*args) if block_given?
-      end
-    else
-      btn = SafeToggleToolButton.new(stock)
-      #btn = Gtk::ToolButton.new(image, _(title))
-      btn.safe_signal_clicked do |*args|
-      #btn.signal_connect('clicked') do |*args|
-        yield(*args) if block_given?
-      end
-      #btn.active = toggle if toggle
-      btn.safe_set_active(toggle) if toggle
-    end
-    if title
-      lang_title = _(title)
-      lang_title.gsub!('_', '')
-      btn.tooltip_text = lang_title
-      btn.label = title
-    elsif stock
-      stock_info = Gtk::Stock.lookup(stock)
-      if (stock_info.is_a? Array) and (stock_info.size>0)
-        label = stock_info[1]
-        if label
-          label.gsub!('_', '')
-          btn.tooltip_text = label
-        end
-      end
-    end
-    toolbar.add(btn)
-    btn
   end
 
   def self.find_tool_btn(toolbar, title)
@@ -19228,33 +19216,27 @@ module PandoraGtk
 
     hbox = Gtk::HBox.new
 
-    title = _('Update')
-    page_sw.update_btn = Gtk::ToolButton.new(Gtk::Stock::REFRESH, title)
-    update_btn = page_sw.update_btn
-    update_btn.tooltip_text = title
-    update_btn.label = title
-    update_btn.signal_connect('clicked') do |*args|
+    page_sw.update_btn = PandoraGtk.add_tool_btn(hbox, Gtk::Stock::REFRESH, 'Update') do |widget|
       page_sw.update_treeview
     end
-    hbox.pack_start(update_btn, false, true, 0)
-
     page_sw.auto_btn = nil
     if single
-      page_sw.auto_btn = SafeCheckButton.new(_('auto'), true)
-      auto_btn = page_sw.auto_btn
-      auto_btn.safe_signal_clicked do |widget|
+      page_sw.auto_btn = PandoraGtk.add_tool_btn(hbox, :update, 'Auto update', true) do |widget|
         update_treeview_if_need(page_sw)
       end
-      auto_btn.safe_set_active(true)
-      hbox.pack_start(auto_btn, false, true, 0)
     end
-    page_sw.arch_btn = SafeCheckButton.new(_('arch'), true)
-    arch_btn = page_sw.arch_btn
-    arch_btn.safe_signal_clicked do |widget|
-      update_btn.clicked
+    page_sw.arch_btn = PandoraGtk.add_tool_btn(hbox, :arch, 'Show archived', false) do |widget|
+      page_sw.update_btn.clicked
     end
-    arch_btn.safe_set_active(false)
-    hbox.pack_start(arch_btn, false, true, 0)
+
+    PandoraGtk.add_tool_btn(hbox, Gtk::Stock::NEW, 'Create') do |widget|
+      $window.do_menu_act('Create', treeview)
+    end
+    if single
+      PandoraGtk.add_tool_btn(hbox, :dialog, 'Dialog') do |widget|
+        $window.do_menu_act('Dialog', treeview)
+      end
+    end
 
     filters = Array.new
     page_sw.filter_box = FilterHBox.new(filters, hbox, page_sw)
@@ -19263,7 +19245,7 @@ module PandoraGtk
     pbox.pack_start(hbox, false, true, 0)
     pbox.pack_start(list_sw, true, true, 0)
 
-    update_btn.clicked
+    page_sw.update_btn.clicked
 
     if auto_create and treeview.sel and (treeview.sel.size==0)
       treeview.auto_create = true
