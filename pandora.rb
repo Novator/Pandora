@@ -6963,7 +6963,7 @@ module PandoraNet
 
   # Version of application and protocol (may be different)
   # RU: Версия программы и протокола (могут отличаться)
-  AppVersion   = '0.58'
+  AppVersion   = '0.59'
   ProtoVersion = 'pandora0.56'
 
   class Session
@@ -11363,10 +11363,42 @@ module PandoraGtk
 
   end
 
+  class DayBox < Gtk::EventBox
+    attr_accessor :bg
+
+    def initialize(background)
+      super()
+      @bg = background
+      self.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
+        | Gdk::Event::ENTER_NOTIFY_MASK | Gdk::Event::LEAVE_NOTIFY_MASK \
+        | Gdk::Event::VISIBILITY_NOTIFY_MASK | Gdk::Event::FOCUS_CHANGE_MASK
+      self.signal_connect('expose-event') do |widget, event|
+        if widget.focus?   #STATE_PRELIGHT
+          widget.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#88CC88'))
+          widget.style.paint_focus(widget.window, Gtk::STATE_ACTIVE, \
+            event.area, widget, '', event.area.x+1, event.area.y+1, \
+            event.area.width-2, event.area.height-2)
+        else
+          bgc = nil
+          bgc = Gdk::Color.parse(bg) if bg
+          widget.modify_bg(Gtk::STATE_NORMAL, bgc)
+        end
+        false
+      end
+      self.signal_connect('button-press-event') do |widget, event|
+        if (event.button == 1)
+          widget.set_focus(true)
+        end
+        false
+      end
+    end
+
+  end
+
   # Entry for date
   # RU: Поле ввода даты
   class DateEntry < BtnEntry
-    attr_accessor :cal
+    attr_accessor :cal, :month, :year
 
     def initialize(*args)
       super(MaskEntry, :date, 'Date', *args)
@@ -11377,9 +11409,9 @@ module PandoraGtk
     end
 
     def update_mark(month, year, time_now=nil)
-      time_now ||= Time.now
-      @cal.clear_marks
-      @cal.mark_day(time_now.day) if ((time_now.month==month) and (time_now.year==year))
+      #time_now ||= Time.now
+      #@cal.clear_marks
+      #@cal.mark_day(time_now.day) if ((time_now.month==month) and (time_now.year==year))
     end
 
     def get_popwidget
@@ -11391,50 +11423,150 @@ module PandoraGtk
         if (@month == time_now.month) and (@year == time_now.year)
           cal.select_day(time_now.day)
         else
-          cal.select_month(time_now.month, time_now.year)
+          #cal.select_month(time_now.month, time_now.year)
           @month = time_now.month
           @year = time_now.year
         end
       end
       vbox.pack_start(btn1, false, false, 0)
 
-      @cal = Gtk::Calendar.new
       date = PandoraUtils.str_to_date(@entry.text)
       time_now = Time.now
       date ||= time_now
       @month = date.month
       @year = date.year
 
-      cal.select_month(date.month, date.year)
-      cal.select_day(date.day)
-      update_mark(date.month, date.year, time_now)
-      #cal.mark_day(date.day)
-      cal.display_options = Gtk::Calendar::SHOW_HEADING | \
-        Gtk::Calendar::SHOW_DAY_NAMES | Gtk::Calendar::WEEK_START_MONDAY
+      month_d1 = Time.local(@year, @month, 1)
+      d1_wday = month_d1.wday
+      d1_wday = 7 if d1_wday==0
+      start = d1_wday-1
+      #start =+ 7 if start==0
+      start_time = month_d1 - (start+1)*3600*24
+      start_day = Time.local(start_time.year, start_time.month, start_time.day)
 
-      cal.signal_connect('day-selected') do
-        year, month, day = @cal.date
-        p 'day-selected: [year, month, day]='+[year, month, day].inspect
-        if (@month==month) and (@year==year)
-          @entry.text = PandoraUtils.date_to_str(Time.local(year, month, day))
-          @popwin.destroy
-          @popwin = nil
+      @cal = Gtk::VBox.new
+      cal.border_width = 1
+
+      row = Gtk::HBox.new
+      left_btn = Gtk::Button.new('<')
+      left_btn.signal_connect('clicked') do |widget|
+        if @month>0
+          @month -= 1
         else
-          @month=month
-          @year=year
-          update_mark(month, year)
+          @year -= 1
+          @month = 12
+        end
+      end
+      row.pack_start(left_btn, true, true, 0)
+      month_btn = Gtk::Button.new(_(date.strftime('%B')))
+      month_btn.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
+      row.pack_start(month_btn, true, true, 0)
+      right_btn = Gtk::Button.new('>')
+      right_btn.signal_connect('clicked') do |widget|
+        if @month<12
+          @month += 1
+        else
+          @year += 1
+          @month = 1
+        end
+      end
+      row.pack_start(right_btn, true, true, 0)
+
+      left_btn = Gtk::Button.new('<')
+      row.pack_start(left_btn, true, true, 0)
+      year_box = Gtk::Button.new(date.strftime('%Y'))
+      row.pack_start(year_box, true, true, 0)
+      right_btn = Gtk::Button.new('>')
+      row.pack_start(right_btn, true, true, 0)
+
+      cal.pack_start(row, true, true, 0)
+
+      cal_day = start_day
+
+      7.times do |week|
+        row = Gtk::HBox.new
+        row.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
+        cal.pack_start(row, true, true, 1)
+        7.times do |day|
+          day_type = nil
+          if week==0
+            p '[@year, @month, day+1]='+[@year, @month, day+1].inspect
+            atime = start_day + (day+1)*3600*24
+            text = _(atime.strftime('%a'))
+            day_type = :capt
+          else
+            cal_day += 3600*24
+            text = (cal_day.day).to_s
+            if cal_day.month == @month
+              day_type = :work
+              day_type = :rest if day==5
+              day_type = :holi if day==6
+            end
+          end
+          bg = nil
+          if day_type==:rest
+            bg = '#5050A0'
+          elsif day_type==:holi
+            bg = '#B05050'
+          elsif day_type==:work
+            bg = '#DDEEFF'
+          else #if day_type != :capt
+            bg = '#FFFFFF'
+          end
+          fg = '#000000'
+          fg = '#FFFFFF' if (day_type==:rest) or (day_type==:holi)
+          lab = Gtk::Label.new(text)
+          lab.width_chars = 4
+          lab.use_markup = true
+          if lab.use_markup?
+            if day_type==:capt
+              lab.set_markup('<b>'+text+'</b>')
+            else
+              lab.set_markup('<span foreground="'+fg+'">'+text+'</span>')
+            end
+          end
+          lab.justify = Gtk::JUSTIFY_CENTER
+
+          lab_evbox = DayBox.new(bg)
+          lab_evbox.can_focus = (day_type != :capt)
+          lab_evbox.add(lab)
+          row.pack_start(lab_evbox, true, true, 1)
         end
       end
 
-      cal.signal_connect('month-changed') do
-        year, month, day = @cal.date
-        p 'month-changed: [year, month, day]='+[year, month, day].inspect
-        update_mark(month, year)
-      end
+      #cal.select_month(date.month, date.year)
+      #cal.select_day(date.day)
+      #update_mark(date.month, date.year, time_now)
+      ##cal.mark_day(date.day)
+      #cal.display_options = Gtk::Calendar::SHOW_HEADING | \
+      #  Gtk::Calendar::SHOW_DAY_NAMES | Gtk::Calendar::WEEK_START_MONDAY
 
-      cal.signal_connect('key-press-event') do |widget, event|
+      #cal.signal_connect('day-selected') do
+      #  year, month, day = @cal.date
+      #  p 'day-selected: [year, month, day]='+[year, month, day].inspect
+      #  if (@month==month) and (@year==year)
+      #    @entry.text = PandoraUtils.date_to_str(Time.local(year, month, day))
+      #    @popwin.destroy
+      #    @popwin = nil
+      #  else
+      #    @month=month
+      #    @year=year
+      #    update_mark(month, year)
+      #  end
+      #end
+
+      #cal.signal_connect('month-changed') do
+      #  year, month, day = @cal.date
+      #  p 'month-changed: [year, month, day]='+[year, month, day].inspect
+      #  update_mark(month, year)
+      #end
+
+      signal_connect('key-press-event') do |widget, event|
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-          @cal.signal_emit('day-selected')
+          event.hardware_keycode = 65   #Space
+          event.keyval = 32             #Space
+          widget.signal_emit('key-press-event', event)
+          #@cal.signal_emit('day-selected')
           true
         elsif (event.keyval>=65360) and (event.keyval<=65367)
           if event.keyval==65360
@@ -11456,19 +11588,25 @@ module PandoraGtk
           elsif event.keyval==65366
             @cal.year = @cal.year+1
           end
-          year, month, day = @cal.date
-          @month=month
-          @year=year
+          #year, month, day = @cal.date
+          #@month=month
+          #@year=year
           false
         else
           false
         end
       end
-      vbox.pack_start(cal, false, false, 0)
+      evbox = DayBox.new('#FFFFFF')
+      evbox.can_focus = false
+      evbox.add(cal)
+      frame = Gtk::Frame.new
+      frame.shadow_type = Gtk::SHADOW_IN
+      frame.add(evbox)
+      vbox.pack_start(frame, false, false, 0)
 
-      cal.can_default = true
-      #cal.grab_default
-      cal.grab_focus
+      #cal.can_default = true
+      ##cal.grab_default
+      #cal.grab_focus
 
       vbox
     end
@@ -19216,6 +19354,14 @@ module PandoraGtk
 
     hbox = Gtk::HBox.new
 
+    PandoraGtk.add_tool_btn(hbox, Gtk::Stock::NEW, 'Create') do |widget|
+      $window.do_menu_act('Create', treeview)
+    end
+    if single
+      PandoraGtk.add_tool_btn(hbox, :dialog, 'Dialog') do |widget|
+        $window.do_menu_act('Dialog', treeview)
+      end
+    end
     page_sw.update_btn = PandoraGtk.add_tool_btn(hbox, Gtk::Stock::REFRESH, 'Update') do |widget|
       page_sw.update_treeview
     end
@@ -19227,15 +19373,6 @@ module PandoraGtk
     end
     page_sw.arch_btn = PandoraGtk.add_tool_btn(hbox, :arch, 'Show archived', false) do |widget|
       page_sw.update_btn.clicked
-    end
-
-    PandoraGtk.add_tool_btn(hbox, Gtk::Stock::NEW, 'Create') do |widget|
-      $window.do_menu_act('Create', treeview)
-    end
-    if single
-      PandoraGtk.add_tool_btn(hbox, :dialog, 'Dialog') do |widget|
-        $window.do_menu_act('Dialog', treeview)
-      end
     end
 
     filters = Array.new

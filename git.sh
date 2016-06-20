@@ -45,12 +45,17 @@
 
 ## Push files from local to repository
 #git add --all
-git commit -a -m "version 0.58 alpha"
-git push -u bitbuc master
-git push -u github master
+git commit -a -m "version 0.59 alpha"
+#git push -u bitbuc master
+#git push -u github master
+git push -u bitbuc develop
+git push -u github develop
 #git push -u robux master
-#git push -u bitbuc develop
-#git push -u github develop
+
+## Save to temporary cash without commit
+#git stash
+## Load from temporary cash
+#git stash pop
 
 ##Cancel last commit with save current files
 #git reset --soft HEAD~1
