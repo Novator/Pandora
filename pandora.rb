@@ -2015,6 +2015,10 @@ module PandoraUtils
           end
         end
         fd[FI_View] = view if view and (not fd[FI_View]) or (fd[FI_View]=='')
+        if (fd[FI_View]=='hex') and (not len) \
+        and ((not fd[FI_FSize]) or (fd[FI_FSize]=='')) and fd[FI_Size] and (fd[FI_Size]!='')
+          len = fd[FI_Size].to_i*2
+        end
         fd[FI_FSize] = len if len and (not fd[FI_FSize]) or (fd[FI_FSize]=='')
         #p 'name,type,fsize,view,len='+[fd[FI_Name], fd[FI_Type], fd[FI_FSize], view, len].inspect
         [view, len]
@@ -2062,7 +2066,10 @@ module PandoraUtils
             i = 0
             last_ind = 0.0
             df.each do |field|
-              #p '===[field[FI_VFName], field[FI_View]]='+[field[FI_VFName], field[FI_View]].inspect
+              #if field[FI_View]=='hex'
+                #p '===[ider, field[FI_Name], field[FI_View], field[FI_Size], field[FI_FSize]]='\
+                #  +[ider, field[FI_Name], field[FI_View], field[FI_Size], field[FI_FSize]].inspect
+              #end
               set_view_and_len(field)
               fldsize = 0
               if field[FI_Size]
@@ -11104,16 +11111,143 @@ module PandoraGtk
     end
   end
 
-  # Smile choose box
-  # RU: Поле выбора смайлов
-  class SmileButton < Gtk::ToolButton
-    attr_accessor :preset, :close_on_enter, :on_click_btn, :popwin, :root_vbox, \
-      :poly_btn
+  # Popup choose window
+  # RU: Всплывающее окно выбора
+  class PopWindow < Gtk::Window
+    attr_accessor :root_vbox, :just_leaved, :on_click_btn
 
-    def self.init_smiles_box(preset, smiles_parent, smile_btn)
+    def get_popwidget
+      nil
+    end
+
+    def initialize(amodal=nil)
+      super()
+
+      @just_leaved = false
+
+      self.transient_for = $window
+      self.modal = amodal
+      #self.modal = true
+      self.decorated = false
+      self.skip_taskbar_hint = true
+
+      popwidget = get_popwidget
+      self.add(popwidget) if popwidget
+      self.signal_connect('delete_event') do
+        destroy
+      end
+
+      self.signal_connect('focus-out-event') do |win, event|
+        if not @just_leaved.nil?
+          @just_leaved = true
+          if not destroyed?
+            hide
+          end
+          GLib::Timeout.add(500) do
+            @just_leaved = false if not destroyed?
+            false
+          end
+        end
+        false
+      end
+
+      self.signal_connect('key-press-event') do |widget, event|
+        if (event.keyval==Gdk::Keyval::GDK_Escape) or \
+          ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
+          event.keyval) and event.state.control_mask?) #w, W, ц, Ц
+        then
+          @just_leaved = nil
+          hide
+          false
+        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
+          event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
+          Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
+          and event.state.control_mask?) #q, Q, й, Й
+        then
+          destroy
+          $window.do_menu_act('Quit')
+          false
+        else
+          false
+        end
+      end
+    end
+
+    def hide_popwin
+      @just_leaved = nil
+      self.hide
+    end
+
+  end
+
+  # Smile choose window
+  # RU: Окно выбора смайла
+  class SmilePopWindow < PopWindow
+    attr_accessor :preset, :poly_btn, :preset
+
+    def initialize(apreset=nil, amodal=nil)
+      apreset ||= 'vk'
+      @preset = apreset
+      super(amodal)
+      self.signal_connect('key-press-event') do |widget, event|
+        if (event.keyval==Gdk::Keyval::GDK_Tab)
+          if preset=='qip'
+            @vk_btn.do_on_click
+          else
+            @qip_btn.do_on_click
+          end
+          true
+        elsif [Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769].include?(event.keyval)
+          @poly_btn.set_active((not @poly_btn.active?))
+          false
+        else
+          false
+        end
+      end
+    end
+
+    def get_popwidget
+      if @root_vbox.nil? or @root_vbox.destroyed?
+        @root_vbox = Gtk::VBox.new
+        @smile_box = Gtk::Frame.new
+        #@smile_box.shadow_type = Gtk::SHADOW_NONE
+        hbox = Gtk::HBox.new
+        $window.register_stock(:music, 'qip')
+        @qip_btn = GoodButton.new(:music_qip, 'qip', -1) do |*args|
+          if not @qip_btn.active?
+            @qip_btn.set_active(true)
+            @vk_btn.set_active(false)
+            move_and_show('qip')
+          end
+        end
+        hbox.pack_start(@qip_btn, true, true, 0)
+        $window.register_stock(:ufo, 'vk')
+        @vk_btn = GoodButton.new(:ufo_vk, 'vk', -1) do |*args|
+          if not @vk_btn.active?
+            @vk_btn.set_active(true)
+            @qip_btn.set_active(false)
+            move_and_show('vk')
+          end
+        end
+        hbox.pack_start(@vk_btn, true, true, 0)
+        $window.register_stock(:bomb, 'qip')
+        @poly_btn = GoodButton.new(:bomb_qip, nil, false)
+        @poly_btn.tooltip_text = _('Many smiles')
+        hbox.pack_start(@poly_btn, false, false, 0)
+        root_vbox.pack_start(hbox, false, true, 0)
+        if preset=='vk'
+          @vk_btn.set_active(true)
+        else
+          @qip_btn.set_active(true)
+        end
+        root_vbox.pack_start(@smile_box, true, true, 0)
+      end
+      root_vbox
+    end
+
+    def init_smiles_box(preset, smiles_parent, smile_btn)
       @@smile_btn = smile_btn if smile_btn
       @@smile_boxes ||= {}
-      #p '----init_smiles_box   preset='+preset.inspect
       vbox = nil
       res = @@smile_boxes[preset]
       if res
@@ -11121,7 +11255,7 @@ module PandoraGtk
         vbox = nil if vbox.destroyed?
       end
       if vbox
-        smile_btn.popwin.resize(100, 100)
+        resize(100, 100)
         #p '  vbox.parent='+vbox.parent.inspect
         if vbox.parent and (not vbox.parent.destroyed?)
           if (vbox.parent != smiles_parent)
@@ -11169,7 +11303,7 @@ module PandoraGtk
                 and ((mask & Gdk::Window::MOD1_MASK.to_i) == 0))
               smile_btn = @@smile_btn
               smile_btn.on_click_btn.call(preset, widget.label)
-              smile_btn.hide_popwin if clear_click and (not smile_btn.poly_btn.active?)
+              hide_popwin if clear_click and (not smile_btn.poly_btn.active?)
               false
             end
             btn.signal_connect('key-press-event') do |widget, event|
@@ -11181,7 +11315,7 @@ module PandoraGtk
               elsif [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
                 smile_btn = @@smile_btn
                 smile_btn.on_click_btn.call(preset, widget.label)
-                smile_btn.hide_popwin
+                hide_popwin
                 res = true
               end
               res
@@ -11206,157 +11340,62 @@ module PandoraGtk
       res
     end
 
-    def hide_popwin
-      @just_leaved = nil
-      @popwin.hide
-    end
-
-    def get_popwidget
-      if @root_vbox.nil? or @root_vbox.destroyed?
-        @root_vbox = Gtk::VBox.new
-        @smile_box = Gtk::Frame.new
-        #@smile_box.shadow_type = Gtk::SHADOW_NONE
-        hbox = Gtk::HBox.new
-        $window.register_stock(:music, 'qip')
-        @qip_btn = GoodButton.new(:music_qip, 'qip', -1) do |*args|
-          if not @qip_btn.active?
-            @qip_btn.set_active(true)
-            @vk_btn.set_active(false)
-            move_and_show('qip')
-          end
-        end
-        hbox.pack_start(@qip_btn, true, true, 0)
-        $window.register_stock(:ufo, 'vk')
-        @vk_btn = GoodButton.new(:ufo_vk, 'vk', -1) do |*args|
-          if not @vk_btn.active?
-            @vk_btn.set_active(true)
-            @qip_btn.set_active(false)
-            move_and_show('vk')
-          end
-        end
-        hbox.pack_start(@vk_btn, true, true, 0)
-        $window.register_stock(:bomb, 'qip')
-        @poly_btn = GoodButton.new(:bomb_qip, nil, false)
-        @poly_btn.tooltip_text = _('Many smiles')
-        hbox.pack_start(@poly_btn, false, false, 0)
-        root_vbox.pack_start(hbox, false, true, 0)
-        if preset=='vk'
-          @vk_btn.set_active(true)
-        else
-          @qip_btn.set_active(true)
-        end
-        #move_and_show
-        root_vbox.pack_start(@smile_box, true, true, 0)
-      end
-      root_vbox
-    end
-
-    def move_and_show(apreset=nil)
+    def move_and_show(apreset=nil, x=nil, y=nil, a_on_click_btn=nil)
       @preset = apreset if apreset
-      vbox, focus_btn = SmileButton.init_smiles_box(@preset, @smile_box, self)
-
-      borig = self.window.origin
-      brect = self.allocation.to_a
-
-      popwin = @popwin
+      @on_click_btn = a_on_click_btn if a_on_click_btn
       popwidget = get_popwidget
+      vbox, focus_btn = init_smiles_box(@preset, @smile_box, self)
       popwidget.show_all
       pwh = popwidget.size_request
-      popwin.resize(*pwh)
+      resize(*pwh)
 
-      x = brect[0]+borig[0]
-      y = brect[1]+borig[1]-pwh[1]-1
-      popwin.move(x, y)
-      popwin.show_all
-      popwin.present
+      if x and y
+        @x = x
+        @y = y
+      end
+
+      move(@x, @y-pwh[1])
+      show_all
+      present
       focus_btn.grab_focus if focus_btn
     end
 
-    def initialize(apreset='vk', *args)
+  end
+
+  # Smile choose box
+  # RU: Поле выбора смайлов
+  class SmileButton < Gtk::ToolButton
+    attr_accessor :on_click_btn, :popwin
+
+    def initialize(apreset=nil, *args)
       aimage = $window.get_preset_image('smile')
       super(aimage, _('smile'))
       self.tooltip_text = _('smile')
       apreset ||= 'vk'
       @preset = apreset
-      @close_on_enter = true
-      @just_leaved = false
+      @@popwin ||= nil
 
       @on_click_btn = Proc.new do |*args|
         yield(*args) if block_given?
       end
 
       signal_connect('clicked') do |*args|
-        if @popwin and (not @popwin.destroyed?) and (@popwin.visible? or @just_leaved)
-          #@popwin.destroy
-          #@popwin = nil
-          @popwin.hide
+        popwin = @@popwin
+        if popwin and (not popwin.destroyed?) and (popwin.visible? or popwin.just_leaved)
+          popwin.hide
         else
-          if @popwin.nil? or @popwin.destroyed?
-            @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
-            popwin = @popwin
-            popwin.transient_for = $window
-            popwin.modal = false
-            popwin.decorated = false
-            popwin.skip_taskbar_hint = true
-
-            popwidget = get_popwidget
-            popwin.add(popwidget)
-            popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
-
-            popwin.signal_connect('focus-out-event') do |win, event|
-              if not @just_leaved.nil?
-                @just_leaved = true
-                if not @popwin.destroyed?
-                  #@popwin.destroy
-                  #@popwin = nil
-                  @popwin.hide
-                end
-                GLib::Timeout.add(500) do
-                  @just_leaved = false if not popwin.destroyed?
-                  false
-                end
-              end
-              false
-            end
-
-            popwin.signal_connect('key-press-event') do |widget, event|
-              if (event.keyval==Gdk::Keyval::GDK_Escape) or \
-                ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
-                event.keyval) and event.state.control_mask?) #w, W, ц, Ц
-              then
-                @just_leaved = nil
-                #@popwin.destroy
-                #@popwin = nil
-                @popwin.hide
-                false
-              elsif (event.keyval==Gdk::Keyval::GDK_Tab)
-                if preset=='qip'
-                  @vk_btn.do_on_click
-                else
-                  @qip_btn.do_on_click
-                end
-                true
-              elsif [Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769].include?(event.keyval)
-                @poly_btn.set_active((not @poly_btn.active?))
-                false
-              elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
-                event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
-                Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
-                and event.state.control_mask?) #q, Q, й, Й
-              then
-                @popwin.destroy
-                @popwin = nil
-                $window.do_menu_act('Quit')
-                false
-              else
-                false
-              end
-            end
+          if popwin.nil? or popwin.destroyed?
+            @@popwin = SmilePopWindow.new(@preset, false)
+            popwin = @@popwin
           end
-          move_and_show
-          @poly_btn.set_active(false)
+          borig = self.window.origin
+          brect = self.allocation.to_a
+          x = brect[0]+borig[0]
+          y = brect[1]+borig[1]-1
+          popwin.move_and_show(nil, x, y, @on_click_btn)
+          popwin.poly_btn.set_active(false)
         end
-        @just_leaved = false
+        popwin.just_leaved = false
         false
       end
     end
@@ -11395,18 +11434,212 @@ module PandoraGtk
 
   end
 
+  # Date choose window
+  # RU: Окно выбора даты
+  class DatePopWindow < PopWindow
+    attr_accessor :date, :year, :month, :month_btn, :year_btn
+
+    def initialize(date_str=nil, amodal=nil)
+      @date = PandoraUtils.str_to_date(date_str)
+      super(amodal)
+      self.signal_connect('key-press-event') do |widget, event|
+        if (event.keyval==Gdk::Keyval::GDK_Tab)
+          false
+        else
+          false
+        end
+      end
+    end
+
+    def get_popwidget
+      if @root_vbox.nil? or @root_vbox.destroyed?
+        @root_vbox = Gtk::VBox.new
+        @days_frame = Gtk::Frame.new
+
+        cur_btn = Gtk::Button.new(_'Current time')
+        cur_btn.signal_connect('clicked') do |widget|
+          time_now = Time.now
+          if (@month == time_now.month) and (@year == time_now.year)
+            cal.select_day(time_now.day)
+          else
+            #cal.select_month(time_now.month, time_now.year)
+            @month = time_now.month
+            @year = time_now.year
+          end
+        end
+        root_vbox.pack_start(cur_btn, false, false, 0)
+
+        row = Gtk::HBox.new
+        left_btn = Gtk::Button.new('<')
+        left_btn.signal_connect('clicked') do |widget|
+          if @month>0
+            @month -= 1
+          else
+            @year -= 1
+            @month = 12
+          end
+        end
+        row.pack_start(left_btn, true, true, 0)
+        @month_btn = Gtk::Button.new('month')
+        month_btn.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
+        row.pack_start(month_btn, true, true, 0)
+        right_btn = Gtk::Button.new('>')
+        right_btn.signal_connect('clicked') do |widget|
+          if @month<12
+            @month += 1
+          else
+            @year += 1
+            @month = 1
+          end
+        end
+        row.pack_start(right_btn, true, true, 0)
+
+        left_btn = Gtk::Button.new('<')
+        row.pack_start(left_btn, true, true, 0)
+        @year_btn = Gtk::Button.new('year')
+        row.pack_start(year_btn, true, true, 0)
+        right_btn = Gtk::Button.new('>')
+        row.pack_start(right_btn, true, true, 0)
+
+
+        root_vbox.pack_start(row, false, true, 0)
+
+        root_vbox.pack_start(@days_frame, true, true, 0)
+      end
+      root_vbox
+    end
+
+    def init_days_box(preset, labs_parent, date_entry)
+      @@date_entry = date_entry if date_entry
+      @@days_box ||= nil
+      if @@days_box
+        vbox = @@days_box
+        vbox = nil if vbox.destroyed?
+      end
+      if vbox
+        resize(100, 100)
+        if vbox.parent and (not vbox.parent.destroyed?)
+          if (vbox.parent != labs_parent)
+            labs_parent.remove(labs_parent.child) if labs_parent.child
+            vbox.parent.remove(vbox)
+            labs_parent.add(vbox)
+            vbox.reparent(labs_parent)
+          end
+        else
+          labs_parent.remove(labs_parent.child) if labs_parent.child
+          vbox.parent = labs_parent
+        end
+      else
+        labs_parent.remove(labs_parent.child) if labs_parent.child
+        vbox = Gtk::VBox.new
+        focus_btn = nil
+
+        time_now = Time.now
+        date ||= time_now
+        @month = date.month
+        @year = date.year
+
+        month_d1 = Time.local(@year, @month, 1)
+        d1_wday = month_d1.wday
+        d1_wday = 7 if d1_wday==0
+        start = d1_wday-1
+        #start =+ 7 if start==0
+        start_time = month_d1 - (start+1)*3600*24
+        start_day = Time.local(start_time.year, start_time.month, start_time.day)
+
+        #month_btn.label = _(date.strftime('%B'))
+        #year_btn.label = date.strftime('%Y')
+
+        cal_day = start_day
+
+        7.times do |week|
+          row = Gtk::HBox.new
+          row.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
+          vbox.pack_start(row, true, true, 1)
+          7.times do |day|
+            day_type = nil
+            if week==0
+              p '[@year, @month, day+1]='+[@year, @month, day+1].inspect
+              atime = start_day + (day+1)*3600*24
+              text = _(atime.strftime('%a'))
+              day_type = :capt
+            else
+              cal_day += 3600*24
+              text = (cal_day.day).to_s
+              if cal_day.month == @month
+                day_type = :work
+                day_type = :rest if day==5
+                day_type = :holi if day==6
+              end
+            end
+            bg = nil
+            if day_type==:rest
+              bg = '#5050A0'
+            elsif day_type==:holi
+              bg = '#B05050'
+            elsif day_type==:work
+              bg = '#DDEEFF'
+            else #if day_type != :capt
+              bg = '#FFFFFF'
+            end
+            fg = '#000000'
+            fg = '#FFFFFF' if (day_type==:rest) or (day_type==:holi)
+
+            lab = Gtk::Label.new(text)
+            lab.width_chars = 4
+            lab.use_markup = true
+            if lab.use_markup?
+              if day_type==:capt
+                lab.set_markup('<b>'+text+'</b>')
+              else
+                lab.set_markup('<span foreground="'+fg+'">'+text+'</span>')
+              end
+            end
+            lab.justify = Gtk::JUSTIFY_CENTER
+
+            lab_evbox = DayBox.new(bg)
+            lab_evbox.can_focus = (day_type != :capt)
+            lab_evbox.add(lab)
+            row.pack_start(lab_evbox, true, true, 1)
+          end
+        end
+        vbox.show_all
+
+        #date_entry = @@date_entry
+        #date_entry.on_click_btn.call(preset, widget.label)
+        #hide_popwin
+
+        labs_parent.add(vbox)
+        @@days_box = vbox
+      end
+      [vbox, focus_btn]
+    end
+
+    def move_and_show(apreset=nil, x=nil, y=nil, a_on_click_btn=nil)
+      @preset = apreset if apreset
+      @on_click_btn = a_on_click_btn if a_on_click_btn
+      popwidget = get_popwidget
+      vbox, focus_btn = init_days_box(@preset, @days_frame, self)
+      popwidget.show_all
+      pwh = popwidget.size_request
+      resize(*pwh)
+      if x and y
+        @x = x
+        @y = y
+      end
+      move(@x, @y)
+      show_all
+      present
+      focus_btn.grab_focus if focus_btn
+    end
+
+  end
+
   # Entry for date
   # RU: Поле ввода даты
   class DateEntry < BtnEntry
     attr_accessor :cal, :month, :year
-
-    def initialize(*args)
-      super(MaskEntry, :date, 'Date', *args)
-      @close_on_enter = false
-      @entry.mask = '0123456789.'
-      @entry.max_length = 10
-      @entry.tooltip_text = 'DD.MM.YYYY'
-    end
+    attr_accessor :on_click_btn, :popwin
 
     def update_mark(month, year, time_now=nil)
       #time_now ||= Time.now
@@ -11414,11 +11647,48 @@ module PandoraGtk
       #@cal.mark_day(time_now.day) if ((time_now.month==month) and (time_now.year==year))
     end
 
-    def get_popwidget
+    def initialize(*args)
+      super(MaskEntry, :date, 'Date', *args)
+      @@popwin ||= nil
+      @close_on_enter = false
+      @entry.mask = '0123456789.'
+      @entry.max_length = 10
+      @entry.tooltip_text = 'DD.MM.YYYY'
+      @on_click_btn = Proc.new do |date|
+        year, month, day = date
+        @entry.text = PandoraUtils.date_to_str(Time.local(year, month, day))
+      end
+    end
+
+    def do_on_click
+      res = false
+      @entry.grab_focus
+      popwin = @@popwin
+      if popwin and (not popwin.destroyed?) and (popwin.visible? or popwin.just_leaved)
+        popwin.hide
+      else
+        if popwin.nil? or popwin.destroyed?
+          @@popwin = DatePopWindow.new(@entry.text, true)
+          popwin = @@popwin
+        end
+        borig = @entry.window.origin
+        brect = @entry.allocation.to_a
+
+        x = borig[0]
+        y = borig[1]+brect[3]+1
+
+        popwin.move_and_show(nil, x, y, @on_click_btn)
+        #popwin.poly_btn.set_active(false)
+      end
+      popwin.just_leaved = false
+      res
+    end
+
+    def get_popwidget2
       vbox = Gtk::VBox.new
 
-      btn1 = Gtk::Button.new(_'Current time')
-      btn1.signal_connect('clicked') do |widget|
+      cur_btn = Gtk::Button.new(_'Current time')
+      cur_btn.signal_connect('clicked') do |widget|
         time_now = Time.now
         if (@month == time_now.month) and (@year == time_now.year)
           cal.select_day(time_now.day)
@@ -11428,21 +11698,13 @@ module PandoraGtk
           @year = time_now.year
         end
       end
-      vbox.pack_start(btn1, false, false, 0)
+      vbox.pack_start(cur_btn, false, false, 0)
 
       date = PandoraUtils.str_to_date(@entry.text)
       time_now = Time.now
       date ||= time_now
       @month = date.month
       @year = date.year
-
-      month_d1 = Time.local(@year, @month, 1)
-      d1_wday = month_d1.wday
-      d1_wday = 7 if d1_wday==0
-      start = d1_wday-1
-      #start =+ 7 if start==0
-      start_time = month_d1 - (start+1)*3600*24
-      start_day = Time.local(start_time.year, start_time.month, start_time.day)
 
       @cal = Gtk::VBox.new
       cal.border_width = 1
@@ -11458,7 +11720,7 @@ module PandoraGtk
         end
       end
       row.pack_start(left_btn, true, true, 0)
-      month_btn = Gtk::Button.new(_(date.strftime('%B')))
+      @month_btn = Gtk::Button.new('month')
       month_btn.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
       row.pack_start(month_btn, true, true, 0)
       right_btn = Gtk::Button.new('>')
@@ -11474,12 +11736,30 @@ module PandoraGtk
 
       left_btn = Gtk::Button.new('<')
       row.pack_start(left_btn, true, true, 0)
-      year_box = Gtk::Button.new(date.strftime('%Y'))
-      row.pack_start(year_box, true, true, 0)
+      @year_btn = Gtk::Button.new('year')
+      row.pack_start(year_btn, true, true, 0)
       right_btn = Gtk::Button.new('>')
       row.pack_start(right_btn, true, true, 0)
 
       cal.pack_start(row, true, true, 0)
+
+
+      date = PandoraUtils.str_to_date(@entry.text)
+      time_now = Time.now
+      date ||= time_now
+      @month = date.month
+      @year = date.year
+
+      month_d1 = Time.local(@year, @month, 1)
+      d1_wday = month_d1.wday
+      d1_wday = 7 if d1_wday==0
+      start = d1_wday-1
+      #start =+ 7 if start==0
+      start_time = month_d1 - (start+1)*3600*24
+      start_day = Time.local(start_time.year, start_time.month, start_time.day)
+
+      month_btn.label = _(date.strftime('%B'))
+      year_btn.label = date.strftime('%Y')
 
       cal_day = start_day
 
@@ -11515,6 +11795,7 @@ module PandoraGtk
           end
           fg = '#000000'
           fg = '#FFFFFF' if (day_type==:rest) or (day_type==:holi)
+
           lab = Gtk::Label.new(text)
           lab.width_chars = 4
           lab.use_markup = true

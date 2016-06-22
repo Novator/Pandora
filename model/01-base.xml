@@ -276,13 +276,13 @@
       <password name="Password" type="String" size="255" />
       <name name="Name" type="String" size="255" />
       <key_hash name="Key panhash" type="Panhash(Key)" hash="1:phash(12)" />
-      <base_id name="Base ID" type="Panhash" hash="2:raw(8)" />
+      <base_id name="Base ID" type="String" size="16" hash="2:raw(8)" />
       <addr_from name="Address from" type="String" size="20" />
       <addr_from_type name="Address from type" type="Byte" />
       <addr_type name="Address type" type="Byte" />
-      <city name="City" type="[City]" />
-      <home name="Home" type="[Address]" />
-      <coord name="Coord" type="Integer" />
+      <city name="City" type="Panhash(City)" />
+      <home name="Home" type="Panhash(Address)" />
+      <coord name="Coord" type="Coord" />
       <state name="State" type="Word" />
       <sended name="Sended B" type="Integer" />
       <received name="Recieved B" type="Integer" />

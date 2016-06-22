@@ -272,6 +272,7 @@
       <session_key name.ru="Сеансовый ключ" />
       <try_upnp_time name.ru="Время попытки UPnP" />
       <try_natpmp_time name.ru="Время попытки NAT-PMP" />
+      <query_time name.ru="Время запроса" />
     </Node>
 
     <Event name.ru="Событие|События">

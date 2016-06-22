@@ -127,6 +127,7 @@
       <domain fsize="64" />
       <password fsize="32" />
       <name fsize="64" />
+      <base_id view="hex" />
     </Node>
 
   </Pandora>
