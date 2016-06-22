@@ -11573,6 +11573,10 @@ module PandoraGtk
       root_vbox
     end
 
+    Sunday_Contries = ['US', 'JA', 'CA', 'IN', 'BR', 'AR', 'MX', 'IL', 'PH', \
+      'PE', 'BO', 'EC', 'VE', 'ZA', 'CO', 'KR', 'TW', 'HN', 'NI', 'PA']
+    Saturay_Contries = ['EG', 'LY', 'IR', 'AF', 'SY', 'DZ', 'SA', 'YE', 'IQ', 'JO']
+
     def init_days_box
       labs_parent = @days_frame
       @@days_box ||= nil
@@ -11586,8 +11590,16 @@ module PandoraGtk
       time_now = Time.now
       month_d1 = Time.local(@year, @month, 1)
       d1_wday = month_d1.wday
-      d1_wday = 7 if d1_wday==0
-      start = d1_wday-1
+      start = nil
+      if Sunday_Contries.include?($country)
+        start = d1_wday
+      elsif Saturay_Contries.include?($country)
+        start = d1_wday+1
+        start = 0 if d1_wday==6
+      else
+        d1_wday = 7 if d1_wday==0
+        start = d1_wday-1
+      end
       #start =+ 7 if start==0
       start_time = month_d1 - (start+1)*3600*24
       start_day = Time.local(start_time.year, start_time.month, start_time.day)
@@ -11657,7 +11669,8 @@ module PandoraGtk
             text = (cal_day.day).to_s
             if cal_day.month == @month
               day_type = :work
-              day_type = :rest if (day==5) or (day==6)
+              wday = cal_day.wday
+              day_type = :rest if (wday==0) or (wday==6)
               if holidays and (set_line = holidays[@month.to_s+'.'+cal_day.day.to_s])
                 if set_line==2
                   day_type = :work
@@ -11685,7 +11698,7 @@ module PandoraGtk
           elsif day_type==:curr
             bg = '#55FF55'
           elsif day_type==:chsd
-            bg = '#EEAA88'
+            bg = '#EE88AA'
           else
             bg = '#FFFFFF'
           end
@@ -22470,6 +22483,7 @@ end
 # RU: Значения переменных по умолчанию
 $poly_launch = false
 $host = nil
+$country = 'US'
 $lang = 'en'
 $autodetect_lang = true
 $pandora_parameters = []
@@ -22719,6 +22733,7 @@ if $autodetect_lang
   lang = ENV['LANG']
   if (lang.is_a? String) and (lang.size>1)
     $lang = lang[0, 2].downcase
+    $country = lang[3, 2].upcase
   elsif PandoraUtils.os_family=='windows'
     lang_code = read_win_hklm_reg('System\CurrentControlSet\Control\Nls\Language', \
       'InstallLanguage')
@@ -22847,7 +22862,15 @@ if $autodetect_lang
       lcode[0x043D] = 'ji;Yiddish'
       lcode[0x0435] = 'zu;Zulu'
       lang = lcode[lang_code]
-      $lang = lang[0, 2].downcase if (lang.is_a? String) and (lang.size>1)
+      if (lang.is_a? String) and (lang.size>1)
+        $lang = lang[0, 2].downcase
+        if (lang.size>4) and (lang[2]=='-')
+          $country = lang[3, 2]
+        else
+          $country = $lang
+        end
+        $country = $country.upcase
+      end
     end
   end
 end
