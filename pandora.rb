@@ -11458,13 +11458,13 @@ module PandoraGtk
     def get_holidays(year)
       @holidays = @year_holidays[year]
       if not @holidays
-        holidays_fn = File.join($pandora_lang_dir, 'holiday.'+year.to_s+'.'+$lang+'.txt')
+        holidays_fn = File.join($pandora_lang_dir, 'holiday.'+year.to_s+'.'+$country+'.txt')
         f_exist = File.exist?(holidays_fn)
         if not f_exist
           year = 0
           @holidays = @year_holidays[year]
           if not @holidays
-            holidays_fn = File.join($pandora_lang_dir, 'holiday.0.'+$lang+'.txt')
+            holidays_fn = File.join($pandora_lang_dir, 'holiday.0.'+$country+'.txt')
             f_exist = File.exist?(holidays_fn)
           end
         end
@@ -11698,7 +11698,7 @@ module PandoraGtk
           elsif day_type==:curr
             bg = '#55FF55'
           elsif day_type==:chsd
-            bg = '#EE88AA'
+            bg = '#EEAA88'
           else
             bg = '#FFFFFF'
           end
