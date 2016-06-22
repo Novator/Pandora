@@ -11456,8 +11456,7 @@ module PandoraGtk
     end
 
     def get_holidays(year)
-      p year
-      p @holidays = @year_holidays[year]
+      @holidays = @year_holidays[year]
       if not @holidays
         holidays_fn = File.join($pandora_lang_dir, 'holiday.'+year.to_s+'.'+$lang+'.txt')
         f_exist = File.exist?(holidays_fn)
@@ -11474,7 +11473,6 @@ module PandoraGtk
           month = nil
           set_line = nil
           IO.foreach(holidays_fn) do |line|
-            p line
             if (line.is_a? String) and (line.size>0)
               if line[0]==':'
                 month = line[1..-1].to_i
@@ -11584,8 +11582,7 @@ module PandoraGtk
       end
       @labs ||= []
 
-      p '---init_days_box: [date, month, year]='+[date, month, year].inspect
-
+      #p '---init_days_box: [date, month, year]='+[date, month, year].inspect
       time_now = Time.now
       month_d1 = Time.local(@year, @month, 1)
       d1_wday = month_d1.wday
@@ -11609,7 +11606,6 @@ module PandoraGtk
           evbox.parent = labs_parent
         end
       else
-        p '===RECREATE VBOX'
         labs_parent.remove(labs_parent.child) if labs_parent.child
 
         evbox = DayBox.new('#FFFFFF')
@@ -11689,7 +11685,7 @@ module PandoraGtk
           elsif day_type==:curr
             bg = '#55FF55'
           elsif day_type==:chsd
-            bg = '#EE88AA'
+            bg = '#EEAA88'
           else
             bg = '#FFFFFF'
           end
