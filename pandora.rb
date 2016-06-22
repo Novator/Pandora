@@ -573,7 +573,9 @@ module PandoraUtils
   # Convert ruby date to string
   # RU: Преобразует ruby-дату в строку
   def self.date_to_str(date)
-    res = date.strftime('%d.%m.%Y')
+    res = nil
+    res = date.strftime('%d.%m.%Y') if date
+    res
   end
 
   # Obtain date value from string
@@ -11403,9 +11405,9 @@ module PandoraGtk
   end
 
   class DayBox < Gtk::EventBox
-    attr_accessor :bg
+    attr_accessor :bg, :day_date
 
-    def initialize(background)
+    def initialize(background=nil)
       super()
       @bg = background
       self.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
@@ -11425,8 +11427,9 @@ module PandoraGtk
         false
       end
       self.signal_connect('button-press-event') do |widget, event|
-        if (event.button == 1)
+        if (event.button == 1) and widget.can_focus?
           widget.set_focus(true)
+          yield(self) if block_given?
         end
         false
       end
@@ -11437,10 +11440,10 @@ module PandoraGtk
   # Date choose window
   # RU: Окно выбора даты
   class DatePopWindow < PopWindow
-    attr_accessor :date, :year, :month, :month_btn, :year_btn
+    attr_accessor :date, :year, :month, :month_btn, :year_btn, :date_entry
 
-    def initialize(date_str=nil, amodal=nil)
-      @date = PandoraUtils.str_to_date(date_str)
+    def initialize(adate=nil, amodal=nil)
+      @date ||= adate
       super(amodal)
       self.signal_connect('key-press-event') do |widget, event|
         if (event.keyval==Gdk::Keyval::GDK_Tab)
@@ -11455,17 +11458,18 @@ module PandoraGtk
       if @root_vbox.nil? or @root_vbox.destroyed?
         @root_vbox = Gtk::VBox.new
         @days_frame = Gtk::Frame.new
+        @days_frame.shadow_type = Gtk::SHADOW_IN
 
         cur_btn = Gtk::Button.new(_'Current time')
         cur_btn.signal_connect('clicked') do |widget|
           time_now = Time.now
           if (@month == time_now.month) and (@year == time_now.year)
-            cal.select_day(time_now.day)
+            @date_entry.on_click_btn.call(time_now)
           else
-            #cal.select_month(time_now.month, time_now.year)
             @month = time_now.month
             @year = time_now.year
           end
+          init_days_box
         end
         root_vbox.pack_start(cur_btn, false, false, 0)
 
@@ -11478,9 +11482,11 @@ module PandoraGtk
             @year -= 1
             @month = 12
           end
+          init_days_box
         end
         row.pack_start(left_btn, true, true, 0)
         @month_btn = Gtk::Button.new('month')
+        month_btn.width_request = 90
         month_btn.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
         row.pack_start(month_btn, true, true, 0)
         right_btn = Gtk::Button.new('>')
@@ -11491,31 +11497,51 @@ module PandoraGtk
             @year += 1
             @month = 1
           end
+          init_days_box
         end
         row.pack_start(right_btn, true, true, 0)
 
         left_btn = Gtk::Button.new('<')
+        left_btn.signal_connect('clicked') do |widget|
+          @year -= 1
+          init_days_box
+        end
         row.pack_start(left_btn, true, true, 0)
         @year_btn = Gtk::Button.new('year')
         row.pack_start(year_btn, true, true, 0)
         right_btn = Gtk::Button.new('>')
+        right_btn.signal_connect('clicked') do |widget|
+          @year += 1
+          init_days_box
+        end
         row.pack_start(right_btn, true, true, 0)
 
-
         root_vbox.pack_start(row, false, true, 0)
-
         root_vbox.pack_start(@days_frame, true, true, 0)
       end
       root_vbox
     end
 
-    def init_days_box(preset, labs_parent, date_entry)
-      @@date_entry = date_entry if date_entry
+    def init_days_box
+      labs_parent = @days_frame
       @@days_box ||= nil
       if @@days_box
         vbox = @@days_box
         vbox = nil if vbox.destroyed?
       end
+      @labs ||= []
+
+      p '---init_days_box: [date, month, year]='+[date, month, year].inspect
+
+      time_now = Time.now
+      month_d1 = Time.local(@year, @month, 1)
+      d1_wday = month_d1.wday
+      d1_wday = 7 if d1_wday==0
+      start = d1_wday-1
+      #start =+ 7 if start==0
+      start_time = month_d1 - (start+1)*3600*24
+      start_day = Time.local(start_time.year, start_time.month, start_time.day)
+
       if vbox
         resize(100, 100)
         if vbox.parent and (not vbox.parent.destroyed?)
@@ -11534,92 +11560,117 @@ module PandoraGtk
         vbox = Gtk::VBox.new
         focus_btn = nil
 
-        time_now = Time.now
-        date ||= time_now
-        @month = date.month
-        @year = date.year
-
-        month_d1 = Time.local(@year, @month, 1)
-        d1_wday = month_d1.wday
-        d1_wday = 7 if d1_wday==0
-        start = d1_wday-1
-        #start =+ 7 if start==0
-        start_time = month_d1 - (start+1)*3600*24
-        start_day = Time.local(start_time.year, start_time.month, start_time.day)
-
-        #month_btn.label = _(date.strftime('%B'))
-        #year_btn.label = date.strftime('%Y')
-
-        cal_day = start_day
-
         7.times do |week|
           row = Gtk::HBox.new
           row.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
           vbox.pack_start(row, true, true, 1)
           7.times do |day|
-            day_type = nil
-            if week==0
-              p '[@year, @month, day+1]='+[@year, @month, day+1].inspect
-              atime = start_day + (day+1)*3600*24
-              text = _(atime.strftime('%a'))
-              day_type = :capt
-            else
-              cal_day += 3600*24
-              text = (cal_day.day).to_s
-              if cal_day.month == @month
-                day_type = :work
-                day_type = :rest if day==5
-                day_type = :holi if day==6
-              end
-            end
-            bg = nil
-            if day_type==:rest
-              bg = '#5050A0'
-            elsif day_type==:holi
-              bg = '#B05050'
-            elsif day_type==:work
-              bg = '#DDEEFF'
-            else #if day_type != :capt
-              bg = '#FFFFFF'
-            end
-            fg = '#000000'
-            fg = '#FFFFFF' if (day_type==:rest) or (day_type==:holi)
-
-            lab = Gtk::Label.new(text)
+            lab = Gtk::Label.new
+            @labs[week*7+day] = lab
             lab.width_chars = 4
             lab.use_markup = true
-            if lab.use_markup?
-              if day_type==:capt
-                lab.set_markup('<b>'+text+'</b>')
-              else
-                lab.set_markup('<span foreground="'+fg+'">'+text+'</span>')
-              end
-            end
             lab.justify = Gtk::JUSTIFY_CENTER
 
-            lab_evbox = DayBox.new(bg)
-            lab_evbox.can_focus = (day_type != :capt)
+            lab_evbox = DayBox.new do |lab_evbox|
+              @date_entry.on_click_btn.call(lab_evbox.day_date)
+            end
             lab_evbox.add(lab)
             row.pack_start(lab_evbox, true, true, 1)
           end
         end
-        vbox.show_all
 
-        #date_entry = @@date_entry
-        #date_entry.on_click_btn.call(preset, widget.label)
-        #hide_popwin
+        evbox = DayBox.new('#FFFFFF')
+        evbox.can_focus = false
+        evbox.add(vbox)
+        #frame = Gtk::Frame.new
+        #frame.shadow_type = Gtk::SHADOW_IN
+        #frame.add(evbox)
+        #vbox.pack_start(frame, false, false, 0)
 
-        labs_parent.add(vbox)
+        labs_parent.add(evbox)
         @@days_box = vbox
+        vbox.show_all
       end
+
+      @month_btn.label = _(month_d1.strftime('%B'))
+      @year_btn.label = month_d1.strftime('%Y')
+
+      cal_day = start_day
+
+      7.times do |week|
+        7.times do |day|
+          day_type = nil
+          if week==0
+            #p '---[@year, @month, day+1]='+[@year, @month, day+1].inspect
+            atime = start_day + (day+1)*3600*24
+            text = _(atime.strftime('%a'))
+            day_type = :capt
+          else
+            cal_day += 3600*24
+            text = (cal_day.day).to_s
+            if cal_day.month == @month
+              day_type = :work
+              day_type = :rest if day==5
+              day_type = :holi if day==6
+            end
+            if (cal_day.day == time_now.day) and (cal_day.month == time_now.month) \
+            and (cal_day.year == time_now.year)
+              day_type = :curr
+            end
+            if date and (cal_day.day == date.day) and (cal_day.month == date.month) \
+            and (cal_day.year == date.year)
+              day_type = :chsd
+            end
+          end
+          bg = nil
+          if day_type==:work
+            bg = '#DDEEFF'
+          elsif day_type==:rest
+            bg = '#5050A0'
+          elsif day_type==:holi
+            bg = '#B05050'
+          elsif day_type==:curr
+            bg = '#55FF55'
+          elsif day_type==:chsd
+            bg = '#EE88AA'
+          else
+            bg = '#FFFFFF'
+          end
+          fg = '#000000'
+          fg = '#FFFFFF' if (day_type==:rest) or (day_type==:holi)
+
+          lab = @labs[week*7+day]
+          if lab.use_markup?
+            if day_type==:capt
+              lab.set_markup('<b>'+text+'</b>')
+            else
+              lab.parent.day_date = cal_day
+              lab.set_markup('<span foreground="'+fg+'">'+text+'</span>')
+            end
+          end
+          lab_evbox = lab.parent
+          lab_evbox.bg = bg
+          lab_evbox.can_focus = (day_type != :capt)
+        end
+      end
+
       [vbox, focus_btn]
     end
 
-    def move_and_show(apreset=nil, x=nil, y=nil, a_on_click_btn=nil)
-      @preset = apreset if apreset
+    def move_and_show(adate=nil, adate_entry=nil, x=nil, y=nil, a_on_click_btn=nil)
+      @date = adate
+      @date_entry = adate_entry if adate_entry
+      if @date
+        @month = date.month
+        @year = date.year
+      else
+        time_now = Time.now
+        @month = time_now.month
+        @year = time_now.year
+      end
       @on_click_btn = a_on_click_btn if a_on_click_btn
       popwidget = get_popwidget
-      vbox, focus_btn = init_days_box(@preset, @days_frame, self)
+      vbox, focus_btn = init_days_box
       popwidget.show_all
       pwh = popwidget.size_request
       resize(*pwh)
@@ -11630,7 +11681,7 @@ module PandoraGtk
       move(@x, @y)
       show_all
       present
-      focus_btn.grab_focus if focus_btn
+      month_btn.grab_focus
     end
 
   end
@@ -11655,8 +11706,8 @@ module PandoraGtk
       @entry.max_length = 10
       @entry.tooltip_text = 'DD.MM.YYYY'
       @on_click_btn = Proc.new do |date|
-        year, month, day = date
-        @entry.text = PandoraUtils.date_to_str(Time.local(year, month, day))
+        @entry.text = PandoraUtils.date_to_str(date)
+        @@popwin.hide_popwin
       end
     end
 
@@ -11667,18 +11718,16 @@ module PandoraGtk
       if popwin and (not popwin.destroyed?) and (popwin.visible? or popwin.just_leaved)
         popwin.hide
       else
+        date = PandoraUtils.str_to_date(@entry.text)
         if popwin.nil? or popwin.destroyed?
-          @@popwin = DatePopWindow.new(@entry.text, true)
+          @@popwin = DatePopWindow.new(date, true)
           popwin = @@popwin
         end
         borig = @entry.window.origin
         brect = @entry.allocation.to_a
-
         x = borig[0]
         y = borig[1]+brect[3]+1
-
-        popwin.move_and_show(nil, x, y, @on_click_btn)
-        #popwin.poly_btn.set_active(false)
+        popwin.move_and_show(date, self, x, y, @on_click_btn)
       end
       popwin.just_leaved = false
       res
