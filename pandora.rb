@@ -11440,18 +11440,56 @@ module PandoraGtk
   # Date choose window
   # RU: Окно выбора даты
   class DatePopWindow < PopWindow
-    attr_accessor :date, :year, :month, :month_btn, :year_btn, :date_entry, :holidays
+    attr_accessor :date, :year, :month, :month_btn, :year_btn, :date_entry, \
+      :holidays, :left_mon_btn, :right_mon_btn, :left_year_btn, :right_year_btn
 
     def initialize(adate=nil, amodal=nil)
       @date ||= adate
       @year_holidays = {}
       super(amodal)
       self.signal_connect('key-press-event') do |widget, event|
-        if (event.keyval==Gdk::Keyval::GDK_Tab)
+        if [32, Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+          if focus and (focus.is_a? DayBox)
+            event = Gdk::EventButton.new(Gdk::Event::BUTTON_PRESS)
+            event.button = 1
+            focus.signal_emit('button-press-event', event)
+          end
+          true
+        elsif (event.keyval==Gdk::Keyval::GDK_Tab)
+          false
+        elsif (event.keyval>=65360) and (event.keyval<=65367)
+          ctrl = (event.state.control_mask? or event.state.shift_mask?)
+          if event.keyval==65360 or (ctrl and event.keyval==65361)
+            left_mon_btn.clicked
+          elsif event.keyval==65367 or (ctrl and event.keyval==65363)
+            right_mon_btn.clicked
+          elsif event.keyval==65365 or (ctrl and event.keyval==65362)
+            left_year_btn.clicked
+          elsif event.keyval==65366 or (ctrl and event.keyval==65364)
+            right_year_btn.clicked
+          end
           false
         else
           false
         end
+      end
+      self.signal_connect('scroll-event') do |widget, event|
+        ctrl = (event.state.control_mask? or event.state.shift_mask?)
+        if (event.direction==Gdk::EventScroll::UP) \
+        or (event.direction==Gdk::EventScroll::LEFT)
+          if ctrl
+            left_year_btn.clicked
+          else
+            left_mon_btn.clicked
+          end
+        else
+          if ctrl
+            right_year_btn.clicked
+          else
+            right_mon_btn.clicked
+          end
+        end
+        true
       end
     end
 
@@ -11521,8 +11559,8 @@ module PandoraGtk
         root_vbox.pack_start(cur_btn, false, false, 0)
 
         row = Gtk::HBox.new
-        left_btn = Gtk::Button.new('<')
-        left_btn.signal_connect('clicked') do |widget|
+        @left_mon_btn = Gtk::Button.new('<')
+        left_mon_btn.signal_connect('clicked') do |widget|
           if @month>1
             @month -= 1
           else
@@ -11532,13 +11570,22 @@ module PandoraGtk
           end
           init_days_box
         end
-        row.pack_start(left_btn, true, true, 0)
+        row.pack_start(left_mon_btn, true, true, 0)
         @month_btn = Gtk::Button.new('month')
         month_btn.width_request = 90
         month_btn.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
+        month_btn.signal_connect('scroll-event') do |widget, event|
+          if (event.direction==Gdk::EventScroll::UP) \
+          or (event.direction==Gdk::EventScroll::LEFT)
+            left_mon_btn.clicked
+          else
+            right_mon_btn.clicked
+          end
+          true
+        end
         row.pack_start(month_btn, true, true, 0)
-        right_btn = Gtk::Button.new('>')
-        right_btn.signal_connect('clicked') do |widget|
+        @right_mon_btn = Gtk::Button.new('>')
+        right_mon_btn.signal_connect('clicked') do |widget|
           if @month<12
             @month += 1
           else
@@ -11548,24 +11595,33 @@ module PandoraGtk
           end
           init_days_box
         end
-        row.pack_start(right_btn, true, true, 0)
+        row.pack_start(right_mon_btn, true, true, 0)
 
-        left_btn = Gtk::Button.new('<')
-        left_btn.signal_connect('clicked') do |widget|
+        @left_year_btn = Gtk::Button.new('<')
+        left_year_btn.signal_connect('clicked') do |widget|
           @year -= 1
           get_holidays(@year)
           init_days_box
         end
-        row.pack_start(left_btn, true, true, 0)
+        row.pack_start(left_year_btn, true, true, 0)
         @year_btn = Gtk::Button.new('year')
+        year_btn.signal_connect('scroll-event') do |widget, event|
+          if (event.direction==Gdk::EventScroll::UP) \
+          or (event.direction==Gdk::EventScroll::LEFT)
+            left_year_btn.clicked
+          else
+            right_year_btn.clicked
+          end
+          true
+        end
         row.pack_start(year_btn, true, true, 0)
-        right_btn = Gtk::Button.new('>')
-        right_btn.signal_connect('clicked') do |widget|
+        @right_year_btn = Gtk::Button.new('>')
+        right_year_btn.signal_connect('clicked') do |widget|
           @year += 1
           get_holidays(@year)
           init_days_box
         end
-        row.pack_start(right_btn, true, true, 0)
+        row.pack_start(right_year_btn, true, true, 0)
 
         root_vbox.pack_start(row, false, true, 0)
         root_vbox.pack_start(@days_frame, true, true, 0)
@@ -11588,7 +11644,7 @@ module PandoraGtk
 
       #p '---init_days_box: [date, month, year]='+[date, month, year].inspect
       time_now = Time.now
-      month_d1 = Time.local(@year, @month, 1)
+      month_d1 = Time.gm(@year, @month, 1)
       d1_wday = month_d1.wday
       start = nil
       if Sunday_Contries.include?($country)
@@ -11602,7 +11658,7 @@ module PandoraGtk
       end
       #start =+ 7 if start==0
       start_time = month_d1 - (start+1)*3600*24
-      start_day = Time.local(start_time.year, start_time.month, start_time.day)
+      start_day = Time.gm(start_time.year, start_time.month, start_time.day)
 
       if evbox
         resize(100, 100)
@@ -11800,83 +11856,6 @@ module PandoraGtk
       res
     end
 
-    def get_popwidget2
-      #cal.select_month(date.month, date.year)
-      #cal.select_day(date.day)
-      #update_mark(date.month, date.year, time_now)
-      ##cal.mark_day(date.day)
-      #cal.display_options = Gtk::Calendar::SHOW_HEADING | \
-      #  Gtk::Calendar::SHOW_DAY_NAMES | Gtk::Calendar::WEEK_START_MONDAY
-
-      #cal.signal_connect('day-selected') do
-      #  year, month, day = @cal.date
-      #  p 'day-selected: [year, month, day]='+[year, month, day].inspect
-      #  if (@month==month) and (@year==year)
-      #    @entry.text = PandoraUtils.date_to_str(Time.local(year, month, day))
-      #    @popwin.destroy
-      #    @popwin = nil
-      #  else
-      #    @month=month
-      #    @year=year
-      #    update_mark(month, year)
-      #  end
-      #end
-
-      #cal.signal_connect('month-changed') do
-      #  year, month, day = @cal.date
-      #  p 'month-changed: [year, month, day]='+[year, month, day].inspect
-      #  update_mark(month, year)
-      #end
-
-      signal_connect('key-press-event') do |widget, event|
-        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-          event.hardware_keycode = 65   #Space
-          event.keyval = 32             #Space
-          widget.signal_emit('key-press-event', event)
-          #@cal.signal_emit('day-selected')
-          true
-        elsif (event.keyval>=65360) and (event.keyval<=65367)
-          if event.keyval==65360
-            if @cal.month>0
-              @cal.month = @cal.month-1
-            else
-              @cal.month = 11
-              @cal.year = @cal.year-1
-            end
-          elsif event.keyval==65367
-            if @cal.month<11
-              @cal.month = @cal.month+1
-            else
-              @cal.month = 0
-              @cal.year = @cal.year+1
-            end
-          elsif event.keyval==65365
-            @cal.year = @cal.year-1
-          elsif event.keyval==65366
-            @cal.year = @cal.year+1
-          end
-          #year, month, day = @cal.date
-          #@month=month
-          #@year=year
-          false
-        else
-          false
-        end
-      end
-      evbox = DayBox.new('#FFFFFF')
-      evbox.can_focus = false
-      evbox.add(cal)
-      frame = Gtk::Frame.new
-      frame.shadow_type = Gtk::SHADOW_IN
-      frame.add(evbox)
-      vbox.pack_start(frame, false, false, 0)
-
-      #cal.can_default = true
-      ##cal.grab_default
-      #cal.grab_focus
-
-      vbox
-    end
   end
 
   # Entry for time
