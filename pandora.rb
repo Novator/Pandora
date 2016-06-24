@@ -11502,7 +11502,7 @@ module PandoraGtk
           year = 0
           @holidays = @year_holidays[year]
           if not @holidays
-            holidays_fn = File.join($pandora_lang_dir, 'holiday.0.'+$country+'.txt')
+            holidays_fn = File.join($pandora_lang_dir, 'holiday.0000.'+$country+'.txt')
             f_exist = File.exist?(holidays_fn)
           end
         end
