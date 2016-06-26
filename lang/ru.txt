@@ -413,3 +413,5 @@ September=>Сентябрь
 October=>Октябрь
 November=>Ноябрь
 December=>Декабрь
+Request=>Запрос
+Answer=>Ответ

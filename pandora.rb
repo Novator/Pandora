@@ -11427,12 +11427,21 @@ module PandoraGtk
         false
       end
       self.signal_connect('button-press-event') do |widget, event|
+        res = false
         if (event.button == 1) and widget.can_focus?
           widget.set_focus(true)
           yield(self) if block_given?
+          res = true
+        elsif (event.button == 3)
+          popwin = self.parent.parent.parent
+          if popwin.is_a? DatePopWindow
+            popwin.show_month_menu(event.time)
+            res = true
+          end
         end
-        false
+        res
       end
+      #self.signal_connect('button-release-event') do |widget, event|
     end
 
   end
@@ -11444,6 +11453,10 @@ module PandoraGtk
       :holidays, :left_mon_btn, :right_mon_btn, :left_year_btn, :right_year_btn
 
     def initialize(adate=nil, amodal=nil)
+      @@month_menu = nil
+      @@year_menu  = nil
+      @@year_mi = nil
+      @@days_box = nil
       @date ||= adate
       @year_holidays = {}
       super(amodal)
@@ -11539,6 +11552,68 @@ module PandoraGtk
       @holidays
     end
 
+    def show_month_menu(time=nil)
+      if not @@month_menu
+        @@month_menu = Gtk::Menu.new
+        time_now = Time.now
+        12.times do |mon|
+          mon_time = Time.gm(time_now.year, mon+1, 1)
+          menuitem = Gtk::MenuItem.new(_(mon_time.strftime('%B')))
+          menuitem.signal_connect('activate') do |widget|
+            @month = mon+1
+            init_days_box
+          end
+          @@month_menu.append(menuitem)
+          @@month_menu.show_all
+        end
+      end
+      time ||= 0
+      @@month_menu.popup(nil, nil, 3, time) do |menu, x, y, push_in|
+        @just_leaved = nil
+        GLib::Timeout.add(500) do
+          @just_leaved = false if not destroyed?
+          false
+        end
+        borig = @month_btn.window.origin
+        brect = @month_btn.allocation.to_a
+        x = borig[0]+brect[0]
+        y = borig[1]+brect[1]+brect[3]
+        [x, y]
+      end
+    end
+
+    def show_year_menu(time=nil)
+      if not @@year_menu
+        @@year_menu = Gtk::Menu.new
+        time_now = Time.now
+        ((time_now.year-55)..time_now.year).each do |year|
+          menuitem = Gtk::MenuItem.new(year.to_s)
+          menuitem.signal_connect('activate') do |widget|
+            @year = year
+            get_holidays(@year)
+            init_days_box
+          end
+          @@year_menu.append(menuitem)
+          @@year_mi = menuitem if @year == year
+        end
+        @@year_menu.show_all
+      end
+      @@year_menu.select_item(@@year_mi) if @@year_mi
+      time ||= 0
+      @@year_menu.popup(nil, nil, 3, time) do |menu, x, y, push_in|
+        @just_leaved = nil
+        GLib::Timeout.add(500) do
+          @just_leaved = false if not destroyed?
+          false
+        end
+        borig = @year_btn.window.origin
+        brect = @year_btn.allocation.to_a
+        x = borig[0]+brect[0]
+        y = borig[1]+brect[1]+brect[3]
+        [x, y]
+      end
+    end
+
     def get_popwidget
       if @root_vbox.nil? or @root_vbox.destroyed?
         @root_vbox = Gtk::VBox.new
@@ -11553,6 +11628,7 @@ module PandoraGtk
           else
             @month = time_now.month
             @year = time_now.year
+            get_holidays(@year)
           end
           init_days_box
         end
@@ -11574,6 +11650,9 @@ module PandoraGtk
         @month_btn = Gtk::Button.new('month')
         month_btn.width_request = 90
         month_btn.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#FFFFFF'))
+        month_btn.signal_connect('clicked') do |widget, event|
+          show_month_menu
+        end
         month_btn.signal_connect('scroll-event') do |widget, event|
           if (event.direction==Gdk::EventScroll::UP) \
           or (event.direction==Gdk::EventScroll::LEFT)
@@ -11605,6 +11684,9 @@ module PandoraGtk
         end
         row.pack_start(left_year_btn, true, true, 0)
         @year_btn = Gtk::Button.new('year')
+        year_btn.signal_connect('clicked') do |widget, event|
+          show_year_menu
+        end
         year_btn.signal_connect('scroll-event') do |widget, event|
           if (event.direction==Gdk::EventScroll::UP) \
           or (event.direction==Gdk::EventScroll::LEFT)
@@ -11635,7 +11717,6 @@ module PandoraGtk
 
     def init_days_box
       labs_parent = @days_frame
-      @@days_box ||= nil
       if @@days_box
         evbox = @@days_box
         evbox = nil if evbox.destroyed?
@@ -17431,7 +17512,7 @@ module PandoraGtk
         reqs ||= pool.mass_records
         p '-----------reqs='+reqs.inspect
         reqs.each do |mr|
-          if mr.is_a? Array
+          if (mr.is_a? Array) and (mr[PandoraNet::MR_Kind] == PandoraNet::MK_Search)
             user_iter = @list_store.append
             user_iter[0] = mr[PandoraNet::MR_Index]
             user_iter[1] = Utf8String.new(mr[PandoraNet::MRS_Request])
@@ -17660,17 +17741,17 @@ module PandoraGtk
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Field1'), renderer, 'text' => 1)
+      column = Gtk::TreeViewColumn.new(_('Request'), renderer, 'text' => 1)
       column.set_sort_column_id(1)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Field2'), renderer, 'text' => 2)
+      column = Gtk::TreeViewColumn.new(_('Kind'), renderer, 'text' => 2)
       column.set_sort_column_id(2)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Field3'), renderer, 'text' => 3)
+      column = Gtk::TreeViewColumn.new(_('Answer'), renderer, 'text' => 3)
       column.set_sort_column_id(3)
       list_tree.append_column(column)
 
@@ -18033,17 +18114,31 @@ module PandoraGtk
           $window.pool.mass_records.each do |mr|
             p '---mr:'
             p mr[0..6]
-            sess_iter = list_store.append
-            sess_iter[0] = mr[PandoraNet::MRP_Nick]
-            sess_iter[1] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Person])
-            sess_iter[2] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Key])
-            sess_iter[3] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_BaseId])
-            sess_iter[4] = mr[PandoraNet::MR_Trust]
-            sess_iter[5] = mr[PandoraNet::MR_Depth]
-            sess_iter[6] = 0 #distance
-            sess_iter[7] = mr[PandoraNet::MR_Session].object_id
-            sess_iter[8] = PandoraUtils.time_to_str(mr[PandoraNet::MR_Time])
-            sess_iter[9] = mr[PandoraNet::MR_Index]
+            aperson = mr[PandoraNet::MR_Person]
+            akey = mr[PandoraNet::MR_Key]
+            abaseid = mr[PandoraNet::MR_BaseId]
+            if aperson or akey
+              sess_iter = list_store.append
+              anick = nil
+              akind = mr[PandoraNet::MR_Kind]
+              if (akind == PandoraNet::MK_Presence)
+                anick = mr[PandoraNet::MRP_Nick]
+              elsif aperson
+                anick = PandoraCrypto.short_name_of_person(nil, aperson, 1)
+              elsif akind
+                anick = akind.to_s
+              end
+              sess_iter[0] = anick
+              sess_iter[1] = PandoraUtils.bytes_to_hex(aperson)
+              sess_iter[2] = PandoraUtils.bytes_to_hex(akey)
+              sess_iter[3] = PandoraUtils.bytes_to_hex(abaseid)
+              sess_iter[4] = mr[PandoraNet::MR_Trust]
+              sess_iter[5] = mr[PandoraNet::MR_Depth]
+              sess_iter[6] = 0 #distance
+              sess_iter[7] = mr[PandoraNet::MR_Session].object_id
+              sess_iter[8] = PandoraUtils.time_to_str(mr[PandoraNet::MR_Time])
+              sess_iter[9] = mr[PandoraNet::MR_Index]
+            end
           end
         end
       end
