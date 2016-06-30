@@ -1697,7 +1697,7 @@ module PandoraUtils
         rescue => err
           res = nil
           PandoraUtils.log_message(LM_Error, \
-            _('Wrong select')+' ['+sql+']: '+Utf8String.new(err.message))
+            _('Wrong select')+' "'+sql+'": '+Utf8String.new(err.message))
         end
       end
       #p 'res='+res.inspect
@@ -1764,7 +1764,7 @@ module PandoraUtils
         rescue => err
           res = false
           PandoraUtils.log_message(LM_Error, \
-            _('Wrong update')+' ['+sql+']: '+Utf8String.new(err.message))
+            _('Wrong update')+' "'+sql+'": '+Utf8String.new(err.message))
         end
         #p 'upd_tab: db.execute.res='+res.inspect
       end
@@ -19235,52 +19235,54 @@ module PandoraGtk
           end
           p 'select filter[sql,values]='+filter.inspect
           sel = panobject.select(filter, false, nil, panobject.sort)
-          treeview.sel = sel
-          treeview.param_view_col = nil
-          if ((panobject.kind==PandoraModel::PK_Parameter) \
-          or (panobject.kind==PandoraModel::PK_Message)) and sel[0]
-            treeview.param_view_col = sel[0].size
-          end
-          iter0 = nil
-          sel.each_with_index do |row,i|
-            #iter = store.append
-            iter = store.get_iter(Gtk::TreePath.new(i))
-            iter ||= store.append
-            #store.set_value(iter, column, value)
-            id = row[0].to_i
-            iter[0] = id
-            iter0 = iter if id0 and id and (id == id0)
-            if treeview.param_view_col
-              view = nil
-              if (panobject.kind==PandoraModel::PK_Parameter)
-                type = panobject.field_val('type', row)
-                setting = panobject.field_val('setting', row)
-                ps = PandoraUtils.decode_param_setting(setting)
-                view = ps['view']
-                view ||= PandoraUtils.pantype_to_view(type)
-              else
-                panstate = panobject.field_val('panstate', row)
-                if (panstate.is_a? Integer) and ((panstate & PandoraModel::PSF_Crypted)>0)
-                  view = 'hex'
+          if sel
+            treeview.sel = sel
+            treeview.param_view_col = nil
+            if ((panobject.kind==PandoraModel::PK_Parameter) \
+            or (panobject.kind==PandoraModel::PK_Message)) and sel[0]
+              treeview.param_view_col = sel[0].size
+            end
+            iter0 = nil
+            sel.each_with_index do |row,i|
+              #iter = store.append
+              iter = store.get_iter(Gtk::TreePath.new(i))
+              iter ||= store.append
+              #store.set_value(iter, column, value)
+              id = row[0].to_i
+              iter[0] = id
+              iter0 = iter if id0 and id and (id == id0)
+              if treeview.param_view_col
+                view = nil
+                if (panobject.kind==PandoraModel::PK_Parameter)
+                  type = panobject.field_val('type', row)
+                  setting = panobject.field_val('setting', row)
+                  ps = PandoraUtils.decode_param_setting(setting)
+                  view = ps['view']
+                  view ||= PandoraUtils.pantype_to_view(type)
+                else
+                  panstate = panobject.field_val('panstate', row)
+                  if (panstate.is_a? Integer) and ((panstate & PandoraModel::PSF_Crypted)>0)
+                    view = 'hex'
+                  end
                 end
+                row[treeview.param_view_col] = view
               end
-              row[treeview.param_view_col] = view
             end
-          end
-          i = sel.size
-          iter = store.get_iter(Gtk::TreePath.new(i))
-          while iter
-            store.remove(iter)
+            i = sel.size
             iter = store.get_iter(Gtk::TreePath.new(i))
-          end
-          if treeview.sel.size>0
-            if (not path) or (not store.get_iter(path)) \
-            or (not store.iter_is_valid?(store.get_iter(path)))
-              path = iter0.path if iter0
-              path ||= Gtk::TreePath.new(treeview.sel.size-1)
+            while iter
+              store.remove(iter)
+              iter = store.get_iter(Gtk::TreePath.new(i))
             end
-            treeview.set_cursor(path, nil, false)
-            treeview.scroll_to_cell(path, nil, false, 0.0, 0.0)
+            if treeview.sel.size>0
+              if (not path) or (not store.get_iter(path)) \
+              or (not store.iter_is_valid?(store.get_iter(path)))
+                path = iter0.path if iter0
+                path ||= Gtk::TreePath.new(treeview.sel.size-1)
+              end
+              treeview.set_cursor(path, nil, false)
+              treeview.scroll_to_cell(path, nil, false, 0.0, 0.0)
+            end
           end
         end
         p 'treeview is updated: '+panobject.ider
@@ -20975,10 +20977,13 @@ module PandoraGtk
     end
 
     def get_icon_file_params(preset)
+      icon_params, icon_file_desc = nil
       smile_desc = PandoraUtils.get_param('icons_'+preset)
-      icon_params = smile_desc.split('|')
-      icon_file_desc = icon_params[0]
-      icon_params.delete_at(0)
+      if smile_desc
+        icon_params = smile_desc.split('|')
+        icon_file_desc = icon_params[0]
+        icon_params.delete_at(0)
+      end
       [icon_params, icon_file_desc]
     end
 
@@ -20997,42 +21002,44 @@ module PandoraGtk
         icon_preset = @icon_presets[preset]
         if icon_preset.nil?
           icon_params, icon_file_desc = get_icon_file_params(preset)
-          icon_file_params = icon_file_desc.split(':')
-          icon_file_name = icon_file_params[0]
-          numXs, numYs = icon_file_params[1].split('x')
-          bord_s = icon_file_params[2]
-          bord_s.delete!('p')
-          padd_s = icon_file_params[3]
-          padd_s.delete!('p')
-          begin
-            smile_fn = File.join($pandora_view_dir, icon_file_name)
-            preset_buf = Gdk::Pixbuf.new(smile_fn)
-            if preset_buf
-              big_width = preset_buf.width
-              big_height = preset_buf.height
-              #p 'get_icon_buf [big_width, big_height]='+[big_width, big_height].inspect
-              bord = bord_s.to_i
-              padd = padd_s.to_i
-              numX = numXs.to_i
-              numY = numYs.to_i
-              cellX = (big_width - 2*bord - (numX-1)*padd)/numX
-              cellY = (big_height - 2*bord - (numY-1)*padd)/numY
+          if icon_params and icon_file_desc
+            icon_file_params = icon_file_desc.split(':')
+            icon_file_name = icon_file_params[0]
+            numXs, numYs = icon_file_params[1].split('x')
+            bord_s = icon_file_params[2]
+            bord_s.delete!('p')
+            padd_s = icon_file_params[3]
+            padd_s.delete!('p')
+            begin
+              smile_fn = File.join($pandora_view_dir, icon_file_name)
+              preset_buf = Gdk::Pixbuf.new(smile_fn)
+              if preset_buf
+                big_width = preset_buf.width
+                big_height = preset_buf.height
+                #p 'get_icon_buf [big_width, big_height]='+[big_width, big_height].inspect
+                bord = bord_s.to_i
+                padd = padd_s.to_i
+                numX = numXs.to_i
+                numY = numYs.to_i
+                cellX = (big_width - 2*bord - (numX-1)*padd)/numX
+                cellY = (big_height - 2*bord - (numY-1)*padd)/numY
 
-              icon_preset = Hash.new
-              icon_preset[:names]      = icon_params
-              icon_preset[:big_width]  = big_width
-              icon_preset[:big_height] = big_height
-              icon_preset[:bord]       = bord
-              icon_preset[:padd]       = padd
-              icon_preset[:numX]       = numX
-              icon_preset[:numY]       = numY
-              icon_preset[:cellX]      = cellX
-              icon_preset[:cellY]      = cellY
-              icon_preset[:buf]        = preset_buf
-              @icon_presets[preset] = icon_preset
+                icon_preset = Hash.new
+                icon_preset[:names]      = icon_params
+                icon_preset[:big_width]  = big_width
+                icon_preset[:big_height] = big_height
+                icon_preset[:bord]       = bord
+                icon_preset[:padd]       = padd
+                icon_preset[:numX]       = numX
+                icon_preset[:numY]       = numY
+                icon_preset[:cellX]      = cellX
+                icon_preset[:cellY]      = cellY
+                icon_preset[:buf]        = preset_buf
+                @icon_presets[preset] = icon_preset
+              end
+            rescue
+              p 'Error while load smile file: ['+smile_fn+']'
             end
-          rescue
-            p 'Error while load smile file: ['+smile_fn+']'
           end
         end
       end
@@ -22465,7 +22472,7 @@ module PandoraGtk
       #end
       $window.do_on_start = PandoraUtils.get_param('do_on_start')
       $window.signal_connect('show') do |window, event|
-        if $window.do_on_start > 0
+        if $window.do_on_start and ($window.do_on_start > 0)
           key = PandoraCrypto.current_key(false, true)
           if (($window.do_on_start & 2) != 0) and key and (not PandoraNet.listen?)
             PandoraNet.start_or_stop_listen
