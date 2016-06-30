@@ -1692,7 +1692,13 @@ module PandoraUtils
         end
         values_to_ascii(sql_values)
         #p 'select  sql='+sql.inspect+'  values='+sql_values.inspect+' db='+db.inspect
-        res = db.execute(sql, sql_values)
+        begin
+          res = db.execute(sql, sql_values)
+        rescue => err
+          res = nil
+          PandoraUtils.log_message(LM_Error, \
+            _('Wrong select')+' ['+sql+']: '+Utf8String.new(err.message))
+        end
       end
       #p 'res='+res.inspect
       res
@@ -1752,9 +1758,15 @@ module PandoraUtils
         sql_values.concat(sql_values2)
         values_to_ascii(sql_values)
         p 'update: sql='+sql.inspect+' sql_values='+sql_values.inspect
-        res = db.execute(sql, sql_values)
+        begin
+          res = db.execute(sql, sql_values)
+          res = true
+        rescue => err
+          res = false
+          PandoraUtils.log_message(LM_Error, \
+            _('Wrong update')+' ['+sql+']: '+Utf8String.new(err.message))
+        end
         #p 'upd_tab: db.execute.res='+res.inspect
-        res = true
       end
       #p 'upd_tab: res='+res.inspect
       res
@@ -6013,7 +6025,6 @@ module PandoraNet
     # Open or close local port and register tunnel
     # RU: Открыть или закрыть локальный порт и зарегать туннель
     def local_port(add, from, proto, session)
-      #control_tunnel
       port = 22
       host = nil
       i = from.index(':')
@@ -6042,8 +6053,6 @@ module PandoraNet
             socket = get_listener_client_or_nil(server)
             while thread[:listen_tcp] and not server.closed? and not socket
               sleep 0.05
-              #Thread.pass
-              #Gtk.main_iteration
               socket = get_listener_client_or_nil(server)
             end
 
@@ -6053,7 +6062,7 @@ module PandoraNet
                 host_name = socket.peeraddr[3]
                 port = socket.peeraddr[1]
                 proto = 'tcp'
-                p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
+                p 'TUNNEL: '+[host_name, host_ip, port, proto].inspect
                 session = Session.new(socket, host_name, host_ip, port, proto, \
                   0, nil, nil, nil, nil)
               else
