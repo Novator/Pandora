@@ -3534,6 +3534,43 @@ module PandoraModel
     res
   end
 
+  # Read record by sha1 or md5 hash
+  # RU: Читает запись по sha1 или md5 хэшу
+  def self.get_record_by_hash(hash, kind=nil, pson_with_kind=nil, models=nil, \
+  getfields=nil)
+    # pson_with_kind: nil - raw data, false - short panhash+pson, true - panhash+pson
+    res = nil
+    kind ||= PK_Blob
+    panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+    if panobjectclass and (hash.is_a? String) and (hash.size>0)
+      model = PandoraUtils.get_model(panobjectclass.ider, models)
+      if model
+        filter = nil
+        if hash.size==16
+          filter = {'md5'=>hash}
+        else
+          filter = {'sha1'=>hash}
+        end
+        pson = (pson_with_kind != nil)
+        sel = model.select(filter, pson, getfields, nil, 1)
+        if sel and (sel.size>0)
+          if pson
+            fields = model.clear_excess_fields(sel[0])
+            lang = PandoraUtils.lang_from_panhash(panhash)
+            res = AsciiString.new
+            res << [kind].pack('C') if pson_with_kind
+            res << [lang].pack('C')
+            p 'get_record_by_hash|||  fields='+fields.inspect
+            res << PandoraUtils.hash_to_namepson(fields)
+          else
+            res = sel
+          end
+        end
+      end
+    end
+    res
+  end
+
   $keep_for_trust  = 0.5
   $max_relative_path_depth = 2
 
@@ -3964,11 +4001,17 @@ module PandoraModel
         body = nil
         fn = nil
         if way and (way.size>0)
-          if (proto=='pandora') #and obj_type.nil?
+          if (proto=='pandora') or (proto=='sha1') or (proto=='md5') #and obj_type.nil?
             if (way.size>9) and PandoraUtils.hex?(way)
-              panhash = PandoraModel.hex_to_panhash(way)
-              kind = PandoraUtils.kind_from_panhash(panhash)
-              sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'type,blob')
+              sel = nil
+              if (proto=='pandora')
+                panhash = PandoraModel.hex_to_panhash(way)
+                kind = PandoraUtils.kind_from_panhash(panhash)
+                sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'type,blob')
+              else
+                hash = PandoraUtils.hex_to_bytes(way)
+                sel = PandoraModel.get_record_by_hash(hash, nil, nil, nil, 'type,blob')
+              end
               #p 'get_image_from_url.pandora/panhash='+panhash.inspect
               if sel and (sel.size>0)
                 type = sel[0][0]
@@ -3988,7 +4031,7 @@ module PandoraModel
                 end
               else
                 if err_text
-                  res = _('Cannot find image')+': panhash='+PandoraUtils.bytes_to_hex(panhash)
+                  res = _('Cannot find image')+': '+proto+'='+PandoraUtils.bytes_to_hex(panhash)
                 elsif err_text.is_a? FalseClass
                   res = $window.get_icon_buf('sad')
                 end
@@ -12197,6 +12240,74 @@ module PandoraGtk
     end
   end
 
+  # Dialog for panhash choose
+  # RU: Диалог для выбора панхэша
+  class PanhashDialog < AdvancedDialog
+    attr_accessor :panclasses
+
+    def initialize(apanclasses)
+      @panclasses = apanclasses
+      super(_('Choose object'))
+      $window.register_stock(:panhash)
+      iconset = Gtk::IconFactory.lookup_default('panhash')
+      style = Gtk::Widget.default_style  #Gtk::Style.new
+      anicon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
+        Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
+      self.icon = anicon
+
+      self.skip_taskbar_hint = true
+      self.set_default_size(600, 400)
+      auto_create = true
+      @panclasses.each_with_index do |panclass, i|
+        title = _(PandoraUtils.get_name_or_names(panclass.name, true))
+        self.main_sw.destroy if i==0
+        #image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
+        image = $window.get_panobject_image(panclass.ider, Gtk::IconSize::MENU)
+        image.set_padding(2, 0)
+        label_box2 = TabLabelBox.new(image, title, nil, false, 0)
+        pbox = PandoraGtk::PanobjScrolledWindow.new
+        page = self.notebook.append_page(pbox, label_box2)
+        auto_create = PandoraGtk.show_panobject_list(panclass, nil, pbox, auto_create)
+      end
+      self.notebook.page = 0
+    end
+
+    # Show dialog and send choosed panhash,sha1,md5 to yield block
+    # RU: Показать диалог и послать панхэш,sha1,md5 в выбранный блок
+    def choose_record
+      self.run2 do
+        panhash = nil
+        sha1 = nil
+        md5 = nil
+        pbox = self.notebook.get_nth_page(self.notebook.page)
+        treeview = pbox.treeview
+        if treeview.is_a? SubjTreeView
+          path, column = treeview.cursor
+          panobject = treeview.panobject
+          if path and panobject
+            store = treeview.model
+            iter = store.get_iter(path)
+            id = iter[0]
+            fields = 'panhash'
+            this_is_blob = (panobject.is_a? PandoraModel::Blob)
+            fields << ',sha1,md5' if this_is_blob
+            sel = panobject.select('id='+id.to_s, false, fields)
+            if sel and (sel.size>0)
+              rec = sel[0]
+              panhash = rec[0]
+              if this_is_blob
+                sha1 = rec[1]
+                md5 = rec[2]
+              end
+            end
+          end
+        end
+        yield(panhash, sha1, md5) if block_given?
+      end
+    end
+
+  end
+
   MaxPanhashTabs = 5
 
   # Entry for panhash
@@ -12230,45 +12341,8 @@ module PandoraGtk
     def do_on_click
       @entry.grab_focus
       set_classes
-      dialog = PandoraGtk::AdvancedDialog.new(_('Choose object'))
-
-      $window.register_stock(:panhash)
-      iconset = Gtk::IconFactory.lookup_default('panhash')
-      style = Gtk::Widget.default_style  #Gtk::Style.new
-      anicon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
-        Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
-      dialog.icon = anicon
-
-      dialog.skip_taskbar_hint = true
-      dialog.set_default_size(600, 400)
-      auto_create = true
-      panclasses.each_with_index do |panclass, i|
-        title = _(PandoraUtils.get_name_or_names(panclass.name, true))
-        dialog.main_sw.destroy if i==0
-        #image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
-        image = $window.get_panobject_image(panclass.ider, Gtk::IconSize::MENU)
-        image.set_padding(2, 0)
-        label_box2 = TabLabelBox.new(image, title, nil, false, 0)
-        pbox = PandoraGtk::PanobjScrolledWindow.new
-        page = dialog.notebook.append_page(pbox, label_box2)
-        auto_create = PandoraGtk.show_panobject_list(panclass, nil, pbox, auto_create)
-      end
-      dialog.notebook.page = 0
-      dialog.run2 do
-        panhash = nil
-        pbox = dialog.notebook.get_nth_page(dialog.notebook.page)
-        treeview = pbox.treeview
-        if treeview.is_a? SubjTreeView
-          path, column = treeview.cursor
-          panobject = treeview.panobject
-          if path and panobject
-            store = treeview.model
-            iter = store.get_iter(path)
-            id = iter[0]
-            sel = panobject.select('id='+id.to_s, false, 'panhash')
-            panhash = sel[0][0] if sel and (sel.size>0)
-          end
-        end
+      dialog = PanhashDialog.new(@panclasses)
+      dialog.choose_record do |panhash,sha1,md5|
         if PandoraUtils.panhash_nil?(panhash)
           @entry.text = ''
         else
@@ -14807,7 +14881,14 @@ module PandoraGtk
       menu.show_all
 
       PandoraGtk.add_tool_btn(toolbar, :image, 'Image') do |*args|
-        set_tag('img/', 'pandora://0c05b2fac4ded5538dbb8efdb3c98d189eeb161d14c6')
+        dialog = PandoraGtk::PanhashDialog.new([PandoraModel::Blob])
+        dialog.choose_record do |panhash,sha1,md5|
+          if (sha1.is_a? String) and (sha1.size>0)
+            set_tag('img/', 'sha1://'+PandoraUtils.bytes_to_hex(sha1))
+          elsif panhash.is_a? String
+            set_tag('img/', 'pandora://'+PandoraUtils.bytes_to_hex(panhash))
+          end
+        end
       end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link') do |*args|
         set_tag('link', 'http://priroda.su', 'Priroda.SU')
