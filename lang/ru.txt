@@ -417,3 +417,6 @@ Request=>Запрос
 Answer=>Ответ
 Wrong select=>Кривой select
 Wrong update=>Кривой update
+Quote=>Цитата
+Cut=>Врезка
+Table=>Таблица

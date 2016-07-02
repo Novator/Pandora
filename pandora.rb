@@ -5107,13 +5107,15 @@ module PandoraCrypto
             key_entry.entry.signal_connect('changed') do |widget, event|
               if dialog_timer.nil?
                 dialog_timer = GLib::Timeout.add(1000) do
-                  panhash2 = PandoraModel.hex_to_panhash(key_entry.text)
-                  key_vec2, cipher = read_key_and_set_pass(panhash2, \
-                    passwd, key_model)
-                  nopass = ((not cipher) or (cipher == 0))
-                  PandoraGtk.set_readonly(pass_entry, nopass)
-                  pass_entry.grab_focus if not nopass
-                  dialog_timer = nil
+                  if not key_entry.destroyed?
+                    panhash2 = PandoraModel.hex_to_panhash(key_entry.text)
+                    key_vec2, cipher = read_key_and_set_pass(panhash2, \
+                      passwd, key_model)
+                    nopass = ((not cipher) or (cipher == 0))
+                    PandoraGtk.set_readonly(pass_entry, nopass)
+                    pass_entry.grab_focus if not nopass
+                    dialog_timer = nil
+                  end
                   false
                 end
               end
@@ -13142,8 +13144,8 @@ module PandoraGtk
       'LIME', 'AQUA', 'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER', \
       'URL', 'A', 'HREF', 'LINK', 'ANCHOR', 'QUOTE', 'BLOCKQUOTE', 'LIST', \
       'CUT', 'SPOILER', 'CODE', 'INLINE', \
-      'INPUT', 'BUTTON', 'SPIN', 'INTEGER', 'HEX', 'REAL', 'DATETIME', 'DATE', \
-      'COORD', 'FILENAME', 'BASE64', 'PANHASH', 'BYTELIST', \
+      'INPUT', 'BUTTON', 'SPIN', 'INTEGER', 'HEX', 'REAL', 'FLOAT', 'DATE', \
+      'TIME', 'DATETIME', 'COORD', 'FILENAME', 'BASE64', 'PANHASH', 'BYTELIST', \
       'PRE', 'SOURCE', 'MONO', 'MONOSPACE', \
       'IMG', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'SUB', 'SUP', \
       'ABBR', 'ACRONYM', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', \
@@ -13527,7 +13529,7 @@ module PandoraGtk
                         when 'SPAN', 'DIV',
                           tv_tag = 'mono'
                         when 'TABLE', 'TR', 'TD', 'TH'
-                          tv_tag = nil
+                          tv_tag = 'mono'
                         when 'SMALL', 'LITTLE', 'X-SMALL', 'XX-SMALL'
                           tv_tag = 'small'
                         when 'LARGE', 'BIG', 'X-LARGE', 'XX-LARGE'
@@ -13616,8 +13618,8 @@ module PandoraGtk
                                   #wid.show_all
                                 end
                               when 'INPUT', 'BUTTON', 'SPIN', 'INTEGER', 'HEX', \
-                              'REAL', 'DATETIME', 'DATE', 'COORD', 'FILENAME', \
-                              'BASE64', 'PANHASH', 'BYTELIST'
+                              'REAL', 'FLOAT', 'DATE', 'TIME', 'DATETIME', 'COORD', \
+                              'FILENAME', 'BASE64', 'PANHASH', 'BYTELIST'
                                 param = get_tag_param(params)
                                 widget = nil
                                 if comu=='INPUT'
@@ -13630,9 +13632,9 @@ module PandoraGtk
                                   widget = IntegerEntry.new
                                 elsif comu=='HEX'
                                   widget = HexEntry.new
-                                elsif comu=='REAL'
+                                elsif (comu=='REAL') or (comu=='FLOAT')
                                   widget = FloatEntry.new
-                                elsif comu=='DATETIME'
+                                elsif (comu=='TIME') or (comu=='DATETIME')
                                   #DateTimeEntry.new
                                   widget = DateTimeBox.new
                                 elsif comu=='DATE'
@@ -14536,6 +14538,7 @@ module PandoraGtk
       if stock.is_a? String
         mi = Gtk::MenuItem.new(stock)
       else
+        $window.register_stock(stock)
         mi = Gtk::ImageMenuItem.new(stock)
         mi.label = _(text) if text
       end
@@ -14816,6 +14819,18 @@ module PandoraGtk
       add_menu_item(btn, menu, Gtk::Stock::UNDERLINE) do
         set_tag('d')
       end
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Sub') do
+        set_tag('sub')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Sup') do
+        set_tag('sup')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Small') do
+        set_tag('small')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Large') do
+        set_tag('large')
+      end
       menu.show_all
 
       @selected_color = 'red'
@@ -14916,70 +14931,61 @@ module PandoraGtk
       end
       menu.show_all
 
-      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::INDEX, 'mono', 0) do |*args|
-        set_tag('mono')
+      btn = PandoraGtk.add_tool_btn(toolbar, :code, 'Code', 0) do |*args|
+        set_tag('code', 'ruby')
       end
       menu = Gtk::Menu.new
       btn.menu = menu
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'quote') do
+      add_menu_item(btn, menu, :quote, 'Quote') do
         set_tag('quote')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'cut') do
-        set_tag('cut')
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Cut') do
+        set_tag('cut', _('Expand'))
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'hr') do
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'HR') do
         set_tag('hr/', '150')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'sub') do
-        set_tag('sub')
+      add_menu_item(btn, menu, :table, 'Table') do
+        set_tag('table')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'sup') do
-        set_tag('sup')
-      end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'small') do
-        set_tag('small')
-      end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'large') do
-        set_tag('large')
-      end
-
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'input') do
+      menu.append(Gtk::SeparatorMenuItem.new)
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Input') do
         set_tag('input/', 'text')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'spin') do
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Spin') do
         set_tag('spin/', '5')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'integer') do
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Integer') do
         set_tag('integer/', '0')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'hex') do
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Hex') do
         set_tag('hex/', '0')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'real') do
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Real') do
         set_tag('real/', '0')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'date') do
+      add_menu_item(btn, menu, :date, 'Date') do
         set_tag('date/', '0')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'datetime') do
-        set_tag('datetime/', '0')
+      add_menu_item(btn, menu, :time, 'Time') do
+        set_tag('time/', '0')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'coord') do
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Coord') do
         set_tag('coord/', '0')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'filename') do
+      add_menu_item(btn, menu, Gtk::Stock::OPEN, 'Filename') do
         set_tag('filename/', '0')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'base64') do
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Base64') do
         set_tag('base64/', '0')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'panhash') do
+      add_menu_item(btn, menu, :panhash, 'Panhash') do
         set_tag('panhash/', '0')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'bytelist') do
+      add_menu_item(btn, menu, :list, 'Bytelist') do
         set_tag('bytelist/', '0')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'button') do
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Button') do
         set_tag('button/', 'Order')
       end
       menu.show_all
