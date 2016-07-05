@@ -11563,13 +11563,13 @@ module PandoraGtk
     def get_holidays(year)
       @holidays = @year_holidays[year]
       if not @holidays
-        holidays_fn = File.join($pandora_lang_dir, 'holiday.'+year.to_s+'.'+$country+'.txt')
+        holidays_fn = File.join($pandora_lang_dir, 'holiday.'+$country+'.'+year.to_s+'.txt')
         f_exist = File.exist?(holidays_fn)
         if not f_exist
           year = 0
           @holidays = @year_holidays[year]
           if not @holidays
-            holidays_fn = File.join($pandora_lang_dir, 'holiday.0000.'+$country+'.txt')
+            holidays_fn = File.join($pandora_lang_dir, 'holiday.'+$country+'.0000.txt')
             f_exist = File.exist?(holidays_fn)
           end
         end
@@ -11849,65 +11849,72 @@ module PandoraGtk
 
       7.times do |week|
         7.times do |day|
-          day_type = nil
+          bg_type = nil
+          curr_day = nil
+          chsd_day = nil
           if week==0
             #p '---[@year, @month, day+1]='+[@year, @month, day+1].inspect
             atime = start_day + (day+1)*3600*24
             text = _(atime.strftime('%a'))
-            day_type = :capt
+            bg_type = :capt
           else
             cal_day += 3600*24
             text = (cal_day.day).to_s
             if cal_day.month == @month
-              day_type = :work
+              bg_type = :work
               wday = cal_day.wday
-              day_type = :rest if (wday==0) or (wday==6)
+              bg_type = :rest if (wday==0) or (wday==6)
               if holidays and (set_line = holidays[@month.to_s+'.'+cal_day.day.to_s])
                 if set_line==2
-                  day_type = :work
+                  bg_type = :work
                 else
-                  day_type = :holi
+                  bg_type = :holi
                 end
               end
             end
             if (cal_day.day == time_now.day) and (cal_day.month == time_now.month) \
             and (cal_day.year == time_now.year)
-              day_type = :curr
+              curr_day = true
             end
             if date and (cal_day.day == date.day) and (cal_day.month == date.month) \
             and (cal_day.year == date.year)
-              day_type = :chsd
+              chsd_day = true
             end
           end
           bg = nil
-          if day_type==:work
+          if bg_type==:work
             bg = '#DDEEFF'
-          elsif day_type==:rest
+          elsif bg_type==:rest
             bg = '#5050A0'
-          elsif day_type==:holi
+          elsif bg_type==:holi
             bg = '#B05050'
-          elsif day_type==:curr
-            bg = '#55FF55'
-          elsif day_type==:chsd
-            bg = '#EEAA88'
           else
             bg = '#FFFFFF'
           end
-          fg = '#000000'
-          fg = '#FFFFFF' if (day_type==:rest) or (day_type==:holi)
 
           lab = @labs[week*7+day]
           if lab.use_markup?
-            if day_type==:capt
+            if bg_type==:capt
               lab.set_markup('<b>'+text+'</b>')
             else
+              fg = nil
+              if (bg_type==:rest) or (bg_type==:holi)
+                fg = '#66FF66' if curr_day
+                fg ||= '#EEEE44' if chsd_day
+                fg ||= '#FFFFFF'
+              else
+                fg = '#00BB00' if curr_day
+                fg ||= '#AAAA00' if chsd_day
+              end
+              text = '<b>'+text+'</b>' if chsd_day
+              fg ||= '#000000'
               lab.parent.day_date = cal_day
               lab.set_markup('<span foreground="'+fg+'">'+text+'</span>')
             end
           end
           lab_evbox = lab.parent
           lab_evbox.bg = bg
-          lab_evbox.can_focus = (day_type != :capt)
+          lab_evbox.can_focus = (bg_type != :capt)
         end
       end
 
@@ -12276,11 +12283,11 @@ module PandoraGtk
 
     # Show dialog and send choosed panhash,sha1,md5 to yield block
     # RU: Показать диалог и послать панхэш,sha1,md5 в выбранный блок
-    def choose_record
+    def choose_record(*add_fields)
       self.run2 do
         panhash = nil
-        sha1 = nil
-        md5 = nil
+        add_fields = nil if not ((add_fields.is_a? Array) and (add_fields.size>0))
+        field_vals = nil
         pbox = self.notebook.get_nth_page(self.notebook.page)
         treeview = pbox.treeview
         if treeview.is_a? SubjTreeView
@@ -12292,19 +12299,22 @@ module PandoraGtk
             id = iter[0]
             fields = 'panhash'
             this_is_blob = (panobject.is_a? PandoraModel::Blob)
-            fields << ',sha1,md5' if this_is_blob
+            fields << ','+add_fields.join(',') if add_fields
             sel = panobject.select('id='+id.to_s, false, fields)
             if sel and (sel.size>0)
               rec = sel[0]
               panhash = rec[0]
-              if this_is_blob
-                sha1 = rec[1]
-                md5 = rec[2]
-              end
+              field_vals = rec[1..-1] if add_fields
             end
           end
         end
-        yield(panhash, sha1, md5) if block_given?
+        if block_given?
+          if field_vals
+            yield(panhash, *field_vals)
+          else
+            yield(panhash)
+          end
+        end
       end
     end
 
@@ -12344,7 +12354,7 @@ module PandoraGtk
       @entry.grab_focus
       set_classes
       dialog = PanhashDialog.new(@panclasses)
-      dialog.choose_record do |panhash,sha1,md5|
+      dialog.choose_record do |panhash|
         if PandoraUtils.panhash_nil?(panhash)
           @entry.text = ''
         else
@@ -13068,6 +13078,30 @@ module PandoraGtk
         set_cursor_if_appropriate(tv, bx, by)
         false
       end
+
+      self.has_tooltip = true
+      signal_connect('query-tooltip') do |textview, x, y, keyboard_tip, tooltip|
+        res = false
+        iter = nil
+        if keyboard_tip
+          iter = textview.buffer.get_iter_at_offset(textview.buffer.cursor_position)
+        else
+          bx, by = textview.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, x, y)
+          iter, trailing = textview.get_iter_at_position(bx, by)
+        end
+        pixbuf = iter.pixbuf   #.has_tag?(tag)  .char = 0xFFFC
+        if pixbuf
+          alt = pixbuf.tooltip
+          if (alt.is_a? String) and (alt.size>0)
+            tooltip.text = alt
+            res = true
+          end
+        #elsif iter.tags.size>0
+        #  tooltip.text = 'Has tags'
+        #  res = true
+        end
+        res
+      end
     end
 
     def scrollwin
@@ -13172,27 +13206,48 @@ module PandoraGtk
         str
       end
 
-      def get_tag_param(params, type=:string)
+      def get_tag_param(params, type=:string, retutn_tail=false)
         res = nil
-        if (params.is_a? String) and (params.size>0) and params.index('=').nil?
-          res = params.strip
-          res = remove_quotes(res)
-          if res and (type==:number)
-            begin
-              res.gsub!(/[^0-9\.]/, '')
-              res = res.to_i
-            rescue
-              res = nil
+        getted = nil
+        if (params.is_a? String) and (params.size>0)
+          ei = params.index('=')
+          es = params.index(' ')
+          if ei.nil? or (es and es<ei)
+            res = params
+            res = params[0, es] if ei
+            if res
+              getted = res.size
+              res = res.strip
+              res = remove_quotes(res)
+              if res and (type==:number)
+                begin
+                  res.gsub!(/[^0-9\.]/, '')
+                  res = res.to_i
+                rescue
+                  res = nil
+                end
+              end
             end
           end
+        end
+        if retutn_tail
+          tail = nil
+          if getted
+            tail = params[getted..-1]
+          else
+            tail = params
+          end
+          res = [res, tail]
         end
         res
       end
 
-      def detect_params(params)
+      def detect_params(params, tagtype=:string)
         res = {}
+        tag, params = get_tag_param(params, tagtype, true)
+        res['tag'] = tag if tag
         while (params.is_a? String) and (params.size>0)
-          params.strip if params
+          params.strip
           n = nil
           v = nil
           i = params.index('=')
@@ -13214,13 +13269,14 @@ module PandoraGtk
               params = ''
             end
           else
-            n = params
             params = ''
           end
-          n = n.strip.downcase
-          res[n] = remove_quotes(v.strip) if v and (v.size>0)
+          if n
+            n = n.strip.downcase
+            res[n] = remove_quotes(v.strip) if v and (v.size>0)
+          end
         end
-        p 'detect_params(params)res='+[params, res].inspect
+        p 'detect_params[params, res]='+[params, res].inspect
         res
       end
 
@@ -13595,22 +13651,44 @@ module PandoraGtk
                             case comu
                               when 'IMG', 'IMAGE'
                                 comu = nil
-                                img_res = PandoraModel.get_image_from_url(params, \
+                                param_hash = detect_params(params)
+                                #src = get_tag_param(params)
+                                src = param_hash['tag']
+                                src ||= param_hash['src']
+                                src ||= param_hash['link']
+                                src ||= param_hash['url']
+                                alt = param_hash['alt']
+                                alt ||= param_hash['tooltip']
+                                alt ||= param_hash['popup']
+                                title = param_hash['title']
+                                title ||= param_hash['caption']
+                                title ||= param_hash['name']
+                                pixbuf = PandoraModel.get_image_from_url(src, \
                                   true, self)
-                                if img_res
+                                if pixbuf
                                   iter = dest_buf.end_iter
-                                  if img_res.is_a? Gdk::Pixbuf
-                                    dest_buf.insert(iter, img_res)
+                                  if pixbuf.is_a? Gdk::Pixbuf
+                                    alt ||= src
+                                    pixbuf.instance_variable_set('@tooltip', alt)
+                                    def pixbuf.tooltip
+                                      @tooltip
+                                    end
+                                    dest_buf.insert(iter, pixbuf)
                                     #anchor = dest_buf.create_child_anchor(iter)
                                     #img = Gtk::Image.new(img_res)
                                     #body_child.add_child_at_anchor(img, anchor)
                                     #img.show_all
                                     shift_coms(1)
                                     show_text = false
+                                    if (title.is_a? String) and (title.size>0)
+                                      title = "\n" + title
+                                      dest_buf.insert(dest_buf.end_iter, title, 'italic')
+                                      shift_coms(title.size)
+                                    end
                                   else
-                                    img_res ||= _('Unknown error')
-                                    dest_buf.insert(iter, img_res)
-                                    shift_coms(img_res.size)
+                                    errtxt ||= _('Unknown error')
+                                    dest_buf.insert(iter, errtxt)
+                                    shift_coms(errtext.size)
                                   end
                                   #anchor = dest_buf.create_child_anchor(iter)
                                   #p 'IMG [wid, anchor]='+[wid, anchor].inspect
@@ -14897,11 +14975,15 @@ module PandoraGtk
 
       PandoraGtk.add_tool_btn(toolbar, :image, 'Image') do |*args|
         dialog = PandoraGtk::PanhashDialog.new([PandoraModel::Blob])
-        dialog.choose_record do |panhash,sha1,md5|
+        dialog.choose_record('sha1','md5','name') do |panhash,sha1,md5,name|
+          params = ''
+          if (name.is_a? String) and (name.size>0)
+            params << ' alt="'+name+'" title="'+name+'"'
+          end
           if (sha1.is_a? String) and (sha1.size>0)
-            set_tag('img/', 'sha1://'+PandoraUtils.bytes_to_hex(sha1))
+            set_tag('img/', 'sha1://'+PandoraUtils.bytes_to_hex(sha1)+params)
           elsif panhash.is_a? String
-            set_tag('img/', 'pandora://'+PandoraUtils.bytes_to_hex(panhash))
+            set_tag('img/', 'pandora://'+PandoraUtils.bytes_to_hex(panhash)+params)
           end
         end
       end
