@@ -587,7 +587,7 @@ module PandoraUtils
   end
 
   # Add quotes if string has spaces
-  # RU: Добавляет ковычки если строка содержит пробелы
+  # RU: Добавляет кавычки если строка содержит пробелы
   def self.add_quotes(str, qts='"')
     if (str.is_a? String) and str.index(' ')
       str = qts+str+qts
@@ -22816,7 +22816,7 @@ $pandora_lang_dir = File.join($pandora_app_dir, 'lang')        # Languages direc
 $pandora_util_dir = File.join($pandora_app_dir, 'util')        # Utilites directory
 $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
 $pandora_files_dir = File.join($pandora_app_dir, 'files')      # Files directory
-$pandora_doc_dir = File.join($pandora_app_dir, 'doc')        # Documentation dir
+$pandora_doc_dir = File.join($pandora_app_dir, 'doc')          # Doc directory
 
 # Expand the arguments of command line
 # RU: Разобрать аргументы командной строки
