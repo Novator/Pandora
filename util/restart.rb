@@ -28,7 +28,7 @@ if ARGV.size>0
   puts 'Running ['+cmd+']...'
   sleep 1
   pid = Process.spawn(cmd)
-  Process.detach(pid) if res
+  Process.detach(pid) if pid
 else
   puts 'Usage: ruby restart.rb cmd --with parameters'
 end

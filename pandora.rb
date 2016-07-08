@@ -599,12 +599,9 @@ module PandoraUtils
   # RU: Открывает ссылку в браузере, почтовике или проводнике
   def self.external_open(link)
     cmd = 'xdg-open'
-    tail = ' &'
-    if PandoraUtils.os_family=='windows'
-      cmd = 'start'
-      tail = ''
-    end
-    system(cmd + ' ' + PandoraUtils.add_quotes(link) + tail)
+    cmd = 'start' if PandoraUtils.os_family=='windows'
+    pid = Process.spawn(cmd, link)
+    Process.detach(pid) if pid
   end
 
   # Convert ruby date to string
@@ -13116,9 +13113,13 @@ module PandoraGtk
             tooltip.text = alt
             res = true
           end
-        #elsif iter.tags.size>0
-        #  tooltip.text = 'Has tags'
-        #  res = true
+        else
+          tags = iter.tags
+          link_tag = tags.find { |tag| (tag.is_a? LinkTag) }
+          if link_tag
+            tooltip.text = link_tag.link
+            res = true
+          end
         end
         res
       end
@@ -13157,7 +13158,6 @@ module PandoraGtk
         if tag.is_a? LinkTag
           link = tag.link
           if (link.is_a? String) and (link.size>0)
-            p 'Go to link: ['+link+']'
             res = PandoraUtils.parse_url(link, 'http')
             if res
               proto, obj_type, way = res
@@ -13165,7 +13165,8 @@ module PandoraGtk
                 #PandoraGtk.internal_open(proto, obj_type, way)
               else
                 url = way
-                url = proto+':\\'+way if proto and proto=='http'
+                url = proto+'://'+way if proto and proto=='http'
+                puts 'Go to link: ['+url+']'
                 PandoraUtils.external_open(url)
               end
             end
