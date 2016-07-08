@@ -95,7 +95,7 @@ Download and unpack zip-archive (see the next chapter).
 
   https://github.com/Novator/Pandora/archive/master.zip
 
-7.2. Install needed packets if they stil are not installed:
+7.2. Install needed packages if they still are not installed:
 
   ruby, ruby-sqlite3, ruby-gtk2, ruby-gstreamer, openssl, gstreamer0.10-x,
   gstreamer0.10-ffmpeg, gstreamer0.10-plugins-good, gstreamer0.10-plugins-bad
@@ -134,7 +134,7 @@ For example, your login is "YourNick".
 
 in Windows download and install:
 
-  http://msysgit.github.io/
+  https://git-for-windows.github.io/
 
 8.5. Download Pandora to your hard disk via git command:
 

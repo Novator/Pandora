@@ -420,3 +420,4 @@ Wrong update=>Кривой update
 Quote=>Цитата
 Cut=>Врезка
 Table=>Таблица
+_Help=>_Помощь

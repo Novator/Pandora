@@ -403,16 +403,53 @@ module PandoraUtils
     res
   end
 
-  # Open web browser or email client
-  # RU: Открывает веб-браузер или email клиент
-  def self.go_web_link(link)
-    a1 = 'xdg-open'
-    a2 = ' &'
-    if PandoraUtils.os_family=='windows'
-      a1 = 'start'
-      a2 = ''
+  DefaultProto = 'http'
+
+  # Parse URL
+  # RU: Разбирает URL
+  def self.parse_url(url, def_proto=nil)
+    res = nil
+    proto, obj_type, way = nil
+    if (url.is_a? String) and (url.size>0)
+      i = url.index(':')
+      if i and (i>0)
+        proto = url[0, i].strip.downcase
+        url = url[i+1..-1]
+        proto = 'pandora' if ((proto=='pan') or (proto=='pand') \
+          or (proto=='panhash') or (proto=='phash'))
+      else
+        def_proto ||= DefaultProto
+        proto = def_proto
+      end
+      i = 0
+      i += 1 while (i<2) and url and (i<url.size) and (url[i]=='/')
+      url = url[i..-1] if i>0
+      case proto
+        when 'pandora', 'smile'
+          i = url.index('/')
+          if i
+            obj_type = url[0, i]
+            obj_type.strip.downcase if obj_type
+            url = url[i+1..-1]
+          end
+      end
+      way = url
+      p 'parse_url  [url, proto, obj_type, way]='+[url, proto, obj_type, way].inspect
     end
-    system(a1 + ' ' + link + a2)
+    res = [proto, obj_type, way] if proto and (proto.size>0) and way and (way.size>0)
+    res
+  end
+
+  # Open link in web browser, email client or file manager
+  # RU: Открывает ссылку в браузере, почтовике или проводнике
+  def self.external_open(link)
+    cmd = 'xdg-open'
+    tail = ' &'
+    if PandoraUtils.os_family=='windows'
+      cmd = 'start'
+      tail = ''
+    end
+    system(cmd + ' ' + PandoraUtils.add_quotes(link) + tail)
   end
 
   # Panhash is nil?
@@ -3923,43 +3960,6 @@ module PandoraModel
     sel
   end
 
-  DefaultProto = 'pandora'
-
-  # Parse URL
-  # RU: Разбирает URL
-  def self.parse_url(url)
-    res = nil
-    proto, obj_type, way = nil
-    if (url.is_a? String) and (url.size>0)
-      i = url.index(':')
-      if i and (i>0)
-        proto = url[0, i].strip.downcase
-        url = url[i+1..-1]
-        proto = 'pandora' if (proto=='pan') or (proto=='pand')
-      else
-        proto = DefaultProto
-      end
-      #type detect
-      i = url.index('/')
-      while i and (i==0)
-        url = url[1..-1]
-        i = nil
-        i = url.index('/') if url
-      end
-      case proto
-        when 'pandora', 'smile'
-          if i and (i>0)
-            obj_type = url[0, i].strip.downcase
-            url = url[i+1..-1]
-          end
-      end
-      way = url
-      p 'parse_url  [url, proto, obj_type, way]='+[url, proto, obj_type, way].inspect
-    end
-    res = [proto, obj_type, way] if proto and (proto.size>0) and way and (way.size>0)
-    res
-  end
-
   ImageCacheSize = 100
   $image_cache = {}
 
@@ -3993,7 +3993,7 @@ module PandoraModel
   # Obtain image pixbuf from URL
   # RU: Добывает pixbuf картинки по URL
   def self.get_image_from_url(url, err_text=true, pixbuf_parent=nil)
-    res = parse_url(url)
+    res = PandoraUtils.parse_url(url, 'pandora')
     if res
       proto, obj_type, way = res
       res = get_image_from_cache(proto, obj_type, way)
@@ -10635,6 +10635,17 @@ module PandoraGtk
   include PandoraUtils
   include PandoraModel
 
+  def self.num_char_width
+    @@num_char_width ||= nil
+    if not @@num_char_width
+      lab = Gtk::Label.new('0')
+      lw,lh = lab.size_request
+      @@num_char_width = lw
+      @@num_char_width ||= 5
+    end
+    @@num_char_width
+  end
+
   # Statusbar fields
   # RU: Поля в статусбаре
   SF_Update  = 0
@@ -11020,6 +11031,13 @@ module PandoraGtk
       #buf = $window.get_icon_scale_buf(stock.to_s, 'pan', 15)
       #aimage = Gtk::Image.new(buf)
       #@button = Gtk::ToolButton.new(aimage, nil)
+
+      @init_yield_block = nil
+      if block_given?
+        @init_yield_block = Proc.new do |*args|
+          yield(*args)
+        end
+      end
 
       if PandoraUtils.os_family=='windows'
         @button = GoodButton.new(stock, nil, nil) do
@@ -12553,7 +12571,9 @@ module PandoraGtk
       if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
         filename0 = @entry.text
         @entry.text = PandoraUtils.relative_path(dialog.filename)
-        yield(@entry.text, @entry, @button, filename0) if block_given?
+        if @init_yield_block
+          @init_yield_block.call(@entry.text, @entry, @button, filename0)
+        end
       end
       dialog.destroy if not dialog.destroyed?
       true
@@ -13138,8 +13158,16 @@ module PandoraGtk
           link = tag.link
           if (link.is_a? String) and (link.size>0)
             p 'Go to link: ['+link+']'
-            if (link[0, 4]=='http') or (link[0, 4]=='mail')
-              PandoraUtils.go_web_link(link)
+            res = PandoraUtils.parse_url(link, 'http')
+            if res
+              proto, obj_type, way = res
+              if (proto == 'pandora') or (proto == 'sha1') or (proto == 'md5')
+                #PandoraGtk.internal_open(proto, obj_type, way)
+              else
+                url = way
+                url = proto+':\\'+way if proto and proto=='http'
+                PandoraUtils.external_open(url)
+              end
             end
           end
         end
@@ -13508,6 +13536,7 @@ module PandoraGtk
                                 js = param_hash['js']
                                 js ||= param_hash['justify']
                                 js ||= param_hash['justification']
+                                js ||= param_hash['align']
                                 fam = param_hash['fam']
                                 fam ||= param_hash['family']
                                 fam ||= param_hash['font']
@@ -13660,6 +13689,7 @@ module PandoraGtk
                                 alt = param_hash['alt']
                                 alt ||= param_hash['tooltip']
                                 alt ||= param_hash['popup']
+                                alt ||= param_hash['name']
                                 title = param_hash['title']
                                 title ||= param_hash['caption']
                                 title ||= param_hash['name']
@@ -13853,9 +13883,32 @@ module PandoraGtk
   # Editor TextView
   # RU: TextView редактора
   class EditorTextView < SuperTextView
+    attr_accessor :view_border, :raw_border
 
-    def initialize(*args)
-      super(*args)
+    def set_left_border_width(left_border=nil)
+      if (not left_border) or (left_border<0)
+        add_nums = 0
+        add_nums = -left_border if left_border and (left_border<0)
+        num_count = nil
+        line_count = buffer.line_count
+        num_count = (Math.log10(line_count).truncate+1) if line_count
+        num_count = 1 if (num_count.nil? or (num_count<1))
+        if add_nums>0
+          if (num_count+add_nums)>5
+            num_count += 1
+          else
+            num_count += add_nums
+          end
+        end
+        left_border = PandoraGtk.num_char_width*num_count+8
+      end
+      set_border_window_size(Gtk::TextView::WINDOW_LEFT, left_border)
+    end
+
+    def initialize(aview_border=nil, araw_border=nil)
+      @view_border = aview_border
+      @raw_border = araw_border
+      super(aview_border)
       $font_desc ||= Pango::FontDescription.new('Monospace 11')
       signal_connect('expose-event') do |widget, event|
         tv = widget
@@ -14557,6 +14610,7 @@ module PandoraGtk
           view_buffer.text = ''
           tv.buffer = view_buffer
           tv.insert_taged_str_to_buffer(raw_buffer.text, view_buffer, @format)
+          tv.set_left_border_width(tv.view_border)
           tv.show
           #if text_changed
           #  bw.raw_buffer.text = bw.view_buffer.text
@@ -14573,10 +14627,12 @@ module PandoraGtk
           tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
           tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
           tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
-
           tv.hide
           #convert_buffer(view_buffer.text, raw_buffer, false, @format)
           tv.buffer = raw_buffer
+          left_bord = tv.raw_border
+          left_bord ||= -3
+          tv.set_left_border_width(left_bord)
           tv.show
           tv.editable = true
           #if text_changed
@@ -15216,7 +15272,7 @@ module PandoraGtk
                   link_name = nil
                 end
 
-                bodywid ||= PandoraGtk::EditorTextView.new(54)
+                bodywid ||= PandoraGtk::EditorTextView.new(0, nil)
 
                 if not field[FI_Widget2]
                   field[FI_Widget2] = bodywid
@@ -20231,10 +20287,10 @@ module PandoraGtk
   # About dialog hooks
   # RU: Обработчики диалога "О программе"
   Gtk::AboutDialog.set_url_hook do |about, link|
-    PandoraUtils.go_web_link(link)
+    PandoraUtils.external_open(link)
   end
   Gtk::AboutDialog.set_email_hook do |about, link|
-    PandoraUtils.go_web_link(link)
+    PandoraUtils.external_open(link)
   end
 
   # Show About dialog
@@ -21613,6 +21669,8 @@ module PandoraGtk
           self.hide
         when 'About'
           PandoraGtk.show_about
+        when 'Help'
+          PandoraUtils.external_open($pandora_doc_dir)
         when 'Close'
           if notebook.page >= 0
             page = notebook.get_nth_page(notebook.page)
@@ -21921,6 +21979,7 @@ module PandoraGtk
       ['Profile', Gtk::Stock::HOME, 'Profile'],
       ['Wizard', Gtk::Stock::PREFERENCES, 'Wizards'],
       ['-', nil, '-'],
+      ['Help', Gtk::Stock::HELP, '_Help', 'F1'],
       ['Close', Gtk::Stock::CLOSE, '_Close', '<control>W'],
       ['Quit', Gtk::Stock::QUIT, '_Quit', '<control>Q'],
       ['-', nil, '-'],
@@ -22757,6 +22816,7 @@ $pandora_lang_dir = File.join($pandora_app_dir, 'lang')        # Languages direc
 $pandora_util_dir = File.join($pandora_app_dir, 'util')        # Utilites directory
 $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
 $pandora_files_dir = File.join($pandora_app_dir, 'files')      # Files directory
+$pandora_doc_dir = File.join($pandora_app_dir, 'doc')        # Documentation dir
 
 # Expand the arguments of command line
 # RU: Разобрать аргументы командной строки
