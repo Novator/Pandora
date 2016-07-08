@@ -440,18 +440,6 @@ module PandoraUtils
     res
   end
 
-  # Open link in web browser, email client or file manager
-  # RU: Открывает ссылку в браузере, почтовике или проводнике
-  def self.external_open(link)
-    cmd = 'xdg-open'
-    tail = ' &'
-    if PandoraUtils.os_family=='windows'
-      cmd = 'start'
-      tail = ''
-    end
-    system(cmd + ' ' + PandoraUtils.add_quotes(link) + tail)
-  end
-
   # Panhash is nil?
   # RU: Панхэш нулевой?
   def self.panhash_nil?(panhash)
@@ -605,6 +593,18 @@ module PandoraUtils
       str = qts+str+qts
     end
     str
+  end
+
+  # Open link in web browser, email client or file manager
+  # RU: Открывает ссылку в браузере, почтовике или проводнике
+  def self.external_open(link)
+    cmd = 'xdg-open'
+    tail = ' &'
+    if PandoraUtils.os_family=='windows'
+      cmd = 'start'
+      tail = ''
+    end
+    system(cmd + ' ' + PandoraUtils.add_quotes(link) + tail)
   end
 
   # Convert ruby date to string
