@@ -21978,10 +21978,10 @@ module PandoraGtk
       ['Exchange', 'exchange:m', 'Exchange'],
       ['-', nil, '-'],
       ['Profile', Gtk::Stock::HOME, 'Profile'],
-      ['Wizard', Gtk::Stock::PREFERENCES, 'Wizards'],
+      ['Wizard', Gtk::Stock::PREFERENCES.to_s+':m', 'Wizards'],
       ['-', nil, '-'],
-      ['Help', Gtk::Stock::HELP, '_Help', 'F1'],
-      ['Close', Gtk::Stock::CLOSE, '_Close', '<control>W'],
+      ['Help', Gtk::Stock::HELP.to_s+':m', '_Help', 'F1'],
+      ['Close', Gtk::Stock::CLOSE.to_s+':m', '_Close', '<control>W'],
       ['Quit', Gtk::Stock::QUIT, '_Quit', '<control>Q'],
       ['-', nil, '-'],
       ['About', Gtk::Stock::ABOUT, '_About']
