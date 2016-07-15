@@ -1474,9 +1474,9 @@ module PandoraUtils
     end
     def connect
     end
-    def create_table(table_name)
+    def create_table(table)
     end
-    def select_table(table_name, afilter=nil, fields=nil, sort=nil, limit=nil, like_ex=nil)
+    def select_table(table, afilter=nil, fields=nil, sort=nil, limit=nil, like_ex=nil)
     end
   end
 
@@ -1572,36 +1572,36 @@ module PandoraUtils
     end
 
     # RU: Создает таблицу в базе
-    def create_table(table_name, recreate=false, arch_table=nil, \
+    def create_table(table, recreate=false, arch_table=nil, \
     arch_fields=nil, new_fields=nil)
       connect
-      tfd = db.table_info(table_name)
+      tfd = db.table_info(table)
       tfd.collect! { |x| x['name'] }
       if (not tfd) or (tfd == [])
-        @exist[table_name] = false
+        @exist[table] = false
       else
-        @exist[table_name] = true
+        @exist[table] = true
       end
-      tab_def = panobj_fld_to_sqlite_tab(def_flds[table_name])
-      if (! exist[table_name] or recreate) and tab_def
-        if exist[table_name] and recreate
-          res = db.execute('DROP TABLE '+table_name)
+      tab_def = panobj_fld_to_sqlite_tab(def_flds[table])
+      if (! exist[table] or recreate) and tab_def
+        if exist[table] and recreate
+          res = db.execute('DROP TABLE '+table)
         end
-        #p 'CREATE TABLE '+table_name+' '+tab_def
-        #p 'ALTER TABLE '+table_name+' RENAME TO '+arch_table
-        #p 'INSERT INTO '+table_name+' ('+new_fields+') SELECT '+new_fields+' FROM '+arch_table
+        #p 'CREATE TABLE '+table+' '+tab_def
+        #p 'ALTER TABLE '+table+' RENAME TO '+arch_table
+        #p 'INSERT INTO '+table+' ('+new_fields+') SELECT '+new_fields+' FROM '+arch_table
         #INSERT INTO t1(val1,val2) SELECT t2.val1, t2.val2 FROM t2 WHERE t2.id = @id
         #p 'ALTER TABLE OLD_COMPANY ADD COLUMN SEX char(1)'
-        res = db.execute('CREATE TABLE '+table_name+' '+tab_def)
-        @exist[table_name] = true
+        res = db.execute('CREATE TABLE '+table+' '+tab_def)
+        @exist[table] = true
       end
-      exist[table_name]
+      exist[table]
     end
 
     # RU: Поля таблицы
-    def fields_table(table_name)
+    def fields_table(table)
       connect
-      tfd = db.table_info(table_name)
+      tfd = db.table_info(table)
       tfd.collect { |x| [x['name'], x['type']] }
     end
 
@@ -1705,18 +1705,18 @@ module PandoraUtils
     end
 
     # RU: Делает выборку из таблицы
-    def select_table(table_name, filter=nil, fields=nil, sort=nil, limit=nil, like_ex=nil)
+    def select_table(table, filter=nil, fields=nil, sort=nil, limit=nil, like_ex=nil)
       res = nil
       connect
-      tfd = fields_table(table_name)
-      #p '[tfd, table_name, filter, fields, sort, limit, like_filter]='+[tfd, \
-      #  table_name, filter, fields, sort, limit, like_filter].inspect
+      tfd = fields_table(table)
+      #p '[tfd, table, filter, fields, sort, limit, like_filter]='+[tfd, \
+      #  table, filter, fields, sort, limit, like_filter].inspect
       if tfd and (tfd != [])
         sql_values = Array.new
         filter_sql = recognize_filter(filter, sql_values, like_ex)
 
         fields ||= '*'
-        sql = 'SELECT ' + fields + ' FROM ' + table_name + filter_sql
+        sql = 'SELECT ' + fields + ' FROM ' + table + filter_sql
 
         if sort and (sort > '')
           sql = sql + ' ORDER BY '+sort
@@ -1739,7 +1739,7 @@ module PandoraUtils
     end
 
     # RU: Записывает данные в таблицу
-    def update_table(table_name, values, names=nil, filter=nil)
+    def update_table(table, values, names=nil, filter=nil)
       res = false
       connect
       sql = ''
@@ -1748,9 +1748,9 @@ module PandoraUtils
       filter_sql = recognize_filter(filter, sql_values2)
 
       if (not values) and (not names) and filter
-        sql = 'DELETE FROM ' + table_name + filter_sql
+        sql = 'DELETE FROM ' + table + filter_sql
       elsif values.is_a? Array and names.is_a? Array
-        tfd = db.table_info(table_name)
+        tfd = db.table_info(table)
         tfd_name = tfd.collect { |x| x['name'] }
         tfd_type = tfd.collect { |x| x['type'] }
 
@@ -1768,7 +1768,7 @@ module PandoraUtils
             end
           end
 
-          sql = 'UPDATE ' + table_name + ' SET ' + sql + filter_sql
+          sql = 'UPDATE ' + table + ' SET ' + sql + filter_sql
         else  #insert
           seq = ''
           values.each_with_index do |v,i|
@@ -1784,10 +1784,10 @@ module PandoraUtils
               sql_values << v
             end
           end
-          sql = 'INSERT INTO ' + table_name + '(' + sql + ') VALUES(' + seq + ')'
+          sql = 'INSERT INTO ' + table + '(' + sql + ') VALUES(' + seq + ')'
         end
       end
-      tfd = fields_table(table_name)
+      tfd = fields_table(table)
       if tfd and (tfd != [])
         sql_values.concat(sql_values2)
         values_to_ascii(sql_values)
@@ -1806,62 +1806,6 @@ module PandoraUtils
       res
     end
   end
-
-  # Repository manager
-  # RU: Менеджер хранилищ
-  class RepositoryManager
-    attr_accessor :adapter
-
-    # RU: Инициировать адаптер к базе
-    def get_adapter(panobj, table_ptr, recreate=false)
-      adap = nil
-      if @adapter
-        adap = @adapter
-      else
-        adap = SQLiteDbSession.new
-        adap.conn_param = $pandora_sqlite_db
-        @adapter = adap
-      end
-      table_name = table_ptr[1]
-      adap.def_flds[table_name] = panobj.def_fields
-      if (not table_name) or (table_name=='') then
-        puts 'No table name for ['+panobj.name+']'
-      else
-        adap.create_table(table_name, recreate)
-        #adap.create_table(table_name, TRUE)
-      end
-      adap
-    end
-
-    # RU: Сделать выборку из таблицы
-    def get_tab_select(panobj, table_ptr, filter=nil, fields=nil, sort=nil, limit=nil, like_ex=nil)
-      adap = get_adapter(panobj, table_ptr)
-      adap.select_table(table_ptr[1], filter, fields, sort, limit, like_ex)
-    end
-
-    # RU: Записать данные в таблицу
-    def get_tab_update(panobj, table_ptr, values, names, filter='')
-      res = false
-      recreate = ((not values) and (not names) and (not filter))
-      adap = get_adapter(panobj, table_ptr, recreate)
-      if recreate
-        res = (adap != nil)
-      else
-        res = adap.update_table(table_ptr[1], values, names, filter)
-      end
-      res
-    end
-
-    # RU: Взять список полей
-    def get_tab_fields(panobj, table_ptr)
-      adap = get_adapter(panobj, table_ptr)
-      adap.fields_table(table_ptr[1])
-    end
-  end
-
-  # Global poiter to repository manager
-  # RU: Глобальный указатель на менеджер хранилищ
-  $repositories = RepositoryManager.new
 
   # Property indexes of field definition array
   # RU: Индексы свойств в массиве описания полей
@@ -1894,13 +1838,14 @@ module PandoraUtils
   # Base Pandora's object
   # RU: Базовый объект Пандоры
   class BasePanobject
+    attr_accessor :namesvalues
     class << self
       def initialize(*args)
         super(*args)
         @ider = 'BasePanobject'
         @name = 'Базовый объект Пандоры'
         #@lang = true
-        @tables = Array.new
+        @table = nil
         @def_fields = Array.new
         @def_fields_expanded = false
         @panhash_pattern = nil
@@ -2076,7 +2021,8 @@ module PandoraUtils
       # RU: Берет описание полей из sql-таблицы
       def tab_fields(reinit=false)
         if (not @last_tab_fields) or reinit
-          @last_tab_fields = repositories.get_tab_fields(self, tables[0])
+          adap = get_adapter(table)
+          @last_tab_fields = adap.fields_table(table)
           @last_tab_fields.each do |x|
             x[TI_Desc] = field_des(x[TI_Name])
           end
@@ -2332,12 +2278,12 @@ module PandoraUtils
         @def_fields = x
       end
 
-      def tables
-        @tables
+      def table
+        @table
       end
 
-      def tables=(x)
-        @tables = x
+      def table=(x)
+        @table = x
       end
 
       def name
@@ -2356,9 +2302,6 @@ module PandoraUtils
         _(PandoraUtils.get_name_or_names(@name, true))
       end
 
-      def repositories
-        $repositories
-      end
     end
 
     def initialize(*args)
@@ -2404,12 +2347,8 @@ module PandoraUtils
       self.class.def_fields = x
     end
 
-    def tables
-      self.class.tables
-    end
-
-    def tables=(x)
-      self.class.tables = x
+    def table
+      self.class.table
     end
 
     def name
@@ -2420,8 +2359,22 @@ module PandoraUtils
       self.class.name = x
     end
 
-    def repositories
-      $repositories
+    # RU: Инициировать адаптер к базе
+    def self.get_adapter(table, recreate=false)
+      @@adapter ||= nil
+      adap = @@adapter
+      if not adap
+        @@adapter = SQLiteDbSession.new
+        adap = @@adapter
+        adap.conn_param = $pandora_sqlite_db
+      end
+      adap.def_flds[table] = self.def_fields
+      if (not table) or (table=='') then
+        puts 'No table name for ['+self.name+']'
+      else
+        adap.create_table(table, recreate)
+      end
+      adap
     end
 
     def sname
@@ -2432,16 +2385,16 @@ module PandoraUtils
       self.class.pname
     end
 
-    attr_accessor :namesvalues
-
     def tab_fields
       self.class.tab_fields
     end
 
-    # RU: Делает выборку из таблицы
+    # Get records from the table
+    # RU: Берет записи из таблицы
     def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil, limit=nil, like_ex=nil)
-      res = self.class.repositories.get_tab_select(self, self.class.tables[0], \
-        afilter, fields, sort, limit, like_ex)
+      adap = self.class.get_adapter(table)
+      res = adap.select_table(self.table, afilter, fields, \
+        sort, limit, like_ex)
       if set_namesvalues and res[0].is_a? Array
         @namesvalues = {}
         tab_fields.each_with_index do |td, i|
@@ -2460,24 +2413,32 @@ module PandoraUtils
       end
     end
 
-    # RU: Записывает данные в таблицу
+    # Update or delete records in the table, or recreate the table
+    # RU: Обновляет или удаляет записи в таблице, либо пересоздаёт таблицу
     def update(values, names=nil, filter='', set_namesvalues=false)
+      res = false
       if values.is_a? Hash
         names = values.keys
         values = values.values
         #p 'update names='+names.inspect
         #p 'update values='+values.inspect
       end
-      res = self.class.repositories.get_tab_update(self, self.class.tables[0], values, names, filter)
+      recreate = (values.nil? and names.nil? and filter.nil?)
+      adap = self.class.get_adapter(table, recreate)
+      if recreate
+        res = (not adap.nil?)
+      else
+        res = adap.update_table(self.table, values, names, filter)
+        if set_namesvalues and res
+          @namesvalues = {}
+          values.each_with_index do |v, i|
+            namesvalues[names[i]] = v
+          end
+        end
+      end
       if res
         do_update_trigger
         self.class.modified = true
-      end
-      if set_namesvalues and res
-        @namesvalues = {}
-        values.each_with_index do |v, i|
-          namesvalues[names[i]] = v
-        end
       end
       res
     end
@@ -3337,13 +3298,15 @@ module PandoraModel
             #p 'panobj_id='+panobj_id.inspect
             new_panobj = true
             flds = Array.new
+            panobj_name = nil
+            panobj_table = nil
             panobject_class = nil
             panobject_class = PandoraModel.const_get(panobj_id) if PandoraModel.const_defined? panobj_id
             #p panobject_class
             if panobject_class and panobject_class.def_fields and (panobject_class.def_fields != [])
               # just extend existed class
               panobj_name = panobject_class.name
-              panobj_tabl = panobject_class.tables
+              panobj_table = panobject_class.table
               new_panobj = false
               #p 'old='+panobject_class.inspect
             else
@@ -3375,10 +3338,9 @@ module PandoraModel
               kind ||= 0
               panobject_class.kind = kind
               #panobject_class.lang = 5
-              panobj_tabl = panobj_id
-              panobj_tabl = PandoraUtils::get_name_or_names(panobj_tabl, true, 'en')
-              panobj_tabl.downcase!
-              panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]]
+              panobj_table = PandoraUtils::get_name_or_names(panobj_id, true, 'en')
+              panobj_table = panobj_table.downcase
+              panobject_class.table = panobj_table
             end
             panobj_kind = element.attributes['kind']
             panobject_class.kind = panobj_kind.to_i if panobj_kind
@@ -3394,14 +3356,13 @@ module PandoraModel
             #puts panobj_id+'=['+panobj_name+']'
             panobject_class.name = panobj_name
 
-            panobj_tabl = element.attributes['table']
-            panobject_class.tables = [['robux', panobj_tabl], ['perm', panobj_tabl]] if panobj_tabl
+            panobj_table = element.attributes['table']
+            panobject_class.table = panobj_table if panobj_table
 
             # fill fields
             element.elements.each('*') do |sub_elem|
               #p panobj_id+':'+[sub_elem, sub_elem.name].inspect
-              seu = sub_elem.name.upcase
-              if seu==sub_elem.name  #elem name has BIG latters
+              if sub_elem.name==sub_elem.name.upcase  #elem name has BIG latters
                 # This is a function
                 p 'Функция не определена: ['+sub_elem.name+']'
               else
@@ -9019,7 +8980,7 @@ module PandoraNet
                         end
                       else
                         p '!!это узел-посредник, пробросить по истории заявок'
-                        mass_records = pool.find_fish_order(*line[0..4])
+                        mass_records = pool.find_mass_record(MK_Fishing, *line[0..4])
                         mass_records.each do |fo|
                           sess = mr[PandoraNet::MR_Session]
                           if sess
@@ -9993,22 +9954,22 @@ module PandoraNet
                       when MK_Presence
                         p log_mes+'Notice send: '+notic.inspect
                         #notic = PandoraUtils.rubyobj_to_pson(notic)
-                        #add_send_segment(EC_News, true, notic, ECC_News_Notice11mass)
+                        add_send_segment(EC_News, true, notic, ECC_News_Notice11mass)
                       when MK_Fishing
-                        #line = fish_order[MR_Fisher..MR_Fish_key]
-                        #if init_line(line) == false
-                        #  p log_mes+'Fish order to send: '+line.inspect
-                        #  PandoraUtils.log_message(LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
-                        #    +[PandoraUtils.bytes_to_hex(fish_order[MR_Fish]), \
-                        #    PandoraUtils.bytes_to_hex(fish_order[MR_Fish_key]), \
-                        #    @host_ip, @port].inspect)
-                        #  line_raw = PandoraUtils.rubyobj_to_pson(line)
-                        #  add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish)
-                        #end
+                        line = fish_order[MR_Fisher..MR_Fish_key]
+                        if init_line(line) == false
+                          p log_mes+'Fish order to send: '+line.inspect
+                          PandoraUtils.log_message(LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
+                            +[PandoraUtils.bytes_to_hex(fish_order[MR_Fish]), \
+                            PandoraUtils.bytes_to_hex(fish_order[MR_Fish_key]), \
+                            @host_ip, @port].inspect)
+                          line_raw = PandoraUtils.rubyobj_to_pson(line)
+                          add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish11)
+                        end
                       when MK_Search
-                        #p log_mes+'Send search request: '+req.inspect
-                        #req_raw = PandoraUtils.rubyobj_to_pson(req)
-                        #add_send_segment(EC_Query, true, req_raw, ECC_Query_Search)
+                        p log_mes+'Send search request: '+req.inspect
+                        req_raw = PandoraUtils.rubyobj_to_pson(req)
+                        add_send_segment(EC_Query, true, req_raw, ECC_Query_Search11)
                       when MK_Chat
                     end
                     processed += 1
@@ -22905,6 +22866,7 @@ end
 
 MAIN_WINDOW_TITLE = 'Pandora'
 GTK_WINDOW_CLASS = 'gdkWindowToplevel'
+SECOND_RUN_MES = 'Another copy of Pandora is already runned'
 
 # Prevent second execution
 # RU: Предотвратить второй запуск
@@ -22919,7 +22881,7 @@ if not $poly_launch
     if psocket
       psocket.send('Activate', 0)
       psocket.close
-      puts 'Another copy of Pandora is already runned'
+      puts SECOND_RUN_MES
       Kernel.exit
     else
       begin
@@ -22954,7 +22916,7 @@ if not $poly_launch
       #ShowWindow.call(win_handle, 5)  #SW_SHOW=5, SW_RESTORE=9
       SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
       SetForegroundWindow.call(win_handle)
-      Kernel.abort('Another copy of Pandora is already runned')
+      Kernel.abort(SECOND_RUN_MES)
     end
   end
 end
