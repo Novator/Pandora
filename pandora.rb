@@ -774,9 +774,11 @@ module PandoraUtils
 
   # Convert time to string for dialog
   # RU: Преобразует время в строку для диалога
-  def self.time_to_dialog_str(time, time_now)
+  def self.time_to_dialog_str(time, time_now=nil)
     time_fmt = '%H:%M:%S'
-    time_fmt = '%d.%m.%Y '+time_fmt if ((time_now.to_i - time.to_i).abs > 12*3600)
+    if time_now.nil? or ((time_now.to_i - time.to_i).abs > 12*3600)
+      time_fmt = '%d.%m.%Y '+time_fmt
+    end
     time = Time.at(time) if (time.is_a? Integer)
     time_str = time.strftime(time_fmt)
   end
@@ -2332,12 +2334,6 @@ module PandoraUtils
     def sort=(x)
       self.class.sort = x
     end
-    #def lang
-    #  self.class.lang
-    #end
-    #def lang=(x)
-    #  self.class.lang = x
-    #end
 
     def def_fields
       self.class.def_fields
@@ -13168,7 +13164,8 @@ module PandoraGtk
       'LIME', 'AQUA', 'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER', \
       'URL', 'A', 'HREF', 'LINK', 'ANCHOR', 'QUOTE', 'BLOCKQUOTE', 'LIST', \
       'CUT', 'SPOILER', 'CODE', 'INLINE', \
-      'INPUT', 'BUTTON', 'SPIN', 'INTEGER', 'HEX', 'REAL', 'FLOAT', 'DATE', \
+      'BOX', 'PROPERTY', 'EDIT', 'ENTRY', 'INPUT', \
+      'BUTTON', 'SPIN', 'INTEGER', 'HEX', 'REAL', 'FLOAT', 'DATE', \
       'TIME', 'DATETIME', 'COORD', 'FILENAME', 'BASE64', 'PANHASH', 'BYTELIST', \
       'PRE', 'SOURCE', 'MONO', 'MONOSPACE', \
       'IMG', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'SUB', 'SUP', \
@@ -13687,53 +13684,107 @@ module PandoraGtk
                                   #body_child.add_child_at_anchor(wid, anchor)
                                   #wid.show_all
                                 end
-                              when 'INPUT', 'BUTTON', 'SPIN', 'INTEGER', 'HEX', \
-                              'REAL', 'FLOAT', 'DATE', 'TIME', 'DATETIME', 'COORD', \
-                              'FILENAME', 'BASE64', 'PANHASH', 'BYTELIST'
-                                param = get_tag_param(params)
-                                widget = nil
-                                if comu=='INPUT'
-                                  widget = Gtk::Entry.new
-                                  widget.text = param if param
-                                elsif comu=='SPIN'
-                                  param ||= 100.0
-                                  widget = Gtk::SpinButton.new(0.0, param.to_f, 1.0)
-                                elsif comu=='INTEGER'
-                                  widget = IntegerEntry.new
-                                elsif comu=='HEX'
-                                  widget = HexEntry.new
-                                elsif (comu=='REAL') or (comu=='FLOAT')
-                                  widget = FloatEntry.new
-                                elsif (comu=='TIME') or (comu=='DATETIME')
-                                  #DateTimeEntry.new
-                                  widget = DateTimeBox.new
-                                elsif comu=='DATE'
-                                  widget = DateEntry.new
-                                elsif comu=='COORD'
-                                  widget = CoordBox.new
-                                elsif comu=='FILENAME'
-                                  widget = FilenameBox.new(window)
-                                elsif comu=='BASE64'
-                                  widget = Base64Entry.new
-                                elsif comu=='PANHASH'
-                                  widget = PanhashBox.new(param)
-                                elsif comu=='BYTELIST'
-                                  widget = ByteListEntry.new(PandoraModel::RelationNames)
-                                else
-                                  param ||= _('OK')
-                                  widget = Gtk::Button.new(param)
+                              when 'BOX', 'PROPERTY', 'EDIT', 'ENTRY', 'INPUT', \
+                              'SPIN', 'INTEGER', 'HEX', 'REAL', 'FLOAT', 'DATE', \
+                              'TIME', 'DATETIME', 'COORD', 'FILENAME', 'BASE64', \
+                              'PANHASH', 'BYTELIST', 'BUTTON'
+                                param_hash = detect_params(params)
+                                name = param_hash['tag']
+                                name ||= param_hash['name']
+                                name ||= _('Noname')
+                                values = param_hash['values']
+                                values ||= param_hash['value']
+                                values = values.split(',') if values
+                                default = param_hash['default']
+                                default ||= values[0] if values
+                                type = param_hash['type']
+                                kind = param_hash['kind']
+                                type ||= comu
+                                comu = nil
+                                show_text = false
+                                type.upcase!
+                                if (type=='ENTRY') or (type=='INPUT')
+                                  type = 'EDIT'
+                                elsif (type=='FLOAT')
+                                  type = 'REAL'
+                                elsif (type=='DATETIME')
+                                  type = 'TIME'
+                                elsif not ['EDIT', 'SPIN', 'INTEGER', 'HEX', 'REAL', \
+                                'DATE', 'TIME', 'COORD', 'FILENAME', 'BASE64', \
+                                'PANHASH', 'BUTTON', 'LIST'].include?(type)
+                                  type = 'LIST'
                                 end
-                                #etv.buffer.text = str[0, i1]
-                                #expander.add(etv)
+
+                                dest_buf.insert(iter, name)
+                                dest_buf.insert(dest_buf.end_iter, name, 'bold')
+                                dest_buf.insert(dest_buf.end_iter, ': ')
+                                shift_coms(name.size+2)
+
+                                widget = nil
+                                if type=='EDIT'
+                                  widget = Gtk::Entry.new
+                                  widget.text = default if default
+                                elsif type=='SPIN'
+                                  if values
+                                    min = values[0]
+                                    max = values[-1]
+                                  else
+                                    min = 0.0
+                                    max = 100.0
+                                  end
+                                  default ||= 0.0
+                                  widget = Gtk::SpinButton.new(min.to_f, max.to_f, 1.0)
+                                  widget.value = default.to_f
+                                elsif type=='INTEGER'
+                                  widget = IntegerEntry.new
+                                  widget.text = default if default
+                                elsif type=='HEX'
+                                  widget = HexEntry.new
+                                  widget.text = default if default
+                                elsif type=='REAL'
+                                  widget = FloatEntry.new
+                                  widget.text = default if default
+                                elsif type=='TIME'
+                                  widget = DateTimeBox.new
+                                  if default
+                                    if default.downcase=='current'
+                                      default = PandoraUtils.time_to_dialog_str(Time.now)
+                                    end
+                                    widget.text = default
+                                  end
+                                elsif type=='DATE'
+                                  widget = DateEntry.new
+                                  if default
+                                    if default.downcase=='current'
+                                      default = PandoraUtils.date_to_str(Time.now)
+                                    end
+                                    widget.text = default
+                                  end
+                                elsif type=='COORD'
+                                  widget = CoordBox.new
+                                  widget.text = default if default
+                                elsif type=='FILENAME'
+                                  widget = FilenameBox.new(window)
+                                  widget.text = default if default
+                                elsif type=='BASE64'
+                                  widget = Base64Entry.new
+                                  widget.text = default if default
+                                elsif type=='PANHASH'
+                                  kind ||= 'Person'
+                                  widget = PanhashBox.new('Panhash('+kind+')')
+                                  widget.text = default if default
+                                elsif type=='LIST'
+                                  widget = ByteListEntry.new(PandoraModel::RelationNames)
+                                  widget.text = default if default
+                                else #'BUTTON'
+                                  default ||= _('OK')
+                                  widget = Gtk::Button.new(default)
+                                end
                                 iter = dest_buf.end_iter
-                                p '----------children  widget='+widget.inspect
-                                p anchor = dest_buf.create_child_anchor(iter)
-                                #p 'CUT [body_child, expander, anchor]='+
-                                #  [body_child, expander, anchor].inspect
-                                p add_child_at_anchor(widget, anchor)
+                                anchor = dest_buf.create_child_anchor(iter)
+                                add_child_at_anchor(widget, anchor)
                                 shift_coms(1)
                                 widget.show_all
-                                p children
                               #end-case-when
                             end
                           end
@@ -15049,41 +15100,41 @@ module PandoraGtk
         set_tag('table')
       end
       menu.append(Gtk::SeparatorMenuItem.new)
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Input') do
-        set_tag('input/', 'text')
+      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Edit') do
+        set_tag('edit/', 'Edit value="Text"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Spin') do
-        set_tag('spin/', '5')
+        set_tag('spin/', 'Spin values="42,48,52" default="48"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Integer') do
-        set_tag('integer/', '0')
+        set_tag('integer/', 'Integer value="42"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Hex') do
-        set_tag('hex/', '0')
+        set_tag('hex/', 'Hex value="01a5ff"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Real') do
-        set_tag('real/', '0')
+        set_tag('real/', 'Real value="0.55"')
       end
       add_menu_item(btn, menu, :date, 'Date') do
-        set_tag('date/', '0')
+        set_tag('date/', 'Date value="current"')
       end
       add_menu_item(btn, menu, :time, 'Time') do
-        set_tag('time/', '0')
+        set_tag('time/', 'Time value="current"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Coord') do
-        set_tag('coord/', '0')
+        set_tag('coord/', 'Coord')
       end
       add_menu_item(btn, menu, Gtk::Stock::OPEN, 'Filename') do
-        set_tag('filename/', '0')
+        set_tag('filename/', 'Filename value="./picture1.jpg"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Base64') do
-        set_tag('base64/', '0')
+        set_tag('base64/', 'Base64 value="a34b4233"')
       end
       add_menu_item(btn, menu, :panhash, 'Panhash') do
-        set_tag('panhash/', '0')
+        set_tag('panhash/', 'Panhash kind="Person, Community, Blob"')
       end
       add_menu_item(btn, menu, :list, 'Bytelist') do
-        set_tag('bytelist/', '0')
+        set_tag('bytelist/', 'List values="red, green, blue"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Button') do
         set_tag('button/', 'Order')
