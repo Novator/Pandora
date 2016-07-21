@@ -31,9 +31,7 @@ $lang_trans = {}
 # RU: Перевод фразы
 def _(frase)
   trans = $lang_trans[frase]
-  if not trans or (trans.size==0) and frase and (frase.size>0)
-    trans = frase
-  end
+  trans = frase if ((not trans) or (trans.size==0))
   trans
 end
 
@@ -10904,6 +10902,7 @@ module PandoraGtk
       super
       @mask = '0123456789-'
       self.max_length = 20
+      self.width_request = PandoraGtk.num_char_width*8+8
     end
   end
 
@@ -10914,6 +10913,7 @@ module PandoraGtk
       super
       @mask += '.e'
       self.max_length = 35
+      self.width_request = PandoraGtk.num_char_width*11+8
     end
   end
 
@@ -10923,6 +10923,7 @@ module PandoraGtk
     def init_mask
       super
       @mask = '0123456789abcdefABCDEF'
+      self.width_request = PandoraGtk.num_char_width*45+8
     end
   end
 
@@ -10934,6 +10935,7 @@ module PandoraGtk
     def init_mask
       super
       @mask = Base64chars
+      self.width_request = PandoraGtk.num_char_width*64+8
     end
   end
 
@@ -10945,6 +10947,7 @@ module PandoraGtk
       @mask = '0123456789.'
       self.max_length = 10
       self.tooltip_text = 'DD.MM.YYYY'
+      self.width_request = PandoraGtk.num_char_width*self.max_length+8
     end
   end
 
@@ -10956,6 +10959,7 @@ module PandoraGtk
       @mask = '0123456789:'
       self.max_length = 8
       self.tooltip_text = 'hh:mm:ss'
+      self.width_request = PandoraGtk.num_char_width*self.max_length+8
     end
   end
 
@@ -10967,6 +10971,7 @@ module PandoraGtk
       @mask += ': '
       self.max_length = 19
       self.tooltip_text = 'DD.MM.YYYY hh:mm:ss'
+      self.width_request = PandoraGtk.num_char_width*(self.max_length+1)+8
     end
   end
 
@@ -11941,6 +11946,7 @@ module PandoraGtk
       @entry.mask = '0123456789.'
       @entry.max_length = 10
       @entry.tooltip_text = 'DD.MM.YYYY'
+      @entry.width_request = PandoraGtk.num_char_width*@entry.max_length+8
       @on_click_btn = Proc.new do |date|
         @entry.text = PandoraUtils.date_to_str(date)
         @@popwin.hide_popwin
@@ -11982,6 +11988,7 @@ module PandoraGtk
       @entry.mask = '0123456789:'
       @entry.max_length = 8
       @entry.tooltip_text = 'hh:mm:ss'
+      @entry.width_request = PandoraGtk.num_char_width*@entry.max_length+8
       @@time_his ||= nil
     end
 
@@ -12128,6 +12135,7 @@ module PandoraGtk
       @entry.mask = '0123456789'
       @entry.max_length = 3
       @entry.tooltip_text = 'NNN'
+      @entry.width_request = PandoraGtk.num_char_width*10+8
     end
 
     def get_popwidget
@@ -12320,6 +12328,7 @@ module PandoraGtk
       stock = stock.to_sym
       title ||= 'Panhash'
       super(HexEntry, stock, title, *args)
+      @entry.width_request = PandoraGtk.num_char_width*45+8
     end
 
     def do_on_click
@@ -12501,6 +12510,7 @@ module PandoraGtk
     def initialize(parent, *args)
       super(Gtk::Entry, Gtk::Stock::OPEN, 'File', *args)
       @window = parent
+      @entry.width_request = PandoraGtk.num_char_width*64+8
     end
 
     def do_on_click
@@ -13692,6 +13702,8 @@ module PandoraGtk
                                 name = param_hash['tag']
                                 name ||= param_hash['name']
                                 name ||= _('Noname')
+                                width = param_hash['width']
+                                size = param_hash['size']
                                 values = param_hash['values']
                                 values ||= param_hash['value']
                                 values = values.split(',') if values
@@ -13779,6 +13791,15 @@ module PandoraGtk
                                 else #'BUTTON'
                                   default ||= _('OK')
                                   widget = Gtk::Button.new(default)
+                                end
+                                if width or size
+                                  width = width.to_i if width
+                                  width ||= PandoraGtk.num_char_width*size.to_i+8
+                                  if widget.is_a? Gtk::Widget
+                                    widget.width_request = width
+                                  elsif widget.is_a? PandoraGtk::BtnEntry
+                                    widget.entry.width_request = width
+                                  end
                                 end
                                 iter = dest_buf.end_iter
                                 anchor = dest_buf.create_child_anchor(iter)
@@ -19735,6 +19756,7 @@ module PandoraGtk
 
       fields = Array.new
       fields << no_filter_frase
+      fields << 'lang'
       fields.concat(tab_flds.collect{|tf| tf[0]})
       @field_com = Gtk::Combo.new
       field_com.set_popdown_strings(fields)
