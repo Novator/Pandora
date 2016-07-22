@@ -1084,11 +1084,18 @@ module PandoraUtils
     val = val.round(1)
   end
 
-  def self.set_obj_property(obj, name, value=nil)
+  # Dynamically create singleton property for an instance and set its value
+  # RU: Динамически создаёт свойство единичного объекта и задаёт его значение
+  def self.set_obj_property(obj, name, value=nil, readonly=true)
     #obj.send("#{name.to_s}=", value)
     obj.instance_variable_set('@'+name, value)
     obj.define_singleton_method(name.to_sym) do
       instance_variable_get('@'+name)
+    end
+    if not readonly
+      obj.define_singleton_method((name+'=').to_sym) do |value|
+        obj.instance_variable_set('@'+name, value)
+      end
     end
   end
 
@@ -14827,18 +14834,19 @@ module PandoraGtk
 
     # Set tag for selection
     # RU: Задать тэг для выделенного
-    def set_tag(tag, params=nil, defval=nil)
+    def insert_tag(tag, params=nil, defval=nil)
       if tag
         bw = get_bodywin
         if bw
           tv = bw.body_child
           if bw.view_mode
-            buffer = tv.buffer
-            bounds = buffer.selection_bounds
-            buffer.apply_tag(tag, bounds[0], bounds[1])
-          else
-            tv.set_tag(tag, params, defval, bw.format)
+            btn = PandoraGtk.find_tool_btn(toolbar, 'Edit')
+            btn.active = true if btn.is_a? Gtk::ToggleToolButton
+            #buffer = tv.buffer
+            #bounds = buffer.selection_bounds
+            #buffer.apply_tag(tag, bounds[0], bounds[1])
           end
+          tv.set_tag(tag, params, defval, bw.format)
         end
       end
     end
@@ -15071,40 +15079,40 @@ module PandoraGtk
       toolbar.add(Gtk::SeparatorToolItem.new)
 
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::BOLD) do |*args|
-        set_tag('bold')
+        insert_tag('bold')
       end
 
       btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::ITALIC, nil, 0) do |*args|
-        set_tag('italic')
+        insert_tag('italic')
       end
       menu = Gtk::Menu.new
       btn.menu = menu
       add_menu_item(btn, menu, Gtk::Stock::UNDERLINE) do
-        set_tag('undline')
+        insert_tag('undline')
       end
       add_menu_item(btn, menu, Gtk::Stock::STRIKETHROUGH) do
-        set_tag('strike')
+        insert_tag('strike')
       end
       add_menu_item(btn, menu, Gtk::Stock::UNDERLINE) do
-        set_tag('d')
+        insert_tag('d')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Sub') do
-        set_tag('sub')
+        insert_tag('sub')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Sup') do
-        set_tag('sup')
+        insert_tag('sup')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Small') do
-        set_tag('small')
+        insert_tag('small')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Large') do
-        set_tag('large')
+        insert_tag('large')
       end
       menu.show_all
 
       @selected_color = 'red'
       btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SELECT_COLOR, nil, 0) do |*args|
-        set_tag('color', @selected_color)
+        insert_tag('color', @selected_color)
       end
       menu = Gtk::Menu.new
       btn.menu = menu
@@ -15126,7 +15134,7 @@ module PandoraGtk
           else
             @selected_color = PandoraUtils.color_to_str(color)
           end
-          set_tag('color', @selected_color)
+          insert_tag('color', @selected_color)
         end
         dialog.destroy
       end
@@ -15142,25 +15150,25 @@ module PandoraGtk
           params['style']='1' if desc.style==Pango::FontDescription::STYLE_OBLIQUE
           params['style']='2' if desc.style==Pango::FontDescription::STYLE_ITALIC
           params['weight']='600' if desc.weight==Pango::FontDescription::WEIGHT_BOLD
-          set_tag('font', params)
+          insert_tag('font', params)
         end
         dialog.destroy
       end
       menu.show_all
 
       btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_CENTER, nil, 0) do |*args|
-        set_tag('center')
+        insert_tag('center')
       end
       menu = Gtk::Menu.new
       btn.menu = menu
       add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_RIGHT) do
-        set_tag('right')
+        insert_tag('right')
       end
       add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_FILL) do
-        set_tag('fill')
+        insert_tag('fill')
       end
       add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_LEFT) do
-        set_tag('left')
+        insert_tag('left')
       end
       menu.show_all
 
@@ -15172,94 +15180,94 @@ module PandoraGtk
             params << ' alt="'+name+'" title="'+name+'"'
           end
           if (sha1.is_a? String) and (sha1.size>0)
-            set_tag('img/', 'sha1://'+PandoraUtils.bytes_to_hex(sha1)+params)
+            insert_tag('img/', 'sha1://'+PandoraUtils.bytes_to_hex(sha1)+params)
           elsif panhash.is_a? String
-            set_tag('img/', 'pandora://'+PandoraUtils.bytes_to_hex(panhash)+params)
+            insert_tag('img/', 'pandora://'+PandoraUtils.bytes_to_hex(panhash)+params)
           end
         end
       end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link') do |*args|
-        set_tag('link', 'http://priroda.su', 'Priroda.SU')
+        insert_tag('link', 'http://priroda.su', 'Priroda.SU')
       end
 
       btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::INDENT, 'h1', 0) do |*args|
-        set_tag('h1')
+        insert_tag('h1')
       end
       menu = Gtk::Menu.new
       btn.menu = menu
       add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h2') do
-        set_tag('h2')
+        insert_tag('h2')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h3') do
-        set_tag('h3')
+        insert_tag('h3')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h4') do
-        set_tag('h4')
+        insert_tag('h4')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h5') do
-        set_tag('h5')
+        insert_tag('h5')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h6') do
-        set_tag('h6')
+        insert_tag('h6')
       end
       menu.show_all
 
       btn = PandoraGtk.add_tool_btn(toolbar, :code, 'Code', 0) do |*args|
-        set_tag('code', 'ruby')
+        insert_tag('code', 'ruby')
       end
       menu = Gtk::Menu.new
       btn.menu = menu
       add_menu_item(btn, menu, :quote, 'Quote') do
-        set_tag('quote')
+        insert_tag('quote')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Cut') do
-        set_tag('cut', _('Expand'))
+        insert_tag('cut', _('Expand'))
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'HR') do
-        set_tag('hr/', '150')
+        insert_tag('hr/', '150')
       end
       add_menu_item(btn, menu, :table, 'Table') do
-        set_tag('table')
+        insert_tag('table')
       end
       menu.append(Gtk::SeparatorMenuItem.new)
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Edit') do
-        set_tag('edit/', 'Edit value="Text"')
+        insert_tag('edit/', 'Edit value="Text"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Spin') do
-        set_tag('spin/', 'Spin values="42,48,52" default="48"')
+        insert_tag('spin/', 'Spin values="42,48,52" default="48"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Integer') do
-        set_tag('integer/', 'Integer value="42"')
+        insert_tag('integer/', 'Integer value="42"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Hex') do
-        set_tag('hex/', 'Hex value="01a5ff"')
+        insert_tag('hex/', 'Hex value="01a5ff"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Real') do
-        set_tag('real/', 'Real value="0.55"')
+        insert_tag('real/', 'Real value="0.55"')
       end
       add_menu_item(btn, menu, :date, 'Date') do
-        set_tag('date/', 'Date value="current"')
+        insert_tag('date/', 'Date value="current"')
       end
       add_menu_item(btn, menu, :time, 'Time') do
-        set_tag('time/', 'Time value="current"')
+        insert_tag('time/', 'Time value="current"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Coord') do
-        set_tag('coord/', 'Coord')
+        insert_tag('coord/', 'Coord')
       end
       add_menu_item(btn, menu, Gtk::Stock::OPEN, 'Filename') do
-        set_tag('filename/', 'Filename value="./picture1.jpg"')
+        insert_tag('filename/', 'Filename value="./picture1.jpg"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Base64') do
-        set_tag('base64/', 'Base64 value="a34b4233"')
+        insert_tag('base64/', 'Base64 value="a34b4233"')
       end
       add_menu_item(btn, menu, :panhash, 'Panhash') do
-        set_tag('panhash/', 'Panhash kind="Person, Community, Blob"')
+        insert_tag('panhash/', 'Panhash kind="Person, Community, Blob"')
       end
       add_menu_item(btn, menu, :list, 'Bytelist') do
-        set_tag('bytelist/', 'List values="red, green, blue"')
+        insert_tag('bytelist/', 'List values="red, green, blue"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Button') do
-        set_tag('button/', 'Order')
+        insert_tag('button/', 'Order')
       end
       menu.show_all
 
