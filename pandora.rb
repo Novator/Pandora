@@ -18521,9 +18521,12 @@ module PandoraGtk
         kind_pbs[i] = $window.get_icon_scale_buf(v, 'pan', 16)
       end
 
+      kind_image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
+      kind_image.show_all
       renderer = Gtk::CellRendererPixbuf.new
-      column = Gtk::TreeViewColumn.new(_('Kind'), renderer, 'text' => 0)
-      column.set_sort_column_id(0)
+      column = Gtk::TreeViewColumn.new('', renderer)
+      column.widget = kind_image
+      #column.set_sort_column_id(0)
       column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
         kind = nil
         kind = iter[0] if model.iter_is_valid?(iter) and iter and iter.path
@@ -18534,7 +18537,7 @@ module PandoraGtk
           renderer.pixbuf = pixbuf
         end
       end
-      column.fixed_width = 24
+      column.fixed_width = 20
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
