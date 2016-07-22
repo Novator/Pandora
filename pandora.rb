@@ -18342,7 +18342,7 @@ module PandoraGtk
             #  menuitem.image = image
             #end
           end
-          $window.register_stock(stock)
+          $window.register_stock(stock, nil, text)
           menuitem = Gtk::ImageMenuItem.new(stock)
           label = menuitem.children[0]
           label.set_text(text, true)
@@ -21640,7 +21640,7 @@ module PandoraGtk
 
     # Register new stock by name of image preset
     # RU: Регистрирует новый stock по имени пресета иконки
-    def register_stock(stock=:person, preset=nil)
+    def register_stock(stock=:person, preset=nil, name=nil)
       stock_inf = nil
       preset ||= 'pan'
       suff = preset
@@ -21657,7 +21657,8 @@ module PandoraGtk
       if not stock_inf
         icon_set = get_preset_iconset(stock.to_s, preset)
         if icon_set
-          Gtk::Stock.add(reg_stock, '_'+stock.to_s.capitalize)
+          name ||= '_'+stock.to_s.capitalize
+          Gtk::Stock.add(reg_stock, name)
           @icon_factory.add(reg_stock.to_s, icon_set)
         end
       end
@@ -22151,7 +22152,7 @@ module PandoraGtk
     def fill_menubar(menubar)
       menu = nil
       MENU_ITEMS.each do |mi|
-        if mi[0]==nil or menu==nil
+        if mi[0].nil? or menu.nil?
           menuitem = Gtk::MenuItem.new(_(mi[2]))
           menubar.append(menuitem)
           menu = Gtk::Menu.new
