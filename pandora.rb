@@ -1084,6 +1084,14 @@ module PandoraUtils
     val = val.round(1)
   end
 
+  def self.set_obj_property(obj, name, value=nil)
+    #obj.send("#{name.to_s}=", value)
+    obj.instance_variable_set('@'+name, value)
+    obj.define_singleton_method(name.to_sym) do
+      instance_variable_get('@'+name)
+    end
+  end
+
   # Encode data type and size to PSON type and count of size in bytes (1..8)-1
   # RU: Кодирует тип данных и размер в тип PSON и число байт размера
   def self.encode_pson_type(basetype, int)
@@ -8183,12 +8191,10 @@ module PandoraNet
           not_trust = (@notice & 0xFF)
           not_dep = (@notice >> 8)
           if not_dep >= 0
-            #nick = PandoraCrypto.short_name_of_person(@skey, @to_person, 1)
-            nick = nil
-            #pool.add_notice_order(self, @to_person, @to_key, \
-            #  @to_base_id, not_trust, not_dep, nick)
-            pool.add_mass_record(MK_Presence, nick, nil, nil, nil, \
-              nil, nil, not_trust, not_dep, nil, nil, @recv_models)
+            nick = PandoraCrypto.short_name_of_person(@skey, @to_person, 1)
+            pool.add_mass_record(MK_Presence, nick, nil, nil, \
+              @to_node, 0, nil, not_trust, not_dep, pool.self_node, \
+              nil, @recv_models)
           end
         end
       end
@@ -13766,10 +13772,7 @@ module PandoraGtk
                                   iter = dest_buf.end_iter
                                   if pixbuf.is_a? Gdk::Pixbuf
                                     alt ||= src
-                                    pixbuf.instance_variable_set('@tooltip', alt)
-                                    def pixbuf.tooltip
-                                      @tooltip
-                                    end
+                                    PandoraUtils.set_obj_property(pixbuf, 'tooltip', alt)
                                     dest_buf.insert(iter, pixbuf)
                                     #anchor = dest_buf.create_child_anchor(iter)
                                     #img = Gtk::Image.new(img_res)
@@ -18352,7 +18355,8 @@ module PandoraGtk
           key, mod = Gtk::Accelerator.parse(mi[3])
           menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE) if key
         end
-        menuitem.name = mi[0]
+        #menuitem.name = mi[0]
+        PandoraUtils.set_obj_property(menuitem, 'command', mi[0])
         PandoraGtk.set_bold_to_menuitem(menuitem) if opts and opts.index('b')
         menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget, treeview) }
       end
@@ -21806,7 +21810,11 @@ module PandoraGtk
       widget = nil
       if not (command.is_a? String)
         widget = command
-        command = widget.name
+        if widget.instance_variable_defined?('@command')
+          command = widget.command
+        else
+          command = widget.name
+        end
       end
       case command
         when 'Quit'
