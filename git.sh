@@ -27,6 +27,10 @@
 #git clone --depth=1 git://git.site.biz/pandora
 #git push -u origin master
 
+## Change remote url to HTTPS or SSH way
+#git remote set-url github https://github.com/Novator/Pandora.git
+#git remote set-url github git@github.com:Novator/Pandora.git
+
 ## Auto start server (add to /etc/rc.local)
 #git daemon --detach --verbose --base-path=/home/theuser/pathto/repos --max-connections=3 --syslog --export-all
 
@@ -42,6 +46,9 @@
 #git branch -v
 #git diff
 #git log
+
+##Save version, md5 and date to history log
+echo "`grep 'AppVersion  ' pandora.rb | grep -o [\.[:digit:].]*` `md5sum ./pandora.rb`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
 
 ## Push files from local to repository
 #git add --all
