@@ -1,2 +1,3 @@
 ===Development history (version, md5)
 0.59 6c3766b1f6f16aadda7f9e5f2256fcee  ./pandora.rb  22.07.2016 11:59:42
+0.60 4208e2cfbab426fc6ecc854855c627b2  ./pandora.rb  22.07.2016 17:10:15

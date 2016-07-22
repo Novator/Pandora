@@ -1221,7 +1221,7 @@ module PandoraUtils
             if basetype == PT_Sym
               val = data[pos, elem_size].to_sym
             elsif basetype == PT_Real
-              val = data[pos, elem_size].unpack['D']
+              val = data[pos, elem_size].unpack('D')
             end
           when PT_Array, PT_Hash
             val = Array.new
@@ -7070,8 +7070,8 @@ module PandoraNet
 
   # Version of application and protocol (may be different)
   # RU: Версия программы и протокола (могут отличаться)
-  AppVersion   = '0.59'
-  ProtoVersion = 'pandora0.56'
+  AppVersion   = '0.60'
+  ProtoVersion = 'pandora0.60'
 
   class Session
 
@@ -8183,7 +8183,8 @@ module PandoraNet
           not_trust = (@notice & 0xFF)
           not_dep = (@notice >> 8)
           if not_dep >= 0
-            nick = PandoraCrypto.short_name_of_person(@skey, @to_person, 1)
+            #nick = PandoraCrypto.short_name_of_person(@skey, @to_person, 1)
+            nick = nil
             #pool.add_notice_order(self, @to_person, @to_key, \
             #  @to_base_id, not_trust, not_dep, nick)
             pool.add_mass_record(MK_Presence, nick, nil, nil, nil, \
@@ -9102,8 +9103,8 @@ module PandoraNet
                       #end
                     end
                   when ECC_News_Notice
-                    notic, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    p log_mes+'==ECC_News_Notice [rdata, notic, len]='+[rdata, notic, len].inspect
+                    nick, len = PandoraUtils.pson_to_rubyobj(rdata)
+                    p log_mes+'==ECC_News_Notice [rdata, notic, len]='+[rdata, nick, len].inspect
                     if (notic.is_a? Array) and (notic.size==5)
                       #pool.add_notice_order(self, *notic)
                       pool.add_mass_record(MK_Presence, nick, nil, nil, \
@@ -9206,6 +9207,16 @@ module PandoraNet
                   else
                     pool.close_punnet(punnet, sha1, @send_models)
                   end
+                end
+              when EC_Mass
+                kind = rcode
+                params, len = PandoraUtils.pson_to_rubyobj(rdata)
+                p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
+                if (params.is_a? Array) and (params.size>=6)
+                  src_node, src_ind, atime, atrust, adepth, param1, param2, param3 = params
+                  keep_node = @to_node
+                  pool.add_mass_record(kind, param1, param2, param3, src_node, \
+                    src_ind, atime, atrust, adepth, keep_node, nil, @recv_models)
                 end
               else
                 err_scmd('Unknown command is recieved', ECC_Bye_Unknown)
@@ -10022,32 +10033,36 @@ module PandoraNet
                 and (processed<$mass_block_count) \
                 and (@mass_ind <= pool.mass_ind)
                   mass_rec = pool.mass_records[@mass_ind]
-                  if mass_rec and (mass_rec[MR_Session] != self) \
+                  if (mass_rec and (not mass_rec[MR_Node].nil?) \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], false)) \
-                  and ((mass_rec[MR_Key] != @to_key) \
-                  or (mass_rec[MR_Person] != @to_person) \
-                  or (mass_rec[MR_BaseId] != @to_base_id))
-                    case mass_rec[MR_Kind]
-                      when MK_Presence
-                        p log_mes+'Notice send: '+notic.inspect
-                        #notic = PandoraUtils.rubyobj_to_pson(notic)
-                        add_send_segment(EC_News, true, notic, ECC_News_Notice11mass)
+                  and (mass_rec[MR_Node] != @to_node))
+                  #and (mass_rec[MR_Node] != pool.self_node) \
+                    kind = mass_rec[MR_Kind]
+                    params = [mass_rec[MR_Node], mass_rec[MR_Index], mass_rec[MR_Time], \
+                      mass_rec[MR_Trust], mass_rec[MR_Depth], mass_rec[MR_Param1], \
+                      mass_rec[MR_Param2], mass_rec[MR_Param3]]
+                    case kind
                       when MK_Fishing
-                        line = fish_order[MR_Fisher..MR_Fish_key]
-                        if init_line(line) == false
-                          p log_mes+'Fish order to send: '+line.inspect
-                          PandoraUtils.log_message(LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
-                            +[PandoraUtils.bytes_to_hex(fish_order[MR_Fish]), \
-                            PandoraUtils.bytes_to_hex(fish_order[MR_Fish_key]), \
-                            @host_ip, @port].inspect)
-                          line_raw = PandoraUtils.rubyobj_to_pson(line)
-                          add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish11)
-                        end
+                        #line = fish_order[MR_Fisher..MR_Fish_key]
+                        #if init_line(line) == false
+                        #  p log_mes+'Fish order to send: '+line.inspect
+                        #  PandoraUtils.log_message(LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
+                        #    +[PandoraUtils.bytes_to_hex(fish_order[MR_Fish]), \
+                        #    PandoraUtils.bytes_to_hex(fish_order[MR_Fish_key]), \
+                        #    @host_ip, @port].inspect)
+                        #  line_raw = PandoraUtils.rubyobj_to_pson(line)
+                        #  add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish11)
+                        #end
                       when MK_Search
-                        p log_mes+'Send search request: '+req.inspect
-                        req_raw = PandoraUtils.rubyobj_to_pson(req)
-                        add_send_segment(EC_Query, true, req_raw, ECC_Query_Search11)
+                        #p log_mes+'Send search request: '+req.inspect
+                        #req_raw = PandoraUtils.rubyobj_to_pson(req)
+                        #add_send_segment(EC_Query, true, req_raw, ECC_Query_Search11)
                       when MK_Chat
+                    end
+                    if params
+                      p log_mes+'Mass rec send [kind, params]'+[kind, params].inspect
+                      params_pson = PandoraUtils.rubyobj_to_pson(params)
+                      add_send_segment(EC_Mass, true, params_pson, kind)
                     end
                     processed += 1
                   end
@@ -13770,7 +13785,7 @@ module PandoraGtk
                                   else
                                     errtxt ||= _('Unknown error')
                                     dest_buf.insert(iter, errtxt)
-                                    shift_coms(errtext.size)
+                                    shift_coms(errtxt.size)
                                   end
                                   #anchor = dest_buf.create_child_anchor(iter)
                                   #p 'IMG [wid, anchor]='+[wid, anchor].inspect
@@ -18398,6 +18413,8 @@ module PandoraGtk
 
     include PandoraGtk
 
+    MASS_KIND_ICONS = ['hunt', 'chat', 'request', 'fish']
+
     # Show fishes window
     # RU: Показать окно рыб
     def initialize
@@ -18469,15 +18486,13 @@ module PandoraGtk
             akey, abaseid, aperson = $window.pool.get_node_params(anode)
             if aperson or akey
               sess_iter = list_store.append
-              anick = nil
               akind = mr[PandoraNet::MR_Kind]
-              if (akind == PandoraNet::MK_Presence)
-                anick = mr[PandoraNet::MRP_Nick]
-              elsif aperson
+              anick = nil
+              anick = mr[PandoraNet::MRP_Nick] if (akind == PandoraNet::MK_Presence)
+              if anick.nil? and aperson
                 anick = PandoraCrypto.short_name_of_person(nil, aperson, 1)
-              elsif akind
-                anick = akind.to_s
               end
+              anick = akind.to_s if anick.nil?
               sess_iter[0] = akind
               sess_iter[1] = anick
               sess_iter[2] = PandoraUtils.bytes_to_hex(aperson)
@@ -18501,11 +18516,28 @@ module PandoraGtk
 
       #mass_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
-      renderer = Gtk::CellRendererText.new
+      kind_pbs = []
+      MASS_KIND_ICONS.each_with_index do |v, i|
+        kind_pbs[i] = $window.get_icon_scale_buf(v, 'pan', 16)
+      end
+
+      renderer = Gtk::CellRendererPixbuf.new
       column = Gtk::TreeViewColumn.new(_('Kind'), renderer, 'text' => 0)
       column.set_sort_column_id(0)
+      column.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
+        kind = nil
+        kind = iter[0] if model.iter_is_valid?(iter) and iter and iter.path
+        kind ||= 1
+        if kind
+          pixbuf = kind_pbs[kind-1]
+          pixbuf = nil if pixbuf==false
+          renderer.pixbuf = pixbuf
+        end
+      end
+      column.fixed_width = 24
       list_tree.append_column(column)
 
+      renderer = Gtk::CellRendererText.new
       column = Gtk::TreeViewColumn.new(_('Nick'), renderer, 'text' => 1)
       column.set_sort_column_id(1)
       list_tree.append_column(column)
@@ -18682,7 +18714,7 @@ module PandoraGtk
 
       #mass_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
-      list_store = Gtk::ListStore.new(Integer, Integer, String, String, String, String, \
+      list_store = Gtk::ListStore.new(Integer, String, String, String, String, String, \
         String, String)
 
       update_btn.signal_connect('clicked') do |*args|
@@ -18690,13 +18722,8 @@ module PandoraGtk
         $window.pool.mass_records.each do |mr|
           sess_iter = list_store.append
           sess_iter[0] = mr[PandoraNet::MR_Index]
-          sess_iter[1] = mr[PandoraNet::MR_Session].object_id
-          sess_iter[2] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Person])
-          sess_iter[3] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Key])
-          sess_iter[4] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_BaseId])
-          sess_iter[5] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MRF_Fish])
-          sess_iter[6] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MRF_Fish_key])
-          sess_iter[7] = PandoraUtils.time_to_str(mr[PandoraNet::MR_Time])
+          sess_iter[1] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Node])
+          sess_iter[2] = PandoraUtils.time_to_str(mr[PandoraNet::MR_Time])
         end
       end
 
