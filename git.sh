@@ -48,7 +48,7 @@
 #git log
 
 ##Save version, md5 and date to history log
-echo "`grep 'AppVersion  ' pandora.rb | grep -o [\.[:digit:].]*` `md5sum ./pandora.rb`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
+#echo "`grep 'AppVersion  ' pandora.rb | grep -o [\.[:digit:].]*` `md5sum ./pandora.rb`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
 
 ## Push files from local to repository
 #git add --all
