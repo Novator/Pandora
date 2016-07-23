@@ -604,11 +604,13 @@ module PandoraUtils
 
   # Open link in web browser, email client or file manager
   # RU: Открывает ссылку в браузере, почтовике или проводнике
-  def self.external_open(link)
-    cmd = 'xdg-open'
-    cmd = 'start' if PandoraUtils.os_family=='windows'
-    pid = Process.spawn(cmd, link)
-    Process.detach(pid) if pid
+  def self.external_open(link, oper=nil)
+    if PandoraUtils.os_family=='windows'
+      PandoraUtils.win_shell_execute(link, oper)
+    else
+      pid = Process.spawn('xdg-open', link)
+      Process.detach(pid) if pid
+    end
   end
 
   # Convert ruby date to string
@@ -3166,6 +3168,76 @@ module PandoraUtils
           p 'exitcode='+exitcode.inspect
           res = (exitcode.is_a? Numeric) and (exitcode == 0)
         end
+      end
+    end
+    res
+  end
+
+  SW_SHOWMAXIMIZED = 3
+  SW_SHOW          = 5
+
+  $waFindWindow = nil
+  $waSetForegroundWindow = nil
+
+  # Find and activate window
+  # RU: Найти и активировать окно
+  def self.win_activate_window(win_class, win_title)
+    res =  nil
+    if init_win32api
+      $waFindWindow ||= Win32API.new('user32', 'FindWindow', ['P', 'P'], 'L')
+      if $waFindWindow
+        win_handle = $waFindWindow.call(win_class, win_title)
+        if (win_handle.is_a? Integer) and (win_handle>0)
+          $waSetForegroundWindow ||= Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
+          if $waSetForegroundWindow
+            $waSetForegroundWindow.call(win_handle)
+            res = true
+          end
+        end
+      end
+    end
+    res
+  end
+
+  CP_UTF8        = 65001
+  $waMultiByteToWideChar = nil
+
+  # Convert UTF8 to Unicode in Windows
+  # RU: Конвертировать UTF8 в Юникод в Винде
+  def self.win_utf8_to_unicode(str)
+    if init_win32api
+      $waMultiByteToWideChar ||= Win32API.new('kernel32', \
+        'MultiByteToWideChar', ['I','L','S','I','P','I'], 'I')
+      if $waMultiByteToWideChar
+        str = str.dup
+        str.force_encoding('UTF-8')
+        len = $waMultiByteToWideChar.call(CP_UTF8, 0, str, -1, nil, 0)
+        if (len.is_a? Integer) and (len>0)
+          buf = 0.chr * len * 2
+          len = $waMultiByteToWideChar.call(CP_UTF8, 0, str, -1, buf, len)
+          str = buf if (len.is_a? Integer) and (len>0)
+        end
+      end
+    end
+    str
+  end
+
+  $waShellExecute = nil
+
+  # Open in Windows
+  # RU: Открыть в Винде
+  def self.win_shell_execute(link, oper=nil)
+    #oper = :edit, :find, :open, :print, :properties
+    res = nil
+    if init_win32api
+      link = win_utf8_to_unicode(link)
+      $waShellExecute ||= Win32API.new('shell32', 'ShellExecuteW', \
+        ['L', 'P', 'P', 'P', 'P', 'L'], 'L')
+      if $waShellExecute
+        oper = win_utf8_to_unicode(oper.to_s) if oper
+        puts 'win_shell_execute [link, oper]='+[link, oper].inspect
+        res = $waShellExecute.call(0, oper, link, nil, nil, SW_SHOW)
+        res = ((res.is_a? Numeric) and ((res == 33) or (res == 42)))
       end
     end
     res
@@ -21839,7 +21911,7 @@ module PandoraGtk
         when 'About'
           PandoraGtk.show_about
         when 'Help'
-          PandoraUtils.external_open($pandora_doc_dir)
+          PandoraUtils.external_open($pandora_doc_dir, 'open')
         when 'Close'
           if notebook.page >= 0
             page = notebook.get_nth_page(notebook.page)
@@ -23073,7 +23145,7 @@ end
 
 MAIN_WINDOW_TITLE = 'Pandora'
 GTK_WINDOW_CLASS = 'gdkWindowToplevel'
-SECOND_RUN_MES = 'Another copy of Pandora is already runned'
+ANOTHER_COPY_MES = 'Another copy of Pandora is already runned'
 
 # Prevent second execution
 # RU: Предотвратить второй запуск
@@ -23088,7 +23160,7 @@ if not $poly_launch
     if psocket
       psocket.send('Activate', 0)
       psocket.close
-      puts SECOND_RUN_MES
+      puts ANOTHER_COPY_MES
       Kernel.exit
     else
       begin
@@ -23115,15 +23187,9 @@ if not $poly_launch
         $pserver = nil
       end
     end
-  elsif (PandoraUtils.os_family=='windows') and init_win32api
-    FindWindow = Win32API.new('user32', 'FindWindow', ['P', 'P'], 'L')
-    win_handle = FindWindow.call(GTK_WINDOW_CLASS, MAIN_WINDOW_TITLE)
-    if (win_handle.is_a? Integer) and (win_handle>0)
-      #ShowWindow = Win32API.new('user32', 'ShowWindow', 'L', 'V')
-      #ShowWindow.call(win_handle, 5)  #SW_SHOW=5, SW_RESTORE=9
-      SetForegroundWindow = Win32API.new('user32', 'SetForegroundWindow', 'L', 'V')
-      SetForegroundWindow.call(win_handle)
-      Kernel.abort(SECOND_RUN_MES)
+  elsif (PandoraUtils.os_family=='windows')
+    if PandoraUtils.win_activate_window(GTK_WINDOW_CLASS, MAIN_WINDOW_TITLE)
+      Kernel.abort(ANOTHER_COPY_MES)
     end
   end
 end
