@@ -1139,11 +1139,11 @@ module PandoraUtils
     elem_size = nil
     case rubyobj
       when String
-        data << rubyobj
+        data << AsciiString.new(rubyobj)
         elem_size = data.bytesize
         type, count = encode_pson_type(PT_Str, elem_size)
       when Symbol
-        data << rubyobj.to_s
+        data << AsciiString.new(rubyobj.to_s)
         elem_size = data.bytesize
         type, count = encode_pson_type(PT_Sym, elem_size)
       when Integer
@@ -1179,7 +1179,7 @@ module PandoraUtils
       when NilClass
         type = PT_Nil
       else
-        puts 'rubyobj_to_pson: illegal ruby class ['+rubyobj.class.name+']'
+        puts 'Error! rubyobj_to_pson: illegal ruby class ['+rubyobj.class.name+']'
     end
     res = AsciiString.new
     res << [type].pack('C')
@@ -1190,7 +1190,7 @@ module PandoraUtils
           res << PandoraUtils.fill_zeros_from_left( \
             PandoraUtils.bigint_to_bytes(elem_size), count) + data
         else
-          puts 'rubyobj_to_pson: elem_size<>data_size: '+elem_size.inspect+'<>'\
+          puts 'Error! rubyobj_to_pson: elem_size<>data_size: '+elem_size.inspect+'<>'\
             +data.bytesize.inspect + ' data='+data.inspect + ' rubyobj='+rubyobj.inspect
         end
       elsif data.bytesize>0
@@ -1232,13 +1232,12 @@ module PandoraUtils
             if pos+elem_size>data.bytesize
               elem_size = data.bytesize-pos
             end
-            val = ''
-            val << data[pos, elem_size]
+            val = AsciiString.new(data[pos, elem_size])
             count += elem_size
             if basetype == PT_Sym
-              val = data[pos, elem_size].to_sym
+              val = val.to_sym
             elsif basetype == PT_Real
-              val = data[pos, elem_size].unpack('D')
+              val = val.unpack('D')
             end
           when PT_Array, PT_Hash
             val = Array.new
@@ -6047,14 +6046,15 @@ module PandoraNet
   MR_Node            = 1  #22
   MR_Index           = 2  #4
   MR_Kind            = 3  #1  (presence, fishing, chat, search)
-  MR_Time            = 4  #4
-  MR_Trust           = 5  #1
-  MR_Depth           = 6  #1
+  MR_CrtTime         = 4  #4
+  MR_ReqTime         = 5  #4
+  MR_Trust           = 6  #1
+  MR_Depth           = 7  #1
   #---------------------------head} (33 byte)
   #==========================={body
-  MR_Param1          = 7  #1-30
-  MR_Param2          = 8  #22-140
-  MR_Param3          = 9  #0 или 22
+  MR_Param1          = 8  #1-30
+  MR_Param2          = 9  #22-140
+  MR_Param3          = 10  #0 или 22
   #---------------------------body} (23-140 byte)
 
   # Alive
@@ -6777,8 +6777,8 @@ module PandoraNet
     def delete_old_mass_records(cur_time=nil)
       cur_time ||= Time.now.to_i
       @mass_records.delete_if do |mr|
-        (mr.is_a? Array) and (mr[PandoraNet::MR_Time].nil? \
-          or (mr[PandoraNet::MR_Time] < cur_time-$mass_rec_life_sec))
+        (mr.is_a? Array) and (mr[PandoraNet::MR_CrtTime].nil? \
+          or (mr[PandoraNet::MR_CrtTime] < cur_time-$mass_rec_life_sec))
       end
     end
 
@@ -6806,6 +6806,7 @@ module PandoraNet
     # Register mass record and its keeper to queue
     # RU: Зарегать массовую запись и её хранителя в очереди
     def register_mass_record(src_node=nil, src_ind=nil, keep_node=nil)
+      mr = nil
       src_node ||= self_node
       keep_node ||= src_node
       if src_ind
@@ -6815,17 +6816,19 @@ module PandoraNet
         end
       end
       if not mr
-        mr = Array.new
-        if not src_ind
+        if (not src_ind) and (src_node==self_node)
           ind_mutex.synchronize do
             @mass_ind += 1
             src_ind = @mass_ind
           end
         end
-        mr[MR_Node]     = src_node
-        mr[MR_Index]    = src_ind
-        mr[MR_KeepNodes] = [keep_node]
-        @mass_records << mr
+        if src_ind
+          mr = Array.new
+          mr[MR_Node]     = src_node
+          mr[MR_Index]    = src_ind
+          mr[MR_KeepNodes] = [keep_node]
+          @mass_records << mr
+        end
       end
       mr
     end
@@ -6852,7 +6855,7 @@ module PandoraNet
             atime ||= cur_time
             adepth -= 1
             mr[MR_Kind]     = akind
-            mr[MR_Time]     = atime
+            mr[MR_CrtTime]     = atime
             mr[MR_Trust]    = atrust
             mr[MR_Depth]    = adepth
             mr[MR_Param1]   = param1
@@ -7157,7 +7160,7 @@ module PandoraNet
 
   # Version of application and protocol (may be different)
   # RU: Версия программы и протокола (могут отличаться)
-  AppVersion   = '0.60'
+  AppVersion   = '0.61'
   ProtoVersion = 'pandora0.60'
 
   class Session
@@ -7547,24 +7550,17 @@ module PandoraNet
             hparams = {:version=>ProtoVersion, :mode=>mode, :mykey=>key_hash, :tokey=>tokey, \
               :notice=>(($notice_depth << 8) | $notice_trust)}
             hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
-            acipher = open_last_cipher(tokey)
-            if acipher
-              hparams[:cipher] = acipher[PandoraCrypto::KV_Panhash]
-              @cipher = acipher
-            end
+            #acipher = open_last_cipher(tokey)
+            #if acipher
+            #  hparams[:cipher] = acipher[PandoraCrypto::KV_Panhash]
+            #  @cipher = acipher
+            #end
             asbuf = PandoraUtils.hash_to_namepson(hparams)
           else
             ascmd = EC_Bye
             ascode = ECC_Bye_Exit
             asbuf = nil
           end
-        when EC_Message
-          #???values = {:destination=>panhash, :text=>text, :state=>state, \
-          #  :creator=>creator, :created=>time_now, :modified=>time_now}
-          #      kind = PandoraUtils.kind_from_panhash(panhash)
-          #      record = PandoraModel.get_record_by_panhash(kind, panhash, true, @recv_models)
-          #      p log_mes+'EC_Request panhashes='+PandoraUtils.bytes_to_hex(panhash).inspect
-          asbuf = PandoraUtils.rubyobj_to_pson(param)
         when EC_Bye
           ascmd = EC_Bye
           ascode = ECC_Bye_Exit
@@ -8433,19 +8429,22 @@ module PandoraNet
                       @scmd  = EC_Auth
                       @scode = ECC_Auth_Sign
                       if @stage == ES_Greeting
-                        acipher = open_or_gen_cipher(@skey[PandoraCrypto::KV_Panhash])
-                        if acipher
-                          @cipher = acipher
-                          acipher = @cipher[PandoraCrypto::KV_Panhash]
-                        end
+                        acipher = nil
+                        #acipher = open_or_gen_cipher(@skey[PandoraCrypto::KV_Panhash])
+                        #if acipher
+                        #  @cipher = acipher
+                        #  acipher = @cipher[PandoraCrypto::KV_Panhash]
+                        #end
                         trust = @skey[PandoraCrypto::KV_Trust]
                         update_node(to_key, to_base_id, trust, acipher)
-                        acipher = [@cipher[PandoraCrypto::KV_Panhash], \
-                          @cipher[PandoraCrypto::KV_Pub], \
-                          @cipher[PandoraCrypto::KV_Priv], \
-                          @cipher[PandoraCrypto::KV_Kind], \
-                          @cipher[PandoraCrypto::KV_Cipher], \
-                          @cipher[PandoraCrypto::KV_Creator]]
+                        if @cipher
+                          acipher = [@cipher[PandoraCrypto::KV_Panhash], \
+                            @cipher[PandoraCrypto::KV_Pub], \
+                            @cipher[PandoraCrypto::KV_Priv], \
+                            @cipher[PandoraCrypto::KV_Kind], \
+                            @cipher[PandoraCrypto::KV_Cipher], \
+                            @cipher[PandoraCrypto::KV_Creator]]
+                        end
                         @sbuf = PandoraUtils.rubyobj_to_pson([sign, $base_id, acipher])
                         @stage = ES_PreExchange
                         set_max_pack_size(ES_Exchange)
@@ -8811,9 +8810,8 @@ module PandoraNet
                   #PandoraUtils.play_mp3('online')
                 end
                 if rcmd==EC_Message
-                  row = @rdata
-                  if row.is_a? String
-                    row, len = PandoraUtils.pson_to_rubyobj(row)
+                  if rdata.is_a? String
+                    row, len = PandoraUtils.pson_to_rubyobj(rdata)
                     time_now = Time.now.to_i
                     id0 = nil
                     creator = nil
@@ -8823,9 +8821,9 @@ module PandoraNet
                     panstate = 0
                     if row.is_a? Array
                       id0 = row[0]
-                      creator = row[1]
-                      created = row[2]
-                      text = row[3]
+                      creator  = row[1]
+                      created  = row[2]
+                      text     = row[3]
                       panstate = row[4]
                       panstate ||= 0
                       p 'panstate=================='+panstate.inspect
@@ -8834,11 +8832,12 @@ module PandoraNet
                     else
                       creator = @skey[PandoraCrypto::KV_Creator]
                       created = time_now
-                      text = row
+                      text = rdata
                     end
                     values = {:destination=>destination, :text=>text, :state=>2, \
                       :creator=>creator, :created=>created, :modified=>time_now, \
                       :panstate=>panstate}
+                    p log_mes+'++++Recv EC_Message: values='+values.inspect
                     model = PandoraUtils.get_model('Message', @recv_models)
                     panhash = model.panhash(values)
                     values['panhash'] = panhash
@@ -8889,7 +8888,7 @@ module PandoraNet
                             if dialog and (not dialog.destroyed?)
                               dialog.send_mes(chat_par)
                             else
-                              add_send_segment(EC_Message, true, chat_par)
+                              #add_send_segment(EC_Message, true, chat_par)
                             end
                           when 'menu'
                             $window.do_menu_act(chat_par)
@@ -10041,7 +10040,13 @@ module PandoraNet
                         text = PandoraCrypto.recrypt_mes(text, nil, dest_key)
                         row[3] = text
                       end
-                      if add_send_segment(EC_Message, true, row)
+                      p log_mes+'---Send EC_Message: row='+row.inspect
+                      row_pson = PandoraUtils.rubyobj_to_pson(row)
+                      p log_mes+'%%%Send EC_Message: [row_pson, row_pson.len]='+\
+                        [row_pson, row_pson.bytesize].inspect
+                      row, len = PandoraUtils.pson_to_rubyobj(row_pson)
+                      p log_mes+'****Send EC_Message: [len, row]='+[len, row].inspect
+                      if add_send_segment(EC_Message, true, row_pson)
                         id = row[0]
                         res = message_model.update({:state=>1}, nil, {:id=>id})
                         if res
@@ -10123,7 +10128,7 @@ module PandoraNet
                   and (mass_rec[MR_Node] != @to_node))
                   #and (mass_rec[MR_Node] != pool.self_node) \
                     kind = mass_rec[MR_Kind]
-                    params = [mass_rec[MR_Node], mass_rec[MR_Index], mass_rec[MR_Time], \
+                    params = [mass_rec[MR_Node], mass_rec[MR_Index], mass_rec[MR_CrtTime], \
                       mass_rec[MR_Trust], mass_rec[MR_Depth], mass_rec[MR_Param1], \
                       mass_rec[MR_Param2], mass_rec[MR_Param3]]
                     case kind
@@ -18586,7 +18591,7 @@ module PandoraGtk
               sess_iter[6] = mr[PandoraNet::MR_Depth]
               sess_iter[7] = 0 #distance
               sess_iter[8] = PandoraUtils.bytes_to_hex(anode)
-              sess_iter[9] = PandoraUtils.time_to_str(mr[PandoraNet::MR_Time])
+              sess_iter[9] = PandoraUtils.time_to_str(mr[PandoraNet::MR_CrtTime])
               sess_iter[10] = mr[PandoraNet::MR_Index]
             end
           end
@@ -18810,7 +18815,7 @@ module PandoraGtk
           sess_iter = list_store.append
           sess_iter[0] = mr[PandoraNet::MR_Index]
           sess_iter[1] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Node])
-          sess_iter[2] = PandoraUtils.time_to_str(mr[PandoraNet::MR_Time])
+          sess_iter[2] = PandoraUtils.time_to_str(mr[PandoraNet::MR_CrtTime])
         end
       end
 
@@ -22510,7 +22515,7 @@ module PandoraGtk
                 if (@mass_garb_ind < pool.mass_records.size)
                   search_req = pool.mass_records[@mass_garb_ind]
                   if search_req
-                    time = search_req[PandoraNet::MR_Time]
+                    time = search_req[PandoraNet::MR_CrtTime]
                     if (not time.is_a? Integer) or (time+$search_live_time<cur_time)
                       pool.mass_records[@mass_garb_ind] = nil
                     end
