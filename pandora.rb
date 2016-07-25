@@ -8888,7 +8888,7 @@ module PandoraNet
                             if dialog and (not dialog.destroyed?)
                               dialog.send_mes(chat_par)
                             else
-                              #add_send_segment(EC_Message, true, chat_par)
+                              add_send_segment(EC_Message, true, chat_par)
                             end
                           when 'menu'
                             $window.do_menu_act(chat_par)
@@ -10040,12 +10040,12 @@ module PandoraNet
                         text = PandoraCrypto.recrypt_mes(text, nil, dest_key)
                         row[3] = text
                       end
-                      p log_mes+'---Send EC_Message: row='+row.inspect
+                      #p log_mes+'---Send EC_Message: row='+row.inspect
                       row_pson = PandoraUtils.rubyobj_to_pson(row)
-                      p log_mes+'%%%Send EC_Message: [row_pson, row_pson.len]='+\
-                        [row_pson, row_pson.bytesize].inspect
+                      #p log_mes+'%%%Send EC_Message: [row_pson, row_pson.len]='+\
+                      #  [row_pson, row_pson.bytesize].inspect
                       row, len = PandoraUtils.pson_to_rubyobj(row_pson)
-                      p log_mes+'****Send EC_Message: [len, row]='+[len, row].inspect
+                      #p log_mes+'****Send EC_Message: [len, row]='+[len, row].inspect
                       if add_send_segment(EC_Message, true, row_pson)
                         id = row[0]
                         res = message_model.update({:state=>1}, nil, {:id=>id})
@@ -13265,14 +13265,14 @@ module PandoraGtk
         if pixbuf
           alt = pixbuf.tooltip
           if (alt.is_a? String) and (alt.size>0)
-            tooltip.text = alt
+            tooltip.text = alt if not textview.destroyed?
             res = true
           end
         else
           tags = iter.tags
           link_tag = tags.find { |tag| (tag.is_a? LinkTag) }
           if link_tag
-            tooltip.text = link_tag.link
+            tooltip.text = link_tag.link if not textview.destroyed?
             res = true
           end
         end

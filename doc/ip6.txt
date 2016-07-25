@@ -1,0 +1,56 @@
+
+===Linux
+
+1) install:
+sudo apt-get -y install miredo
+
+2) open /etc/default/miredo and set autorun:
+START_MIREDO=true
+
+3) open /etc/miredo/miredo.conf and add 2 line:
+InterfaceName  teredo
+ServerAddress  teredo.trex.fi
+
+4) restart:
+/etc/init.d/miredo restart
+
+
+
+===Windows XP:
+
+ipv6 install
+netsh
+int ipv6
+set teredo servername=teredo.ipv6.microsoft.com
+set teredo client teredo.ipv6.microsoft.com. 60 34567
+exit
+netsh int ipv6 show teredo
+
+ipv6 install
+netsh int ipv6 set teredo client
+netsh int ipv6 show teredo
+http://www.kuzevanov.ru/info_02.html
+
+
+===Windows 7:
+
+netsh interface teredo set state type=client
+#netsh int teredo set state type=client
+#netsh int teredo set state type=enterpriseclient
+
+
+==DIFFERENCE
+#netsh interface teredo set state disabled 
+
+#netsh interface ipv6 install
+#netsh int ipv6 6to4 set relay 192.88.99.1 enabled 1440
+
+netsh interface ipv6 delete route ::/0 interface=21
+netsh interface ipv6 add route ::/0 interface=21
+
+ping6 ipv6.google.com
+
+netsh interface ipv6 install
+netsh interface ipv6 set teredo client teredo.ipv6.microsoft.com
+
+
