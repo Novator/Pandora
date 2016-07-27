@@ -38,46 +38,54 @@ def getparam(sect, name, akind='str'):
     res = None
   return res
 
-# Read config file
+# Open config file and read parameters
+# RU: Открыть конфиг и прочитать параметры
 config = ConfigParser.SafeConfigParser()
 res = config.read('./pangate.conf')
 if len(res):
   host = getparam('network', 'host')
   port = getparam('network', 'port', 'int')
   max_conn = getparam('network', 'max_conn', 'int')
-  client_media_first = getparam('network', 'client_media_first', 'bool')
+  peer_media_first = getparam('network', 'peer_media_first', 'bool')
   password = getparam('owner', 'password')
   keyhash = getparam('owner', 'keyhash')
   log_prefix = getparam('logfile', 'prefix')
   max_size = getparam('logfile', 'max_size', 'int')
   flush_interval = getparam('logfile', 'flush_interval', 'int')
 
-# Default config values
+# Set default config values
+# RU: Задать параметры по умолчанию
 if not host: host = '0.0.0.0'
 if not port: port = 5577
 if not log_prefix: log_prefix = './pangate'
 if not max_conn: max_conn = 10
 if not password: password = '12345'
-if not client_media_first: client_media_first = False
+if not peer_media_first: peer_media_first = False
 if not flush_interval: flush_interval = 2
 
+# Calc password hash
+# RU: Высчитать хэш пароля
 password = hashlib.sha256(password).digest()
+# Decode hex panhash of owner key
+# RU: Декодировать hex панхэша ключа владельца
 if keyhash: keyhash = keyhash.decode('hex')
 
 # Current path
+# RU: Текущий путь
 ROOT_PATH = os.path.abspath('.')
-
-logfile = None
-flush_time = None
-curlogindex = None
-curlogsize = None
 
 
 # ====================================================================
 # Log functions
 # RU: Функции логирования
 
-# Get filename by index
+logfile = None
+flush_time = None
+curlogindex = None
+curlogsize = None
+
+# Get filename of log by index
+# RU: Взять имя файла лога по индексу
 def logname_by_index(index=1):
   global log_prefix
   filename = log_prefix
@@ -87,6 +95,7 @@ def logname_by_index(index=1):
   return filename
 
 # Close active log file
+# RU: Закрыть активный лог файл
 def closelog():
   global logfile
   if logfile:
@@ -94,6 +103,7 @@ def closelog():
     logfile = None
 
 # Write string to log file (and screen)
+# RU: Записать строку в лог файл (и на экран)
 def logmes(mes, show=True, addr=None):
   global logfile, flush_time, curlogindex, curlogsize, log_prefix, max_size, flush_interval
   if (not logfile) and (logfile != False):
@@ -406,7 +416,7 @@ def namepson_to_hash(pson):
 # Network classes
 # RU: Сетевые классы
 
-# Client socket options
+# Peer socket options
 KEEPALIVE = 1 #(on/off)
 KEEPIDLE = 5  #(after, sec)
 KEEPINTVL = 1 #(every, sec)
@@ -537,14 +547,14 @@ LONG_SEG_SIGN   = 0xFFFF
 
 # Supported protocol version
 # RU: Поддерживаемая версия протокола
-ProtoVersion = 'pandora0.10'
+ProtoVersion = 'pandora0.60'
 
 # Peer processing thread
-# RU: Поток обработки пира
-class ClientThread(threading.Thread):
-  def __init__ (self, pool, client, addr):
-    global client_media_first
-    self.client = client
+# RU: Поток обработки клиента
+class PeerThread(threading.Thread):
+  def __init__ (self, pool, peer, addr):
+    global peer_media_first
+    self.peer = peer
     self.addr = addr
     self._stop = threading.Event()
     self.pool = pool
@@ -552,7 +562,7 @@ class ClientThread(threading.Thread):
     self.authkey = None
     self.lure = None
     self.fishers = []
-    self.media_allow = client_media_first
+    self.media_allow = peer_media_first
     threading.Thread.__init__(self)
 
   def logmes(self, mes, show=True):
@@ -583,10 +593,10 @@ class ClientThread(threading.Thread):
     return datasize, fullcrc32, segsize
 
   # RU: Отправляет команду и данные, если есть !!! ДОБАВИТЬ !!! send_number!, buflen, buf
-  def send_comm_and_data(self, index, cmd, code, data=None, client=None):
+  def send_comm_and_data(self, index, cmd, code, data=None, peer=None):
     res = None
-    if not client:
-      client = self.client
+    if not peer:
+      peer = self.peer
     if not data:
       data = ''
     if not index:
@@ -638,9 +648,9 @@ class ClientThread(threading.Thread):
     #  p '@media_send = false'
     #end
     try:
-      if client: #and (not socket.closed?):
+      if peer: #and (not socket.closed?):
         #print('SEND_main buf.len=', len(buf))
-        sended = client.send(buf)
+        sended = peer.send(buf)
       else:
         sended = -1
     except: #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
@@ -680,9 +690,9 @@ class ClientThread(threading.Thread):
         buf = buf + struct.pack('!i', segcrc32)
       buf = comm + buf
       try:
-        if client: # and not socket.closed?:
+        if peer: # and not socket.closed?:
           #print('SEND_add buf.len=', len(buf))
-          sended = client.send(buf)
+          sended = peer.send(buf)
         else:
           sended = -1
       except: #Errno::ECONNRESET, Errno::ENOTSOCK, Errno::ECONNABORTED
@@ -767,7 +777,7 @@ class ClientThread(threading.Thread):
       #print('LURE!', fisher, hole)
       data = struct.pack('!BB', self.rcmd, self.rcode)
       if self.rdata: data = data + self.rdata
-      self.sindex = self.send_comm_and_data(self.sindex, EC_Lure, hole, data, fisher.client)
+      self.sindex = self.send_comm_and_data(self.sindex, EC_Lure, hole, data, fisher.peer)
 
   def resend_to_fish(self, fish):
     if fish and self.rdata and (len(self.rdata)>1):
@@ -778,7 +788,7 @@ class ClientThread(threading.Thread):
         self.media_allow = True
         fish.media_allow = True
       #print('BITE! cmd,code,len(seg)', cmd, code, len(seg))
-      self.sindex = self.send_comm_and_data(self.sindex, cmd, code, seg, fish.client)
+      self.sindex = self.send_comm_and_data(self.sindex, cmd, code, seg, fish.peer)
 
   # Accept received segment
   # RU: Принять полученный сегмент
@@ -881,7 +891,7 @@ class ClientThread(threading.Thread):
 
     while (self.conn_state != CS_StopRead) and (self.conn_state != CS_Disconnected):
       try:
-        recieved = self.client.recv(MaxPackSize)
+        recieved = self.peer.recv(MaxPackSize)
         #if recieved: print('recieved.len', len(recieved))
         if (not recieved) or (recieved==''):
           self.conn_state = CS_StopRead
@@ -1027,15 +1037,15 @@ class ClientThread(threading.Thread):
       #print('self.conn_state2: ', self.conn_state)
       time.sleep(0.1)
 
-    self.client.close()
+    self.peer.close()
     self.conn_state = CS_Disconnected
     addrstr = str(self.addr[0])+':'+str(self.addr[1])
     if self==self.pool.collector:
       self.pool.collector = None
       self.logmes('Collector disconnected: '+addrstr)
-      self.pool.stop_clients(self)
+      self.pool.stop_peers(self)
     else:
-      self.logmes('Client disconnected: '+addrstr)
+      self.logmes('Peer disconnected: '+addrstr)
       if self.pool.collector:
         self.rcmd = EC_Bye
         self.rcode = ECC_Bye_Exit
@@ -1046,36 +1056,46 @@ class ClientThread(threading.Thread):
     for fisher in self.fishers:
       if fisher: fisher.close_hole_of_fisher(self)
 
-
+# Pool thread
+# RU: Поток пула
 class PoolThread(threading.Thread):
-  def __init__ (self, password, keyhash=None):
+  def __init__ (self, a_server, password, keyhash=None):
     self.password = password
     self.keyhash = keyhash
     self.threads = []
-    self.listener  = None
     self.collector = None
+    self.server = a_server
+    self.processing = True
     threading.Thread.__init__(self)
 
-  def get_fish_sockets(self, fisher_socket, fish_key):
-    sockets = None
-    for thread in self.threads:
-      if thread.authkey and (thread.authkey==fish_key) \
-      and thread.client and (thread.client != fisher_socket):
-        if not sockets: sockets = []
-        if not thread.client in sockets:
-          sockets.append(thread.client)
-    return sockets
+  def set_keepalive(self, peer):
+    peer.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, KEEPALIVE)
+    peer.setsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE, KEEPIDLE)
+    peer.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, KEEPINTVL)
+    peer.setsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT, KEEPCNT)
 
-  def stop_clients(self, except_client=None):
-    print('Stopping client threads...')
+  def run(self):
+    while self.processing:
+      try:
+        peer, addr = self.server.accept()
+        logmes('Connect from: '+str(addr[0])+':'+str(addr[1]))
+        self.set_keepalive(peer)
+        peer_tread = PeerThread(self, peer, addr)
+        self.threads.append(peer_tread)
+        peer_tread.start()
+      except IOError: pass
+    print('Finish server cicle.')
+
+  def stop_peers(self, except_peer=None):
+    print('Stopping peer threads...')
     for thread in self.threads:
-      if thread and (thread != except_client) and thread.isAlive():
+      if thread and (thread != except_peer) and thread.isAlive():
         print('Stop: ', thread)
         thread.conn_state = CS_StopRead
         try:
-          thread.client.setblocking(0)
-          thread.client.shutdown(1)
-          thread.client.close()
+          thread.peer.setblocking(0)
+          thread.peer.shutdown(1)
+          thread.peer.close()
         except:
           print(str(thread.getName()) + ' error while close socket')
         try:
@@ -1083,32 +1103,6 @@ class PoolThread(threading.Thread):
         except:
           print(str(thread.getName()) + ' could not be terminated')
     print('Done.')
-
-
-class ListenerThread(threading.Thread):
-  def __init__ (self, a_server, a_pool):
-    self.server = a_server
-    self.pool = a_pool
-    self.listening = True
-    threading.Thread.__init__(self)
-
-  def set_keepalive(self, client):
-    client.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, KEEPALIVE)
-    client.setsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE, KEEPIDLE)
-    client.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, KEEPINTVL)
-    client.setsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT, KEEPCNT)
-
-  def run(self):
-    while self.listening:
-      try:
-        client, addr = self.server.accept()
-        logmes('Connect from: '+str(addr[0])+':'+str(addr[1]))
-        self.set_keepalive(client)
-        client_tread = ClientThread(self.pool, client, addr)
-        self.pool.threads.append(client_tread)
-        client_tread.start()
-      except IOError: pass
-    print('Finish server cicle.')
 
 
 #=== RUN PANGATE ===
@@ -1145,26 +1139,21 @@ try:
 
   # Start server socket
   try:
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-    #server.setblocking(0)
-    server.bind((host, port))
-    server.listen(max_conn)
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+    #server_socket.setblocking(0)
+    server_socket.bind((host, port))
+    server_socket.listen(max_conn)
   except:
-    server = None
+    server_socket = None
 
-  if server:
-    saddr = server.getsockname()
-    logmes('Listening at: '+str(saddr[0])+':'+str(saddr[1]))
+  if server_socket:
+    saddr = server_socket.getsockname()
+    logmes('=== Listening at: '+str(saddr[0])+':'+str(saddr[1]))
 
-    pool = PoolThread(password, keyhash)
+    pool = PoolThread(server_socket, password, keyhash)
     pool.start()
-    print('Pool runed.')
-
-    listener = ListenerThread(server, pool)
-    pool.listener = listener
-    listener.start()
-    print('Working thread is active...')
+    print('Pool thread is active...')
     print('Press Q to stop and quit.')
     print('(screen: Ctrl+a+d - detach, Ctrl+a+k - kill, "screen -r" to resume)')
     working = True
@@ -1176,23 +1165,18 @@ try:
           working = False
       except IOError: pass
     logmes('Stop keyborad loop.')
-    listener.listening = False
-    print('New clients off.')
-    server.shutdown(1)
-    server.close()
-    print('Stop server.')
-    pool.stop_clients()
-    if listener.isAlive():
-      try:
-        listener._Thread__stop()
-      except:
-        print('Could not terminated listen thread '+str(listener.getName()))
+    pool.processing = False
+    print('New peers off.')
+    server_socket.shutdown(1)
+    server_socket.close()
+    print('Server stopped.')
+    pool.stop_peers()
     if pool.isAlive():
       try:
         pool._Thread__stop()
       except:
-        print('Could not terminated pool thread '+str(pool.getName()))
-    logmes('Stop listen thread.')
+        print('Could not terminated listen thread '+str(pool.getName()))
+    logmes('Pool thread stopped.')
   else:
     print('Cannot open socket: ' + host + str(port))
 finally:
