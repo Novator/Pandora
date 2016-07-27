@@ -182,15 +182,18 @@
   </Business>
   <Region name.ru="Регион">
 
-    <Project name.ru="Проект">
-    </Project>
-
-    <Resolution name.ru="Постановление">
-    </Resolution>
-
     <Law name.ru="Закон|Законы">
       <number name.ru="Номер" />
     </Law>
+
+    <Resolution name.ru="Постановление">
+      <number name.ru="Номер" />
+      <base name.ru="Основание" />
+    </Resolution>
+
+    <Project name.ru="Проект">
+      <cause name.ru="Вызвано" />
+    </Project>
 
     <Contribution name.ru="Взнос">
     </Contribution>
@@ -203,11 +206,16 @@
 
     <Punishment name.ru="Наказание">
       <offense name.ru="Преступление" />
+      <law name.ru="Закон" />
     </Punishment>
+
+    <Resource name.ru="Ресурс">
+      <coord name.ru="Координата" />
+    </Resource>
 
     <Delegation name.ru="Делегирование|Делегирования">
       <delegate name.ru="Делегат" />
-      <target name.ru="Цель" />
+      <sphere name.ru="Сфера" />
       <expire name.ru="Истекает" />
     </Delegation>
 

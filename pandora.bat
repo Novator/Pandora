@@ -1,6 +1,6 @@
 @echo off
 rem === This script runs (or installs) Pandora (and Ruby) on Windows
-rem === (c) Michael Galyuk, Pandora, free software
+rem === (c) Michael Galyuk, Pandora, GNU GPLv2, free software
 
 rem === Changing the current dir to Pandora place
 for /f %%i in ("%0") do set curpath=%%~dpi

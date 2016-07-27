@@ -195,17 +195,18 @@
   </Business>
   <Region name="Region">
 
-    <Project parent="Blob" kind="150">
-      <number name="Number" />
-    </Project>
-
-    <Resolution name="Resolution|Resolutions" parent="Blob" kind="151">
-      <number name="Number" />
-    </Resolution>
-
     <Law name="Low|Lows" parent="Blob" kind="154">
       <number name="Number" />
     </Law>
+
+    <Resolution name="Resolution|Resolutions" parent="Blob" kind="151">
+      <number name="Number" />
+      <base name="Base" type="Panhashes(Law,Resolution)" />
+    </Resolution>
+
+    <Project parent="Blob" kind="150">
+      <cause name="Cause" type="Panhashes(Resolution,Project,Law)" />
+    </Project>
 
     <Contribution parent="Debenture" kind="155">
     </Contribution>
@@ -217,18 +218,23 @@
     </Offense>
 
     <Punishment parent="Blob" kind="158">
-      <offense name="Offense" type="Panhash(Offense)" />
+      <offense name="Offense" type="Panhashes(Offense)" />
+      <law name="Law" type="Panhashes(Law)" />
     </Punishment>
 
-    <Delegation parent="Created" kind="159">
+    <Resource parent="Blob" kind="159">
+      <coord name="Coordinates" type="Coord" hash="1:integer(4)" />
+    </Resource>
+
+    <Delegation parent="Created" kind="160">
       <delegate name="Delegate" type="Panhash(Person)" hash="2:panhash(5)" />
-      <target name="Target" type="Panhash(Project, Resolution, Law, Punishment)" hash="3:panhash(5)" />
+      <sphere name="Sphere" type="Panhashes(Law,Resolution,Project,Offense,Punishment)" hash="3:panhash(5)" />
       <creator hash="1:phash(5)" />
       <created hash="2:integer(4)" />
       <expire name="Expire" type="Time" />
     </Delegation>
 
-    <Registry name="Registry" parent="Created" kind="160">
+    <Registry name="Registry" parent="Created" kind="161">
       <creator name="Issuer" type="Panhash(Person, Community)" />
       <recipient name="Recipient" type="Panhash(Person, Community)" hash="1:phash(9)" />
       <resolution name="Resolution" type="Panhash(Resolution)" />
@@ -356,6 +362,7 @@
 
     <tcp_port desc="TCP port" type="Integer" section="net" setting="5577" />
     <udp_port desc="UDP port" type="Integer" section="net" setting="5577" />
+    <udp_broadcast desc="Send UDP broadcast" type="Boolean" section="net" setting="true" />
     <listen_host desc="Listen host" type="String" section="net" setting="any4" />
     <incoming_addr desc="Incoming address" type="String" section="net" setting="" />
     <puzzle_bit_length desc="Puzzle length (bit)" type="Byte" section="net" setting="0" />

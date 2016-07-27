@@ -19,11 +19,11 @@
     </Community>
 
     <Blob>
-      <name pos="|" />
-      <blob pos="|" view="blob" />
-      <type pos="|" />
-      <sha1 view="hex" />
-      <md5 view="hex" />
+      <name pos="|+1" />
+      <blob pos="|+1" view="blob" />
+      <type pos="|+1" />
+      <sha1 view="hex" pos="+1" />
+      <md5 view="hex" pos="+1" />
     </Blob>
 
     <Country>
@@ -71,6 +71,28 @@
   </Business>
 
   <Region>
+
+    <Law>
+      <number pos="1" />
+    </Law>
+
+    <Resolution>
+      <number pos="0.5" />
+      <base pos="0.7" />
+    </Resolution>
+
+    <Project>
+      <cause pos="1" />
+    </Project>
+
+    <Punishment>
+      <offense pos="0.5" />
+      <law pos="0.7" />
+    </Punishment>
+
+    <Resource name.ru="Ресурс">
+      <coord pos="0.5" />
+    </Resource>
 
     <Delegation>
       <expire view="datetime" />

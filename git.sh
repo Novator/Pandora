@@ -4,7 +4,7 @@
 ## Uncomment necessary line, comment out unnecessary, and run the script.
 ## RU: Популярные команды git, используемые для сопровождения Пандоры на Гитхабе
 ## RU: Раскомментируй нужные строки, закомментируй ненужные, и запусти скрипт.
-## 2012(c) Michael Galyuk, Pandora, freeware
+## 2012(c) Michael Galyuk, Pandora, GNU GPLv2, free software
 
 ## Init git on your computer
 ## (Change name and email!)

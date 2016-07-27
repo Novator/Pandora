@@ -1,27 +1,36 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# The Pandora Gate. It collects connections for owner of gate
-# RU: Шлюз Пандоры. Собирает соединения для владельца шлюза
+# The Pandora Gate collects connections for owner of gate
+# RU: Шлюз Пандоры собирает соединения для владельца шлюза
 #
 # This program is distributed under the GNU GPLv2
 # RU: Эта программа распространяется под GNU GPLv2
 # 2012 (c) Michael Galyuk, P2P social network Pandora, free software
 # RU: 2012 (c) Михаил Галюк, P2P социальная сеть Пандора, свободное ПО
 
-import time, datetime, termios, fcntl, sys, os, socket, threading, struct, binascii, hashlib, ConfigParser
+import time, datetime, termios, fcntl, sys, os, socket, threading, struct, \
+  binascii, hashlib, ConfigParser
 
+
+# ====================================================================
+# Setup functions
+# RU: Настроечные функции
+
+# ConfigParser object
+# RU: Объект ConfigParser
 config = None
 
-# Get config parameter value
-def getparam(sect, name, atype='str'):
+# Get parameter value from config
+# RU: Взять значение параметра из конфига
+def getparam(sect, name, akind='str'):
   global config
   res = None
   try:
-    if atype=='int':
+    if akind=='int':
       res = config.getint(sect, name)
-    elif atype=='bool':
+    elif akind=='bool':
       res = config.getboolean(sect, name)
-    elif atype=='real':
+    elif akind=='real':
       res = config.getfloat(sect, name)
     else:
       res = config.get(sect, name)
@@ -57,6 +66,345 @@ if keyhash: keyhash = keyhash.decode('hex')
 
 # Current path
 ROOT_PATH = os.path.abspath('.')
+
+logfile = None
+flush_time = None
+curlogindex = None
+curlogsize = None
+
+
+# ====================================================================
+# Log functions
+# RU: Функции логирования
+
+# Get filename by index
+def logname_by_index(index=1):
+  global log_prefix
+  filename = log_prefix
+  if (len(filename)>1) and (filename[0:2]=='./') and ROOT_PATH and (len(ROOT_PATH)>0):
+    filename = ROOT_PATH + filename[1:]
+  filename = os.path.abspath(filename+str(index)+'.log')
+  return filename
+
+# Close active log file
+def closelog():
+  global logfile
+  if logfile:
+    logfile.close()
+    logfile = None
+
+# Write string to log file (and screen)
+def logmes(mes, show=True, addr=None):
+  global logfile, flush_time, curlogindex, curlogsize, log_prefix, max_size, flush_interval
+  if (not logfile) and (logfile != False):
+    if log_prefix and (len(log_prefix)>0):
+      try:
+        s1 = os.path.getsize(logname_by_index(1))
+      except:
+        s1 = None
+      try:
+        s2 = os.path.getsize(logname_by_index(2))
+      except:
+        s2 = None
+      curlogindex = 1
+      curlogsize = s1
+      if (s1 and ((s1>=max_size) or (s2 and (s2<s1)))):
+        curlogindex = 2
+        curlogsize = s2
+      try:
+        filename = logname_by_index(curlogindex)
+        logfile = open(filename, 'a')
+        if not curlogsize: curlogsize = 0
+        print('Logging to file: '+filename)
+      except:
+        logfile = False
+        print('Cannot open log-file: '+filename)
+    else:
+      logfile = False
+      print('Log-file is off.')
+  if logfile or show:
+    cur_time = datetime.datetime.now()
+    time_str = cur_time.strftime('%Y.%m.%d %H:%M:%S')
+    mes = str(mes)
+    if show: print('Log'+time_str[-11:]+': '+mes)
+    if logfile:
+      addr = ''
+      if addr: addr = ' '+str(addr)
+      logline = time_str+': '+mes+addr+'\n'
+      curlogsize += len(logline)
+      if curlogsize >= max_size:
+        curlogsize = 0
+        if curlogindex == 1:
+          curlogindex = 2
+        else:
+          curlogindex = 1
+        try:
+          filename = logname_by_index(curlogindex)
+          closelog()
+          logfile = open(filename, 'w')
+          print('Change logging to file: '+filename)
+        except:
+          logfile = False
+          print('Cannot change log-file: '+filename)
+          return
+      logfile.write(logline)
+      if (not flush_time) or (cur_time >= (flush_time + datetime.timedelta(0, flush_interval))):
+        logfile.flush()
+        sync_time = cur_time
+
+
+# ====================================================================
+# Utilites functions
+# RU: Вспомогательные функции
+
+# Convert big integer to string of bytes
+# RU: Преобразует большое целое в строку байт
+def bigint_to_bytes(bigint, maxsize=None):
+  res = ''
+  count = 0
+  while True:
+    res = struct.pack('B', bigint & 255) + res
+    bigint = (bigint >> 8)
+    count += 1
+    if (bigint==0) or (maxsize and (count>=maxsize)):
+      return res
+
+# Convert string of bytes to integer
+# RU: Преобразует строку байт в целое
+def bytes_to_int(buf):
+  res = 0
+  i = len(buf)
+  for c in buf:
+    i -= 1
+    res += (ord(c) << 8*i)
+  return res
+
+# Fill string by zeros from left to defined size
+# RU: Заполнить строку нулями слева до нужного размера
+def fill_zeros_from_left(data, size):
+  l = len(data)
+  if l<size:
+    data = struct.pack('B', 0)*(size-l) + data
+  return data
+
+
+# ====================================================================
+# PSON format functions
+# RU: Функции для работы с форматом PSON
+
+# Codes of data types in PSON
+# RU: Коды типов данных в PSON
+PT_Int   = 0
+PT_Str   = 1
+PT_Bool  = 2
+PT_Time  = 3
+PT_Array = 4
+PT_Hash  = 5
+PT_Sym   = 6
+PT_Real  = 7
+# 8..14 - reserved for other types
+PT_Nil   = 15
+PT_Negative = 16
+
+# Encode data type and size to PSON kind and count of size in bytes (1..8)-1
+# RU: Кодирует тип данных и размер в тип PSON и число байт размера
+def encode_pson_kind(basekind, size):
+  count = 0
+  neg = 0
+  if size<0:
+    neg = PT_Negative
+    size = -size
+  while (size>0) and (count<8):
+    size = (size >> 8)
+    count +=1
+  if count >= 8:
+    print('[encode_pan_kind] Too big int='+size.to_s)
+    count = 7
+  return [basekind ^ neg ^ (count << 5), count, (neg>0)]
+
+# Decode PSON kind to data kind and count of size in bytes (1..8)-1
+# RU: Раскодирует тип PSON в тип данных и число байт размера
+def decode_pson_kind(kind):
+  basekind = kind & 0xF
+  negative = ((kind & PT_Negative)>0)
+  count = (kind >> 5)
+  return [basekind, count, negative]
+
+# Convert python object to PSON (Pandora simple object notation)
+# RU: Конвертирует объект питон в PSON
+def pythonobj_to_pson(pythonobj):
+  kind = PT_Nil
+  count = 0
+  data = '' #!!!data = AsciiString.new
+  elem_size = None
+  if isinstance(pythonobj, str):
+    data += pythonobj #!!!AsciiString.new(pythonobj)
+    elem_size = len(data) #!!!data.bytesize
+    kind, count, neg = encode_pson_kind(PT_Str, elem_size)
+  elif isinstance(pythonobj, bool):
+    kind = PT_Bool
+    print('Boool1 kind='+str(kind))
+    if not pythonobj: kind = kind ^ PT_Negative
+    print('Boool2 kind='+str(kind))
+  elif isinstance(pythonobj, int):
+    kind, count, neg = encode_pson_kind(PT_Int, pythonobj)
+    if neg: pythonobj = -pythonobj
+    data += bigint_to_bytes(pythonobj, 8)
+  #!!!elif isinstance(pythonobj, Symbol):
+  #  data << AsciiString.new(pythonobj.to_s)
+  #  elem_size = data.bytesize
+  #  kind, count, neg = encode_pson_kind(PT_Sym, elem_size)
+  elif isinstance(pythonobj, datetime.datetime):
+    pythonobj = int(pythonobj)
+    kind, count, neg = encode_pson_kind(PT_Time, pythonobj)
+    if neg: pythonobj = -pythonobj
+    data << PandoraUtils.bigint_to_bytes(pythonobj)
+  elif isinstance(pythonobj, float):
+    data += struct.pack('d', pythonobj)
+    elem_size = len(data)
+    kind, count, neg = encode_pson_kind(PT_Real, elem_size)
+  elif isinstance(pythonobj, (list, tuple)):
+    for a in pythonobj:
+      data += pythonobj_to_pson(a)
+    elem_size = len(pythonobj)
+    kind, count, neg = encode_pson_kind(PT_Array, elem_size)
+  elif isinstance(pythonobj, dict):
+    #!!!pythonobj = pythonobj.sort_by {|k,v| k.to_s}
+    elem_size = 0
+    for key in pythonobj:
+      data += pythonobj_to_pson(key) + pythonobj_to_pson(pythonobj.get(key, 0))
+      elem_size += 1
+    kind, count, neg = encode_pson_kind(PT_Hash, elem_size)
+  elif pythonobj is None:
+    kind = PT_Nil
+  else:
+    print('Error! pythonobj_to_pson: illegal ruby class ['+pythonobj+']')
+  res = ''   #res = AsciiString.new
+  res += struct.pack('!B', kind)  #res << [kind].pack('C')
+  if isinstance(data, str) and (count>0):
+    #!!!data = AsciiString.new(data)
+    if elem_size:
+      if (elem_size==len(data)) or isinstance(pythonobj, (list,dict,tuple)):
+        #!!!res += PandoraUtils.fill_zeros_from_left( \
+        #  PandoraUtils.bigint_to_bytes(elem_size), count) + data
+        res += fill_zeros_from_left(bigint_to_bytes(elem_size), count) + data
+      else:
+        print('Error! pythonobj_to_pson: elem_size<>data_size: '+elem_size.inspect+'<>'\
+          +data.bytesize.inspect + ' data='+data.inspect + ' pythonobj='+pythonobj.inspect)
+    elif len(data)>0:
+      #!!!res << PandoraUtils.fill_zeros_from_left(data, count)
+      res += data[:count]
+  return res #AsciiString.new(res)
+
+# Convert PSON to python object
+# RU: Конвертирует PSON в объект питон
+def pson_to_pythonobj(data):
+  val = None
+  size = 0
+  if len(data)>0:
+    kind = ord(data[0])
+    size = 1
+    basekind, count, neg = decode_pson_kind(kind)
+    if (len(data) >= size+count):
+      elem_size = 0
+      if count>0: elem_size = bytes_to_int(data[size:size+count])
+      if basekind==PT_Int:
+        val = elem_size
+        if neg: val = -val
+      elif basekind==PT_Time:
+        val = elem_size
+        if neg: val = -val
+        val = datetime.datetime(val)  #Time.at(val)
+      elif basekind==PT_Bool:
+        if count>0:
+          val = (elem_size != 0)
+        else:
+          val = (not neg)
+      elif (basekind==PT_Str) or (basekind==PT_Sym) or (basekind==PT_Real):
+        pos = size+count
+        if pos+elem_size>len(data):
+          elem_size = len(data)-pos
+        val = data[pos: pos+elem_size]
+        count += elem_size
+        if basekind == PT_Sym:
+          val = val.to_sym
+        elif basekind == PT_Real:
+          unpacked = struct.unpack('d', val)
+          val = unpacked[0]
+          print('RT_REAL val='+str(val))
+      elif (basekind==PT_Array) or (basekind==PT_Hash):
+        val = []
+        if basekind == PT_Hash: elem_size *= 2
+        while (len(data)-1-count>0) and (elem_size>0):
+          elem_size -= 1
+          aval, alen = pson_to_pythonobj(data[size+count:])
+          val.append(aval)
+          count += alen
+        if basekind == PT_Hash:
+          dic = {}
+          for i in range(len(val)/2): dic[val[i*2]] = val[i*2+1]
+          val = dic
+          print(str(val))
+      elif (basekind==PT_Nil):
+        val = None
+      else:
+        print('pson_to_pythonobj: illegal pson kind '+basekind.inspect)
+      size += count
+    else:
+      size = data.bytesize
+  return [val, size]
+
+# Value is empty?
+# RU: Значение пустое?
+def is_value_empty(val):
+  res = ((val is None) or (isinstance(val, str) and (len(val)==0)) \
+    or (isinstance(val, int) and (val==0)) \
+    or (isinstance(val, list) and (val==[])) or (isinstance(val, dict) and (val=={})))
+    #or (val==Time and (val.to_i==0)) \
+  return res
+
+# Pack PanObject fields to Name-PSON binary format
+# RU: Пакует поля панобъекта в бинарный формат Name-PSON
+def hash_to_namepson(fldvalues, pack_empty=False):
+  buf = ''
+  #fldvalues = fldvalues.sort_by_key()  #!!!sort_by {|k,v| k.to_s } # sort by key
+  for nam in fldvalues:
+    val = fldvalues.get(nam, 0)
+    if pack_empty or (not is_value_empty(val)):
+      nam = str(nam)
+      nsize = len(nam)
+      if nsize>255: nsize = 255
+      buf += struct.pack('B', nsize) + nam[0: nsize]
+      pson_elem = pythonobj_to_pson(val)
+      buf += pson_elem
+  return buf
+
+
+# Convert Name-PSON block to PanObject fields
+# RU: Преобразует Name-PSON блок в поля панобъекта
+def namepson_to_hash(pson):
+  dic = {}
+  while pson and (len(pson)>1):
+    flen = ord(pson[0])
+    fname = pson[1: 1+flen]
+    if (flen>0) and fname and (len(fname)>0):
+      val = None
+      if len(pson)-flen > 1:
+        pson = pson[1+flen:]  #!!! pson[1+flen..-1] # drop getted name
+        val, size = pson_to_pythonobj(pson)
+        pson = pson[size:]  #!!!pson[len..-1]   # drop getted value
+      else:
+        pson = None
+      dic[fname] = val
+    else:
+      pson = None
+      if dic == {}: dic = None
+  return dic
+
+
+# ====================================================================
+# Network classes
+# RU: Сетевые классы
 
 # Client socket options
 KEEPALIVE = 1 #(on/off)
@@ -133,8 +481,11 @@ ECC_Bye_DataTooLong   = 208
 ECC_Wait_NoHandlerYet = 209
 ECC_Bye_NoAnswer      = 210
 ECC_Bye_Silent        = 211
+ECC_Bye_TimeOut       = 212
+ECC_Bye_Protocol      = 213
 
-# Режимы чтения
+# Read modes of socket
+# RU: Режимы чтения из сокета
 RM_Comm      = 0   # Базовая команда
 RM_CommExt   = 1   # Расширение команды для нескольких сегментов
 RM_SegLenN   = 2   # Длина второго (и следующих) сегмента в серии
@@ -170,7 +521,7 @@ ST_Exchange     = 8
 CSF_Message     = 1
 CSF_Messaging   = 2
 
-# Address types
+# Address kinds
 # RU: Типы адресов
 AT_Ip4        = 0
 AT_Ip6        = 1
@@ -184,88 +535,12 @@ IS_Finished      = 255
 
 LONG_SEG_SIGN   = 0xFFFF
 
-logfile = None
-flush_time = None
-curlogindex = None
-curlogsize = None
+# Supported protocol version
+# RU: Поддерживаемая версия протокола
+ProtoVersion = 'pandora0.10'
 
-def logname_by_index(index=1):
-  global log_prefix
-  filename = log_prefix
-  if (len(filename)>1) and (filename[0:2]=='./') and ROOT_PATH and (len(ROOT_PATH)>0):
-    filename = ROOT_PATH + filename[1:]
-  filename = os.path.abspath(filename+str(index)+'.log')
-  return filename
-
-def closelog():
-  global logfile
-  if logfile:
-    logfile.close()
-    logfile = None
-
-def logmes(mes, show=True, addr=None):
-  global logfile, flush_time, curlogindex, curlogsize, log_prefix, max_size, flush_interval
-  if (not logfile) and (logfile != False):
-    if log_prefix and (len(log_prefix)>0):
-      try:
-        s1 = os.path.getsize(logname_by_index(1))
-      except:
-        s1 = None
-      try:
-        s2 = os.path.getsize(logname_by_index(2))
-      except:
-        s2 = None
-      curlogindex = 1
-      curlogsize = s1
-      if (s1 and ((s1>=max_size) or (s2 and (s2<s1)))):
-        curlogindex = 2
-        curlogsize = s2
-      try:
-        filename = logname_by_index(curlogindex)
-        logfile = open(filename, 'a')
-        if not curlogsize: curlogsize = 0
-        print('Logging to file: '+filename)
-      except:
-        logfile = False
-        print('Cannot open log-file: '+filename)
-    else:
-      logfile = False
-      print('Log-file is off.')
-  if logfile or show:
-    cur_time = datetime.datetime.now()
-    time_str = cur_time.strftime('%Y.%m.%d %H:%M:%S')
-    mes = str(mes)
-    if show: print('Log'+time_str[-11:]+': '+mes)
-    if logfile:
-      addr = ''
-      if addr: addr = ' '+str(addr)
-      logline = time_str+': '+mes+addr+'\n'
-      curlogsize += len(logline)
-      if curlogsize >= max_size:
-        curlogsize = 0
-        if curlogindex == 1:
-          curlogindex = 2
-        else:
-          curlogindex = 1
-        try:
-          filename = logname_by_index(curlogindex)
-          closelog()
-          logfile = open(filename, 'w')
-          print('Change logging to file: '+filename)
-        except:
-          logfile = False
-          print('Cannot change log-file: '+filename)
-          return
-      logfile.write(logline)
-      if (not flush_time) or (cur_time >= (flush_time + datetime.timedelta(0, flush_interval))):
-        logfile.flush()
-        sync_time = cur_time
-
-def list_set(vec, ind, val):
-  if ind >= len(vec):
-    vec.extend([None]*(ind-len(vec)+1))
-  vec[ind] = val
-
+# Peer processing thread
+# RU: Поток обработки пира
 class ClientThread(threading.Thread):
   def __init__ (self, pool, client, addr):
     global client_media_first
@@ -356,7 +631,7 @@ class ClientThread(threading.Thread):
     #  socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
     #  !socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 0xA0)
     #  p '@media_send = true'
-    #elsif @media_send and (cmd != EC_Media)
+    #elif @media_send and (cmd != EC_Media)
     #  @media_send = false
     #  socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0)
     #  !socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 0)
@@ -416,7 +691,7 @@ class ClientThread(threading.Thread):
         res = index
         #p log_mes+'SEND_ADD: ('+buf+')'
       elif sended != -1:
-        res = nil
+        res = None
         self.logmes('Not all data is sended 2 '+str(sended))
       i += segdata
     return res
@@ -450,6 +725,12 @@ class ClientThread(threading.Thread):
         hole = None
     return hole
 
+  def list_set(self, ind, val):
+    vec = self.fishers
+    if ind >= len(vec):
+      vec.extend([None]*(ind-len(vec)+1))
+    vec[ind] = val
+
   def add_hole_for_fisher(self, fisher):
     hole = self.get_hole_of_fisher(fisher)
     if hole==None:
@@ -462,10 +743,10 @@ class ClientThread(threading.Thread):
           i += 1
         if (hole==None) and (size<256):
           hole = size
-        if hole != None: list_set(self.fishers, hole, fisher)
+        if hole != None: self.list_set(hole, fisher)
       else:
         hole = 0
-        list_set(self.fishers, hole, fisher)
+        self.list_set(hole, fisher)
     return hole
 
   def get_fisher_by_hole(self, hole):
@@ -505,7 +786,7 @@ class ClientThread(threading.Thread):
     #print('accept_segment:  self.rcmd, self.rcode, self.stage', self.rcmd, self.rcode, self.stage)
     if (self.rcmd==EC_Auth):
       if (self.rcode==ECC_Auth_Hello) and (self.stage==ST_Protocol):
-        print('self.rdata: ', self.rdata)
+        print('hello.rdata: ', self.rdata)
         if self.pool.collector:
           hole = self.pool.collector.add_hole_for_fisher(self)
           self.lure = hole
@@ -515,17 +796,23 @@ class ClientThread(threading.Thread):
           else:
             self.resend_to_fisher_hole(self.pool.collector, hole)
         else:
-          i = self.rdata.find('mykey')
-          if i>0:
-            self.srckey = self.rdata[i+7: i+7+22]
-            #print('self.srckey', self.srckey, len(self.srckey), len(self.pool.keyhash))
-            if (not self.pool.keyhash) or (self.srckey == self.pool.keyhash):
-              self.scmd = EC_Auth
-              self.scode = ECC_Auth_Simple
-              self.sphrase = str(os.urandom(256))
-              self.sbuf = self.sphrase
+          params = namepson_to_hash(self.rdata)
+          if isinstance(params, dict):
+            print('hello params: '+str(params))
+            proto = params['version']
+            if proto and (proto==ProtoVersion):
+              self.srckey = params['mykey']
+              #print('self.srckey', self.srckey, len(self.srckey), len(self.pool.keyhash))
+              if (not self.pool.keyhash) or (self.srckey == self.pool.keyhash):
+                self.scmd = EC_Auth
+                self.scode = ECC_Auth_Simple
+                self.sphrase = str(os.urandom(256))
+                self.sbuf = self.sphrase
+              else:
+                self.err_scmd('Owner is offline')
             else:
-              self.err_scmd('Owner is offline')
+              self.err_scmd('Unsupported protocol "'+str(proto)+'", require "'+\
+                ProtoVersion+'"', ECC_Bye_Protocol)
           else:
             self.err_scmd('Bad hello')
       elif (self.rcode==ECC_Auth_Answer) and (self.stage==ST_Protocol):
@@ -555,6 +842,8 @@ class ClientThread(threading.Thread):
           if self.rdata and (len(self.rdata)>0): cmd = ord(self.rdata[0])
           if (cmd != EC_Bye):
             self.err_scmd('No fisher for lure')
+      else:
+        self.err_scmd('Collector is out')
     elif (self.rcmd==EC_Bye):
       if self.rcode != ECC_Bye_Exit:
         mes = self.rdata
@@ -743,7 +1032,7 @@ class ClientThread(threading.Thread):
     addrstr = str(self.addr[0])+':'+str(self.addr[1])
     if self==self.pool.collector:
       self.pool.collector = None
-      self.logmes('Colleactor disconnected: '+addrstr)
+      self.logmes('Collector disconnected: '+addrstr)
       self.pool.stop_clients(self)
     else:
       self.logmes('Client disconnected: '+addrstr)
@@ -770,7 +1059,8 @@ class PoolThread(threading.Thread):
   def get_fish_sockets(self, fisher_socket, fish_key):
     sockets = None
     for thread in self.threads:
-      if thread.authkey and (thread.authkey==fish_key) and thread.client and (thread.client != fisher_socket):
+      if thread.authkey and (thread.authkey==fish_key) \
+      and thread.client and (thread.client != fisher_socket):
         if not sockets: sockets = []
         if not thread.client in sockets:
           sockets.append(thread.client)
@@ -821,8 +1111,27 @@ class ListenerThread(threading.Thread):
     print('Finish server cicle.')
 
 
-# ===MAIN===
-# Preparation for key capturing
+#=== RUN PANGATE ===
+
+#a = int(q)
+#s = [123, 'привет', False, 456.78, datetime.datetime.now()]
+#s = {'123': 456, 'aa': 'dfsf'}
+#print(s)
+#print('----------')
+#s = pythonobj_to_pson(s)
+#s = hash_to_namepson(s)
+#print(s + '|'+str(len(s)))
+#res = pson_to_pythonobj(s)
+#res = namepson_to_hash(s)
+#print(res)
+#v, size = res
+#print(v)
+#print(pythonobj_to_pson('123'))
+#print(pythonobj_to_pson([111, '2222']))
+#print(pythonobj_to_pson({'aa': 'asdsada', 'bb': 3432, 111: 222}))
+
+
+# Preparation for key capturing in terminal
 fd = sys.stdin.fileno()
 oldterm = termios.tcgetattr(fd)
 newattr = termios.tcgetattr(fd)
@@ -832,7 +1141,7 @@ oldflags = fcntl.fcntl(fd, fcntl.F_GETFL)
 fcntl.fcntl(fd, fcntl.F_SETFL, oldflags | os.O_NONBLOCK)
 
 try:
-  print('The Pandora Gate 0.1 (protocol: pandora0)')
+  print('The Pandora Gate 0.20 (protocol: '+ProtoVersion+')')
 
   # Start server socket
   try:

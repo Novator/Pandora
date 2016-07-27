@@ -1135,17 +1135,18 @@ module PandoraUtils
   def self.rubyobj_to_pson(rubyobj)
     type = PT_Nil
     count = 0
+    neg = false
     data = AsciiString.new
     elem_size = nil
     case rubyobj
       when String
         data << AsciiString.new(rubyobj)
         elem_size = data.bytesize
-        type, count = encode_pson_type(PT_Str, elem_size)
+        type, count, neg = encode_pson_type(PT_Str, elem_size)
       when Symbol
         data << AsciiString.new(rubyobj.to_s)
         elem_size = data.bytesize
-        type, count = encode_pson_type(PT_Sym, elem_size)
+        type, count, neg = encode_pson_type(PT_Sym, elem_size)
       when Integer
         type, count, neg = encode_pson_type(PT_Int, rubyobj)
         rubyobj = -rubyobj if neg
@@ -1161,13 +1162,13 @@ module PandoraUtils
       when Float
         data << [rubyobj].pack('D')
         elem_size = data.bytesize
-        type, count = encode_pson_type(PT_Real, elem_size)
+        type, count, neg = encode_pson_type(PT_Real, elem_size)
       when Array
         rubyobj.each do |a|
           data << rubyobj_to_pson(a)
         end
         elem_size = rubyobj.size
-        type, count = encode_pson_type(PT_Array, elem_size)
+        type, count, neg = encode_pson_type(PT_Array, elem_size)
       when Hash
         rubyobj = rubyobj.sort_by {|k,v| k.to_s}
         elem_size = 0
@@ -1175,7 +1176,7 @@ module PandoraUtils
           data << rubyobj_to_pson(a[0]) << rubyobj_to_pson(a[1])
           elem_size += 1
         end
-        type, count = encode_pson_type(PT_Hash, elem_size)
+        type, count, neg = encode_pson_type(PT_Hash, elem_size)
       when NilClass
         type = PT_Nil
       else
@@ -2085,9 +2086,9 @@ module PandoraUtils
             i = 0
             last_ind = 0.0
             df.each do |field|
-              #if field[FI_View]=='hex'
-                #p '===[ider, field[FI_Name], field[FI_View], field[FI_Size], field[FI_FSize]]='\
-                #  +[ider, field[FI_Name], field[FI_View], field[FI_Size], field[FI_FSize]].inspect
+              #if field[FI_View]=='phash'
+              #  p '===[ider, field[FI_Name], field[FI_View], field[FI_Size], field[FI_FSize]]='\
+              #    +[ider, field[FI_Name], field[FI_View], field[FI_Size], field[FI_FSize]].inspect
               #end
               set_view_and_len(field)
               fldsize = 0
@@ -2104,7 +2105,8 @@ module PandoraUtils
                 fldvsize = (fldsize*0.67).round if (fldsize>0) and (fldvsize>30)
                 fldvsize = 120 if fldvsize>120
               end
-              indd, lab_or, new_row = decode_pos(field[FI_Pos])
+              indd1, lab_or, new_row = decode_pos(field[FI_Pos])
+              indd = indd1
               plus = (indd and (indd[0, 1]=='+'))
               indd = indd[1..-1] if plus
               if indd and (indd.size>0)
@@ -2113,7 +2115,7 @@ module PandoraUtils
                 indd = nil
               end
               ind = 0.0
-              if not indd
+              if indd.nil?
                 last_ind += 1.0
                 ind = last_ind
               else
@@ -2125,6 +2127,10 @@ module PandoraUtils
                   last_ind += indd if indd < 200  # matter fileds have index lower then 200
                 end
               end
+              #if ider=='Resolution'
+              #  p '===[ider, field[FI_Name], indd1. ind='\
+              #    +[ider, field[FI_Name], indd1, ind].inspect
+              #end
               field[FI_Size] = fldsize
               field[FI_VFName] = field_title(field)
               field[FI_Index] = ind
@@ -5232,7 +5238,7 @@ module PandoraCrypto
             end
             dialog.hbox.pack_start(changebtn, false, false, 0)
 
-            gen_button = Gtk::ToolButton.new(Gtk::Stock::NEW, _('New'))
+            gen_button = Gtk::ToolButton.new(Gtk::Stock::ADD, _('New'))  #:NEW
             gen_button.tooltip_text = _('Generate new key pair')
             #gen_button.width_request = 110
             gen_button.signal_connect('clicked') { |*args| dialog.response=3 }
@@ -5949,6 +5955,7 @@ module PandoraNet
   ECC_Bye_NoAnswer      = 210
   ECC_Bye_Silent        = 211
   ECC_Bye_TimeOut       = 212
+  ECC_Bye_Protocol      = 213
 
   # Read modes of socket
   # RU: Режимы чтения из сокета
@@ -8293,7 +8300,8 @@ module PandoraNet
                     @notice = params['notice']
                     init_skey_or_error(true)
                   else
-                    err_scmd('Protocol "'+vers.to_s+'" is not supported, must be "'+ProtoVersion+'"')
+                    err_scmd('Unsupported protocol "'+vers.to_s+\
+                      '", require "'+ProtoVersion+'"', ECC_Bye_Protocol)
                   end
                 end
               elsif (rcode==ECC_Auth_Cipher) and ((@stage==ES_Protocol) or (@stage==ES_Cipher))
@@ -8604,6 +8612,8 @@ module PandoraNet
                   @scode = ECC_Auth_Answer
                   @sbuf = answer
                   @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
+                  set_max_pack_size(ES_Exchange)
+                  @stage = ES_Exchange
                 else
                   err_scmd('Node password is not setted')
                 end
@@ -9915,7 +9925,8 @@ module PandoraNet
 
               #отправить состояние
               if ((not @last_conn_mode) or (@last_conn_mode != @conn_mode)) \
-              and (@conn_state == CS_Connected) and (@stage>=ES_Exchange)
+              and (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
+              and @to_person
                 @last_conn_mode = @conn_mode
                 send_conn_mode
               end
@@ -9930,40 +9941,46 @@ module PandoraNet
                   when QS_ResetMessage
                     # если что-то отправлено, но не получено, то повторить
                     mypanhash = PandoraCrypto.current_user_or_key(true)
-                    receiver = @skey[PandoraCrypto::KV_Creator]
-                    if (receiver.is_a? String) and (receiver.bytesize>0) \
-                    and (hunter? or (mypanhash != receiver))
-                      filter = {'destination'=>receiver, 'state'=>1}
-                      message_model.update({:state=>0}, nil, filter)
+                    if @to_person
+                      receiver = @to_person
+                      if (receiver.is_a? String) and (receiver.bytesize>0) \
+                      and (hunter? or (mypanhash != receiver))
+                        filter = {'destination'=>receiver, 'state'=>1}
+                        message_model.update({:state=>0}, nil, filter)
+                      end
                     end
                     questioner_step += 1
                   when QS_CreatorCheck
                     # если собеседник неизвестен, запросить анкету
-                    creator = @skey[PandoraCrypto::KV_Creator]
-                    kind = PandoraUtils.kind_from_panhash(creator)
-                    res = PandoraModel.get_record_by_panhash(kind, creator, nil, \
-                      @send_models, 'id')
-                    p log_mes+'Whyer: CreatorCheck  creator='+creator.inspect
-                    if not res
-                      p log_mes+'Whyer: CreatorCheck  Request!'
-                      set_request(creator, true)
+                    if @to_person
+                      creator = @to_person
+                      kind = PandoraUtils.kind_from_panhash(creator)
+                      res = PandoraModel.get_record_by_panhash(kind, creator, nil, \
+                        @send_models, 'id')
+                      p log_mes+'Whyer: CreatorCheck  creator='+creator.inspect
+                      if not res
+                        p log_mes+'Whyer: CreatorCheck  Request!'
+                        set_request(creator, true)
+                      end
                     end
                     questioner_step += 1
                   when QS_NewsQuery
                     # запросить список новых панхэшей
-                    pankinds = 1.chr + 11.chr
-                    from_time = Time.now.to_i - 10*24*3600
-                    #questioner = @rkey[PandoraCrypto::KV_Creator]
-                    #answerer = @skey[PandoraCrypto::KV_Creator]
-                    #trust=nil
-                    #key=nil
-                    #models=nil
-                    #ph_list = []
-                    #ph_list << PandoraModel.signed_records(questioner, from_time, pankinds, \
-                    #  trust, key, models)
-                    #ph_list << PandoraModel.public_records(questioner, trust, from_time, \
-                    #  pankinds, models)
-                    set_relations_query(pankinds, from_time, true)
+                    if @to_person
+                      pankinds = 1.chr + 11.chr
+                      from_time = Time.now.to_i - 10*24*3600
+                      #questioner = @rkey[PandoraCrypto::KV_Creator]
+                      #answerer = @skey[PandoraCrypto::KV_Creator]
+                      #trust=nil
+                      #key=nil
+                      #models=nil
+                      #ph_list = []
+                      #ph_list << PandoraModel.signed_records(questioner, from_time, pankinds, \
+                      #  trust, key, models)
+                      #ph_list << PandoraModel.public_records(questioner, trust, from_time, \
+                      #  pankinds, models)
+                      set_relations_query(pankinds, from_time, true)
+                    end
                     questioner_step += 1
                   else
                     questioner_step = QS_Finished
@@ -10450,148 +10467,154 @@ module PandoraNet
         tcp_port = $tcp_port
         tcp_port ||= PandoraUtils.get_param('tcp_port')
         tcp_port ||= PandoraNet::DefTcpPort
-        $tcp_listen_thread = Thread.new do
-          begin
-            server = TCPServer.open(host, tcp_port)
-            addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
-            PandoraUtils.log_message(LM_Info, _('Listening address')+': '+addr_str)
-          rescue
-            server = nil
-            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' TCP '+host.to_s+':'+tcp_port.to_s)
-          end
-          Thread.current[:tcp_server] = server
-          Thread.current[:listen_tcp] = (server != nil)
-          while Thread.current[:listen_tcp] and server and (not server.closed?)
-            socket = get_listener_client_or_nil(server)
-            while Thread.current[:listen_tcp] and not server.closed? and not socket
-              sleep 0.05
-              #Thread.pass
-              #Gtk.main_iteration
-              socket = get_listener_client_or_nil(server)
+        if tcp_port
+          $tcp_listen_thread = Thread.new do
+            begin
+              server = TCPServer.open(host, tcp_port)
+              addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
+              PandoraUtils.log_message(LM_Info, _('Listening address')+': '+addr_str)
+            rescue
+              server = nil
+              PandoraUtils.log_message(LM_Warning, _('Cannot open port')+\
+                ' TCP '+host.to_s+':'+tcp_port.to_s)
             end
+            Thread.current[:tcp_server] = server
+            Thread.current[:listen_tcp] = (server != nil)
+            while Thread.current[:listen_tcp] and server and (not server.closed?)
+              socket = get_listener_client_or_nil(server)
+              while Thread.current[:listen_tcp] and not server.closed? and not socket
+                sleep 0.05
+                #Thread.pass
+                #Gtk.main_iteration
+                socket = get_listener_client_or_nil(server)
+              end
 
-            if Thread.current[:listen_tcp] and (not server.closed?) and socket
-              host_ip = socket.peeraddr[2]
-              unless $window.pool.is_black?(host_ip)
-                host_name = socket.peeraddr[3]
-                port = socket.peeraddr[1]
-                proto = 'tcp'
-                p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
-                session = Session.new(socket, host_name, host_ip, port, proto, \
-                  0, nil, nil, nil, nil)
-              else
-                PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
+              if Thread.current[:listen_tcp] and (not server.closed?) and socket
+                host_ip = socket.peeraddr[2]
+                unless $window.pool.is_black?(host_ip)
+                  host_name = socket.peeraddr[3]
+                  port = socket.peeraddr[1]
+                  proto = 'tcp'
+                  p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
+                  session = Session.new(socket, host_name, host_ip, port, proto, \
+                    0, nil, nil, nil, nil)
+                else
+                  PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
+                end
               end
             end
+            server.close if server and (not server.closed?)
+            PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
+            $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
+            $tcp_listen_thread = nil
+            $window.correct_lis_btn_state
           end
-          server.close if server and (not server.closed?)
-          PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
-          $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
-          $tcp_listen_thread = nil
-          $window.correct_lis_btn_state
         end
 
         # UDP Listener
         udp_port = $udp_port
         udp_port ||= PandoraUtils.get_param('udp_port')
         udp_port ||= PandoraNet::DefUdpPort
-        $udp_listen_thread = Thread.new do
-          # Init UDP listener
-          begin
-            BasicSocket.do_not_reverse_lookup = true
-            # Create socket and bind to address
-            udp_server = UDPSocket.new
-            udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, true)  #Allow broadcast
-            #udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)  #Many ports
-            #hton = IPAddr.new('127.0.0.1').hton
-            #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_MULTICAST_IF, hton) #interface
-            #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_MULTICAST_TTL, 5) #depth (default 1)
-            #hton2 = IPAddr.new('0.0.0.1').hton
-            #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_ADD_MEMBERSHIP, hton+hton2) #listen multicast
-            #udp_server.setsockopt(Socket::SOL_IP, Socket::IP_MULTICAST_LOOP, true) #come back (def on)
-            udp_server.bind(host, udp_port)
+        if udp_port>0
+          $udp_listen_thread = Thread.new do
+            # Init UDP listener
+            begin
+              BasicSocket.do_not_reverse_lookup = true
+              # Create socket and bind to address
+              udp_server = UDPSocket.new
+              udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, true)  #Allow broadcast
+              #udp_server.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)  #Many ports
+              #hton = IPAddr.new('127.0.0.1').hton
+              #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_MULTICAST_IF, hton) #interface
+              #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_MULTICAST_TTL, 5) #depth (default 1)
+              #hton2 = IPAddr.new('0.0.0.1').hton
+              #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_ADD_MEMBERSHIP, hton+hton2) #listen multicast
+              #udp_server.setsockopt(Socket::SOL_IP, Socket::IP_MULTICAST_LOOP, true) #come back (def on)
+              udp_server.bind(host, udp_port)
 
-            #addr_str = server.addr.to_s
-            udp_addr_str = udp_server.addr[3].to_s+(' udp')+udp_server.addr[1].to_s
-            PandoraUtils.log_message(LM_Info, _('Listening address')+': '+udp_addr_str)
-          rescue
-            udp_server = nil
-            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' UDP '+host.to_s+':'+udp_port.to_s)
-          end
-          Thread.current[:udp_server] = udp_server
-          Thread.current[:listen_udp] = (udp_server != nil)
+              #addr_str = server.addr.to_s
+              udp_addr_str = udp_server.addr[3].to_s+(' udp')+udp_server.addr[1].to_s
+              PandoraUtils.log_message(LM_Info, _('Listening address')+': '+udp_addr_str)
+            rescue
+              udp_server = nil
+              PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' UDP '+host.to_s+':'+udp_port.to_s)
+            end
+            Thread.current[:udp_server] = udp_server
+            Thread.current[:listen_udp] = (udp_server != nil)
 
-          if udp_server
-            # Send UDP broadcast hello
-            GLib::Timeout.add(2000) do
-              res = PandoraCrypto.current_user_and_key(false, false)
-              if res.is_a? Array
-                person_hash, key_hash = res
-                hparams = {:version=>0, :iam=>person_hash, :mykey=>key_hash, :base=>$base_id}
-                hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
-                hello = UdpHello + PandoraUtils.hash_to_namepson(hparams)
-                if $udp_listen_thread
-                  udp_server = $udp_listen_thread[:udp_server]
-                  if udp_server and (not udp_server.closed?)
-                    rcv_udp_port = PandoraNet::DefUdpPort
-                    begin
-                      udp_server.send(hello, 0, '<broadcast>', rcv_udp_port)
-                      PandoraUtils.log_message(LM_Trace, \
-                        'UDP '+_('broadcast to ports')+' '+rcv_udp_port.to_s)
-                    rescue => err
-                      PandoraUtils.log_message(LM_Trace, \
-                        _('Cannot send')+' UDP '+_('broadcast to ports')+' '\
-                        +rcv_udp_port.to_s+' ('+Utf8String.new(err.message)+')')
+            udp_broadcast = PandoraUtils.get_param('udp_broadcast')
+            if udp_broadcast and udp_server
+              # Send UDP broadcast hello
+              GLib::Timeout.add(2000) do
+                res = PandoraCrypto.current_user_and_key(false, false)
+                if res.is_a? Array
+                  person_hash, key_hash = res
+                  hparams = {:version=>0, :iam=>person_hash, :mykey=>key_hash, :base=>$base_id}
+                  hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
+                  hello = UdpHello + PandoraUtils.hash_to_namepson(hparams)
+                  if $udp_listen_thread
+                    udp_server = $udp_listen_thread[:udp_server]
+                    if udp_server and (not udp_server.closed?)
+                      rcv_udp_port = PandoraNet::DefUdpPort
+                      begin
+                        udp_server.send(hello, 0, '<broadcast>', rcv_udp_port)
+                        PandoraUtils.log_message(LM_Trace, \
+                          'UDP '+_('broadcast to ports')+' '+rcv_udp_port.to_s)
+                      rescue => err
+                        PandoraUtils.log_message(LM_Trace, \
+                          _('Cannot send')+' UDP '+_('broadcast to ports')+' '\
+                          +rcv_udp_port.to_s+' ('+Utf8String.new(err.message)+')')
+                      end
+                    end
+                  end
+                end
+                false
+              end
+            end
+
+            # Catch UDP datagrams
+            while Thread.current[:listen_udp] and udp_server and (not udp_server.closed?)
+              begin
+                data, addr = udp_server.recvfrom(2000)
+              rescue
+                data = addr = nil
+              end
+              #data, addr = udp_server.recvfrom_nonblock(2000)
+              udp_hello_len = UdpHello.bytesize
+              p 'Received UDP-pack ['+data.inspect+'] addr='+addr.inspect
+              if (data.is_a? String) and (data.bytesize > udp_hello_len) \
+              and (data[0, udp_hello_len] == UdpHello)
+                data = data[udp_hello_len..-1]
+                far_ip = addr[3]
+                far_port = addr[1]
+                hash = PandoraUtils.namepson_to_hash(data)
+                if hash.is_a? Hash
+                  res = PandoraCrypto.current_user_and_key(false, false)
+                  if res.is_a? Array
+                    person_hash, key_hash = res
+                    far_version = hash['version']
+                    far_person_hash = hash['iam']
+                    far_key_hash = hash['mykey']
+                    far_base_id = hash['base']
+                    if ((far_person_hash != nil) or (far_key_hash != nil) or \
+                      (far_base_id != nil)) and \
+                      ((far_person_hash != person_hash) or (far_key_hash != key_hash) or \
+                      (far_base_id != $base_id)) # or true)
+                    then
+                      addr = $window.pool.encode_addr(far_ip, far_port, 'tcp')
+                      $window.pool.init_session(addr, nil, 0, nil, nil, far_person_hash, \
+                        far_key_hash, far_base_id)
                     end
                   end
                 end
               end
-              false
             end
+            #udp_server.close if udp_server and (not udp_server.closed?)
+            PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+udp_addr_str) if udp_server
+            #$window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
+            $udp_listen_thread = nil
+            $window.correct_lis_btn_state
           end
-
-          # Catch UDP datagrams
-          while Thread.current[:listen_udp] and udp_server and (not udp_server.closed?)
-            begin
-              data, addr = udp_server.recvfrom(2000)
-            rescue
-              data = addr = nil
-            end
-            #data, addr = udp_server.recvfrom_nonblock(2000)
-            udp_hello_len = UdpHello.bytesize
-            p 'Received UDP-pack ['+data.inspect+'] addr='+addr.inspect
-            if (data.is_a? String) and (data.bytesize > udp_hello_len) \
-            and (data[0, udp_hello_len] == UdpHello)
-              data = data[udp_hello_len..-1]
-              far_ip = addr[3]
-              far_port = addr[1]
-              hash = PandoraUtils.namepson_to_hash(data)
-              if hash.is_a? Hash
-                res = PandoraCrypto.current_user_and_key(false, false)
-                if res.is_a? Array
-                  person_hash, key_hash = res
-                  far_version = hash['version']
-                  far_person_hash = hash['iam']
-                  far_key_hash = hash['mykey']
-                  far_base_id = hash['base']
-                  if ((far_person_hash != nil) or (far_key_hash != nil) or \
-                    (far_base_id != nil)) and \
-                    ((far_person_hash != person_hash) or (far_key_hash != key_hash) or \
-                    (far_base_id != $base_id)) # or true)
-                  then
-                    addr = $window.pool.encode_addr(far_ip, far_port, 'tcp')
-                    $window.pool.init_session(addr, nil, 0, nil, nil, far_person_hash, \
-                      far_key_hash, far_base_id)
-                  end
-                end
-              end
-            end
-          end
-          #udp_server.close if udp_server and (not udp_server.closed?)
-          PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+udp_addr_str) if udp_server
-          #$window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
-          $udp_listen_thread = nil
-          $window.correct_lis_btn_state
         end
       end
       $window.correct_lis_btn_state
@@ -12501,7 +12524,7 @@ module PandoraGtk
       set_classes
       title = nil
       stock = nil
-      if (panclasses.is_a? Array) and (panclasses.size>0) and (panclasses.size<MaxPanhashTabs)
+      if (panclasses.is_a? Array) and (panclasses.size>0) and (not @types.nil?)
         stock = $window.get_panobject_stock(panclasses[0].ider)
         panclasses.each do |panclass|
           if title
@@ -12540,18 +12563,27 @@ module PandoraGtk
         #p '=== types='+types.inspect
         @panclasses = []
         @types.strip!
-        if (types.is_a? String) and (types.size>0) and (@types[0, 8].downcase=='panhash(')
-          @types = @types[8..-2]
-          @types.strip!
-          @types = @types.split(',')
-          @types.each do |ptype|
-            ptype.strip!
-            if PandoraModel.const_defined? ptype
-              @panclasses << PandoraModel.const_get(ptype)
+        if (types.is_a? String) and (types.size>0)
+          drop_prefix = 0
+          if (@types[0, 10].downcase=='panhashes(')
+            drop_prefix = 10
+          elsif (@types[0, 8].downcase=='panhash(')
+            drop_prefix = 8
+          end
+          if drop_prefix>0
+            @types = @types[drop_prefix..-2]
+            @types.strip!
+            @types = @types.split(',')
+            @types.each do |ptype|
+              ptype.strip!
+              if PandoraModel.const_defined? ptype
+                @panclasses << PandoraModel.const_get(ptype)
+              end
             end
           end
         end
         if @panclasses.size==0
+          @types = nil
           kind_list = PandoraModel.get_kind_list
           kind_list.each do |rec|
             ptype = rec[1]
@@ -18610,7 +18642,7 @@ module PandoraGtk
         kind_pbs[i] = $window.get_icon_scale_buf(v, 'pan', 16)
       end
 
-      kind_image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
+      kind_image = Gtk::Image.new(Gtk::Stock::CONNECT, Gtk::IconSize::MENU)
       kind_image.show_all
       renderer = Gtk::CellRendererPixbuf.new
       column = Gtk::TreeViewColumn.new('', renderer)
@@ -20172,7 +20204,7 @@ module PandoraGtk
 
     hbox = Gtk::HBox.new
 
-    PandoraGtk.add_tool_btn(hbox, Gtk::Stock::NEW, 'Create') do |widget|
+    PandoraGtk.add_tool_btn(hbox, Gtk::Stock::ADD, 'Create') do |widget|  #:NEW
       $window.do_menu_act('Create', treeview)
     end
     if single
@@ -20251,7 +20283,7 @@ module PandoraGtk
     end
 
     menu = Gtk::Menu.new
-    menu.append(create_menu_item(['Create', Gtk::Stock::NEW, _('Create'), 'Insert'], treeview))
+    menu.append(create_menu_item(['Create', Gtk::Stock::ADD, _('Create'), 'Insert'], treeview))  #:NEW
     menu.append(create_menu_item(['Edit', Gtk::Stock::EDIT.to_s+':mb', _('Edit'), 'Return'], treeview))
     menu.append(create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], treeview))
     menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], treeview))
@@ -22191,15 +22223,15 @@ module PandoraGtk
       ['Contract', 'contract:m', 'Contracts'],
       ['Report', 'report:m', 'Reports'],
       [nil, nil, '_Region'],
-      ['Project', 'project', 'Projects'],
-      ['Resolution', 'resolution:m', 'Resolutions'],
       ['Law', 'law:m', 'Laws'],
+      ['Resolution', 'resolution:m', 'Resolutions'],
+      ['-', nil, '-'],
+      ['Project', 'project', 'Projects'],
+      ['Offense', 'offense:m', 'Offenses'],
+      ['Punishment', 'punishment', 'Punishments'],
       ['-', nil, '-'],
       ['Contribution', 'contribution:m', 'Contributions'],
       ['Expenditure', 'expenditure:m', 'Expenditures'],
-      ['-', nil, '-'],
-      ['Offense', 'offense:m', 'Offenses'],
-      ['Punishment', 'punishment:m', 'Punishments'],
       ['-', nil, '-'],
       ['Resource', 'resource:m', 'Resources'],
       ['Delegation', 'delegation:m', 'Delegations'],
