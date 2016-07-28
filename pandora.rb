@@ -14315,33 +14315,40 @@ module PandoraGtk
   # Trust change Scale
   # RU: Шкала для изменения доверия
   class TrustScale < Gtk::HScale
-    def initialize(*args)
+    def colorize
+      val = self.value
+      trust = (val*127).round
+      r = 0
+      g = 0
+      b = 0
+      if trust==0
+        b = 40000
+      else
+        mul = ((trust.fdiv(127))*45000).round
+        if trust>0
+          g = mul+20000
+        else
+          r = -mul+20000
+        end
+      end
+      color = Gdk::Color.new(r, g, b)
+      self.modify_fg(Gtk::STATE_NORMAL, color)
+      prefix = ''
+      prefix = _(@tooltip_prefix) + ': ' if @tooltip_prefix
+      self.tooltip_text = prefix+val.to_s
+    end
+
+    def initialize(tooltip_prefix = nil)
       adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
       super(adjustment)
+      @tooltip_prefix = tooltip_prefix
       set_size_request(140, -1)
       update_policy = Gtk::UPDATE_DELAYED
       digits = 1
       draw_value = true
 
       signal_connect('value-changed') do |widget|
-        val = widget.value
-        trust = (val*127).round
-        r = 0
-        g = 0
-        b = 0
-        if trust==0
-          b = 40000
-        else
-          mul = ((trust.fdiv(127))*45000).round
-          if trust>0
-            g = mul+20000
-          else
-            r = -mul+20000
-          end
-        end
-        color = Gdk::Color.new(r, g, b)
-        widget.modify_fg(Gtk::STATE_NORMAL, color)
-        widget.tooltip_text = val.to_s
+        colorize
       end
     end
   end
@@ -15636,6 +15643,7 @@ module PandoraGtk
           if widget.active?
             trust0 ||= 0.1
             trust_scale.value = trust0
+            trust_scale.colorize
             @keep_btn.active = true
           else
             trust0 = trust_scale.value
@@ -15644,7 +15652,7 @@ module PandoraGtk
       end
       trust_box.pack_start(vouch_btn, false, false, 0)
 
-      @trust_scale = TrustScale.new
+      @trust_scale = TrustScale.new('Trust level')
       trust_box.pack_start(trust_scale, false, false, 0)
       hbox.pack_start(trust_box, false, false, 0)
 
@@ -15664,6 +15672,7 @@ module PandoraGtk
           if widget.active?
             pub_lev0 ||= 0.0
             public_scale.value = pub_lev0
+            public_scale.colorize
             @keep_btn.active = true
             @follow_btn.active = true
             @vouch_btn.active = true
@@ -15674,7 +15683,7 @@ module PandoraGtk
       end
       public_box.pack_start(public_btn, false, false, 0)
 
-      @public_scale = TrustScale.new
+      @public_scale = TrustScale.new('Publish for level from (and higher)')
       public_box.pack_start(public_scale, false, false, 0)
 
       hbox.pack_start(public_box, false, false, 0)

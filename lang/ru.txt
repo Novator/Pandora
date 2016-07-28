@@ -425,3 +425,5 @@ Table=>Таблица
 _Help=>_Помощь
 Logbar=>Лоток
 Language=>Язык
+Trust level=>Уровень доверия
+Publish for level from (and higher)=>Публикую для уровня от (и выше)
