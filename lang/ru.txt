@@ -65,6 +65,7 @@ Warning=>Внимание
 Products=>Товары
 Events=>События
 Contacts=>Контакты
+Cabinet=>Кабинет
 Profile=>Профиль
 Clients=>Клиенты
 Parameters=>Параметры

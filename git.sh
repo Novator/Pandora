@@ -48,15 +48,15 @@
 #git log
 
 ##Save version, md5 and date to history log
-#echo "`grep 'AppVersion  ' pandora.rb | grep -o [\.[:digit:].]*` `md5sum ./pandora.rb`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
+echo "`grep 'AppVersion  ' pandora.rb | grep -o [\.[:digit:].]*` `md5sum ./pandora.rb`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
 
 ## Push files from local to repository
 #git add --all
 git commit -a -m "version 0.61 alpha"
-#git push -u bitbuc master
-#git push -u github master
-git push -u bitbuc develop
-git push -u github develop
+git push -u bitbuc master
+git push -u github master
+#git push -u bitbuc develop
+#git push -u github develop
 #git push -u robux master
 
 ## Save to temporary cash without commit

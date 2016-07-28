@@ -18259,9 +18259,9 @@ module PandoraGtk
     end
   end
 
-  # Profile panel
-  # RU: Панель профиля
-  class ProfileScrollWin < Gtk::ScrolledWindow
+  # Cabinet panel
+  # RU: Панель кабинета
+  class CabinetScrollWin < Gtk::ScrolledWindow
     attr_accessor :person
 
     include PandoraGtk
@@ -20777,7 +20777,7 @@ module PandoraGtk
     return if not a_person
 
     $window.notebook.children.each do |child|
-      if (child.is_a? ProfileScrollWin) and (child.person == a_person)
+      if (child.is_a? CabinetScrollWin) and (child.person == a_person)
         $window.notebook.page = $window.notebook.children.index(child)
         return
       end
@@ -20798,7 +20798,7 @@ module PandoraGtk
       short_name = aname[0]+'. '+short_name if aname
     end
 
-    sw = ProfileScrollWin.new(a_person)
+    sw = CabinetScrollWin.new(a_person)
 
     hpaned = Gtk::HPaned.new
     hpaned.border_width = 2
@@ -20845,7 +20845,7 @@ module PandoraGtk
     image = Gtk::Image.new(Gtk::Stock::HOME, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
 
-    short_name = _('Profile') if not((short_name.is_a? String) and (short_name.size>0))
+    short_name = _('Cabinet') if not((short_name.is_a? String) and (short_name.size>0))
 
     label_box = TabLabelBox.new(image, short_name, sw, false, 0) do
       #store.clear
@@ -22161,7 +22161,7 @@ module PandoraGtk
 
           $window.pool.close_punnet(sha1_1)
           $window.pool.close_punnet(sha1_2)
-        when 'Profile'
+        when 'Cabinet'
           PandoraGtk.show_profile_panel
         when 'Search'
           PandoraGtk.show_search_panel
@@ -22254,7 +22254,7 @@ module PandoraGtk
       ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
       ['Exchange', 'exchange:m', 'Exchange'],
       ['-', nil, '-'],
-      ['Profile', Gtk::Stock::HOME, 'Profile'],
+      ['Cabinet', Gtk::Stock::HOME, 'Cabinet'],
       ['Wizard', Gtk::Stock::PREFERENCES.to_s+':m', 'Wizards'],
       ['-', nil, '-'],
       ['Help', Gtk::Stock::HELP.to_s+':m', '_Help', 'F1'],
