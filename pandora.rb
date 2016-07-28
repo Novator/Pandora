@@ -88,6 +88,7 @@ module PandoraUtils
   $show_log_level = LM_Trace
 
   $window = nil
+  $show_logbar_level = LM_Warning
 
   # Add the message to log
   # RU: Добавить сообщение в лог
@@ -110,6 +111,10 @@ module PandoraUtils
           log_view.buffer.delete(first, last)
         end
         log_view.after_addition
+        if $show_logbar_level and (level<=$show_logbar_level)
+          $show_logbar_level = nil
+          PandoraGtk.show_log_bar(80)
+        end
       end
       puts 'log: '+mes
     end
@@ -10811,16 +10816,17 @@ module PandoraGtk
 
   # Statusbar fields
   # RU: Поля в статусбаре
-  SF_Update  = 0
-  SF_Lang    = 1
-  SF_Auth    = 2
-  SF_Listen  = 3
-  SF_Hunt    = 4
-  SF_Conn    = 5
-  SF_Radar    = 6
-  SF_Fisher  = 7
-  SF_Search  = 8
-  SF_Harvest = 9
+  SF_Log     = 0
+  SF_Update  = 1
+  SF_Lang    = 2
+  SF_Auth    = 3
+  SF_Listen  = 4
+  SF_Hunt    = 5
+  SF_Conn    = 6
+  SF_Radar   = 7
+  SF_Fisher  = 8
+  SF_Search  = 9
+  SF_Harvest = 10
 
   # Advanced dialog window
   # RU: Продвинутое окно диалога
@@ -20915,6 +20921,44 @@ module PandoraGtk
     #$window.notebook.page = $window.notebook.n_pages-1
   end
 
+  # Show log bar
+  # RU: Показать log бар
+  def self.show_log_bar(new_size=nil)
+    vpaned = $window.log_vpaned
+    log_sw = $window.log_sw
+    if new_size and (new_size>=0) or (new_size.nil? \
+    and (log_sw.allocation.height <= 24)) #hpaned.position <= 20
+      if new_size and (new_size>=24)
+        log_sw.height_request = new_size if (new_size>log_sw.height_request)
+      else
+        log_sw.height_request = log_sw.allocation.height if log_sw.allocation.height > 24
+        log_sw.height_request = 200 if log_sw.height_request <= 24
+      end
+      vpaned.position = vpaned.max_position-log_sw.height_request
+    else
+      log_sw.height_request = log_sw.allocation.height
+      vpaned.position = vpaned.max_position
+    end
+    $window.correct_log_btn_state
+    #$window.notebook.children.each do |child|
+    #  if (child.is_a? RadarScrollWin)
+    #    $window.notebook.page = $window.notebook.children.index(child)
+    #    child.update_btn.clicked
+    #    return
+    #  end
+    #end
+    #sw = RadarScrollWin.new
+
+    #image = Gtk::Image.new(Gtk::Stock::JUSTIFY_LEFT, Gtk::IconSize::MENU)
+    #image.set_padding(2, 0)
+    #label_box = TabLabelBox.new(image, _('Fishes'), sw, false, 0) do
+    #  #sw.destroy
+    #end
+    #page = $window.notebook.append_page(sw, label_box)
+    #sw.show_all
+    #$window.notebook.page = $window.notebook.n_pages-1
+  end
+
   # Show fisher list
   # RU: Показать список рыбаков
   def self.show_fisher_panel
@@ -21215,8 +21259,9 @@ module PandoraGtk
   class GoodButton < Gtk::Frame
     attr_accessor :hbox, :image, :label, :active, :group_set
 
-    def initialize(astock, atitle=nil, atoggle=nil)
+    def initialize(astock, atitle=nil, atoggle=nil, atooltip=nil)
       super()
+      self.tooltip_text = atooltip if atooltip
       @group_set = nil
       if atoggle.is_a? Integer
         @group_set = atoggle
@@ -21358,7 +21403,7 @@ module PandoraGtk
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
       :pool, :focus_timer, :title_view, :do_on_start, :radar_hpaned, :task_offset, \
-      :radar_sw
+      :radar_sw, :log_vpaned, :log_sw
 
     include PandoraUtils
 
@@ -21419,6 +21464,12 @@ module PandoraGtk
       #end
     end
 
+    def correct_log_btn_state
+      vpaned = $window.log_vpaned
+      an_active = (vpaned.max_position - vpaned.position) > 24
+      $window.set_status_field(PandoraGtk::SF_Log, nil, nil, an_active)
+    end
+
     # Show notice status
     # RU: Показать уведомления в статусе
     #def show_notice(change=nil)
@@ -21436,17 +21487,23 @@ module PandoraGtk
 
     # Add field to statusbar
     # RU: Добавляет поле в статусбар
-    def add_status_field(index, text, stock=nil, toggle=nil)
-      separ = Gtk::SeparatorToolItem.new
-      $statusbar.pack_start(separ, false, false, 0)
+    def add_status_field(index, text, tooltip=nil, stock=nil, toggle=nil, separ_pos=nil)
+      separ_pos ||= 1
+      if (separ_pos & 1)>0
+        $statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
+      end
       toggle_group = nil
       toggle_group = -1 if not toggle.nil?
-      btn = GoodButton.new(stock, text, toggle_group) do |*args|
+      tooltip = _(tooltip) if tooltip
+      btn = GoodButton.new(stock, text, toggle_group, tooltip) do |*args|
         yield(*args) if block_given?
       end
       btn.set_active(toggle) if not toggle.nil?
       $statusbar.pack_start(btn, false, false, 0)
       $status_fields[index] = btn
+      if (separ_pos & 2)>0
+        $statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
+      end
     end
 
     # Set properties of fiels in statusbar
@@ -22025,6 +22082,8 @@ module PandoraGtk
           #  btn.safe_set_active((key and key[PandoraCrypto::KV_Obj]))
           #end
         when 'Wizard'
+          PandoraGtk.show_log_bar(80)
+          return
           PandoraNet.start_or_stop_listen if PandoraNet.listen?
           PandoraNet.start_or_stop_hunt(false) if $hunter_thread
           $window.pool.close_all_session
@@ -22169,6 +22228,8 @@ module PandoraGtk
           PandoraGtk.show_session_panel
         when 'Radar'
           PandoraGtk.show_radar_panel
+        when 'LogBar'
+          PandoraGtk.show_log_bar
         when 'Fisher'
           PandoraGtk.show_fisher_panel
         else
@@ -22714,12 +22775,12 @@ module PandoraGtk
       log_view.set_readonly(true)
       log_view.border_width = 0
 
-      sw = Gtk::ScrolledWindow.new(nil, nil)
-      sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-      sw.shadow_type = Gtk::SHADOW_IN
-      sw.add(log_view)
-      sw.border_width = 0;
-      sw.set_size_request(-1, 40)
+      @log_sw = Gtk::ScrolledWindow.new(nil, nil)
+      log_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      log_sw.shadow_type = Gtk::SHADOW_IN
+      log_sw.add(log_view)
+      log_sw.border_width = 0;
+      log_sw.set_size_request(-1, 60)
 
       @radar_sw = RadarScrollWin.new
       radar_sw.set_size_request(0, -1)
@@ -22743,10 +22804,13 @@ module PandoraGtk
         $window.correct_fish_btn_state
       end
 
-      vpaned = Gtk::VPaned.new
-      vpaned.border_width = 2
-      vpaned.pack1(radar_hpaned, true, true)
-      vpaned.pack2(sw, false, true)
+      @log_vpaned = Gtk::VPaned.new
+      log_vpaned.border_width = 2
+      log_vpaned.pack1(radar_hpaned, true, true)
+      log_vpaned.pack2(log_sw, false, true)
+      log_vpaned.signal_connect('notify::position') do |widget, param|
+        $window.correct_log_btn_state
+      end
 
       #@cvpaned = CaptchaHPaned.new(vpaned)
       #@cvpaned.position = cvpaned.max_position
@@ -22756,6 +22820,11 @@ module PandoraGtk
       $statusbar.border_width = 0
       #$statusbar = Gtk::Statusbar.new
       #PandoraGtk.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
+
+      add_status_field(SF_Log, nil, 'Logbar', :log, false, 0) do
+        do_menu_act('LogBar')
+      end
+
       path = $pandora_app_dir
       path = '..'+path[-40..-1] if path.size>40
       pathlabel = Gtk::Label.new(path)
@@ -22765,34 +22834,34 @@ module PandoraGtk
       pathlabel.set_alignment(0.0, 0.5)
       $statusbar.pack_start(pathlabel, true, true, 0)
 
-      add_status_field(SF_Update, _('Version') + ': ' + _('Not checked')) do
+      add_status_field(SF_Update, _('Version') + ': ' + _('Not checked'), 'Update') do
         PandoraGtk.start_updating(true)
       end
-      add_status_field(SF_Lang, $lang) do
+      add_status_field(SF_Lang, $lang, 'Language') do
         do_menu_act('Blob')
       end
-      add_status_field(SF_Auth, _('Not logged'), :auth, false) do
+      add_status_field(SF_Auth, _('Not logged'), 'Authorize', :auth, false) do
         do_menu_act('Authorize')          #Gtk::Stock::DIALOG_AUTHENTICATION
       end
-      add_status_field(SF_Listen, '0', :listen, false) do
+      add_status_field(SF_Listen, '0', 'Listen', :listen, false) do
         do_menu_act('Listen')
       end
-      add_status_field(SF_Hunt, '0', :hunt, false) do
+      add_status_field(SF_Hunt, '0', 'Hunting', :hunt, false) do
         do_menu_act('Hunt')
       end
-      add_status_field(SF_Fisher, '0', :fish) do
+      add_status_field(SF_Fisher, '0', 'Fishers', :fish) do
         do_menu_act('Fisher')
       end
-      add_status_field(SF_Conn, '0', :session) do
+      add_status_field(SF_Conn, '0', 'Sessions', :session) do
         do_menu_act('Session')
       end
-      add_status_field(SF_Radar, '0', :radar, false) do
+      add_status_field(SF_Radar, '0', 'Radar', :radar, false) do
         do_menu_act('Radar')
       end
-      add_status_field(SF_Harvest, '0', :blob) do
+      add_status_field(SF_Harvest, '0', 'Files', :blob) do
         do_menu_act('Blob')
       end
-      add_status_field(SF_Search, '0', Gtk::Stock::FIND) do
+      add_status_field(SF_Search, '0', 'Search', Gtk::Stock::FIND) do
         do_menu_act('Search')
       end
       resize_eb = Gtk::EventBox.new
@@ -22850,7 +22919,7 @@ module PandoraGtk
       vbox.pack_start(menubar, false, false, 0)
       vbox.pack_start(toolbar, false, false, 0)
       #vbox.pack_start(cvpaned, true, true, 0)
-      vbox.pack_start(vpaned, true, true, 0)
+      vbox.pack_start(log_vpaned, true, true, 0)
       stat_sw = Gtk::ScrolledWindow.new(nil, nil)
       stat_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_NEVER)
       stat_sw.border_width = 0
@@ -22977,21 +23046,9 @@ module PandoraGtk
       #  false
       #end
       $window.do_on_start = PandoraUtils.get_param('do_on_start')
-      $window.signal_connect('show') do |window, event|
-        if $window.do_on_start and ($window.do_on_start > 0)
-          key = PandoraCrypto.current_key(false, true)
-          if (($window.do_on_start & 2) != 0) and key and (not PandoraNet.listen?)
-            PandoraNet.start_or_stop_listen
-          end
-          if (($window.do_on_start & 4) != 0) and key and (not $hunter_thread)
-            PandoraNet.start_or_stop_hunt(true, 2)
-          end
-          $window.do_on_start = 0
-        end
-        scheduler_step = PandoraUtils.get_param('scheduler_step')
-        init_scheduler(scheduler_step)
-        false
-      end
+      #$window.signal_connect('show') do |window, event|
+      #  false
+      #end
 
       @pool = PandoraNet::Pool.new($window)
 
@@ -23000,6 +23057,20 @@ module PandoraGtk
       $window.show_all
 
       @radar_hpaned.position = @radar_hpaned.max_position
+      @log_vpaned.position = @log_vpaned.max_position
+      if $window.do_on_start and ($window.do_on_start > 0)
+        key = PandoraCrypto.current_key(false, true)
+        if (($window.do_on_start & 2) != 0) and key and (not PandoraNet.listen?)
+          PandoraNet.start_or_stop_listen
+        end
+        if (($window.do_on_start & 4) != 0) and key and (not $hunter_thread)
+          PandoraNet.start_or_stop_hunt(true, 2)
+        end
+        $window.do_on_start = 0
+      end
+      scheduler_step = PandoraUtils.get_param('scheduler_step')
+      init_scheduler(scheduler_step)
+
 
       #------next must be after show main form ---->>>>
 

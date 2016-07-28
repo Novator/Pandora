@@ -423,3 +423,5 @@ Quote=>Цитата
 Cut=>Врезка
 Table=>Таблица
 _Help=>_Помощь
+Logbar=>Лоток
+Language=>Язык
