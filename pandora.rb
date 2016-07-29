@@ -3748,10 +3748,11 @@ module PandoraModel
           end
 
           if harvest_blob
-            reqs = $window.pool.find_search_request(sha1, PandoraModel::PK_BlobBody)
-            unless (reqs.is_a? Array) and (reqs.size>0)
-              harvest_blob = sha1
-            end
+            harvest_blob = nil
+            #!!!reqs = $window.pool.find_search_request(sha1, PandoraModel::PK_BlobBody)
+            #unless (reqs.is_a? Array) and (reqs.size>0)
+            #  harvest_blob = sha1
+            #end
           end
         end
       end
@@ -5890,10 +5891,7 @@ module PandoraNet
   EC_Bite      = 9     # Ответ рыбки (поклевка)
   EC_Fragment  = 10    # Кусок длинной записи
   EC_Mass      = 11    # Массовые уведомления
-  EC_Presence  = 12    # Уведомление присутствия (пришел, ушел)
-  EC_Fishing   = 13    # Уведомление о рыбалке
-  EC_Search    = 14    # Уведомление поиска (запрос)
-  EC_Chat      = 15    # Уведомление чата (открыл, закрыл, сообщение)
+  EC_Tweet     = 12    # Уведомление присутствия (пришел, ушел)
   EC_Sync      = 16    # !!! Последняя команда в серии, или индикация "живости"
   # --------------------------- EC_Sync must be last
   EC_Wait      = 126   # Временно недоступен
@@ -5932,11 +5930,8 @@ module PandoraNet
   ECC_Channel3_Closed   = 3
   ECC_Channel4_Fail     = 4
 
-  ECC_Mass0_Presence    = 0
-  ECC_Mass1_Fishing     = 1
-  ECC_Mass2_Search      = 2
-  ECC_Mass3_Chat        = 3
-  ECC_Mass4_Cascade     = 4
+  ECC_Mass_Req          = 0
+  #(1-127) is reserved for mass kinds MK_Chat, MK_Search and other
 
   ECC_Sync1_NoRecord    = 1
   ECC_Sync2_Encode      = 2
@@ -6043,6 +6038,8 @@ module PandoraNet
   MK_Chat       = 2
   MK_Search     = 3
   MK_Fishing    = 4
+  MK_Cascade    = 5
+  MK_CiferBox   = 6
 
   # Node list indexes
   # RU: Индексы в списке узлов
@@ -8076,8 +8073,8 @@ module PandoraNet
         [hook, rec]
       end
 
-      # Initialize the line, send hooks
-      # RU: Инициализировать линию, разослать крючки
+      # Initialize the fishing line, send hooks
+      # RU: Инициализировать рыбацкую линию, разослать крючки
       def init_line(line_order, akey_hash=nil)
         res = nil
         fisher, fisher_key, fisher_baseid, fish, fish_key = line_order
@@ -8087,7 +8084,7 @@ module PandoraNet
             PandoraUtils.log_message(LM_Warning, _('Somebody uses your ID'))
           else
             res = false
-            # check fishing to me
+            # check fishing to me (not using!!!)
             if false and ((fish == pool.person) or (fish_key == akey_hash))
               p log_mes+'Fishing to me!='+session.to_key.inspect
               # find existing (sleep) sessions
@@ -8117,7 +8114,7 @@ module PandoraNet
             end
 
             sessions = nil
-            # check fishing to there
+            # check fishing to outside
             fisher_sess = false
             if (@to_person and (fish == @to_person)) \
             or (@to_key and (fish_key == @to_key))
@@ -9023,8 +9020,8 @@ module PandoraNet
                     p '--ECC_Query_Fish line_order='+line_order.inspect
 
                     if init_line(line_order, pool.key_hash) == false
-                      p log_mes+'ADD fish order to pool list: line_order='+line_order.inspect
                       pool.add_fish_order(self, *line_order, @recv_models)
+                      p log_mes+'ADD fish order to pool list: line_order='+line_order.inspect
                     end
                   when ECC_Query_Search
                     # пришёл поисковый запрос
@@ -9112,9 +9109,9 @@ module PandoraNet
                     hook = rdata[0].ord
                     line_raw = rdata[1..-1]
                     line, len = PandoraUtils.pson_to_rubyobj(line_raw)
-                    fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid = line
-                    if len>0
+                    if (len>0) and line.is_a?(Array) and (line.size>=6)
                       # данные корректны
+                      fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid = line
                       p log_mes+'--ECC_News_Hook line='+line.inspect
                       if fish and (fish == pool.person) or \
                       fish_key and (fish_key == pool.key_hash) or
