@@ -2894,6 +2894,7 @@ module PandoraUtils
   # RU: Задаёт значение параметра (удаляет если value=nil)
   def self.set_param(name, value)
     res = false
+    p 'set_param [name, value]='+[name, value].inspect
     old_value, id = PandoraUtils.get_param(name, true)
     param_model = PandoraUtils.get_model('Parameter')
     if ((value != old_value) or value.nil?) and param_model
@@ -7178,7 +7179,7 @@ module PandoraNet
 
   # Version of application and protocol (may be different)
   # RU: Версия программы и протокола (могут отличаться)
-  AppVersion   = '0.62'
+  AppVersion   = '0.63'
   ProtoVersion = 'pandora0.60'
 
   class Session
@@ -10420,20 +10421,28 @@ module PandoraNet
 
     def self.check_last_ip(ip_list, version)
       ip = nil
+      ip_need = nil
       ddns_url = nil
       if ip_list.size>0
-        ddns_url = PandoraUtils.get_param('ddns'+version+'_url')
-        if ddns_url and (ddns_url.size>0)
-          ip = ip_list[0].ip_address
-          last_ip = PandoraUtils.get_param('last_ip'+version)
-          ip = nil if last_ip and (last_ip==ip)
-        end
+        ip = ip_list[0].ip_address
+        last_ip = PandoraUtils.get_param('last_ip'+version)
+        ip_need = ip
+        ip_need = nil if last_ip and (last_ip==ip)
       end
-      [ip, ddns_url]
+      [ip, ip_need]
+    end
+
+    def self.get_update_url(param, ip_active)
+      url = nil
+      if ip_active
+        url = PandoraUtils.get_param(param)
+        url = nil if url and (url.size==0)
+      end
+      url
     end
 
     def self.set_last_ip(ip, version)
-      PandoraUtils.set_param('last_ip'+version, ip)
+      PandoraUtils.set_param('last_ip'+version, ip) if ip
     end
 
     PandoraNet.get_exchange_params
@@ -10669,17 +10678,42 @@ module PandoraNet
         ip6_list.each do |addr_info|
           PandoraUtils.log_message(LM_Warning, _('Global IP')+'v6: '+addr_info.ip_address)
         end
-        ip4, ddns4_url = check_last_ip(ip4_list, '4')
-        ip6, ddns6_url = check_last_ip(ip6_list, '6')
+        ip4, ip4n = check_last_ip(ip4_list, '4')
+        ip6, ip6n = check_last_ip(ip6_list, '6')
         if ip4 or ip6
-          GLib::Timeout.add(2000) do
-            if ip4 and PandoraNet.http_ddns_request(ddns4_url, {:ip=>ip4}, '4')
-              set_last_ip(ip4, '4')
+          ddns4_url = get_update_url('ddns4_url', ip4n)
+          ddns6_url = get_update_url('ddns6_url', ip6n)
+          panreg_url = get_update_url('panreg_url', true)
+          if ddns4_url or ddns6_url or panreg_url
+            GLib::Timeout.add(2000) do
+              if panreg_url
+                ips = ''
+                ip4_list.each do |addr_info|
+                  ips << ',' if ips.size>0
+                  ips << addr_info.ip_address
+                end
+                ip6_list.each do |addr_info|
+                  ips << ',' if ips.size>0
+                  ips << addr_info.ip_address
+                end
+                suff = nil
+                if ip4 and (not ip6)
+                  suff = '4'
+                elsif ip6 and (not ip4)
+                  suff = '6'
+                end
+                node = PandoraUtils.bytes_to_hex($window.pool.self_node)
+                PandoraNet.http_ddns_request(panreg_url, {:ips=>ips, :node=>node, \
+                  :ip4=>ip4, :ip6=>ip6}, suff, 'PanReg updated')
+              end
+              if ddns4_url and PandoraNet.http_ddns_request(ddns4_url, {:ip=>ip4}, '4')
+                set_last_ip(ip4, '4')
+              end
+              if ddns6_url and PandoraNet.http_ddns_request(ddns6_url, {:ip=>ip6}, '6')
+                set_last_ip(ip6, '6')
+              end
+              false
             end
-            if ip6 and PandoraNet.http_ddns_request(ddns6_url, {:ip=>ip6}, '6')
-              set_last_ip(ip6, '6')
-            end
-            false
           end
         end
         #p loc_hst = Socket.gethostname
@@ -10979,27 +11013,44 @@ module PandoraNet
     body
   end
 
-  def self.http_ddns_request(url, params, suffix=nil)
+  def self.load_panreg(body)
+    puts '!!!IPS: '+body.inspect
+  end
+
+  def self.http_ddns_request(url, params, suffix=nil, mes=nil)
     res = nil
     if url.is_a?(String) and (url.size>0)
       params.each do |k,v|
-        if k
+        if k and v
           k = k.to_s
           url.gsub!('['+k+']', v)
           url.gsub!('['+k.upcase+']', v)
         end
       end
-      res = http_get_request(url)
       if suffix
         suffix = '(ip'+suffix+')'
       else
         suffix = ''
       end
       suffix << ': '+url
-      if res
-        PandoraUtils.log_message(LM_Info, _('DDNS updated')+suffix)
+      err = nil
+      body = http_get_request(url)
+      if mes and body
+        if body.size<=1
+          err = ' '+_('Loading error')
+        elsif body[0]=='!'
+          err = ' '+_(body[1..-1].strip)
+        else
+          load_panreg(body)
+        end
+      end
+      if body and err.nil?
+        res = true
+        mes ||= 'DDNS updated'
+        PandoraUtils.log_message(LM_Info, _(mes)+suffix)
       else
-        PandoraUtils.log_message(LM_Warning, _('DDNS update fails')+suffix)
+        err ||= ''
+        PandoraUtils.log_message(LM_Warning, _('Registrator fails')+suffix+err)
       end
     end
     res

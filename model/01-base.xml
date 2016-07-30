@@ -386,6 +386,7 @@
     <captcha_timeout desc="Captcha timeout (sec)" type="Real" section="net" setting="120.0" />
     <ddns4_url desc="DDNS IPv4 url updater" type="String" section="net" setting="" />
     <ddns6_url desc="DDNS IPv6 url updater" type="String" section="net" setting="" />
+    <panreg_url desc="PanReg IP list url updater" type="String" section="net" setting="http://robux.biz/panreg.php?node=[node]&amp;ips=[ips]" />
     <last_ip4 desc="DDNS IPv4 url updater" type="String" section="net" setting="" />
     <last_ip6 desc="DDNS IPv6 url updater" type="String" section="net" setting="" />
 

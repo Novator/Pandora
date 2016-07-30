@@ -52,7 +52,7 @@ echo "`grep 'AppVersion  ' pandora.rb | grep -o [\.[:digit:].]*` `md5sum ./pando
 
 ## Push files from local to repository
 #git add --all
-git commit -a -m "version 0.62 alpha"
+git commit -a -m "version 0.63 alpha"
 git push -u bitbuc master
 git push -u github master
 #git push -u bitbuc develop
