@@ -384,6 +384,10 @@
     <exchange_timeout desc="Exchange timeout (sec)" type="Real" section="net" setting="5.0" />
     <dialog_timeout desc="Dialog timeout (sec)" type="Real" section="net" setting="90.0" />
     <captcha_timeout desc="Captcha timeout (sec)" type="Real" section="net" setting="120.0" />
+    <ddns4_url desc="DDNS IPv4 url updater" type="String" section="net" setting="" />
+    <ddns6_url desc="DDNS IPv6 url updater" type="String" section="net" setting="" />
+    <last_ip4 desc="DDNS IPv4 url updater" type="String" section="net" setting="" />
+    <last_ip6 desc="DDNS IPv6 url updater" type="String" section="net" setting="" />
 
     <ask_kinds_m10 desc="Ask kinds above -1.0" type="String" section="net" setting="" />
     <ask_kinds_p01 desc="Ask kinds above +0.1" type="String" section="net" setting="2" />

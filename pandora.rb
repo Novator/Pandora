@@ -3601,6 +3601,27 @@ module PandoraModel
     trust
   end
 
+  # Float trust (-1..+1) to public level 21 (0..20)
+  # RU: Дробное доверие в уровень публикации 21
+  def self.trust2_to_pub21(trust)
+    trust ||= -1
+    res = (trust*10).round+10
+  end
+
+  # Float trust (-1..+1) to public relation kind (235..255)
+  # RU: Дробное доверие в вид связи "публикую"
+  def self.trust2_to_pub235(trust)
+    res = RK_MinPublic + trust2_to_pub21(trust)
+  end
+
+  # Trust to str with view like "0.2"
+  # RU: Доверие в строку вида "0.2"
+  def self.trust_to_str(trust)
+    trust ||= 0.0
+    trust = transform_trust(trust, false)
+    res = ((trust*10).round/10.0).to_s
+  end
+
   # Pandora record kind
   # RU: Тип записей Пандоры
   PK_Person    = 1
@@ -3687,7 +3708,8 @@ module PandoraModel
     res
   end
 
-  $keep_for_trust  = 0.5
+  $keep_for_trust  = 0.5      # set "Support" flag for records with creator trust
+  $command_for_trust  = 0.5   # allow commands for user with trust
   $max_relative_path_depth = 2
 
   # Save record
@@ -3960,19 +3982,6 @@ module PandoraModel
       end
     end
     sel
-  end
-
-  # Float trust (-1..+1) to public level 21 (0..20)
-  # RU: Дробное доверие в уровень публикации 21
-  def self.trust2_to_pub21(trust)
-    trust ||= -1
-    res = (trust*10).round+10
-  end
-
-  # Float trust (-1..+1) to public relation kind (235..255)
-  # RU: Дробное доверие в вид связи "публикую"
-  def self.trust2_to_pub235(trust)
-    res = RK_MinPublic + trust2_to_pub21(trust)
   end
 
   # Get panhash list of published recs from time for level and kinds
@@ -7169,7 +7178,7 @@ module PandoraNet
 
   # Version of application and protocol (may be different)
   # RU: Версия программы и протокола (могут отличаться)
-  AppVersion   = '0.61'
+  AppVersion   = '0.62'
   ProtoVersion = 'pandora0.60'
 
   class Session
@@ -7647,7 +7656,7 @@ module PandoraNet
 
     def skey_trust
       res = @skey[PandoraCrypto::KV_Trust]
-      res = -1.0 if not (trust.is_a? Float)
+      res = -1.0 if not res.is_a?(Float)
       res
     end
 
@@ -8892,38 +8901,46 @@ module PandoraNet
                       p '===>Chat command: '+[chat_com, chat_par].inspect
                       chat_com_par = chat_com
                       chat_com_par += ' '+chat_par if chat_par
-                      if chat_par and ($prev_chat_com_par != chat_com_par)
-                        $prev_chat_com_par = chat_com_par
-                        PandoraUtils.log_message(LM_Info, _('Chat command')+': '+Utf8String.new(chat_com_par))
-                        case chat_com
-                          when 'echo'
-                            if dialog and (not dialog.destroyed?)
-                              dialog.send_mes(chat_par)
+                      if skey_trust >= $command_for_trust
+                        if chat_par and ($prev_chat_com_par != chat_com_par)
+                          $prev_chat_com_par = chat_com_par
+                          PandoraUtils.log_message(LM_Info, _('Run chat command')+\
+                            ' ['+Utf8String.new(chat_com_par)+']')
+                          case chat_com
+                            when 'echo'
+                              if dialog and (not dialog.destroyed?)
+                                dialog.send_mes(chat_par)
+                              else
+                                add_send_segment(EC_Message, true, chat_par)
+                              end
+                            when 'menu'
+                              $window.do_menu_act(chat_par)
+                            when 'sound'
+                              PandoraUtils.play_mp3(chat_par, nil, true)
+                            when 'tunnel'
+                              params = PandoraUtils.parse_params(chat_par)
+                              from = params[:from]
+                              from ||= params[:from_here]
+                              direct = nil
+                              if from
+                                direct = true
+                              else
+                                direct = false
+                                from = params[:from_there]
+                              end
+                              if not direct.nil?
+                                add = (not (params.has_key?(:del) or params.has_key?(:delete)))
+                                control_tunnel(direct, add, from, params[:to], params[:proto])
+                              end
                             else
-                              add_send_segment(EC_Message, true, chat_par)
-                            end
-                          when 'menu'
-                            $window.do_menu_act(chat_par)
-                          when 'sound'
-                            PandoraUtils.play_mp3(chat_par, nil, true)
-                          when 'tunnel'
-                            params = PandoraUtils.parse_params(chat_par)
-                            from = params[:from]
-                            from ||= params[:from_here]
-                            direct = nil
-                            if from
-                              direct = true
-                            else
-                              direct = false
-                              from = params[:from_there]
-                            end
-                            if not direct.nil?
-                              add = (not (params.has_key?(:del) or params.has_key?(:delete)))
-                              control_tunnel(direct, add, from, params[:to], params[:proto])
-                            end
-                          else
-                            PandoraUtils.log_message(LM_Info, _('Unknown chat command')+': '+chat_com)
+                              PandoraUtils.log_message(LM_Info, _('Unknown chat command')+': '+chat_com)
+                          end
                         end
+                      else
+                        PandoraUtils.log_message(LM_Info, _('Chat command is denied')+ \
+                          ' ['+Utf8String.new(chat_com_par)+'] '+_('trust')+'='+ \
+                          PandoraModel.trust_to_str(skey_trust)+' '+_('need')+\
+                          '='+$command_for_trust.to_s)
                       end
                     end
                   end
@@ -10400,6 +10417,25 @@ module PandoraNet
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen
+
+    def self.check_last_ip(ip_list, version)
+      ip = nil
+      ddns_url = nil
+      if ip_list.size>0
+        ddns_url = PandoraUtils.get_param('ddns'+version+'_url')
+        if ddns_url and (ddns_url.size>0)
+          ip = ip_list[0].ip_address
+          last_ip = PandoraUtils.get_param('last_ip'+version)
+          ip = nil if last_ip and (last_ip==ip)
+        end
+      end
+      [ip, ddns_url]
+    end
+
+    def self.set_last_ip(ip, version)
+      PandoraUtils.set_param('last_ip'+version, ip)
+    end
+
     PandoraNet.get_exchange_params
     if listen?
       # Need to stop
@@ -10461,9 +10497,6 @@ module PandoraNet
           host = '::'
           p "ipv6 all"
         end
-        p Socket.ip_address_list
-        #p loc_hst = Socket.gethostname
-        #p Socket.gethostbyname(loc_hst)[3]
 
         # TCP Listener
         tcp_port = $tcp_port
@@ -10473,12 +10506,12 @@ module PandoraNet
           $tcp_listen_thread = Thread.new do
             begin
               server = TCPServer.open(host, tcp_port)
-              addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
-              PandoraUtils.log_message(LM_Info, _('Listening address')+': '+addr_str)
+              addr_str = 'TCP ['+server.addr[3].to_s+']:'+server.addr[1].to_s
+              PandoraUtils.log_message(LM_Info, _('Listening')+' '+addr_str)
             rescue
               server = nil
-              PandoraUtils.log_message(LM_Warning, _('Cannot open port')+\
-                ' TCP '+host.to_s+':'+tcp_port.to_s)
+              str = 'TCP ['+host.to_s+']:'+tcp_port.to_s
+              PandoraUtils.log_message(LM_Warning, _('Cannot open')+' '+str)
             end
             Thread.current[:tcp_server] = server
             Thread.current[:listen_tcp] = (server != nil)
@@ -10493,15 +10526,15 @@ module PandoraNet
 
               if Thread.current[:listen_tcp] and (not server.closed?) and socket
                 host_ip = socket.peeraddr[2]
-                unless $window.pool.is_black?(host_ip)
+                if $window.pool.is_black?(host_ip)
+                  PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
+                else
                   host_name = socket.peeraddr[3]
                   port = socket.peeraddr[1]
                   proto = 'tcp'
                   p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
                   session = Session.new(socket, host_name, host_ip, port, proto, \
                     0, nil, nil, nil, nil)
-                else
-                  PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
                 end
               end
             end
@@ -10533,13 +10566,15 @@ module PandoraNet
               #udp_server.setsockopt(Socket::IPPROTO_IP, Socket::IP_ADD_MEMBERSHIP, hton+hton2) #listen multicast
               #udp_server.setsockopt(Socket::SOL_IP, Socket::IP_MULTICAST_LOOP, true) #come back (def on)
               udp_server.bind(host, udp_port)
-
               #addr_str = server.addr.to_s
-              udp_addr_str = udp_server.addr[3].to_s+(' udp')+udp_server.addr[1].to_s
-              PandoraUtils.log_message(LM_Info, _('Listening address')+': '+udp_addr_str)
-            rescue
+              udp_addr_str = 'UDP ['+udp_server.addr[3].to_s+']:'+udp_server.addr[1].to_s
+              PandoraUtils.log_message(LM_Info, _('Listening')+' '+udp_addr_str)
+            rescue => err
               udp_server = nil
-              PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' UDP '+host.to_s+':'+udp_port.to_s)
+              if host != '::'
+                str = 'UDP ['+host.to_s+']:'+tcp_port.to_s+' '+Utf8String.new(err.message)
+                PandoraUtils.log_message(LM_Warning, _('Cannot open')+' '+str)
+              end
             end
             Thread.current[:udp_server] = udp_server
             Thread.current[:listen_udp] = (udp_server != nil)
@@ -10618,6 +10653,37 @@ module PandoraNet
             $window.correct_lis_btn_state
           end
         end
+
+        ip_list = Socket.ip_address_list
+        ip4_list = ip_list.select do |addr_info|
+          (addr_info.ipv4? and (not addr_info.ipv4_loopback?) \
+          and (not addr_info.ipv4_private?) and (not addr_info.ipv4_multicast?))
+        end
+        ip6_list = ip_list.select do |addr_info|
+          (addr_info.ipv6? and (not addr_info.ipv6_loopback?) \
+          and (not addr_info.ipv6_linklocal?) and (not addr_info.ipv6_multicast?))
+        end
+        ip4_list.each do |addr_info|
+          PandoraUtils.log_message(LM_Warning, _('Global IP')+'v4: '+addr_info.ip_address)
+        end
+        ip6_list.each do |addr_info|
+          PandoraUtils.log_message(LM_Warning, _('Global IP')+'v6: '+addr_info.ip_address)
+        end
+        ip4, ddns4_url = check_last_ip(ip4_list, '4')
+        ip6, ddns6_url = check_last_ip(ip6_list, '6')
+        if ip4 or ip6
+          GLib::Timeout.add(2000) do
+            if ip4 and PandoraNet.http_ddns_request(ddns4_url, {:ip=>ip4}, '4')
+              set_last_ip(ip4, '4')
+            end
+            if ip6 and PandoraNet.http_ddns_request(ddns6_url, {:ip=>ip6}, '6')
+              set_last_ip(ip6, '6')
+            end
+            false
+          end
+        end
+        #p loc_hst = Socket.gethostname
+        #p Socket.gethostbyname(loc_hst)[3]
       end
       $window.correct_lis_btn_state
     end
@@ -10776,6 +10842,167 @@ module PandoraNet
     elsif continue and $hunter_thread and $hunter_thread.alive? and $hunter_thread.stop?
       $hunter_thread.run
     end
+  end
+
+  def self.detect_proxy
+    proxy = PandoraUtils.get_param('proxy_server')
+    if proxy.is_a? String
+      proxy = proxy.split(':')
+      proxy ||= []
+      proxy = [proxy[0..-4].join(':'), *proxy[-3..-1]] if (proxy.size>4)
+      proxy[1] = proxy[1].to_i if (proxy.size>1)
+      proxy[2] = nil if (proxy.size>2) and (proxy[2]=='')
+      proxy[3] = nil if (proxy.size>3) and (proxy[3]=='')
+      PandoraUtils.log_message(LM_Trace, _('Proxy is used')+' '+proxy.inspect)
+    else
+      proxy = []
+    end
+    proxy
+  end
+
+  def self.parse_url(url)
+    host = nil
+    path = nil
+    port = nil
+    scheme = nil
+    begin
+      uri = url
+      uri = URI.parse(uri) if uri.is_a? String
+      host = uri.host
+      path = uri.path
+      port = uri.port
+      scheme = uri.scheme
+      simpe = false
+    rescue => err
+      PandoraUtils.log_message(LM_Warning, _('URI parse fails')+' ['+url+'] '+\
+        Utf8String.new(err.message))
+    end
+    [host, path, port, scheme]
+  end
+
+
+  HTTP_TIMEOUT  = 5*60    #5 minutes
+
+  def self.http_connect(url)
+    http = nil
+    host, path, port, scheme = parse_url(url)
+    port_str = ''
+    port_str = ':'+port.to_s if port
+    PandoraUtils.log_message(LM_Info, _('Connect to')+': '+host+path+port_str+'..')
+    begin
+      proxy = PandoraNet.detect_proxy
+      http = Net::HTTP.new(host, port, *proxy)
+      if scheme == 'https'
+        http.use_ssl = true
+        http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+      end
+      http.open_timeout = HTTP_TIMEOUT
+    rescue => err
+      http = nil
+      PandoraUtils.log_message(LM_Trace, _('Connection error')+\
+        [host, port].inspect)
+      puts err.message
+    end
+    [http, host, path]
+  end
+
+  def self.http_reconnect_if_need(http, time, url)
+    if (not http.active?) or (Time.now.to_i >= (time + HTTP_TIMEOUT))
+      host, path, port, scheme = parse_url(url)
+      begin
+        proxy = PandoraNet.detect_proxy
+        http = Net::HTTP.new(host, port, *proxy)
+        if scheme == 'https'
+          http.use_ssl = true
+          http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+        end
+        http.open_timeout = HTTP_TIMEOUT
+      rescue => err
+        http = nil
+        PandoraUtils.log_message(LM_Trace, _('Connection error')+\
+          [host, port].inspect)
+        puts err.message
+      end
+    end
+    http
+  end
+
+  # Http get body with full URL
+  # RU: Взять тело по полному URL через http
+  def self.http_get_body_with_url(http, url)
+    body = nil
+    if url
+      PandoraUtils.log_message(LM_Info, _('Download from') + ': ' + \
+        url + '..')
+      #begin
+        uri = URI.parse(url)
+        request = Net::HTTP::Get.new(uri)
+        response = http.request(request)
+        body = response.body if response.is_a?(Net::HTTPSuccess)
+      #rescue => err
+      #  PandoraUtils.log_message(LM_Warning, _('Http download fails')+': '+err.message)
+      #end
+    end
+    body
+  end
+
+  # Http get body
+  # RU: Взять тело по Http
+  def self.http_get_body_from_path(http, path, host='')
+    body = nil
+    if http and path
+      PandoraUtils.log_message(LM_Info, _('Download from') + ': ' + \
+        host + path + '..')
+      begin
+        response = http.request_get(path)
+        body = response.body if response.is_a?(Net::HTTPSuccess)
+      rescue => err
+        PandoraUtils.log_message(LM_Warning, _('Http download fails')+': '+err.message)
+      end
+    end
+    body
+  end
+
+  def self.http_get_request(url, show_log=nil)
+    body = nil
+    if url.is_a?(String) and (url.size>0)
+      if show_log
+        PandoraUtils.log_message(LM_Info, _('Download from') + ': ' + url + '..')
+      end
+      begin
+        uri = URI.parse(url)
+        body = Net::HTTP.get(uri)
+      rescue => err
+        PandoraUtils.log_message(LM_Warning, _('Http download fails')+': '+err.message)
+      end
+    end
+    body
+  end
+
+  def self.http_ddns_request(url, params, suffix=nil)
+    res = nil
+    if url.is_a?(String) and (url.size>0)
+      params.each do |k,v|
+        if k
+          k = k.to_s
+          url.gsub!('['+k+']', v)
+          url.gsub!('['+k.upcase+']', v)
+        end
+      end
+      res = http_get_request(url)
+      if suffix
+        suffix = '(ip'+suffix+')'
+      else
+        suffix = ''
+      end
+      suffix << ': '+url
+      if res
+        PandoraUtils.log_message(LM_Info, _('DDNS updated')+suffix)
+      else
+        PandoraUtils.log_message(LM_Warning, _('DDNS update fails')+suffix)
+      end
+    end
+    res
   end
 
 end
@@ -18994,51 +19221,15 @@ module PandoraGtk
   # RU: Проверить обновления и скачать их
   def self.start_updating(all_step=true)
 
-    # Update file
-    # RU: Обновить файл
-    def self.update_file(http, path, pfn, host='')
-      res = false
-      dir = File.dirname(pfn)
-      FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
-      if Dir.exists?(dir)
-        begin
-          PandoraUtils.log_message(LM_Info, _('Download from') + ': ' + \
-            host + path + '..')
-          response = http.request_get(path)
-          filebody = response.body
-          if filebody and (filebody.size>0)
-            File.open(pfn, 'wb+') do |file|
-              file.write(filebody)
-              res = true
-              PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
-            end
-          else
-            PandoraUtils.log_message(LM_Warning, _('Empty downloaded body'))
-          end
-        rescue => err
-          PandoraUtils.log_message(LM_Warning, _('Update error')+': '+err.message)
-        end
-      else
-        PandoraUtils.log_message(LM_Warning, _('Cannot create directory')+': '+dir)
-      end
-      res
-    end
-
-    def self.connect_http(main_uri, curr_size, step, p_addr=nil, p_port=nil, p_user=nil, p_pass=nil)
-      http = nil
+    def self.connect_http_and_check_size(url, curr_size, step)
       time = 0
-      PandoraUtils.log_message(LM_Info, _('Connect to') + ': ' + \
-        main_uri.host + main_uri.path + ':' + main_uri.port.to_s + '..')
-      begin
-        http = Net::HTTP.new(main_uri.host, main_uri.port, p_addr, p_port, p_user, p_pass)
-        http.use_ssl = true
-        http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-        http.open_timeout = 60*5
-        response = http.request_head(main_uri.path)
+      http, host, path = PandoraNet.http_connect(url)
+      if http
+        response = http.request_head(path)
         act_size = response.content_length
         if not act_size
           sleep(0.5)
-          response = http.request_head(main_uri.path)
+          response = http.request_head(path)
           act_size = response.content_length
         end
         PandoraUtils.set_param('last_check', Time.now)
@@ -19051,31 +19242,48 @@ module PandoraGtk
         else
           time = Time.now.to_i
         end
-      rescue => err
-        http = nil
+      else
         $window.set_status_field(SF_Update, 'Connection error')
         PandoraUtils.log_message(LM_Warning, _('Cannot connect to repo to check update')+\
-          [main_uri.host, main_uri.port].inspect)
-        puts err.message
+          [host, port].inspect)
       end
-      [http, time, step]
+      [http, time, step, host, path]
     end
 
-    def self.reconnect_if_need(http, time, main_uri, p_addr=nil, p_port=nil, p_user=nil, p_pass=nil)
-      if (not http.active?) or (Time.now.to_i >= (time + 60*5))
-        begin
-          http = Net::HTTP.new(main_uri.host, main_uri.port, p_addr, p_port, p_user, p_pass)
-          http.use_ssl = true
-          http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-          http.open_timeout = 60*5
-        rescue => err
-          http = nil
-          $window.set_status_field(SF_Update, 'Connection error')
-          PandoraUtils.log_message(LM_Warning, _('Cannot reconnect to repo to update'))
-          puts err.message
-        end
+    def self.reconnect_if_need(http, time, url)
+      http = PandoraNet.http_reconnect_if_need(http, time, url)
+      if not http
+        $window.set_status_field(SF_Update, 'Connection error')
+        PandoraUtils.log_message(LM_Warning, _('Cannot reconnect to repo to update'))
       end
       http
+    end
+
+    # Update file
+    # RU: Обновить файл
+    def self.update_file(http, path, pfn, host='')
+      res = false
+      dir = File.dirname(pfn)
+      FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
+      if Dir.exists?(dir)
+        filebody = PandoraNet.http_get_body_from_path(http, path, host)
+        if filebody and (filebody.size>0)
+          begin
+            File.open(pfn, 'wb+') do |file|
+              file.write(filebody)
+              res = true
+              PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
+            end
+          rescue => err
+            PandoraUtils.log_message(LM_Warning, _('Update error')+': '+err.message)
+          end
+        else
+          PandoraUtils.log_message(LM_Warning, _('Empty downloaded body'))
+        end
+      else
+        PandoraUtils.log_message(LM_Warning, _('Cannot create directory')+': '+dir)
+      end
+      res
     end
 
     if $download_thread and $download_thread.alive?
@@ -19095,18 +19303,7 @@ module PandoraGtk
           if File.stat(main_script).writable?
             update_zip = PandoraUtils.get_param('update_zip_first')
             update_zip = true if update_zip.nil?
-            proxy = PandoraUtils.get_param('proxy_server')
-            if proxy.is_a? String
-              proxy = proxy.split(':')
-              proxy ||= []
-              proxy = [proxy[0..-4].join(':'), *proxy[-3..-1]] if (proxy.size>4)
-              proxy[1] = proxy[1].to_i if (proxy.size>1)
-              proxy[2] = nil if (proxy.size>2) and (proxy[2]=='')
-              proxy[3] = nil if (proxy.size>3) and (proxy[3]=='')
-              PandoraUtils.log_message(LM_Info, _('Proxy is used')+' '+proxy.inspect)
-            else
-              proxy = []
-            end
+
             step = 0
             while (step<2) do
               step += 1
@@ -19126,18 +19323,18 @@ module PandoraGtk
                     if File.stat(zip_local).writable?
                       #zip_on_repo = 'https://codeload.github.com/Novator/Pandora/zip/master'
                       #dir_in_zip = 'Pandora-maste'
-                      zip_on_repo = 'https://bitbucket.org/robux/pandora/get/master.zip'
+                      zip_url = 'https://bitbucket.org/robux/pandora/get/master.zip'
                       dir_in_zip = 'robux-pandora'
-                      main_uri = URI(zip_on_repo)
-                      http, time, step = connect_http(main_uri, zip_size, step, *proxy)
+                      http, time, step, host, path = connect_http_and_check_size(zip_url, \
+                        zip_size, step)
                       if http
                         PandoraUtils.log_message(LM_Info, _('Need update'))
                         $window.set_status_field(SF_Update, 'Need update')
                         Thread.stop
-                        http = reconnect_if_need(http, time, main_uri, *proxy)
+                        http = reconnect_if_need(http, time, zip_url)
                         if http
                           $window.set_status_field(SF_Update, 'Doing')
-                          res = update_file(http, main_uri.path, zip_local, main_uri.host)
+                          res = update_file(http, path, zip_local, host)
                           #res = true
                           if res
                             # Delete old arch paths
@@ -19212,17 +19409,18 @@ module PandoraGtk
                 end
                 update_zip = false
               else   # update with https from sources
-                main_uri = URI('https://raw.githubusercontent.com/Novator/Pandora/master/pandora.rb')
-                http, time, step = connect_http(main_uri, curr_size, step, *proxy)
+                url = 'https://raw.githubusercontent.com/Novator/Pandora/master/pandora.rb'
+                http, time, step, host, path = connect_http_and_check_size(url, \
+                  curr_size, step)
                 if http
                   PandoraUtils.log_message(LM_Info, _('Need update'))
                   $window.set_status_field(SF_Update, 'Need update')
                   Thread.stop
-                  http = reconnect_if_need(http, time, main_uri, *proxy)
+                  http = reconnect_if_need(http, time, url)
                   if http
                     $window.set_status_field(SF_Update, 'Doing')
                     # updating pandora.rb
-                    downloaded = update_file(http, main_uri.path, main_script, main_uri.host)
+                    downloaded = update_file(http, path, main_script, host)
                     # updating other files
                     UPD_FileList.each do |fn|
                       pfn = File.join($pandora_app_dir, fn)
@@ -19396,6 +19594,7 @@ module PandoraGtk
               view = ps['view']
               view ||= PandoraUtils.pantype_to_view(type)
               field[FI_View] = view
+              field[FI_FSize] = 256 if not view
             end
           end
 
