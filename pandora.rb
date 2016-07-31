@@ -10707,31 +10707,33 @@ module PandoraNet
           panreg_url = get_update_url('panreg_url', true)
           if ddns4_url or ddns6_url or panreg_url
             GLib::Timeout.add(2000) do
-              if panreg_url
-                ips = ''
-                ip4_list.each do |addr_info|
-                  ips << ',' if ips.size>0
-                  ips << addr_info.ip_address
+              Thread.new do
+                if panreg_url
+                  ips = ''
+                  ip4_list.each do |addr_info|
+                    ips << ',' if ips.size>0
+                    ips << addr_info.ip_address
+                  end
+                  ip6_list.each do |addr_info|
+                    ips << ',' if ips.size>0
+                    ips << addr_info.ip_address
+                  end
+                  suff = nil
+                  if ip4 and (not ip6)
+                    suff = '4'
+                  elsif ip6 and (not ip4)
+                    suff = '6'
+                  end
+                  node = PandoraUtils.bytes_to_hex($window.pool.self_node)
+                  PandoraNet.http_ddns_request(panreg_url, {:ips=>ips, :node=>node, \
+                    :ip4=>ip4, :ip6=>ip6}, suff, 'PanReg updated')
                 end
-                ip6_list.each do |addr_info|
-                  ips << ',' if ips.size>0
-                  ips << addr_info.ip_address
+                if ddns4_url and PandoraNet.http_ddns_request(ddns4_url, {:ip=>ip4}, '4')
+                  set_last_ip(ip4, '4')
                 end
-                suff = nil
-                if ip4 and (not ip6)
-                  suff = '4'
-                elsif ip6 and (not ip4)
-                  suff = '6'
+                if ddns6_url and PandoraNet.http_ddns_request(ddns6_url, {:ip=>ip6}, '6')
+                  set_last_ip(ip6, '6')
                 end
-                node = PandoraUtils.bytes_to_hex($window.pool.self_node)
-                PandoraNet.http_ddns_request(panreg_url, {:ips=>ips, :node=>node, \
-                  :ip4=>ip4, :ip6=>ip6}, suff, 'PanReg updated')
-              end
-              if ddns4_url and PandoraNet.http_ddns_request(ddns4_url, {:ip=>ip4}, '4')
-                set_last_ip(ip4, '4')
-              end
-              if ddns6_url and PandoraNet.http_ddns_request(ddns6_url, {:ip=>ip6}, '6')
-                set_last_ip(ip6, '6')
               end
               false
             end
