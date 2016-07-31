@@ -16,10 +16,6 @@ import time, datetime, termios, fcntl, sys, os, socket, threading, struct, \
 # Setup functions
 # RU: Настроечные функции
 
-# ConfigParser object
-# RU: Объект ConfigParser
-config = None
-
 # Get parameter value from config
 # RU: Взять значение параметра из конфига
 def getparam(sect, name, akind='str'):
@@ -1105,7 +1101,8 @@ class PoolThread(threading.Thread):
     print('Done.')
 
 
-#=== RUN PANGATE ===
+# === Running the PanGate!
+# === RU: Запуск ПанГейта!
 
 #a = int(q)
 #s = [123, 'привет', False, 456.78, datetime.datetime.now()]
@@ -1155,7 +1152,7 @@ try:
     pool.start()
     print('Pool thread is active...')
     print('Press Q to stop and quit.')
-    print('(screen: Ctrl+a+d - detach, Ctrl+a+k - kill, "screen -r" to resume)')
+    print('(screen: Ctrl+A,D - detach, Ctrl+A,K - kill, "screen -r" to resume)')
     working = True
     while working:
       time.sleep(0.5)  # prevent overload cpu

@@ -610,12 +610,14 @@ module PandoraUtils
   # Open link in web browser, email client or file manager
   # RU: Открывает ссылку в браузере, почтовике или проводнике
   def self.external_open(link, oper=nil)
+    res = nil
     if PandoraUtils.os_family=='windows'
-      PandoraUtils.win_shell_execute(link, oper)
+      res = PandoraUtils.win_shell_execute(link, oper)
     else
-      pid = Process.spawn('xdg-open', link)
-      Process.detach(pid) if pid
+      res = Process.spawn('xdg-open', link)
+      Process.detach(res) if res
     end
+    res
   end
 
   # Convert ruby date to string
@@ -3254,6 +3256,19 @@ module PandoraUtils
     res
   end
 
+  # Execute external command
+  # RU: Запускает внешнюю программу
+  def self.exec_cmd(cmd, wait_sec=nil)
+    res = nil
+    if PandoraUtils.os_family=='windows'
+      res = win_exec(cmd, wait_sec)
+    else
+      res = Process.spawn(cmd)
+      Process.detach(res) if res
+    end
+    res
+  end
+
   # Restart the application
   # RU: Перезапускает программу
   def self.restart_app
@@ -3274,14 +3289,7 @@ module PandoraUtils
     restart_scr = PandoraUtils.add_quotes(restart_scr)
     restart_cmd = ruby_int + ' ' + restart_scr + ' '+run_cmd
     puts 'Execute restart script ['+restart_cmd+']'
-    res = nil
-    if PandoraUtils.os_family=='windows'
-      res = win_exec(restart_cmd)
-    else
-      res = Process.spawn(restart_cmd)
-      Process.detach(res) if res
-    end
-    #$window.destroy if res
+    res = PandoraUtils.exec_cmd(restart_cmd)
     Kernel.exit if res
   end
 
@@ -3710,7 +3718,8 @@ module PandoraModel
   end
 
   $keep_for_trust  = 0.5      # set "Support" flag for records with creator trust
-  $command_for_trust  = 0.5   # allow commands for user with trust
+  $trust_for_chatcom  = 0.7   # trust level for all chat commands
+  $special_chatcom_trusts  = {'echo'=>0.1, 'exec'=>0.9, 'sound'=>0.2, 'tunnel'=>0.8}
   $max_relative_path_depth = 2
 
   # Save record
@@ -4934,7 +4943,7 @@ module PandoraCrypto
               sign = key_obj.sign(hash_obj, data)
             rescue => err
               sign = nil
-              p 'SIGN CREATE ERROR: '+err.message
+              p 'SIGN CREATE ERROR: '+Utf8String.new(err.message)
             end
           end
         end
@@ -6442,7 +6451,7 @@ module PandoraNet
             begin
               fragfile.truncate(frags.bytesize)
             rescue => err
-              p 'ERROR TRUNCATE: '+err.message
+              p 'ERROR TRUNCATE: '+Utf8String.new(err.message)
             end
           end
           punnet[PI_Frags] = frags
@@ -7908,7 +7917,7 @@ module PandoraNet
           filter = nil
         end
 
-        p '=====%%%% %%%: [aaddr, adomain, @host_ip, @host_name]'+[aaddr, adomain, @host_ip, @host_name].inspect
+        #p '=====%%%% %%%: [aaddr, adomain, @host_ip, @host_name]'+[aaddr, adomain, @host_ip, @host_name].inspect
 
         values = {}
         if (not acreator) or (not acreated)
@@ -7937,7 +7946,7 @@ module PandoraNet
         if inaddr and (inaddr != '')
           host, port, proto = pool.decode_node(inaddr)
           #p log_mes+'ADDR [addr, host, port, proto]='+[addr, host, port, proto].inspect
-          if host and (host != '') and ((not adomain) or (adomain=='')) #and trusted
+          if host and (host.size>0) and (adomain.nil? or (adomain.size==0)) #and trusted
             adomain = host
             port = PandoraNet::DefTcpPort if (not port) or (port==0)
             proto ||= ''
@@ -7959,14 +7968,16 @@ module PandoraNet
             baddr_type = sel[0][4]
 
             aaddr = baddr if (not aaddr) or (aaddr=='')
-            adomain = bdomain if (not adomain) or (adomain=='')
+            adomain = bdomain if bdomain and (bdomain.size>0) \
+              and (adomain.nil? or (adomain==''))
 
             values[:addr_type] ||= baddr_type
             node_model.update(nil, nil, filter2)
           end
         end
 
-        adomain = @host_name if (not adomain) or (adomain=='')
+        adomain = @host_name if @host_name and (@host_name.size>0) \
+          and (adomain.nil? or (adomain==''))
         aaddr = @host_ip if (not aaddr) or (aaddr=='')
 
         values[:addr] = aaddr
@@ -8897,12 +8908,14 @@ module PandoraNet
                     and (text.size>1) and ((text[0]=='!') or (text[0]=='/'))
                       i = text.index(' ')
                       i ||= text.size
-                      chat_com = text[1..i-1]
+                      chat_com = text[1..i-1].downcase
                       chat_par = text[i+1..-1]
                       p '===>Chat command: '+[chat_com, chat_par].inspect
                       chat_com_par = chat_com
                       chat_com_par += ' '+chat_par if chat_par
-                      if skey_trust >= $command_for_trust
+                      trust_level = $special_chatcom_trusts[chat_com]
+                      trust_level ||= $trust_for_chatcom
+                      if skey_trust >= trust_level
                         if chat_par and ($prev_chat_com_par != chat_com_par)
                           $prev_chat_com_par = chat_com_par
                           PandoraUtils.log_message(LM_Info, _('Run chat command')+\
@@ -8916,6 +8929,12 @@ module PandoraNet
                               end
                             when 'menu'
                               $window.do_menu_act(chat_par)
+                            when 'exec'
+                              res = PandoraUtils.exec_cmd(chat_par)
+                              if not res
+                                PandoraUtils.log_message(LM_Warning, _('Command fails')+\
+                                  ' ['+Utf8String.new(chat_par)+']')
+                              end
                             when 'sound'
                               PandoraUtils.play_mp3(chat_par, nil, true)
                             when 'tunnel'
@@ -8941,7 +8960,7 @@ module PandoraNet
                         PandoraUtils.log_message(LM_Info, _('Chat command is denied')+ \
                           ' ['+Utf8String.new(chat_com_par)+'] '+_('trust')+'='+ \
                           PandoraModel.trust_to_str(skey_trust)+' '+_('need')+\
-                          '='+$command_for_trust.to_s)
+                          '='+trust_level.to_s)
                       end
                     end
                   end
@@ -9565,14 +9584,16 @@ module PandoraNet
                 fish_dep = 2
                 pool.add_mass_record(MK_Fishing, to_person, to_key, nil, \
                    nil, nil, nil, fish_trust, fish_dep, nil, nil, @recv_models)
-                while (not @socket) and (not active_hook) \
-                and (@conn_state == CS_Connecting)
-                  p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
-                  Thread.stop
-                end
+                #while (not @socket) and (not active_hook) \
+                #and (@conn_state == CS_Connecting)
+                #  p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
+                #  Thread.stop
+                #end
+                @socket = false   #Exit session
               else
                 @socket = false
-                PandoraUtils.log_message(LM_Trace, _('Session breaks bz of no person and key panhashes'))
+                PandoraUtils.log_message(LM_Trace, \
+                  _('Session breaks bz of no person and key panhashes'))
               end
             end
 
@@ -10934,8 +10955,8 @@ module PandoraNet
     rescue => err
       http = nil
       PandoraUtils.log_message(LM_Trace, _('Connection error')+\
-        [host, port].inspect)
-      puts err.message
+        [host, port].inspect+' '+Utf8String.new(err.message))
+      puts Utf8String.new(err.message)
     end
     [http, host, path]
   end
@@ -10954,11 +10975,29 @@ module PandoraNet
       rescue => err
         http = nil
         PandoraUtils.log_message(LM_Trace, _('Connection error')+\
-          [host, port].inspect)
-        puts err.message
+          [host, port].inspect+' '+Utf8String.new(err.message))
+        puts Utf8String.new(err.message)
       end
     end
     http
+  end
+
+  # Http get file size from header
+  # RU: Взять размер файла из заголовка
+  def self.http_size_from_header(http, path, loglev=true)
+    res = nil
+    begin
+      response = http.request_head(path)
+      res = response.content_length
+    rescue => err
+      res = nil
+      host ||= nil
+      loglev = LM_Trace if loglev.is_a?(TrueClass)
+      PandoraUtils.log_message(loglev, _('Size is not getted')+' '+\
+        [http, path].inspect+' '+Utf8String.new(err.message)) if loglev
+      puts Utf8String.new(err.message)
+    end
+    res
   end
 
   # Http get body with full URL
@@ -10968,14 +11007,14 @@ module PandoraNet
     if url
       PandoraUtils.log_message(LM_Info, _('Download from') + ': ' + \
         url + '..')
-      #begin
+      begin
         uri = URI.parse(url)
         request = Net::HTTP::Get.new(uri)
         response = http.request(request)
         body = response.body if response.is_a?(Net::HTTPSuccess)
-      #rescue => err
-      #  PandoraUtils.log_message(LM_Warning, _('Http download fails')+': '+err.message)
-      #end
+      rescue => err
+        PandoraUtils.log_message(LM_Warning, _('Http download fails')+': '+Utf8String.new(err.message))
+      end
     end
     body
   end
@@ -10991,7 +11030,7 @@ module PandoraNet
         response = http.request_get(path)
         body = response.body if response.is_a?(Net::HTTPSuccess)
       rescue => err
-        PandoraUtils.log_message(LM_Warning, _('Http download fails')+': '+err.message)
+        PandoraUtils.log_message(LM_Warning, _('Http download fails')+': '+Utf8String.new(err.message))
       end
     end
     body
@@ -11007,14 +11046,53 @@ module PandoraNet
         uri = URI.parse(url)
         body = Net::HTTP.get(uri)
       rescue => err
-        PandoraUtils.log_message(LM_Warning, _('Http download fails')+': '+err.message)
+        PandoraUtils.log_message(LM_Warning, _('Http download fails')+': '+Utf8String.new(err.message))
       end
     end
     body
   end
 
-  def self.load_panreg(body)
-    puts '!!!IPS: '+body.inspect
+  # Pandora Registrator (PanReg) indexes
+  # RU: Индексы Регистратора Пандоры (PanReg)
+  PR_Node = 0
+  PR_Ip   = 1
+  PR_Nick = 2
+  PR_Time = 3
+
+  # Load PanReg dump to node table
+  # RU: Загружает дамп PanReg в таблицу узлов
+  def self.load_panreg(body, format=nil)
+    #puts '!!!IPS: '+body.inspect
+    if (body.is_a? String) and (body.size>0)
+      list = body.split('<br>')
+      if (list.is_a? Array) and (list.size>0)
+        format ||= 'hex'
+        node_model = PandoraUtils.get_model('Node')
+        node_kind = node_model.kind
+        if node_model
+          list.each_with_index do |line, row|
+            nfs = line.split('|')
+            node = PandoraUtils.hex_to_bytes(nfs[PR_Node])
+            ip = nfs[PR_Ip]
+            if node and (node.size==20) and ip and (ip.size >= 7)
+              #p '---Check [NODE, IP]='+[node, ip].inspect
+              panhash = node_kind.chr+0.chr+node
+              filter = ["(addr=? OR domain=?) AND panhash=?", ip, ip, panhash]
+              sel = node_model.select(filter, false, 'id', nil, 1)
+              if sel.nil? or (sel.size==0)
+                p '+++Add [panhash, IP]='+[panhash, ip].inspect
+                panstate = 0
+                time_now = Time.now.to_i
+                creator = PandoraCrypto.current_user_or_key(true, false)
+                values = {:addr=>ip, :panhash=>panhash, :creator=>creator, \
+                  :created=>time_now, :modified=>time_now, :panstate=>panstate}
+                sel = node_model.update(values, nil, nil)
+              end
+            end
+          end
+        end
+      end
+    end
   end
 
   def self.http_ddns_request(url, params, suffix=nil, mes=nil)
@@ -13357,7 +13435,7 @@ module PandoraGtk
           end
         rescue => err
           if not pixbuf_parent
-            err_text = _('Image loading error1')+":\n"+err.message
+            err_text = _('Image loading error1')+":\n"+Utf8String.new(err.message)
             label = Gtk::Label.new(err_text)
             res = label
           end
@@ -13418,7 +13496,7 @@ module PandoraGtk
           end
         rescue => err
           if not pixbuf_parent
-            err_text = _('Image loading error2')+":\n"+err.message
+            err_text = _('Image loading error2')+":\n"+Utf8String.new(err.message)
             label = Gtk::Label.new(err_text)
             res = label
           end
@@ -17893,7 +17971,7 @@ module PandoraGtk
             $send_media_pipelines['video'] = nil
             mes = 'Camera init exception'
             PandoraUtils.log_message(LM_Warning, _(mes))
-            puts mes+': '+err.message
+            puts mes+': '+Utf8String.new(err.message)
             webcam_btn.active = false
           end
         end
@@ -18029,7 +18107,7 @@ module PandoraGtk
             @recv_media_pipeline[1] = nil
             mes = 'Video receiver init exception'
             PandoraUtils.log_message(LM_Warning, _(mes))
-            puts mes+': '+err.message
+            puts mes+': '+Utf8String.new(err.message)
             webcam_btn.active = false
           end
         end
@@ -18164,7 +18242,7 @@ module PandoraGtk
             $send_media_pipelines['audio'] = nil
             mes = 'Microphone init exception'
             PandoraUtils.log_message(LM_Warning, _(mes))
-            puts mes+': '+err.message
+            puts mes+': '+Utf8String.new(err.message)
             mic_btn.active = false
           end
         end
@@ -18262,7 +18340,7 @@ module PandoraGtk
             @recv_media_pipeline[0] = nil
             mes = 'Audio receiver init exception'
             PandoraUtils.log_message(LM_Warning, _(mes))
-            puts mes+': '+err.message
+            puts mes+': '+Utf8String.new(err.message)
             mic_btn.active = false
           end
           recv_media_pipeline[0].stop if recv_media_pipeline[0]  #this is a hack, else doesn't work!
@@ -19273,30 +19351,33 @@ module PandoraGtk
   def self.start_updating(all_step=true)
 
     def self.connect_http_and_check_size(url, curr_size, step)
-      time = 0
+      time = nil
       http, host, path = PandoraNet.http_connect(url)
       if http
-        response = http.request_head(path)
-        act_size = response.content_length
-        if not act_size
+        new_size = PandoraNet.http_size_from_header(http, path, false)
+        if not new_size
           sleep(0.5)
-          response = http.request_head(path)
-          act_size = response.content_length
+          new_size = PandoraNet.http_size_from_header(http, path, false)
         end
-        PandoraUtils.set_param('last_check', Time.now)
-        p 'Size diff: '+[act_size, curr_size].inspect
-        if (act_size == curr_size)
-          http = nil
-          step = 254
-          $window.set_status_field(SF_Update, 'Ok', false)
-          PandoraUtils.set_param('last_update', Time.now)
+        if new_size
+          PandoraUtils.set_param('last_check', Time.now)
+          p 'Size diff: '+[new_size, curr_size].inspect
+          if (new_size == curr_size)
+            http = nil
+            step = 254
+            $window.set_status_field(SF_Update, 'Ok', false)
+            PandoraUtils.set_param('last_update', Time.now)
+          else
+            time = Time.now.to_i
+          end
         else
-          time = Time.now.to_i
+          http = nil
         end
-      else
+      end
+      if not http
         $window.set_status_field(SF_Update, 'Connection error')
-        PandoraUtils.log_message(LM_Warning, _('Cannot connect to repo to check update')+\
-          [host, port].inspect)
+        PandoraUtils.log_message(LM_Info, _('Cannot connect to repo to check update')+\
+          ' '+[host, path].inspect)
       end
       [http, time, step, host, path]
     end
@@ -19326,7 +19407,7 @@ module PandoraGtk
               PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
             end
           rescue => err
-            PandoraUtils.log_message(LM_Warning, _('Update error')+': '+err.message)
+            PandoraUtils.log_message(LM_Warning, _('Update error')+': '+Utf8String.new(err.message))
           end
         else
           PandoraUtils.log_message(LM_Warning, _('Empty downloaded body'))
@@ -19429,13 +19510,13 @@ module PandoraGtk
                                   PandoraUtils.log_message(LM_Info, _('Files are updated'))
                                 rescue => err
                                   res = false
-                                  PandoraUtils.log_message(LM_Warning, _('Cannot copy files from zip arch')+': '+err.message)
+                                  PandoraUtils.log_message(LM_Warning, _('Cannot copy files from zip arch')+': '+Utf8String.new(err.message))
                                 end
                                 # Remove used arch dir
                                 begin
                                   FileUtils.remove_dir(unzip_path)
                                 rescue => err
-                                  PandoraUtils.log_message(LM_Warning, _('Cannot remove arch dir')+' ['+unzip_path+']: '+err.message)
+                                  PandoraUtils.log_message(LM_Warning, _('Cannot remove arch dir')+' ['+unzip_path+']: '+Utf8String.new(err.message))
                                 end
                                 step = 255 if res
                               else
@@ -23801,8 +23882,8 @@ end
 BasicSocket.do_not_reverse_lookup = true
 Thread.abort_on_exception = true
 
-# == Running the Pandora!
-# == RU: Запуск Пандоры!
+# === Running the Pandora!
+# === RU: Запуск Пандоры!
 PandoraUtils.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
 PandoraUtils.detect_mp3_player

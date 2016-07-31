@@ -1,18 +1,30 @@
 <?php
 
-// The PanReg. Script update and return table 'active_nodes'
-// RU: Скрипт обновляет и возвращает таблицу 'active_nodes'
-// Usage: http://robux.biz/panreg.php?node=<node_in_hex>&ips=<list_of_ip>
-// Example:
-// http://a.com/panreg.php?node=a1b2c3&ips=111.222.111.222,2001:0:53aa:64c:1c4c:798c:b284:2af0
+// The Pandora Registrator updates and returns 'active_nodes' table
+// RU: Регистратор Пандоры обновляет и возвращает таблицу 'active_nodes'
 // 2012 (c) Michael Galyuk, P2P social network Pandora, free software, GNU GPLv2
 // RU: 2012 (c) Михаил Галюк, P2P социальная сеть Пандора, свободное ПО
 
+// Usage: http://robux.biz/panreg.php?node=<node_in_hex>&ips=<list_of_ip>[&del=1&time=1]
+// Examples (add and remove):
+// http://a.com/panreg.php?node=a1b2c3&ip=2001:0:53aa:64c:1c4c:798c:b284:2af0
+// http://a.com/panreg.php?node=a1b2c3&ips=222.111.222.111,2001:0:53aa:64c:1c4c:798c:b284:2af0
+// http://a.com/panreg.php?node=a1b2c3&delete=1
 
-// Detect GET-params
+
+// Detect parameters
 $node = $_GET['node'];
+$time = $_GET['time'];
+$delete = $_GET['del'];
+if (! $delete)
+  $delete = $_GET['delete'];
 $ips = $_GET['ips'];
-$read = $_GET['read'];
+if (! $ips)
+  $ips = $_GET['ip'];
+if (! $ips)
+  $ips = $_GET['ip4'];
+if (! $ips)
+  $ips = $_GET['ip6'];
 
 // Autodetect user IP
 if (! $ips)
@@ -27,7 +39,6 @@ $table='active_nodes';
 $limit=70;
 //$live='1 MINUTE'
 $live='48 HOUR';
-$show_time=TRUE;
 
 // Connect to DB
 $res = mysql_connect($sql_server, $db_user, $db_pass);
@@ -41,7 +52,7 @@ if (!$res)
 if (($node) and ($ips)) {
 
   // Convert HEX node to str
-  $node = substr($node, 0, 44);
+  $node = substr($node, 0, 40);
   if (ctype_xdigit($node)) {
     $node = pack("H*" , $node);
   } else {
@@ -67,20 +78,25 @@ if (($node) and ($ips)) {
   if (!$res)
     die('!Old delete error');
 
-  // Add all ips
+  // Process all ips
   foreach ($ips as $ip) {
     // Delete old nodes
     $res = mysql_query("DELETE FROM $table WHERE node='$node' AND ip='$ip'");
     if (!$res)
       die('!Node delete error');
 
-    // Insert the node
-    $res = mysql_query("INSERT INTO $table (node,ip,time) VALUES('$node', '$ip', NOW())");
-    if (!$res)
-      die('!Insert error');
-    if (! $read)
-      $show_time=FALSE;
+    if (! $delete) {
+      // Insert the node
+      $res = mysql_query("INSERT INTO $table (node,ip,time) VALUES('$node', '$ip', NOW())");
+      if (!$res)
+        die('!Insert error');
+    }
   }
+
+  // Exit if delete
+  if ($delete)
+    die('!Node is deleted');
+
 }
 
 // Select records
@@ -92,7 +108,7 @@ if (!$sql)
 while ($row=mysql_fetch_array($sql)):
   $ip = inet_ntop($row['ip']);
   $line = bin2hex($row['node'])."|".$ip;
-  if ($show_time)
+  if ($time)
     $line .= '|'.$row['time'];
   echo $line."<br>";
 endwhile;

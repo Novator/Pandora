@@ -2,7 +2,7 @@ DROP TABLE IF EXISTS `active_nodes`;
 
 CREATE TABLE `active_nodes` (
   `ip` varchar(16) NOT NULL,
-  `node` varchar(22) NOT NULL,
+  `node` varchar(20) NOT NULL,
   `time` datetime NOT NULL CURRENT_TIMESTAMP
 );
 
