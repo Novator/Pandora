@@ -10782,7 +10782,7 @@ module PandoraNet
               suff = '6'
             end
             if PandoraNet.http_ddns_request(panreg_url, {:node=>'node='+node, \
-            :ips=>ips, :del=>del, :ip4=>ip4, :ip6=>ip6}, suff, 'PanReg updated', \
+            :ips=>ips, :del=>del, :ip4=>ip4, :ip6=>ip6}, suff, 'Registrated', \
             del.size>0)
               PandoraUtils.set_param('last_panreg', Time.now)
             end
@@ -11184,10 +11184,12 @@ module PandoraNet
       err = nil
       body = http_get_request(url)
       if mes and body
-        if body.size<=1
+        if body.size==0
           err = ' '+_('Loading error')
         elsif body[0]=='!'
-          if not delete
+          if delete or (body.size==1)
+            puts body
+          else
             err = ' '+_(body[1..-1].strip)
           end
         else

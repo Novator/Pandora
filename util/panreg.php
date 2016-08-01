@@ -6,12 +6,12 @@
 // RU: 2012 (c) Михаил Галюк, P2P социальная сеть Пандора, свободное ПО
 
 // Usage: http://robux.biz/panreg.php?node=<node_in_hex>[&ips=<list_of_ip>&time=1&hex=1]
-// Examples (add and remove):
+// Examples (register and demote):
 // http://a.com/panreg.php?node=a1b2c3&ips=222.111.222.111,2001:0:53aa:64c:1c4c:798c:b284:2af0
 // http://a.com/panreg.php?node=a1b2c3&ips=2001:0:53aa:64c:1c4c:798c:b284:2af0
-// http://a.com/panreg.php?node=a1b2c3&ips=auto  - auto detect ip
-// http://a.com/panreg.php?node=a1b2c3           - delete record
-// http://a.com/panreg.php?node=a1b2c3&ips=none  - just log and read a table
+// http://a.com/panreg.php?node=a1b2c3&ips=auto  - add ip autodetect
+// http://a.com/panreg.php?node=a1b2c3&ips=none  - leech gets the list
+// http://a.com/panreg.php?node=a1b2c3           - demote record
 
 
 // Detect parameters
@@ -93,8 +93,8 @@ if ($node) {
   if ($limit)
     $filter = "node NOT IN (SELECT * FROM (SELECT node FROM $table ORDER BY time DESC LIMIT $limit) s )";
   if ($live)
-    $filter = "time<NOW()-INTERVAL $live OR ".$filter;
-  if ($ips)
+    $filter = "(time>NOW()-INTERVAL 2 QUARTER AND time<NOW()-INTERVAL $live) OR ".$filter;
+  if (($ips) and (strlen($ips)>0))
     $filter = "node='$node' OR ".$filter;
   $res = mysql_query("DELETE FROM $table WHERE ".$filter);
   if (! $res)
@@ -116,25 +116,26 @@ if ($node) {
 
     // Process all ips
     foreach ($ips as $ip) {
-      // Insert the node
+      // Super node inserts with actual time
       $tim = 'NOW()';
+      // Leech inserts 1 year old time
       if ($leech)
-        $tim = 'NULL';
+        $tim = 'NOW()-INTERVAL 1 YEAR';
       $res = mysql_query("INSERT INTO $table (node,ip,time) VALUES('$node', '$ip', $tim)");
       if (! $res)
         die('!Insert error');
     }
   } else {
-    // Delete nodes except for last
+    // Delete nodes except the last
     $res = mysql_query("DELETE FROM $table WHERE node='$node' AND node NOT IN (SELECT * FROM (SELECT node FROM $table WHERE node='$node' ORDER BY time DESC LIMIT 1) s )");
     if (! $res)
       die('!Delete excess nodes error');
-    // Reset time of last node
-    $res = mysql_query("UPDATE $table SET time=NULL WHERE node='$node'");
+    // Demoted record is marked by 2 year old time
+    $res = mysql_query("UPDATE $table SET time=NOW()-INTERVAL 2 YEAR WHERE node='$node'");
     if ($res)
-      die('!Node is reseted');
+      die('!Node is demoted');
     else
-      die('!Reset time error');
+      die('!Demote time error');
   }
 
 }
@@ -144,10 +145,14 @@ $flds = 'node,ip';
 if ($time)
   $flds .= ',time';
 if (($node) or (! $time))
-  $table .= " WHERE time IS NOT NULL AND ip IS NOT NULL AND ip != ''";
+  $table .= " WHERE time IS NOT NULL AND time>NOW()-INTERVAL 2 QUARTER AND ip IS NOT NULL AND ip != ''";
 $sql = mysql_query("SELECT $flds FROM $table ORDER BY time DESC LIMIT $limit");
 if (! $sql)
   die('!Tab select error');
+
+// If empty table
+if (mysql_num_rows($sql)==0)
+  die('!');
 
 // Show records
 while ($row=mysql_fetch_array($sql)):

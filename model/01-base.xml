@@ -395,7 +395,7 @@
     <ask_kinds_m10 desc="Ask kinds above -1.0" type="String" section="net" setting="" />
     <ask_kinds_p01 desc="Ask kinds above +0.1" type="String" section="net" setting="2" />
     <ask_kinds_p10 desc="Ask kinds above +1.0" type="String" section="net" setting="1,2" />
-    <give_kinds_m10 desc="Ask kinds above -1.0" type="String" section="net" setting="" />
+    <give_kinds_m10 desc="Give kinds above -1.0" type="String" section="net" setting="" />
     <give_kinds_p01 desc="Give kinds above +0.1" type="String" section="net" setting="2" />
     <give_kinds_p10 desc="Give kinds above +1.0" type="String" section="net" setting="1,2" />
 
