@@ -353,8 +353,8 @@
     <time_history desc="Time history" type="String" section="view" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
-    <check_interval desc="Сheck interval (days)" type="Integer" section="update" setting="0" />
-    <update_period desc="Update interval (days)" type="Integer" section="update" setting="1" />
+    <check_interval desc="Сheck interval (hour)" type="Integer" section="update" setting="1" />
+    <update_period desc="Update period (day)" type="Integer" section="update" setting="1" />
     <last_check desc="Last check time" type="Time" section="update" setting="01.01.2012" />
     <last_update desc="Last update time" type="Time" section="update" setting="01.01.2012" />
     <update_zip_first desc="Update from zip first" type="Boolean" section="update" setting="true" />
@@ -386,9 +386,11 @@
     <captcha_timeout desc="Captcha timeout (sec)" type="Real" section="net" setting="120.0" />
     <ddns4_url desc="DDNS IPv4 url updater" type="String" section="net" setting="" />
     <ddns6_url desc="DDNS IPv6 url updater" type="String" section="net" setting="" />
-    <panreg_url desc="PanReg IP list url updater" type="String" section="net" setting="http://robux.biz/panreg.php?node=[node]&amp;ips=[ips]" />
     <last_ip4 desc="DDNS IPv4 url updater" type="String" section="net" setting="" />
     <last_ip6 desc="DDNS IPv6 url updater" type="String" section="net" setting="" />
+    <panreg_url desc="PanReg IP list url updater" type="String" section="net" setting="http://robux.biz/panreg.php?[node][ips][del]" />
+    <panreg_period desc="PanReg update period (minute)" type="Integer" section="net" setting="30" />
+    <last_panreg desc="Last PanReg update time" type="Time" section="net" setting="01.01.2012" />
 
     <ask_kinds_m10 desc="Ask kinds above -1.0" type="String" section="net" setting="" />
     <ask_kinds_p01 desc="Ask kinds above +0.1" type="String" section="net" setting="2" />

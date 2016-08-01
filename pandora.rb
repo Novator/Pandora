@@ -7188,7 +7188,7 @@ module PandoraNet
 
   # Version of application and protocol (may be different)
   # RU: Версия программы и протокола (могут отличаться)
-  AppVersion   = '0.63'
+  AppVersion   = '0.64'
   ProtoVersion = 'pandora0.60'
 
   class Session
@@ -10433,81 +10433,15 @@ module PandoraNet
   UdpHello = 'pandora:hello:'
 
   def self.listen?
-    res = ($tcp_listen_thread or $udp_listen_thread)
+    res = (not($tcp_listen_thread.nil?) or not($udp_listen_thread.nil?))
   end
 
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
-  def self.start_or_stop_listen
-
-    def self.check_last_ip(ip_list, version)
-      ip = nil
-      ip_need = nil
-      ddns_url = nil
-      if ip_list.size>0
-        ip = ip_list[0].ip_address
-        last_ip = PandoraUtils.get_param('last_ip'+version)
-        ip_need = ip
-        ip_need = nil if last_ip and (last_ip==ip)
-      end
-      [ip, ip_need]
-    end
-
-    def self.get_update_url(param, ip_active)
-      url = nil
-      if ip_active
-        url = PandoraUtils.get_param(param)
-        url = nil if url and (url.size==0)
-      end
-      url
-    end
-
-    def self.set_last_ip(ip, version)
-      PandoraUtils.set_param('last_ip'+version, ip) if ip
-    end
-
+  def self.start_or_stop_listen(need_to_start=nil, need_panreg=nil)
     PandoraNet.get_exchange_params
-    if listen?
-      # Need to stop
-      if $tcp_listen_thread
-        #server = $tcp_listen_thread[:tcp_server]
-        #server.close if server and (not server.closed?)
-        $tcp_listen_thread[:listen_tcp] = false
-        sleep 0.08
-        if $tcp_listen_thread
-          tcp_lis_th0 = $tcp_listen_thread
-          GLib::Timeout.add(2000) do
-            if tcp_lis_th0 == $tcp_listen_thread
-              $tcp_listen_thread.exit if $tcp_listen_thread and $tcp_listen_thread.alive?
-              $tcp_listen_thread = nil
-              $window.correct_lis_btn_state
-            end
-            false
-          end
-        end
-      end
-      if $udp_listen_thread
-        $udp_listen_thread[:listen_udp] = false
-        server = $udp_listen_thread[:udp_server]
-        if server
-          server.close_read
-          server.close_write
-        end
-        sleep 0.03
-        if $udp_listen_thread
-          udp_lis_th0 = $udp_listen_thread
-          GLib::Timeout.add(2000) do
-            if udp_lis_th0 == $udp_listen_thread
-              $udp_listen_thread.exit if $udp_listen_thread and $udp_listen_thread.alive?
-              $udp_listen_thread = nil
-              $window.correct_lis_btn_state
-            end
-            false
-          end
-        end
-      end
-      $window.correct_lis_btn_state
-    else
+    need_to_start = (not listen?) if need_to_start.nil?
+    if need_to_start
       # Need to start
       #$window.show_notice(false)
       user = PandoraCrypto.current_user_or_key(true)
@@ -10532,7 +10466,7 @@ module PandoraNet
         tcp_port = $tcp_port
         tcp_port ||= PandoraUtils.get_param('tcp_port')
         tcp_port ||= PandoraNet::DefTcpPort
-        if tcp_port
+        if (tcp_port>0) and $tcp_listen_thread.nil?
           $tcp_listen_thread = Thread.new do
             begin
               server = TCPServer.open(host, tcp_port)
@@ -10580,7 +10514,7 @@ module PandoraNet
         udp_port = $udp_port
         udp_port ||= PandoraUtils.get_param('udp_port')
         udp_port ||= PandoraNet::DefUdpPort
-        if udp_port>0
+        if (udp_port>0) and $udp_listen_thread.nil?
           $udp_listen_thread = Thread.new do
             # Init UDP listener
             begin
@@ -10684,65 +10618,187 @@ module PandoraNet
           end
         end
 
-        ip_list = Socket.ip_address_list
-        ip4_list = ip_list.select do |addr_info|
-          (addr_info.ipv4? and (not addr_info.ipv4_loopback?) \
-          and (not addr_info.ipv4_private?) and (not addr_info.ipv4_multicast?))
-        end
-        ip6_list = ip_list.select do |addr_info|
-          (addr_info.ipv6? and (not addr_info.ipv6_loopback?) \
-          and (not addr_info.ipv6_linklocal?) and (not addr_info.ipv6_multicast?))
-        end
-        ip4_list.each do |addr_info|
-          PandoraUtils.log_message(LM_Warning, _('Global IP')+'v4: '+addr_info.ip_address)
-        end
-        ip6_list.each do |addr_info|
-          PandoraUtils.log_message(LM_Warning, _('Global IP')+'v6: '+addr_info.ip_address)
-        end
-        ip4, ip4n = check_last_ip(ip4_list, '4')
-        ip6, ip6n = check_last_ip(ip6_list, '6')
-        if ip4 or ip6
-          ddns4_url = get_update_url('ddns4_url', ip4n)
-          ddns6_url = get_update_url('ddns6_url', ip6n)
-          panreg_url = get_update_url('panreg_url', true)
-          if ddns4_url or ddns6_url or panreg_url
-            GLib::Timeout.add(2000) do
-              Thread.new do
-                if panreg_url
-                  ips = ''
-                  ip4_list.each do |addr_info|
-                    ips << ',' if ips.size>0
-                    ips << addr_info.ip_address
-                  end
-                  ip6_list.each do |addr_info|
-                    ips << ',' if ips.size>0
-                    ips << addr_info.ip_address
-                  end
-                  suff = nil
-                  if ip4 and (not ip6)
-                    suff = '4'
-                  elsif ip6 and (not ip4)
-                    suff = '6'
-                  end
-                  node = PandoraUtils.bytes_to_hex($window.pool.self_node)
-                  PandoraNet.http_ddns_request(panreg_url, {:ips=>ips, :node=>node, \
-                    :ip4=>ip4, :ip6=>ip6}, suff, 'PanReg updated')
-                end
-                if ddns4_url and PandoraNet.http_ddns_request(ddns4_url, {:ip=>ip4}, '4')
-                  set_last_ip(ip4, '4')
-                end
-                if ddns6_url and PandoraNet.http_ddns_request(ddns6_url, {:ip=>ip6}, '6')
-                  set_last_ip(ip6, '6')
-                end
-              end
-              false
-            end
-          end
-        end
         #p loc_hst = Socket.gethostname
         #p Socket.gethostbyname(loc_hst)[3]
       end
       $window.correct_lis_btn_state
+    else
+      # Need to stop
+      if $tcp_listen_thread
+        #server = $tcp_listen_thread[:tcp_server]
+        #server.close if server and (not server.closed?)
+        $tcp_listen_thread[:listen_tcp] = false
+        sleep 0.08
+        if $tcp_listen_thread
+          tcp_lis_th0 = $tcp_listen_thread
+          GLib::Timeout.add(2000) do
+            if tcp_lis_th0 == $tcp_listen_thread
+              $tcp_listen_thread.exit if $tcp_listen_thread and $tcp_listen_thread.alive?
+              $tcp_listen_thread = nil
+              $window.correct_lis_btn_state
+            end
+            false
+          end
+        end
+      end
+      if $udp_listen_thread
+        $udp_listen_thread[:listen_udp] = false
+        server = $udp_listen_thread[:udp_server]
+        if server
+          server.close_read
+          server.close_write
+        end
+        sleep 0.03
+        if $udp_listen_thread
+          udp_lis_th0 = $udp_listen_thread
+          GLib::Timeout.add(2000) do
+            if udp_lis_th0 == $udp_listen_thread
+              $udp_listen_thread.exit if $udp_listen_thread and $udp_listen_thread.alive?
+              $udp_listen_thread = nil
+              $window.correct_lis_btn_state
+            end
+            false
+          end
+        end
+      end
+      $window.correct_lis_btn_state
+    end
+    if need_panreg
+      PandoraNet.register_node_ips(need_to_start, need_panreg)
+    else
+      Thread.new do
+        PandoraNet.register_node_ips(need_to_start)
+      end
+    end
+  end
+
+  $node_registering = nil
+  $prev_listener_state = nil
+  $last_ip4_show = nil
+  $last_ip6_show = nil
+
+  WrongUrl = 'http://robux.biz/panreg.php?node=[node]&amp;ips=[ips]'
+
+  def self.register_node_ips(listening=nil, need_panreg=nil)
+
+    def self.check_last_ip(ip_list, version)
+      ip = nil
+      ip_need = nil
+      ddns_url = nil
+      if ip_list.size>0
+        ip = ip_list[0].ip_address
+        last_ip = PandoraUtils.get_param('last_ip'+version)
+        ip_need = ip
+        ip_need = nil if last_ip and (last_ip==ip)
+      end
+      [ip, ip_need]
+    end
+
+    def self.get_update_url(param, ip_active)
+      url = nil
+      if ip_active
+        url = PandoraUtils.get_param(param)
+        url = nil if url and (url.size==0)
+      end
+      url
+    end
+
+    def self.set_last_ip(ip, version)
+      PandoraUtils.set_param('last_ip'+version, ip) if ip
+    end
+
+    if ((not listening.nil?) and (not $node_registering)) \
+    or ($node_registering.is_a? FalseClass)
+      $node_registering = true
+      ip_list = Socket.ip_address_list
+      ip4_list = ip_list.select do |addr_info|
+        (addr_info.ipv4? and (not addr_info.ipv4_loopback?) \
+        and (not addr_info.ipv4_private?) and (not addr_info.ipv4_multicast?))
+      end
+      ip6_list = ip_list.select do |addr_info|
+        (addr_info.ipv6? and (not addr_info.ipv6_loopback?) \
+        and (not addr_info.ipv6_linklocal?) and (not addr_info.ipv6_multicast?))
+      end
+      ip4, ip4n = check_last_ip(ip4_list, '4')
+      ip6, ip6n = check_last_ip(ip6_list, '6')
+      if ($last_ip4_show.nil? and ip4) or ip4n
+        $last_ip4_show = ip4
+        ip4_list.each do |addr_info|
+          PandoraUtils.log_message(LM_Warning, _('Global IP')+'v4: '+addr_info.ip_address)
+        end
+      end
+      if ($last_ip6_show.nil? and ip6) or ip6n
+        $last_ip6_show = ip6
+        ip6_list.each do |addr_info|
+          PandoraUtils.log_message(LM_Warning, _('Global IP')+'v6: '+addr_info.ip_address)
+        end
+      end
+      panreg_url = get_update_url('panreg_url', true)
+      if ip4 or ip6 or panreg_url
+        ddns4_url = get_update_url('ddns4_url', ip4n)
+        ddns6_url = get_update_url('ddns6_url', ip6n)
+        listening = PandoraNet.listen? if listening.nil?
+        need_panreg = true if $prev_listener_state.nil?
+        p 'PANREG '+[listening, need_panreg, $prev_listener_state].inspect
+        if (listening or need_panreg) and (ddns4_url or ddns6_url or panreg_url)
+          if not need_panreg
+            last_panreg = PandoraUtils.get_param('last_panreg')
+            last_panreg ||= 0
+            panreg_period = PandoraUtils.get_param('panreg_period')
+            if (not(panreg_period.is_a? Numeric)) or (panreg_period < 0)
+              panreg_period = 30
+            end
+            time_now = Time.now.to_i
+            need_panreg = ((time_now - last_panreg.to_i) >= panreg_period*60)
+          end
+          if panreg_url and need_panreg
+            ips = ''
+            del = ''
+            if listening
+              ips = ''
+              ip4_list.each do |addr_info|
+                ips << ',' if ips.size>0
+                ips << addr_info.ip_address
+              end
+              ip6_list.each do |addr_info|
+                ips << ',' if ips.size>0
+                ips << addr_info.ip_address
+              end
+              ips = 'none' if (ips.size==0)
+              ips = '&ips=' + ips
+            else
+              del = '&del=1'
+            end
+            node = PandoraUtils.bytes_to_hex($window.pool.self_node)
+            #node = Base64.strict_encode64($window.pool.self_node)
+            if panreg_url==WrongUrl  #Hack to change old parameter
+              PandoraUtils.set_param('panreg_url', nil)
+              panreg_url = PandoraUtils.get_param('panreg_url')
+            end
+            suff = nil
+            if ip4 and (not ip6)
+              suff = '4'
+            elsif ip6 and (not ip4)
+              suff = '6'
+            end
+            if PandoraNet.http_ddns_request(panreg_url, {:node=>'node='+node, \
+            :ips=>ips, :del=>del, :ip4=>ip4, :ip6=>ip6}, suff, 'PanReg updated', \
+            del.size>0)
+              PandoraUtils.set_param('last_panreg', Time.now)
+            end
+          end
+          if listening
+            if ddns4_url and PandoraNet.http_ddns_request(ddns4_url, {:ip=>ip4}, '4')
+              set_last_ip(ip4, '4')
+            end
+            if ddns6_url and PandoraNet.http_ddns_request(ddns6_url, {:ip=>ip6}, '6')
+              set_last_ip(ip6, '6')
+            end
+          end
+        end
+        $prev_listener_state = listening
+      end
+      $node_registering = false
     end
   end
 
@@ -11068,27 +11124,39 @@ module PandoraNet
     if (body.is_a? String) and (body.size>0)
       list = body.split('<br>')
       if (list.is_a? Array) and (list.size>0)
-        format ||= 'hex'
+        format ||= 'base64'
         node_model = PandoraUtils.get_model('Node')
         node_kind = node_model.kind
         if node_model
+          self_node = $window.pool.self_node
           list.each_with_index do |line, row|
             nfs = line.split('|')
-            node = PandoraUtils.hex_to_bytes(nfs[PR_Node])
-            ip = nfs[PR_Ip]
-            if node and (node.size==20) and ip and (ip.size >= 7)
-              #p '---Check [NODE, IP]='+[node, ip].inspect
-              panhash = node_kind.chr+0.chr+node
-              filter = ["(addr=? OR domain=?) AND panhash=?", ip, ip, panhash]
-              sel = node_model.select(filter, false, 'id', nil, 1)
-              if sel.nil? or (sel.size==0)
-                p '+++Add [panhash, IP]='+[panhash, ip].inspect
-                panstate = 0
-                time_now = Time.now.to_i
-                creator = PandoraCrypto.current_user_or_key(true, false)
-                values = {:addr=>ip, :panhash=>panhash, :creator=>creator, \
-                  :created=>time_now, :modified=>time_now, :panstate=>panstate}
-                sel = node_model.update(values, nil, nil)
+            node = nfs[PR_Node]
+            if node and (node.bytesize>5)
+              if format=='hex'
+                node = PandoraUtils.hex_to_bytes(node)
+              else
+                node = Base64.strict_decode64(node)
+              end
+            else
+              node = nil
+            end
+            if node and (node.bytesize==20) and (node != self_node)
+              ip = nfs[PR_Ip]
+              if node and (node.size==20) and ip and (ip.size >= 7)
+                #p '---Check [NODE, IP]='+[node, ip].inspect
+                panhash = node_kind.chr+0.chr+node
+                filter = ["(addr=? OR domain=?) AND panhash=?", ip, ip, panhash]
+                sel = node_model.select(filter, false, 'id', nil, 1)
+                if sel.nil? or (sel.size==0)
+                  p '+++Add [panhash, IP]='+[panhash, ip].inspect
+                  panstate = 0
+                  time_now = Time.now.to_i
+                  creator = PandoraCrypto.current_user_or_key(true, false)
+                  values = {:addr=>ip, :panhash=>panhash, :creator=>creator, \
+                    :created=>time_now, :modified=>time_now, :panstate=>panstate}
+                  sel = node_model.update(values, nil, nil)
+                end
               end
             end
           end
@@ -11097,11 +11165,11 @@ module PandoraNet
     end
   end
 
-  def self.http_ddns_request(url, params, suffix=nil, mes=nil)
+  def self.http_ddns_request(url, params, suffix=nil, mes=nil, delete=nil)
     res = nil
     if url.is_a?(String) and (url.size>0)
       params.each do |k,v|
-        if k and v
+        if k and (not v.nil?)
           k = k.to_s
           url.gsub!('['+k+']', v)
           url.gsub!('['+k.upcase+']', v)
@@ -11119,7 +11187,9 @@ module PandoraNet
         if body.size<=1
           err = ' '+_('Loading error')
         elsif body[0]=='!'
-          err = ' '+_(body[1..-1].strip)
+          if not delete
+            err = ' '+_(body[1..-1].strip)
+          end
         else
           load_panreg(body)
         end
@@ -19342,7 +19412,7 @@ module PandoraGtk
     res
   end
 
-  $update_interval = 30
+  $update_lag = 30    #time lag (sec) for update after run the programm
   $download_thread = nil
 
   UPD_FileList = ['model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'pandora.bat']
@@ -19428,7 +19498,7 @@ module PandoraGtk
         Thread.current[:all_step] = all_step
         downloaded = false
         $window.set_status_field(SF_Update, 'Need check')
-        sleep($update_interval) if not Thread.current[:all_step]
+        sleep($update_lag) if not Thread.current[:all_step]
         $window.set_status_field(SF_Update, 'Checking')
 
         main_script = File.join($pandora_app_dir, 'pandora.rb')
@@ -19583,7 +19653,7 @@ module PandoraGtk
               Thread.stop
               #Kernel.abort('Pandora is updated. Run it again')
               puts 'Pandora is updated. Restarting..'
-              PandoraNet.start_or_stop_listen if PandoraNet.listen?
+              PandoraNet.start_or_stop_listen(false, true)
               PandoraNet.start_or_stop_hunt(false) if $hunter_thread
               $window.pool.close_all_session
               PandoraUtils.restart_app
@@ -21270,8 +21340,8 @@ module PandoraGtk
       if new_size and (new_size>=24)
         log_sw.height_request = new_size if (new_size>log_sw.height_request)
       else
-        log_sw.height_request = log_sw.allocation.height if log_sw.allocation.height > 24
-        log_sw.height_request = 200 if log_sw.height_request <= 24
+        log_sw.height_request = log_sw.allocation.height if log_sw.allocation.height>24
+        log_sw.height_request = 200 if (log_sw.height_request <= 24)
       end
       vpaned.position = vpaned.max_position-log_sw.height_request
     else
@@ -21279,23 +21349,6 @@ module PandoraGtk
       vpaned.position = vpaned.max_position
     end
     $window.correct_log_btn_state
-    #$window.notebook.children.each do |child|
-    #  if (child.is_a? RadarScrollWin)
-    #    $window.notebook.page = $window.notebook.children.index(child)
-    #    child.update_btn.clicked
-    #    return
-    #  end
-    #end
-    #sw = RadarScrollWin.new
-
-    #image = Gtk::Image.new(Gtk::Stock::JUSTIFY_LEFT, Gtk::IconSize::MENU)
-    #image.set_padding(2, 0)
-    #label_box = TabLabelBox.new(image, _('Fishes'), sw, false, 0) do
-    #  #sw.destroy
-    #end
-    #page = $window.notebook.append_page(sw, label_box)
-    #sw.show_all
-    #$window.notebook.page = $window.notebook.n_pages-1
   end
 
   # Show fisher list
@@ -22332,6 +22385,8 @@ module PandoraGtk
       end
       case command
         when 'Quit'
+          PandoraNet.start_or_stop_listen(false, true)
+          PandoraNet.start_or_stop_hunt(false) if $hunter_thread
           self.pool.close_all_session
           self.destroy
         when 'Activate'
@@ -22411,7 +22466,7 @@ module PandoraGtk
         when 'Authorize'
           key = PandoraCrypto.current_key(false, false)
           if key
-            PandoraNet.start_or_stop_listen if PandoraNet.listen?
+            PandoraNet.start_or_stop_listen(false)
             PandoraNet.start_or_stop_hunt(false) if $hunter_thread
             self.pool.close_all_session
           end
@@ -22422,12 +22477,6 @@ module PandoraGtk
           #end
         when 'Wizard'
           PandoraGtk.show_log_bar(80)
-          return
-          PandoraNet.start_or_stop_listen if PandoraNet.listen?
-          PandoraNet.start_or_stop_hunt(false) if $hunter_thread
-          $window.pool.close_all_session
-          PandoraUtils.restart_app
-
           #p PandoraUtils.hex?('ad')
           #p [Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU, Gtk::Stock::OK].inspect
           #p [Gtk::Stock::MEDIA_PLAY.class, Gtk::IconSize::MENU.class, Gtk::Stock::OK.class].inspect
@@ -22764,6 +22813,12 @@ module PandoraGtk
         @base_garb_model = nil
         @base_garb_kind = 0
         @base_garb_offset = nil
+        @node_reg_offset = nil
+        @panreg_period = PandoraUtils.get_param('panreg_period')
+        if (not(@panreg_period.is_a? Numeric)) or (@panreg_period < 0)
+          @panreg_period = 30
+        end
+        @panreg_period = @panreg_period*60
         @scheduler = Thread.new do
           sleep 1
           while @scheduler_step
@@ -23035,6 +23090,14 @@ module PandoraGtk
             # Memory garbager
 
             # GUI updater (list, traffic)
+
+            # Node IPs registration
+            if (@node_reg_offset.nil? or (@node_reg_offset >= @panreg_period))
+              @node_reg_offset = 0.0
+              PandoraNet.register_node_ips
+            end
+            @node_reg_offset += @scheduler_step if @node_reg_offset
+
 
             sleep(@scheduler_step)
 
@@ -23399,8 +23462,8 @@ module PandoraGtk
       @log_vpaned.position = @log_vpaned.max_position
       if $window.do_on_start and ($window.do_on_start > 0)
         key = PandoraCrypto.current_key(false, true)
-        if (($window.do_on_start & 2) != 0) and key and (not PandoraNet.listen?)
-          PandoraNet.start_or_stop_listen
+        if (($window.do_on_start & 2) != 0) and key
+          PandoraNet.start_or_stop_listen(true)
         end
         if (($window.do_on_start & 4) != 0) and key and (not $hunter_thread)
           PandoraNet.start_or_stop_hunt(true, 2)
@@ -23456,16 +23519,16 @@ module PandoraGtk
         last_update = PandoraUtils.get_param('last_update')
         last_update ||= 0
         check_interval = PandoraUtils.get_param('check_interval')
-        if not check_interval or (check_interval < 0)
+        if (not(check_interval.is_a? Numeric)) or (check_interval <= 0)
           check_interval = 1
         end
         update_period = PandoraUtils.get_param('update_period')
-        if not update_period or (update_period < 0)
+        if (not(update_period.is_a? Numeric)) or (update_period < 0)
           update_period = 1
         end
         time_now = Time.now.to_i
-        need_check = ((time_now - last_check.to_i) >= check_interval*24*3600)
         ok_version = (time_now - last_update.to_i) < update_period*24*3600
+        need_check = ((time_now - last_check.to_i) >= check_interval*24*3600)
         if ok_version
           set_status_field(SF_Update, 'Ok', need_check)
         elsif need_check
