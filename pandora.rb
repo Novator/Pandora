@@ -12954,6 +12954,9 @@ module PandoraGtk
     def initialize(panhash_type, *args)
       @panclasses = nil
       @types = panhash_type
+      if @types=='Panhash'
+        @types = 'Panhash(Blob,Person,Community,City,Key)'
+      end
       set_classes
       title = nil
       stock = nil
@@ -14348,6 +14351,7 @@ module PandoraGtk
                               'SPIN', 'INTEGER', 'HEX', 'REAL', 'FLOAT', 'DATE', \
                               'TIME', 'DATETIME', 'COORD', 'FILENAME', 'BASE64', \
                               'PANHASH', 'BYTELIST', 'BUTTON'
+                                #p '--BOX['+comu+'] param_hash='+param_hash.inspect
                                 param_hash = detect_params(params)
                                 name = param_hash['tag']
                                 name ||= param_hash['name']
@@ -14359,6 +14363,7 @@ module PandoraGtk
                                 values = values.split(',') if values
                                 default = param_hash['default']
                                 default ||= values[0] if values
+                                values ||= default
                                 type = param_hash['type']
                                 kind = param_hash['kind']
                                 type ||= comu
@@ -14388,6 +14393,7 @@ module PandoraGtk
                                   widget.text = default if default
                                 elsif type=='SPIN'
                                   if values
+                                    values.sort
                                     min = values[0]
                                     max = values[-1]
                                   else
@@ -14432,15 +14438,15 @@ module PandoraGtk
                                   widget = Base64Entry.new
                                   widget.text = default if default
                                 elsif type=='PANHASH'
-                                  kind ||= 'Person'
+                                  kind ||= 'Blob,Person,Community,City'
                                   widget = PanhashBox.new('Panhash('+kind+')')
                                   widget.text = default if default
                                 elsif type=='LIST'
                                   widget = ByteListEntry.new(PandoraModel::RelationNames)
                                   widget.text = default if default
                                 else #'BUTTON'
-                                  default ||= _('OK')
-                                  widget = Gtk::Button.new(default)
+                                  default ||= name
+                                  widget = Gtk::Button.new(_(default))
                                 end
                                 if width or size
                                   width = width.to_i if width
@@ -15810,7 +15816,7 @@ module PandoraGtk
         insert_tag('base64/', 'Base64 value="a34b4233"')
       end
       add_menu_item(btn, menu, :panhash, 'Panhash') do
-        insert_tag('panhash/', 'Panhash kind="Person, Community, Blob"')
+        insert_tag('panhash/', 'Panhash kind="Person,Community,Blob"')
       end
       add_menu_item(btn, menu, :list, 'Bytelist') do
         insert_tag('bytelist/', 'List values="red, green, blue"')

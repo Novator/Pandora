@@ -93,7 +93,7 @@ if ($node) {
   if ($limit)
     $filter = "node NOT IN (SELECT * FROM (SELECT node FROM $table ORDER BY time DESC LIMIT $limit) s )";
   if ($live)
-    $filter = "(time>NOW()-INTERVAL 2 QUARTER AND time<NOW()-INTERVAL $live) OR ".$filter;
+    $filter = "(time>NOW()-INTERVAL 1 YEAR AND time<NOW()-INTERVAL $live) OR ".$filter;
   if (($ips) and (strlen($ips)>0))
     $filter = "node='$node' OR ".$filter;
   $res = mysql_query("DELETE FROM $table WHERE ".$filter);
@@ -114,13 +114,13 @@ if ($node) {
     if (count($ips)==0)
       die('!Bad IP');
 
-    // Process all ips
+    // Process ips list
     foreach ($ips as $ip) {
       // Super node inserts with actual time
       $tim = 'NOW()';
-      // Leech inserts 1 year old time
+      // Leech node inserts with 2000 year
       if ($leech)
-        $tim = 'NOW()-INTERVAL 1 YEAR';
+        $tim = "DATE_FORMAT(NOW(),'2000-%m-%d %T')";
       $res = mysql_query("INSERT INTO $table (node,ip,time) VALUES('$node', '$ip', $tim)");
       if (! $res)
         die('!Insert error');
@@ -130,8 +130,8 @@ if ($node) {
     $res = mysql_query("DELETE FROM $table WHERE node='$node' AND node NOT IN (SELECT * FROM (SELECT node FROM $table WHERE node='$node' ORDER BY time DESC LIMIT 1) s )");
     if (! $res)
       die('!Delete excess nodes error');
-    // Demoted record is marked by 2 year old time
-    $res = mysql_query("UPDATE $table SET time=NOW()-INTERVAL 2 YEAR WHERE node='$node'");
+    // Demoted record is marked with 1996 year
+    $res = mysql_query("UPDATE $table SET time=DATE_FORMAT(NOW(),'1996-%m-%d %T') WHERE node='$node'");
     if ($res)
       die('!Node is demoted');
     else
@@ -145,7 +145,7 @@ $flds = 'node,ip';
 if ($time)
   $flds .= ',time';
 if (($node) or (! $time))
-  $table .= " WHERE time IS NOT NULL AND time>NOW()-INTERVAL 2 QUARTER AND ip IS NOT NULL AND ip != ''";
+  $table .= " WHERE time IS NOT NULL AND time>NOW()-INTERVAL 1 YEAR AND ip IS NOT NULL AND ip != ''";
 $sql = mysql_query("SELECT $flds FROM $table ORDER BY time DESC LIMIT $limit");
 if (! $sql)
   die('!Tab select error');
