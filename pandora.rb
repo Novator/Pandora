@@ -2719,6 +2719,36 @@ module PandoraUtils
       res
     end
 
+    MaxFldInfo = 14
+
+    # Return brief record information
+    # RU: Показывает краткую информацию о записи
+    def record_info(max_len=nil, namesvls=nil, sname_sep=nil)
+      @namesvalues = namesvls if namesvls
+      str = ''
+      if @namesvalues.is_a? Hash
+        mfields = self.matter_fields(false)
+        mfields.each do |n,v|
+          fd = self.field_des(n)
+          val, color = PandoraUtils.val_to_view(v, fd[FI_Type], fd[FI_View], false)
+          if val
+            str << '|' if (str.size>0)
+            val = val[0, MaxFldInfo] if val.size>MaxFldInfo
+            str << val.to_s
+            if str.size >= max_len
+              str = str[0, max_len]
+              break
+            end
+          end
+        end
+        str = Utf8String.new(str)
+      end
+      if sname_sep or (str.size==0)
+        str = self.sname + ((str.size>0) ? sname_sep+str : '')
+      end
+      str
+    end
+
     # Clear excess fields
     # RU: Удалить избыточные поля
     def clear_excess_fields(row)
@@ -3635,6 +3665,7 @@ module PandoraModel
   # RU: Тип записей Пандоры
   PK_Person    = 1
   PK_Blob      = 12
+  PK_Relation  = 14
   PK_Key       = 221
   PK_Sign      = 222
   PK_Parameter = 220
@@ -3812,25 +3843,7 @@ module PandoraModel
         values['panhash'] = panhash
         values['modified'] = Time.now.to_i
         res = model.update(values, nil, nil)
-        model.namesvalues = values
-        mfields = model.matter_fields(false)
-        str = ''
-        mfields.each do |n,v|
-          fd = model.field_des(n)
-          val, color = PandoraUtils.val_to_view(v, fd[FI_Type], fd[FI_View], false)
-          if val
-            str << '|' if (str.size>0)
-            if val.size>14
-              val = val[0,14]
-            end
-            str << val.to_s
-            if str.size >= 80
-              str = str[0,80]
-              break
-            end
-          end
-        end
-        str = '[' + model.sname + ': ' + Utf8String.new(str) + ']'
+        str = '['+model.record_info(80, values, ': ')+']'
         if res
           PandoraUtils.log_message(LM_Info, _('Recorded')+' '+str)
         else
@@ -4086,6 +4099,23 @@ module PandoraModel
     end
   end
 
+  def self.del_image_from_cache(panhash, hex=nil)
+    res = nil
+    if panhash
+      panhash_hex = panhash
+      if hex
+        panhash = PandoraUtils.hex_to_bytes(panhash_hex)
+      else #raw format
+        panhash_hex = PandoraUtils.bytes_to_hex(panhash)
+      end
+      $image_cache.delete_if do |key, val|
+        ((key.is_a? Array) and (way = key[2]) \
+          and ((way==panhash_hex) or (way==panhash)))
+      end
+    end
+    res
+  end
+
   # Max smile name length
   # RU: Максимальная длина имени смайла
   MaxSmileName = 12
@@ -4209,7 +4239,7 @@ module PandoraModel
         elsif its_blob
           pixbuf = get_avatar_icon(panhash, pixbuf_parent, nil, icon_size)
         end
-        save_image_to_cache(pixbuf, proto, obj_type, avatar_hash) if not its_blob.nil?
+        save_image_to_cache(pixbuf, proto, obj_type, avatar_hash) #if not its_blob.nil?
       end
     end
     pixbuf
@@ -4419,7 +4449,7 @@ module PandoraModel
   PSF_Verified   = 2      # signature was verified
   PSF_Crypted    = 4      # record is encrypted
   PSF_Harvest    = 64     # download by pieces in progress
-  PSF_Deleted    = 128    # marked to delete
+  PSF_Archive    = 128    # marked to delete
 
 end
 
@@ -5374,17 +5404,10 @@ module PandoraCrypto
               panhash = save_key(key_vec, creator, rights, key_model)
               last_auth_key = panhash if panhash
             else
-              dialog = Gtk::MessageDialog.new($window, \
-                Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
-                Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-                _('Panhash must consist of 44 symbols'))
-              dialog.title = _('Note')
-              dialog.default_response = Gtk::Dialog::RESPONSE_OK
-              dialog.icon = $window.icon
-              if (dialog.run == Gtk::Dialog::RESPONSE_OK)
+              dialog = PandoraGtk::GoodMessageDialog.new(_('Panhash must consist of 44 symbols'))
+              dialog.run_and_do do
                 PandoraGtk.show_panobject_list(PandoraModel::Person, nil, nil, true)
               end
-              dialog.destroy
             end
           end
         end
@@ -5406,17 +5429,11 @@ module PandoraCrypto
               PandoraUtils.set_param('last_auth_key', last_auth_key)
             end
           else
-            dialog = Gtk::MessageDialog.new($window, \
-              Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
-              Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-              _('Cannot activate key. Try again?')+\
-              "\n[" +PandoraUtils.bytes_to_hex(last_auth_key[2,16])+']')
-            dialog.title = _('Key init')
-            dialog.default_response = Gtk::Dialog::RESPONSE_OK
-            dialog.icon = $window.icon
-            getting = (dialog.run == Gtk::Dialog::RESPONSE_OK)
-            dialog.destroy
-            if (not getting)
+            dialog = PandoraGtk::GoodMessageDialog.new( \
+              _('Cannot activate key. Try again?')+ \
+              "\n[" +PandoraUtils.bytes_to_hex(last_auth_key[2,16])+']', \
+              'Key init', Gtk::MessageDialog::QUESTION)
+            getting = dialog.run_and_do(false) do
               key_vec = deactivate_key(key_vec)
               reset_current_key
             end
@@ -7188,7 +7205,7 @@ module PandoraNet
 
   # Version of application and protocol (may be different)
   # RU: Версия программы и протокола (могут отличаться)
-  AppVersion   = '0.64'
+  AppVersion   = '0.65'
   ProtoVersion = 'pandora0.60'
 
   class Session
@@ -10918,17 +10935,10 @@ module PandoraNet
           end
         else
           $window.correct_hunt_btn_state
-          dialog = Gtk::MessageDialog.new($window, \
-            Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
-            Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-            _('Enter at least one node'))
-          dialog.title = _('Note')
-          dialog.default_response = Gtk::Dialog::RESPONSE_OK
-          dialog.icon = $window.icon
-          if (dialog.run == Gtk::Dialog::RESPONSE_OK)
+          dialog = PandoraGtk::GoodMessageDialog.new(_('Enter at least one node'))
+          dialog.run_and_do do
             PandoraGtk.show_panobject_list(PandoraModel::Node, nil, nil, true)
           end
-          dialog.destroy
         end
       else
         $window.correct_hunt_btn_state
@@ -11255,6 +11265,49 @@ module PandoraGtk
   SF_Search  = 9
   SF_Harvest = 10
 
+  class GoodMessageDialog < Gtk::MessageDialog
+
+    def initialize(a_mes, a_title=nil, a_stock=nil, an_icon=nil)
+      a_stock ||= Gtk::MessageDialog::INFO
+      super($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
+        a_stock, Gtk::MessageDialog::BUTTONS_OK_CANCEL, a_mes)
+      a_title ||= 'Note'
+      self.title = _(a_title)
+      self.default_response = Gtk::Dialog::RESPONSE_OK
+      an_icon ||= $window.icon
+      self.icon = an_icon
+      self.signal_connect('key-press-event') do |widget, event|
+        if [Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
+          event.keyval) and event.state.control_mask? #w, W, ц, Ц
+        then
+          widget.response(Gtk::Dialog::RESPONSE_CANCEL)
+          false
+        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
+          event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
+          Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
+          and event.state.control_mask?) #q, Q, й, Й, x, X, ч, Ч
+        then
+          $window.do_menu_act('Quit')
+          false
+        else
+          false
+        end
+      end
+    end
+
+    def run_and_do(do_if_ok=true)
+      res = nil
+      res = (self.run == Gtk::Dialog::RESPONSE_OK)
+      if (res and do_if_ok) or ((not res) and (not do_if_ok))
+        res = true
+        yield if block_given?
+      end
+      self.destroy if not self.destroyed?
+      res
+    end
+
+  end
+
   # Advanced dialog window
   # RU: Продвинутое окно диалога
   class AdvancedDialog < Gtk::Window #Gtk::Dialog
@@ -11424,6 +11477,20 @@ module PandoraGtk
         end
       end
     end
+  end
+
+  def self.is_ctrl_shift_alt?(ctrl=nil, shift=nil, alt=nil)
+    screen, x, y, mask = Gdk::Display.default.pointer
+    res = nil
+    ctrl_prsd = ((mask & Gdk::Window::CONTROL_MASK.to_i) != 0)
+    shift_prsd = ((mask & Gdk::Window::SHIFT_MASK.to_i) != 0)
+    alt_prsd = ((mask & Gdk::Window::MOD1_MASK.to_i) != 0)
+    if ctrl.nil? and shift.nil? and alt.nil?
+      res = [ctrl_prsd, shift_prsd, alt_prsd]
+    else
+      res = ((ctrl and ctrl_prsd) or (shift and shift_prsd) or (alt and alt_prsd))
+    end
+    res
   end
 
   # ToggleButton with safety "active" switching
@@ -11973,11 +12040,8 @@ module PandoraGtk
             #btn.events = Gdk::Event::ALL_EVENTS_MASK
             focus_btn = btn if i==0
             btn.signal_connect('clicked') do |widget|
+              clear_click = (not PandoraGtk.is_ctrl_shift_alt?(true, true))
               btn.grab_focus
-              screen, x, y, mask = Gdk::Display.default.pointer
-              clear_click = (((mask & Gdk::Window::SHIFT_MASK.to_i) == 0) \
-                and ((mask & Gdk::Window::CONTROL_MASK.to_i) == 0) \
-                and ((mask & Gdk::Window::MOD1_MASK.to_i) == 0))
               smile_btn = @@smile_btn
               smile_btn.on_click_btn.call(preset, widget.label)
               hide_popwin if clear_click and (not smile_btn.poly_btn.active?)
@@ -12954,14 +13018,15 @@ module PandoraGtk
     def initialize(panhash_type, *args)
       @panclasses = nil
       @types = panhash_type
+      stock = nil
       if @types=='Panhash'
         @types = 'Panhash(Blob,Person,Community,City,Key)'
+        stock = :panhash
       end
       set_classes
       title = nil
-      stock = nil
       if (panclasses.is_a? Array) and (panclasses.size>0) and (not @types.nil?)
-        stock = $window.get_panobject_stock(panclasses[0].ider)
+        stock ||= $window.get_panobject_stock(panclasses[0].ider)
         panclasses.each do |panclass|
           if title
             title << ', '
@@ -15454,18 +15519,8 @@ module PandoraGtk
           operation.run(Gtk::PrintOperation::ACTION_PRINT_DIALOG, $window)
         end
       rescue
-        errdlg = Gtk::MessageDialog.new($window,
-          Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
-          Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-          $!.message)
-          errdlg.title = _('Note')
-          errdlg.default_response = Gtk::Dialog::RESPONSE_OK
-          errdlg.icon = $window.icon
-        errdlg.signal_connect('response') do
-          errdlg.destroy
-          true
-        end
-        errdlg.show
+        dialog = PandoraGtk::GoodMessageDialog.new($!.message)
+        dialog.run_and_do
       end
     end
 
@@ -15687,9 +15742,7 @@ module PandoraGtk
       menu = Gtk::Menu.new
       btn.menu = menu
       add_menu_item(btn, menu, Gtk::Stock::SELECT_COLOR) do
-        screen, x, y, mask = Gdk::Display.default.pointer
-        shift_or_ctrl = (((mask & Gdk::Window::SHIFT_MASK.to_i) != 0) \
-          or ((mask & Gdk::Window::CONTROL_MASK.to_i) != 0))
+        shift_or_ctrl = PandoraGtk.is_ctrl_shift_alt?(true, true)
         dialog = Gtk::ColorSelectionDialog.new
         dialog.set_transient_for(self)
         colorsel = dialog.colorsel
@@ -19734,6 +19787,23 @@ module PandoraGtk
       panobj_icon
     end
 
+    def self.update_dlg_text(dialog, arch_cb, keep_cb, ignore_cb)
+      text = nil
+      if arch_cb and arch_cb.active?
+        if keep_cb.active?
+          text = _('Stay record in archive with "Keep" flag')
+        else
+          text = _('Move record to archive. Soon will be deleted by garbager')
+        end
+      elsif ignore_cb.active?
+        text = _('Delete record physically')+'. '+\
+          _('Also create Relation "Ignore"')
+      else
+        text = _('Delete record physically')
+      end
+      dialog.secondary_text = text if text
+    end
+
     path = nil
     if tree_view.destroyed?
       new_act = false
@@ -19778,24 +19848,124 @@ module PandoraGtk
 
       if action=='Delete'
         if id and sel[0]
-          info = panobject.show_panhash(panhash0) #.force_encoding('ASCII-8BIT') ASCII-8BIT
-          dialog = Gtk::MessageDialog.new($window, \
-            Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT,
-            Gtk::MessageDialog::QUESTION, Gtk::MessageDialog::BUTTONS_OK_CANCEL,
-            _('Record will be deleted. Sure?')+"\n["+info+']')
-          dialog.title = _('Deletion')+': '+panobject.sname
-          dialog.default_response = Gtk::Dialog::RESPONSE_OK
-          dialog.icon = get_panobject_icon(panobject)
-          if dialog.run == Gtk::Dialog::RESPONSE_OK
-            res = panobject.update(nil, nil, 'id='+id.to_s)
-            tree_view.sel.delete_if {|row| row[0]==id }
-            store.remove(iter)
-            #iter.next!
-            pt = path.indices[0]
-            pt = tree_view.sel.size-1 if (pt > tree_view.sel.size-1)
-            tree_view.set_cursor(Gtk::TreePath.new(pt), column, false) if (pt >= 0)
+          ctrl_prsd, shift_prsd, alt_prsd = PandoraGtk.is_ctrl_shift_alt?
+          keep_flag = (panstate and (panstate & PandoraModel::PSF_Support)>0)
+          arch_flag = (panstate and (panstate & PandoraModel::PSF_Archive)>0)
+          ignore_mode = ((ctrl_prsd and shift_prsd) or arch_flag)
+          arch_mode = ((not ignore_mode) and (not ctrl_prsd))
+          keep_mode = (arch_mode and (keep_flag or shift_prsd))
+          in_arch = tree_view.page_sw.arch_btn.active?
+          delete_mode = PandoraUtils.get_param('delete_mode')
+          do_del = true
+          if arch_flag or ctrl_prsd or shift_prsd or in_arch \
+          or (delete_mode==0)
+            in_arch = (in_arch and arch_flag)
+            info = panobject.record_info(80, nil, ': ')
+            #panobject.show_panhash(panhash0) #.force_encoding('ASCII-8BIT') ASCII-8BIT
+            dialog = PandoraGtk::GoodMessageDialog.new(info, 'Deletion', \
+              Gtk::MessageDialog::QUESTION, get_panobject_icon(panobject))
+            # Set dialog size for prevent jumping
+            hbox = dialog.vbox.children[0]
+            hbox.set_size_request(500, 100) if hbox.is_a? Gtk::HBox
+            # CheckBox adding
+            arch_cb = nil
+            keep_cb = nil
+            ignore_cb = nil
+            if not in_arch
+              arch_cb = SafeCheckButton.new(:arch)
+              PandoraGtk.set_button_text(arch_cb, _('Move to archive'))
+              arch_cb.active = arch_mode
+              arch_cb.safe_signal_clicked do |widget|
+                if in_arch
+                  widget.safe_set_active(false)
+                else not PandoraGtk.is_ctrl_shift_alt?(true, true)
+                  widget.safe_set_active(true)
+                end
+                if widget.active?
+                  ignore_cb.safe_set_active(false)
+                else
+                  keep_cb.safe_set_active(false)
+                end
+                update_dlg_text(dialog, arch_cb, keep_cb, ignore_cb)
+                false
+              end
+              dialog.vbox.pack_start(arch_cb, false, true, 0)
+
+              $window.register_stock(:keep)
+              keep_cb = SafeCheckButton.new(:keep)
+              keep_cb.active = keep_mode
+              PandoraGtk.set_button_text(keep_cb, _('Keep in archive'))
+              keep_cb.safe_signal_clicked do |widget|
+                widget.safe_set_active(false) if in_arch
+                if widget.active?
+                  arch_cb.safe_set_active(true) if not in_arch
+                  ignore_cb.safe_set_active(false)
+                end
+                update_dlg_text(dialog, arch_cb, keep_cb, ignore_cb)
+                false
+              end
+              dialog.vbox.pack_start(keep_cb, false, true, 0)
+            end
+
+            $window.register_stock(:ignore)
+            ignore_cb = SafeCheckButton.new(:ignore)
+            ignore_cb.active = ignore_mode
+            PandoraGtk.set_button_text(ignore_cb, _('Destroy and ignore'))
+            ignore_cb.safe_signal_clicked do |widget|
+              if widget.active?
+                arch_cb.safe_set_active(false) if arch_cb
+                keep_cb.safe_set_active(false) if keep_cb
+              elsif not in_arch
+                arch_cb.safe_set_active(true) if arch_cb
+              end
+              update_dlg_text(dialog, arch_cb, keep_cb, ignore_cb)
+              false
+            end
+            dialog.vbox.pack_start(ignore_cb, false, true, 0)
+
+            update_dlg_text(dialog, arch_cb, keep_cb, ignore_cb)
+            dialog.vbox.show_all
+
+            do_del = dialog.run_and_do do
+              arch_mode = (arch_cb and arch_cb.active?)
+              keep_mode = (keep_cb and keep_cb.active?)
+              ignore_mode = ignore_cb.active?
+            end
           end
-          dialog.destroy
+          if do_del
+            rec_deleted = false
+            if arch_mode
+              p '[arch_mode, keep_mode]='+[arch_mode, keep_mode].inspect
+              panstate = (panstate | PandoraModel::PSF_Archive)
+              if keep_mode
+                panstate = (panstate | PandoraModel::PSF_Support)
+              else
+                panstate = (panstate & (~PandoraModel::PSF_Support))
+              end
+              res = panobject.update({:panstate=>panstate}, nil, 'id='+id.to_s)
+              if (not tree_view.page_sw.arch_btn.active?)
+                rec_deleted = true
+              end
+            else
+              if ignore_mode
+                #Create Ignore Relation
+              end
+              res = panobject.update(nil, nil, 'id='+id.to_s)
+              rec_deleted = true
+            end
+            if rec_deleted
+              if (panobject.kind==PK_Relation)
+                PandoraModel.del_image_from_cache(panobject.namesvalues['first'])
+                PandoraModel.del_image_from_cache(panobject.namesvalues['second'])
+              end
+              tree_view.sel.delete_if {|row| row[0]==id }
+              store.remove(iter)
+              #iter.next!
+              pt = path.indices[0]
+              pt = tree_view.sel.size-1 if (pt > tree_view.sel.size-1)
+              tree_view.set_cursor(Gtk::TreePath.new(pt), column, false) if (pt >= 0)
+            end
+          end
         end
       elsif (action=='Dialog')
         show_dialog(panhash0) if panhash0
@@ -19928,7 +20098,10 @@ module PandoraGtk
             entry = field[FI_Widget]
             val = entry.text
 
-            if (panobject.kind==PK_Parameter) and (field[FI_Id]=='value')
+            if ((panobject.kind==PK_Relation) and val \
+            and ((field[FI_Id]=='first') or (field[FI_Id]=='second')))
+              PandoraModel.del_image_from_cache(val, true)
+            elsif (panobject.kind==PK_Parameter) and (field[FI_Id]=='value')
               par_type = panobject.field_val('type', sel[0])
               setting = panobject.field_val('setting', sel[0])
               ps = PandoraUtils.decode_param_setting(setting)
@@ -20125,7 +20298,8 @@ module PandoraGtk
   # Grid for panobjects
   # RU: Таблица для объектов Пандоры
   class SubjTreeView < Gtk::TreeView
-    attr_accessor :panobject, :sel, :notebook, :auto_create, :param_view_col
+    attr_accessor :panobject, :sel, :notebook, :auto_create, :param_view_col, \
+      :page_sw
   end
 
   # Column for SubjTreeView
@@ -20160,7 +20334,7 @@ module PandoraGtk
           filter = nil
           filter = filter_box.compose_filter
           if (not arch_btn.active?)
-            del_bit = PandoraModel::PSF_Deleted
+            del_bit = PandoraModel::PSF_Archive
             del_fil = 'IFNULL(panstate,0)&'+del_bit.to_s+'=0'
             if filter.nil?
               filter = del_fil
@@ -20639,6 +20813,7 @@ module PandoraGtk
 
     page_sw.name = panobject.ider
     page_sw.treeview = treeview
+    treeview.page_sw = page_sw
 
     hbox = Gtk::HBox.new
 
@@ -21171,17 +21346,11 @@ module PandoraGtk
         mes << ', ' if mes.size>0
         mes << _('person')
       end
-      dialog = Gtk::MessageDialog.new($window, \
-        Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
-        Gtk::MessageDialog::INFO, Gtk::MessageDialog::BUTTONS_OK_CANCEL, \
-        mes = _('No one')+' '+mes+' '+_('is not found')+".\n"+_('Add nodes and do hunt'))
-      dialog.title = _('Note')
-      dialog.default_response = Gtk::Dialog::RESPONSE_OK
-      dialog.icon = $window.icon
-      if (dialog.run == Gtk::Dialog::RESPONSE_OK)
+      mes = _('No one')+' '+mes+' '+_('is not found')+".\n"+_('Add nodes and do hunt')
+      dialog = PandoraGtk::GoodMessageDialog.new(mes)
+      dialog.run_and_do do
         PandoraGtk.show_panobject_list(PandoraModel::Node, nil, nil, true)
       end
-      dialog.destroy
     end
     sw
   end
@@ -22480,9 +22649,7 @@ module PandoraGtk
         when 'Listen'
           PandoraNet.start_or_stop_listen
         when 'Hunt'
-          screen, x, y, mask = Gdk::Display.default.pointer
-          continue = (((mask & Gdk::Window::SHIFT_MASK.to_i) != 0) \
-            or ((mask & Gdk::Window::CONTROL_MASK.to_i) != 0))
+          continue = PandoraGtk.is_ctrl_shift_alt?(true, true)
           PandoraNet.start_or_stop_hunt(continue)
         #when 'Notice'
         #  $window.show_notice(true)
@@ -22850,6 +23017,7 @@ module PandoraGtk
             pool.time_now = Time.now.to_i
 
             # Task executer
+            # RU: Запускальщик Заданий
             if (not @task_dialog) and ((not @task_offset) \
             or (@task_offset >= CheckTaskPeriod))
               @task_offset = 0.0
@@ -22963,7 +23131,8 @@ module PandoraGtk
               @hunt_node_id += HuntTrain
             end
 
-            # Search spider
+            # Search robot
+            # RU: Поисковый робот
             if (pool.found_ind <= pool.mass_ind) and false #OFFFFF !!!!!
               processed = MassTrain
               while (processed > 0) and (pool.found_ind <= pool.mass_ind)
@@ -23017,6 +23186,7 @@ module PandoraGtk
             end
 
             # Mass record garbager
+            # RU: Чистильщик массовых сообщений
             if @mass_garb_offset >= MassGarbStep
               @mass_garb_offset = 0.0
               cur_time = Time.now.to_i
@@ -23041,7 +23211,8 @@ module PandoraGtk
             end
             @mass_garb_offset += @scheduler_step
 
-            # Base garbager
+            # Bases garbager
+            # RU: Чистильшик баз
             if (not @base_garb_offset) \
             or ((@base_garb_offset >= CheckBaseStep) and @base_garb_kind<255) \
             or (@base_garb_offset >= CheckBasePeriod)
@@ -23080,7 +23251,7 @@ module PandoraGtk
                   else # :purge
                     purge_time = Time.now.to_i - @base_purge_term
                     filter = ['id>=? AND modified<? AND panstate>=?', @base_garb_id, \
-                      purge_time, PandoraModel::PSF_Deleted]
+                      purge_time, PandoraModel::PSF_Archive]
                   end
                   #p 'Base garbager [ider,mode,filt]: '+[@base_garb_model.ider, @base_garb_mode, filter].inspect
                   sel = @base_garb_model.select(filter, false, 'id', 'id ASC', train_tail)
@@ -23093,7 +23264,7 @@ module PandoraGtk
                       values = nil
                       if @base_garb_mode == :arch
                         # mark the record as deleted, else purge it
-                        values = {:panstate=>PandoraModel::PSF_Deleted}
+                        values = {:panstate=>PandoraModel::PSF_Archive}
                       end
                       @base_garb_model.update(values, nil, {:id=>id})
                     end
@@ -23110,11 +23281,10 @@ module PandoraGtk
             end
             @base_garb_offset += @scheduler_step if @base_garb_offset
 
-            # Memory garbager
-
             # GUI updater (list, traffic)
 
-            # Node IPs registration
+            # PanReg node registration
+            # RU: Регистратор узлов PanReg
             if (@node_reg_offset.nil? or (@node_reg_offset >= @panreg_period))
               @node_reg_offset = 0.0
               PandoraNet.register_node_ips
