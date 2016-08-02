@@ -3719,7 +3719,7 @@ module PandoraModel
 
   $keep_for_trust  = 0.5      # set "Support" flag for records with creator trust
   $trust_for_chatcom  = 0.7   # trust level for all chat commands
-  $special_chatcom_trusts  = {'echo'=>0.1, 'exec'=>0.9, 'sound'=>0.2, 'tunnel'=>0.8}
+  $special_chatcom_trusts  = {'echo'=>0.01, 'exec'=>0.9, 'sound'=>0.2, 'tunnel'=>0.8}
   $max_relative_path_depth = 2
 
   # Save record
@@ -13221,24 +13221,39 @@ module PandoraGtk
 
   # Entry for coordinates
   # RU: Поле ввода координат
-  class CoordBox < Gtk::HBox
+  class CoordBox < BtnEntry # Gtk::HBox
     attr_accessor :latitude, :longitude
-    CoordWidth = 120
+    CoordWidth = 110
 
     def initialize
-      super
+      super(Gtk::HBox, :coord)
       @latitude   = CoordEntry.new
       latitude.tooltip_text = _('Latitude')+': 60.716, 60 43\', 60.43\'00"N'+"\n["+latitude.mask+']'
       @longitude  = CoordEntry.new
       longitude.tooltip_text = _('Longitude')+': -114.9, W114 54\' 0", 114.9W'+"\n["+longitude.mask+']'
       latitude.width_request = CoordWidth
       longitude.width_request = CoordWidth
-      self.pack_start(latitude, false, false, 0)
-      self.pack_start(longitude, false, false, 1)
+      entry.pack_start(latitude, false, false, 0)
+      @entry.pack_start(longitude, false, false, 1)
+    end
+
+    def do_on_click
+      @latitude.grab_focus
+      dialog = PanhashDialog.new([PandoraModel::City])
+      dialog.choose_record('coord') do |panhash,coord|
+        if coord
+          geo_coord = PandoraUtils.coil_coord_to_geo_coord(coord)
+          if geo_coord.is_a? Array
+            latitude.text = geo_coord[0].to_s
+            longitude.text = geo_coord[1].to_s
+          end
+        end
+      end
+      true
     end
 
     def max_length=(maxlen)
-      ml = maxlen / 2
+      ml = (maxlen-@button.allocation.width) / 2
       latitude.max_length = ml
       longitude.max_length = ml
     end
@@ -14393,7 +14408,7 @@ module PandoraGtk
                                   widget.text = default if default
                                 elsif type=='SPIN'
                                   if values
-                                    values.sort
+                                    values.sort!
                                     min = values[0]
                                     max = values[-1]
                                   else
@@ -15786,16 +15801,16 @@ module PandoraGtk
       end
       menu.append(Gtk::SeparatorMenuItem.new)
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Edit') do
-        insert_tag('edit/', 'Edit value="Text"')
+        insert_tag('edit/', 'Edit value="Text" size="40"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Spin') do
         insert_tag('spin/', 'Spin values="42,48,52" default="48"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Integer') do
-        insert_tag('integer/', 'Integer value="42"')
+        insert_tag('integer/', 'Integer value="42" width="70"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Hex') do
-        insert_tag('hex/', 'Hex value="01a5ff"')
+        insert_tag('hex/', 'Hex value="01a5ff" size="20"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Real') do
         insert_tag('real/', 'Real value="0.55"')
@@ -15813,7 +15828,7 @@ module PandoraGtk
         insert_tag('filename/', 'Filename value="./picture1.jpg"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Base64') do
-        insert_tag('base64/', 'Base64 value="a34b4233"')
+        insert_tag('base64/', 'Base64 value="SGVsbG8=" size="30"')
       end
       add_menu_item(btn, menu, :panhash, 'Panhash') do
         insert_tag('panhash/', 'Panhash kind="Person,Community,Blob"')
@@ -15822,7 +15837,7 @@ module PandoraGtk
         insert_tag('bytelist/', 'List values="red, green, blue"')
       end
       add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Button') do
-        insert_tag('button/', 'Order')
+        insert_tag('button/', 'Button value="Order"')
       end
       menu.show_all
 
