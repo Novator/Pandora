@@ -4348,17 +4348,17 @@ module PandoraModel
   # Check, create or delete relation between two panobjects
   # RU: Проверяет, создаёт или удаляет связь между двумя объектами
   def self.act_relation(panhash1, panhash2, rel_kind=RK_Unknown, act=:check, \
-  creator=true, init=false, models=nil)
+  creator_for_nil=true, init=false, models=nil)
     res = nil
     if panhash1 or panhash2
-      if not (panhash1 and panhash2)
-        panhash = PandoraCrypto.current_user_or_key(creator, init)
-        if panhash
-          if not panhash1
-            panhash1 = panhash
-          else
-            panhash2 = panhash
-          end
+      creator = nil
+      if panhash1.nil? or panhash2.nil?
+        panhash = PandoraCrypto.current_user_or_key(creator_for_nil, init)
+        creator = panhash if creator_for_nil
+        if panhash1.nil?
+          panhash1 = panhash
+        else
+          panhash2 = panhash
         end
       end
       if panhash1 and panhash2 #and (panhash1 != panhash2)
@@ -4372,23 +4372,23 @@ module PandoraModel
             kind_op = '>=' if (act != :create)
           end
           kind_op = 'kind' + kind_op
-          filter = [['first=', panhash1], ['second=', panhash2], [kind_op, rel_kind]]
+          filter1 = [['first=', panhash1], ['second=', panhash2], [kind_op, rel_kind]]
           filter2 = nil
           if relation_is_symmetric?(rel_kind) and (panhash1 != panhash2)
-            filter = [['first=', panhash2], ['second=', panhash1], [kind_op, rel_kind]]
+            filter2 = [['first=', panhash2], ['second=', panhash1], [kind_op, rel_kind]]
           end
           #p 'relat2 [p1,p2,t]='+[PandoraUtils.bytes_to_hex(panhash1), PandoraUtils.bytes_to_hex(panhash2), rel_kind].inspect
           #p 'act='+act.inspect
           if (act == :delete)
-            res = relation_model.update(nil, nil, filter)
+            res = relation_model.update(nil, nil, filter1)
             if filter2
               res2 = relation_model.update(nil, nil, filter2)
-              res = res or res2
+              res = (res or res2)
             end
           else #check or create
             flds = 'id'
             flds << ',kind' if pub_kind
-            sel = relation_model.select(filter, false, flds, 'modified DESC', 1)
+            sel = relation_model.select(filter1, false, flds, 'modified DESC', 1)
             exist = (sel and (sel.size>0))
             if (not exist) and filter2
               sel = relation_model.select(filter2, false, flds, 'modified DESC', 1)
@@ -4397,17 +4397,24 @@ module PandoraModel
             res = exist
             res = sel[0][1] if pub_kind and exist
             if (not exist) and (act == :create)
-              #p 'UPD!!!'
-              if filter2 and (panhash1>panhash2) #when symmetric relation less panhash must be at left
-                filter = filter2
+              if filter2 and (panhash1>panhash2) #low panhash must be first in symmetric relation
+                filter1 = filter2
               end
+              panstate = 0
               values = {}
-              values['first'] = filter[0][1]
-              values['second'] = filter[1][1]
-              values['kind'] = filter[2][1]
+              first = filter1[0][1]
+              second = filter1[1][1]
+              values['first'] = first
+              values['second'] = second
+              values['kind'] = filter1[2][1]
               panhash = relation_model.panhash(values, 0)
               values['panhash'] = panhash
               values['modified'] = Time.now.to_i
+              creator ||= PandoraCrypto.current_user_or_key(true, false)
+              if creator and ((first==creator) or (second==creator))
+                panstate = PandoraModel::PSF_Support
+              end
+              values['panstate'] = panstate
               res = relation_model.update(values, nil, nil)
             end
           end
@@ -5473,11 +5480,50 @@ module PandoraCrypto
     res
   end
 
-  PT_Pson1   = 1
+  # Pack method of data before sign
+  # RU: Метод упаковки данных перед подписанием
+  PSM_Pson   = 1
+  PSM_Json   = 2
+  PSM_Xml    = 3
+  # Notary purpose flag, just for certification, it's not for working sign
+  # RU: Нотариальный флаг, только для сертификации, но не для рабочей подписи
+  PSP_Notary = 8
+  # Depth of resolving panhashes inside signed record and including their data
+  # RU: Глубина разрешения панхэшей внутри подписываемой записи и вложения их данных
+  PSR_IncludeDepth1  = 0x10      # 1 level (dont resolve, include just a record)
+  PSR_IncludeDepth2  = 0x20      # 2 level (resolve link 1 time, include second floor)
+  PSR_IncludeDepth3  = 0x30
+  PSR_IncludeDepth4  = 0x40
+  PSR_IncludeDepth5  = 0x50
+  PSR_IncludeDepth15 = 0xF0      # 15
+  PSR_IncludeDepthFull  = 0      # For full depth
+
+  # Depth to flag
+  # RU: Глубину во флаг
+  def self.include_depth_to_resolve_flag(depth)
+    res = PSR_IncludeDepth1
+    if (depth.is_a? Integer) and (depth>=0)
+      if depth==0
+        res = PSR_IncludeDepthFull
+      else
+        depth = 15 if depth>15
+        res = (depth << 4)
+      end
+    end
+    res
+  end
+
+  # Flag to depth
+  # RU: Флаг в глубину
+  def self.resolve_flag_to_include_depth(depth)
+    res = nil
+    res = ((depth & 0xF0) >> 4) if (depth.is_a? Integer)
+    res
+  end
 
   # Sign PSON of PanObject and save a sign as record
   # RU: Подписывает PSON ПанОбъекта и сохраняет подпись как запись
-  def self.sign_panobject(panobject, trust=0, models=nil)
+  def self.sign_panobject(panobject, trust=0, models=nil, pack=nil, depth=nil, notary=nil)
     res = false
     key = current_key
     if key and key[KV_Obj] and key[KV_Creator]
@@ -5494,9 +5540,13 @@ module PandoraCrypto
           key_hash = key[KV_Panhash]
           creator = key[KV_Creator]
           trust = PandoraModel.transform_trust(trust, true)
+          pack ||= PSM_Pson
+          pack = (pack | PSP_Notary) if notary
+          resolve_flag = include_depth_to_resolve_flag(depth)
+          pack = (pack | resolve_flag)
 
           values = {:modified=>time_now, :obj_hash=>obj_hash, :key_hash=>key_hash, \
-            :pack=>PT_Pson1, :trust=>trust, :creator=>creator, :created=>time_now, \
+            :pack=>pack, :trust=>trust, :creator=>creator, :created=>time_now, \
             :sign=>sign, :panstate=>PandoraModel::PSF_Support}
 
           sign_model = PandoraUtils.get_model('Sign', models)
@@ -10453,12 +10503,15 @@ module PandoraNet
     res = (not($tcp_listen_thread.nil?) or not($udp_listen_thread.nil?))
   end
 
+  WaitSecPanRegOnExit = 1.5
+  $node_registering_thread = nil
+
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
-  def self.start_or_stop_listen(need_to_start=nil, need_panreg=nil)
+  def self.start_or_stop_listen(must_listen=nil, quit_programm=nil)
     PandoraNet.get_exchange_params
-    need_to_start = (not listen?) if need_to_start.nil?
-    if need_to_start
+    must_listen = (not listen?) if must_listen.nil?
+    if must_listen
       # Need to start
       #$window.show_notice(false)
       user = PandoraCrypto.current_user_or_key(true)
@@ -10494,36 +10547,40 @@ module PandoraNet
               str = 'TCP ['+host.to_s+']:'+tcp_port.to_s
               PandoraUtils.log_message(LM_Warning, _('Cannot open')+' '+str)
             end
-            Thread.current[:tcp_server] = server
-            Thread.current[:listen_tcp] = (server != nil)
-            while Thread.current[:listen_tcp] and server and (not server.closed?)
-              socket = get_listener_client_or_nil(server)
-              while Thread.current[:listen_tcp] and not server.closed? and not socket
-                sleep 0.05
-                #Thread.pass
-                #Gtk.main_iteration
+            if server
+              PandoraNet.register_node_ips(true)
+              Thread.current[:tcp_server] = server
+              Thread.current[:listen_tcp] = (server != nil)
+              while Thread.current[:listen_tcp] and server and (not server.closed?)
                 socket = get_listener_client_or_nil(server)
-              end
+                while Thread.current[:listen_tcp] and not server.closed? and not socket
+                  sleep 0.05
+                  #Thread.pass
+                  #Gtk.main_iteration
+                  socket = get_listener_client_or_nil(server)
+                end
 
-              if Thread.current[:listen_tcp] and (not server.closed?) and socket
-                host_ip = socket.peeraddr[2]
-                if $window.pool.is_black?(host_ip)
-                  PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
-                else
-                  host_name = socket.peeraddr[3]
-                  port = socket.peeraddr[1]
-                  proto = 'tcp'
-                  p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
-                  session = Session.new(socket, host_name, host_ip, port, proto, \
-                    0, nil, nil, nil, nil)
+                if Thread.current[:listen_tcp] and (not server.closed?) and socket
+                  host_ip = socket.peeraddr[2]
+                  if $window.pool.is_black?(host_ip)
+                    PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
+                  else
+                    host_name = socket.peeraddr[3]
+                    port = socket.peeraddr[1]
+                    proto = 'tcp'
+                    p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
+                    session = Session.new(socket, host_name, host_ip, port, proto, \
+                      0, nil, nil, nil, nil)
+                  end
                 end
               end
+              server.close if server and (not server.closed?)
+              PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
+              $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
+              $tcp_listen_thread = nil
+              $window.correct_lis_btn_state
+              PandoraNet.register_node_ips(false)
             end
-            server.close if server and (not server.closed?)
-            PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
-            $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
-            $tcp_listen_thread = nil
-            $window.correct_lis_btn_state
           end
         end
 
@@ -10680,23 +10737,28 @@ module PandoraNet
       end
       $window.correct_lis_btn_state
     end
-    if need_panreg
-      PandoraNet.register_node_ips(need_to_start, need_panreg)
-    else
-      Thread.new do
-        PandoraNet.register_node_ips(need_to_start)
+    if quit_programm
+      PandoraNet.register_node_ips(false, quit_programm)
+      sleep(0.1)
+      i = (WaitSecPanRegOnExit*10).round
+      while $node_registering_thread and (i>0)
+        i -= 1
+        sleep(0.1)
+      end
+      if $node_registering_thread
+        $node_registering_thread.exit if $node_registering_thread.alive?
+        $node_registering_thread = nil
       end
     end
   end
 
-  $node_registering = nil
-  $prev_listener_state = nil
+  $last_reg_listen_state = nil
   $last_ip4_show = nil
   $last_ip6_show = nil
 
   WrongUrl = 'http://robux.biz/panreg.php?node=[node]&amp;ips=[ips]'
 
-  def self.register_node_ips(listening=nil, need_panreg=nil)
+  def self.register_node_ips(listening=nil, quit_programm=nil)
 
     def self.check_last_ip(ip_list, version)
       ip = nil
@@ -10724,9 +10786,8 @@ module PandoraNet
       PandoraUtils.set_param('last_ip'+version, ip) if ip
     end
 
-    if ((not listening.nil?) and (not $node_registering)) \
-    or ($node_registering.is_a? FalseClass)
-      $node_registering = true
+    if $node_registering_thread.nil?
+      $node_registering_thread = Thread.current
       ip_list = Socket.ip_address_list
       ip4_list = ip_list.select do |addr_info|
         (addr_info.ipv4? and (not addr_info.ipv4_loopback?) \
@@ -10755,20 +10816,29 @@ module PandoraNet
         ddns4_url = get_update_url('ddns4_url', ip4n)
         ddns6_url = get_update_url('ddns6_url', ip6n)
         listening = PandoraNet.listen? if listening.nil?
-        need_panreg = true if $prev_listener_state.nil?
-        p 'PANREG '+[listening, need_panreg, $prev_listener_state].inspect
-        if (listening or need_panreg) and (ddns4_url or ddns6_url or panreg_url)
-          if not need_panreg
+        need_panreg = true
+        if $last_reg_listen_state.nil?
+          quit_programm = false   #start programm
+        else
+          need_panreg = (($last_reg_listen_state != listening) or quit_programm)
+        end
+        if panreg_url and need_panreg
+          panreg_period = PandoraUtils.get_param('panreg_period')
+          if not panreg_period
+            panreg_period = 30
+          elsif (panreg_period<0)
+            panreg_period = -panreg_period
+            quit_programm = nil #if (quit_programm.is_a? TrueClass)
+            need_panreg = listening
+          end
+          if quit_programm.nil? and need_panreg
             last_panreg = PandoraUtils.get_param('last_panreg')
             last_panreg ||= 0
-            panreg_period = PandoraUtils.get_param('panreg_period')
-            if (not(panreg_period.is_a? Numeric)) or (panreg_period < 0)
-              panreg_period = 30
-            end
             time_now = Time.now.to_i
             need_panreg = ((time_now - last_panreg.to_i) >= panreg_period*60)
           end
           if panreg_url and need_panreg
+            $last_reg_listen_state = listening
             ips = ''
             del = ''
             if listening
@@ -10804,18 +10874,17 @@ module PandoraNet
               PandoraUtils.set_param('last_panreg', Time.now)
             end
           end
-          if listening
-            if ddns4_url and PandoraNet.http_ddns_request(ddns4_url, {:ip=>ip4}, '4')
-              set_last_ip(ip4, '4')
-            end
-            if ddns6_url and PandoraNet.http_ddns_request(ddns6_url, {:ip=>ip6}, '6')
-              set_last_ip(ip6, '6')
-            end
+        end
+        if (ddns4_url or ddns6_url) and listening and (not quit_programm)
+          if ddns4_url and PandoraNet.http_ddns_request(ddns4_url, {:ip=>ip4}, '4')
+            set_last_ip(ip4, '4')
+          end
+          if ddns6_url and PandoraNet.http_ddns_request(ddns6_url, {:ip=>ip6}, '6')
+            set_last_ip(ip6, '6')
           end
         end
-        $prev_listener_state = listening
       end
-      $node_registering = false
+      $node_registering_thread = nil
     end
   end
 
@@ -11437,7 +11506,7 @@ module PandoraGtk
         @def_widget.grab_focus
         self.present
         GLib::Timeout.add(200) do
-          @def_widget.grab_focus
+          @def_widget.grab_focus if @def_widget and (not @def_widget.destroyed?)
         end
       end
 
@@ -19851,10 +19920,10 @@ module PandoraGtk
           ctrl_prsd, shift_prsd, alt_prsd = PandoraGtk.is_ctrl_shift_alt?
           keep_flag = (panstate and (panstate & PandoraModel::PSF_Support)>0)
           arch_flag = (panstate and (panstate & PandoraModel::PSF_Archive)>0)
-          ignore_mode = ((ctrl_prsd and shift_prsd) or arch_flag)
+          in_arch = tree_view.page_sw.arch_btn.active?
+          ignore_mode = ((ctrl_prsd and shift_prsd) or (arch_flag and (not ctrl_prsd)))
           arch_mode = ((not ignore_mode) and (not ctrl_prsd))
           keep_mode = (arch_mode and (keep_flag or shift_prsd))
-          in_arch = tree_view.page_sw.arch_btn.active?
           delete_mode = PandoraUtils.get_param('delete_mode')
           do_del = true
           if arch_flag or ctrl_prsd or shift_prsd or in_arch \
@@ -19878,7 +19947,7 @@ module PandoraGtk
               arch_cb.safe_signal_clicked do |widget|
                 if in_arch
                   widget.safe_set_active(false)
-                else not PandoraGtk.is_ctrl_shift_alt?(true, true)
+                elsif not PandoraGtk.is_ctrl_shift_alt?(true, true)
                   widget.safe_set_active(true)
                 end
                 if widget.active?
@@ -19947,10 +20016,11 @@ module PandoraGtk
                 rec_deleted = true
               end
             else
-              if ignore_mode
-                #Create Ignore Relation
-              end
               res = panobject.update(nil, nil, 'id='+id.to_s)
+              PandoraModel.act_relation(nil, panhash0, RK_Ignore, :delete, \
+                true, true)
+              PandoraModel.act_relation(nil, panhash0, RK_Ignore, :create, \
+                true, true) if ignore_mode
               rec_deleted = true
             end
             if rec_deleted

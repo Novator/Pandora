@@ -45,7 +45,8 @@ $db_user = $conf['panreg']['db_user'];
 $db_pass = $conf['panreg']['db_pass'];
 $table = $conf['panreg']['table'];
 $limit = $conf['panreg']['limit'];
-$live = $conf['panreg']['live'];
+$alive_time = $conf['panreg']['alive_time'];
+$erase_time = $conf['panreg']['erase_time'];
 if (! $sql_server)
   $sql_server = 'localhost';
 if (! $db)
@@ -88,18 +89,12 @@ if ($node) {
   if ($len != 20)
     die("!Node length is not 20 (=$len)");
 
-  // Truncate table to limit, to old, and to node
-  $filter = "time IS NULL";
-  if ($limit)
-    $filter = "node NOT IN (SELECT * FROM (SELECT node FROM $table ORDER BY time DESC LIMIT $limit) s )";
-  if ($live)
-    $filter = "(time>NOW()-INTERVAL 1 YEAR AND time<NOW()-INTERVAL $live) OR ".$filter;
-  if (($ips) and (strlen($ips)>0))
-    $filter = "node='$node' OR ".$filter;
-  $res = mysql_query("DELETE FROM $table WHERE ".$filter);
-  if (! $res)
-    die('!Truncate table error');
+  // MySQL formula for calc old year time
+  function old_now($year) {
+    return "DATE_FORMAT(NOW(),'".$year."-%m-%d %T')";
+  }
 
+  // If ips sets, it's a node adding, else deleting
   if ($ips) {
     // Convert IP human view to binary
     $ips = explode(",", $ips);
@@ -114,28 +109,57 @@ if ($node) {
     if (count($ips)==0)
       die('!Bad IP');
 
-    // Process ips list
+    // Delete nodes when: ips specified, time expired or limit exceeds
+    $filter = '';
+    if (($ips) and (strlen($ips)>0))
+      $filter = "node='$node'";
+    $now2000 = old_now(2000);
+    if ($erase_time) {
+      if (strlen($filter)>0)
+        $filter .= ' OR ';
+      $filter .= "(time>NOW()-INTERVAL 1 YEAR AND time<NOW()-INTERVAL $erase_time)";
+      $now2001 = old_now(2001);
+      $filter .= " OR (YEAR(time)=2000 AND ((time<$now2000-INTERVAL $erase_time) OR (time>$now2001-INTERVAL $erase_time)))";
+      $now1996 = old_now(1996); $now1997 = old_now(1997);
+      $filter .= " OR (YEAR(time)=1996 AND ((time<$now1996-INTERVAL $erase_time) OR (time>$now1997-INTERVAL $erase_time)))";
+    }
+    if ($limit) {
+      if (strlen($filter)>0)
+        $filter .= ' OR ';
+      $filter .= "node NOT IN (SELECT * FROM (SELECT node FROM $table ORDER BY time DESC LIMIT $limit) s )";
+    }
+    if (strlen($filter)>0) {
+      $res = mysql_query("DELETE FROM $table WHERE ".$filter);
+      if (! $res)
+        die('!Delete error');
+    }
+
+    // Insert by ips list
     foreach ($ips as $ip) {
       // Super node inserts with actual time
       $tim = 'NOW()';
       // Leech node inserts with 2000 year
       if ($leech)
-        $tim = "DATE_FORMAT(NOW(),'2000-%m-%d %T')";
+        $tim = $now2000;
       $res = mysql_query("INSERT INTO $table (node,ip,time) VALUES('$node', '$ip', $tim)");
       if (! $res)
         die('!Insert error');
     }
   } else {
-    // Delete nodes except the last
+    // Delete excess nodes (except the newest)
     $res = mysql_query("DELETE FROM $table WHERE node='$node' AND node NOT IN (SELECT * FROM (SELECT node FROM $table WHERE node='$node' ORDER BY time DESC LIMIT 1) s )");
     if (! $res)
       die('!Delete excess nodes error');
-    // Demoted record is marked with 1996 year
-    $res = mysql_query("UPDATE $table SET time=DATE_FORMAT(NOW(),'1996-%m-%d %T') WHERE node='$node'");
+    // Demoted record marks with 1996 year
+    $filter = '';
+    if ($alive_time)
+      $filter = " OR (time>NOW()-INTERVAL 1 YEAR AND time<NOW()-INTERVAL $alive_time)";
+    $now1996 = old_now(1996);
+    $res = mysql_query("UPDATE $table SET time=$now1996 WHERE node='$node'".$filter);
     if ($res)
-      die('!Node is demoted');
+      die('!Nodes are demoted');
     else
-      die('!Demote time error');
+      die('!Demote error');
   }
 
 }
