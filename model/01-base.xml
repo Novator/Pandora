@@ -390,7 +390,7 @@
     <last_ip4 desc="DDNS IPv4 url updater" type="String" section="net" setting="" />
     <last_ip6 desc="DDNS IPv6 url updater" type="String" section="net" setting="" />
     <panreg_url desc="PanReg IP list url updater" type="String" section="net" setting="http://robux.biz/panreg.php?[node][ips]" />
-    <panreg_period desc="PanReg update period (minute)" type="Integer" section="net" setting="30" />
+    <panreg_period desc="PanReg update period (minute)" type="Integer" section="net" setting="45" />
     <last_panreg desc="Last PanReg update time" type="Time" section="net" setting="01.01.2012" />
 
     <ask_kinds_m10 desc="Ask kinds above -1.0" type="String" section="net" setting="" />

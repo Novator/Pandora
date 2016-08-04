@@ -10820,7 +10820,8 @@ module PandoraNet
         if $last_reg_listen_state.nil?
           quit_programm = false   #start programm
         else
-          need_panreg = (($last_reg_listen_state != listening) or quit_programm)
+          need_panreg = (($last_reg_listen_state != listening) \
+            or quit_programm or listening)
         end
         if panreg_url and need_panreg
           panreg_period = PandoraUtils.get_param('panreg_period')
@@ -19933,13 +19934,30 @@ module PandoraGtk
             #panobject.show_panhash(panhash0) #.force_encoding('ASCII-8BIT') ASCII-8BIT
             dialog = PandoraGtk::GoodMessageDialog.new(info, 'Deletion', \
               Gtk::MessageDialog::QUESTION, get_panobject_icon(panobject))
+            arch_cb = nil
+            keep_cb = nil
+            ignore_cb = nil
+            dialog.signal_connect('key-press-event') do |widget, event|
+              if (event.keyval==Gdk::Keyval::GDK_Delete)
+                widget.response(Gtk::Dialog::RESPONSE_CANCEL)
+              elsif [Gdk::Keyval::GDK_a, Gdk::Keyval::GDK_A, 1731, 1763].include?(\
+              event.keyval) #a, A, ф, Ф
+                arch_cb.active = (not arch_cb.active?) if arch_cb
+              elsif [Gdk::Keyval::GDK_k, Gdk::Keyval::GDK_K, 1731, 1763].include?(\
+              event.keyval) #k, K, л, Л
+                keep_cb.active = (not keep_cb.active?) if keep_cb
+              elsif [Gdk::Keyval::GDK_i, Gdk::Keyval::GDK_I, 1731, 1763].include?(\
+              event.keyval) #i, I, ш, Ш
+                ignore_cb.active = (not ignore_cb.active?) if ignore_cb
+              else
+                p event.keyval
+              end
+              false
+            end
             # Set dialog size for prevent jumping
             hbox = dialog.vbox.children[0]
             hbox.set_size_request(500, 100) if hbox.is_a? Gtk::HBox
             # CheckBox adding
-            arch_cb = nil
-            keep_cb = nil
-            ignore_cb = nil
             if not in_arch
               arch_cb = SafeCheckButton.new(:arch)
               PandoraGtk.set_button_text(arch_cb, _('Move to archive'))
@@ -21258,7 +21276,7 @@ module PandoraGtk
     dlg.name = $window.title
     dlg.version = PandoraNet::AppVersion + ' [' + PandoraUtils.file_md5[0, 6] + ']'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
-    dlg.authors = [_('Michael Galyuk')+' <robux@mail.ru>']
+    dlg.authors = ['© '+_('Michael Galyuk')+' <robux@mail.ru>']
     #dlg.documenters = dlg.authors
     #dlg.translator_credits = dlg.authors.join("\n")
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
@@ -23364,7 +23382,7 @@ module PandoraGtk
 
             sleep(@scheduler_step)
 
-            #p 'Next sheduler step'
+            #p 'Next scheduler step'
 
             Thread.pass
           end

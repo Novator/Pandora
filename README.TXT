@@ -57,17 +57,17 @@ Do commands in terminal:
 
 Download an installation and run it with administrator:
 
-  https://github.com/Novator/Pandora/releases/download/0.3-alpha/pandora_setup.exe
   http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe
+  https://github.com/Novator/Pandora/releases/download/0.3-alpha/pandora_setup.exe
 
 
 5. INSTALLATION IN DEBIAN
 
 Download a package and install it with root:
 
+  http://sourceforge.net/projects/pandora-net/files/pandora-net_0.6-1ubuntu_all.deb
   https://github.com/Novator/Pandora/releases/download/0.3-alpha/pandora-net_0.2-1ubuntu_all.deb
-  http://sourceforge.net/projects/pandora-net/files/pandora-net_0.2-1ubuntu_all.deb
-  dpkg -i pandora-net_0.2-1ubuntu_all.deb
+  dpkg -i pandora-net_0.6-1ubuntu_all.deb
   apt-get -f -y install
 
 
@@ -138,7 +138,7 @@ in Windows download and install:
 
 8.5. Download Pandora to your hard disk via git command:
 
-  git clone --depth=3 https://github.com/YourNick/Pandora.git
+  git clone --depth=1 https://github.com/YourNick/Pandora.git
 
 Warning: change "YourNick" to your login!
 
