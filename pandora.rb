@@ -11210,32 +11210,38 @@ module PandoraNet
         if node_model
           self_node = $window.pool.self_node
           list.each_with_index do |line, row|
-            nfs = line.split('|')
-            node = nfs[PR_Node]
-            if node and (node.bytesize>5)
-              if format=='hex'
-                node = PandoraUtils.hex_to_bytes(node)
+            if line.include?('|')
+              nfs = line.split('|')
+              node = nfs[PR_Node]
+              if node and (node.bytesize>22) and (node.bytesize<=40) and (nfs.size>=2)
+                begin
+                  if format=='hex'
+                    node = PandoraUtils.hex_to_bytes(node)
+                  else
+                    node = Base64.strict_decode64(node)
+                  end
+                rescue
+                  node = nil
+                end
               else
-                node = Base64.strict_decode64(node)
+                node = nil
               end
-            else
-              node = nil
-            end
-            if node and (node.bytesize==20) and (node != self_node)
-              ip = nfs[PR_Ip]
-              if node and (node.size==20) and ip and (ip.size >= 7)
-                #p '---Check [NODE, IP]='+[node, ip].inspect
-                panhash = node_kind.chr+0.chr+node
-                filter = ["(addr=? OR domain=?) AND panhash=?", ip, ip, panhash]
-                sel = node_model.select(filter, false, 'id', nil, 1)
-                if sel.nil? or (sel.size==0)
-                  p '+++Add [panhash, IP]='+[panhash, ip].inspect
-                  panstate = 0
-                  time_now = Time.now.to_i
-                  creator = PandoraCrypto.current_user_or_key(true, false)
-                  values = {:addr=>ip, :panhash=>panhash, :creator=>creator, \
-                    :created=>time_now, :modified=>time_now, :panstate=>panstate}
-                  sel = node_model.update(values, nil, nil)
+              if node and (node.bytesize==20) and (node != self_node)
+                ip = nfs[PR_Ip]
+                if node and (node.size==20) and ip and (ip.size >= 7)
+                  #p '---Check [NODE, IP]='+[node, ip].inspect
+                  panhash = node_kind.chr+0.chr+node
+                  filter = ["(addr=? OR domain=?) AND panhash=?", ip, ip, panhash]
+                  sel = node_model.select(filter, false, 'id', nil, 1)
+                  if sel.nil? or (sel.size==0)
+                    p '+++Add [panhash, IP]='+[panhash, ip].inspect
+                    panstate = 0
+                    time_now = Time.now.to_i
+                    creator = PandoraCrypto.current_user_or_key(true, false)
+                    values = {:addr=>ip, :panhash=>panhash, :creator=>creator, \
+                      :created=>time_now, :modified=>time_now, :panstate=>panstate}
+                    sel = node_model.update(values, nil, nil)
+                  end
                 end
               end
             end
@@ -11282,7 +11288,7 @@ module PandoraNet
         PandoraUtils.log_message(LM_Info, _(mes)+suffix)
       else
         err ||= ''
-        PandoraUtils.log_message(LM_Warning, _('Registrator fails')+suffix+err)
+        PandoraUtils.log_message(LM_Info, _('Registrator fails')+suffix+err)
       end
     end
     res
@@ -19056,10 +19062,16 @@ module PandoraGtk
       if menuitem
         if (not treeview) and mi[3]
           key, mod = Gtk::Accelerator.parse(mi[3])
-          menuitem.add_accelerator('activate', $group, key, mod, Gtk::ACCEL_VISIBLE) if key
+          menuitem.add_accelerator('activate', $window.accel_group, key, \
+            mod, Gtk::ACCEL_VISIBLE) if key
+        end
+        command = mi[0]
+        if command and (command.size>0) and (command[0]=='>')
+          command = command[1..-1]
+          command = nil if command==''
         end
         #menuitem.name = mi[0]
-        PandoraUtils.set_obj_property(menuitem, 'command', mi[0])
+        PandoraUtils.set_obj_property(menuitem, 'command', command)
         PandoraGtk.set_bold_to_menuitem(menuitem) if opts and opts.index('b')
         menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget, treeview) }
       end
@@ -22075,7 +22087,7 @@ module PandoraGtk
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
       :pool, :focus_timer, :title_view, :do_on_start, :radar_hpaned, :task_offset, \
-      :radar_sw, :log_vpaned, :log_sw
+      :radar_sw, :log_vpaned, :log_sw, :accel_group, :node_reg_offset
 
     include PandoraUtils
 
@@ -22678,7 +22690,17 @@ module PandoraGtk
           self.hide
         when 'About'
           PandoraGtk.show_about
-        when 'Help'
+        when 'Guide'
+          guide_fn = File.join($pandora_doc_dir, 'guide.'+$lang+'.pdf')
+          if not File.exist?(guide_fn)
+            guide_fn = File.join($pandora_doc_dir, 'guide.en.pdf')
+          end
+          if File.exist?(guide_fn)
+            PandoraUtils.external_open(guide_fn, 'open')
+          else
+            PandoraUtils.external_open($pandora_doc_dir, 'open')
+          end
+        when 'DocPath'
           PandoraUtils.external_open($pandora_doc_dir, 'open')
         when 'Close'
           if notebook.page >= 0
@@ -22969,41 +22991,60 @@ module PandoraGtk
       ['Key', 'key', 'Keys'],   #Gtk::Stock::GOTO_BOTTOM
       ['Sign', 'sign:m', 'Signs'],
       ['Node', 'node', 'Nodes'],  #Gtk::Stock::NETWORK
-      ['Event', 'event:m', 'Events'],
       ['Request', 'request:m', 'Requests'],  #Gtk::Stock::SELECT_COLOR
-      ['Session', 'session:m', 'Sessions', '<control>S'],   #Gtk::Stock::JUSTIFY_FILL
-      ['Fisher', 'fish:m', 'Fishers'],
+      ['Block', 'block:m', 'Blocks'],
+      ['Event', 'event:m', 'Events'],
       ['-', nil, '-'],
       ['Authorize', :auth, 'Authorize', '<control>O', :check], #Gtk::Stock::DIALOG_AUTHENTICATION
       ['Listen', :listen, 'Listen', '<control>L', :check],  #Gtk::Stock::CONNECT
       ['Hunt', :hunt, 'Hunt', '<control>H', :check],   #Gtk::Stock::REFRESH
       ['Radar', :radar, 'Radar', '<control>R', :check],  #Gtk::Stock::GO_FORWARD
       ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
-      ['Exchange', 'exchange:m', 'Exchange'],
+      ['>', nil, '_Wizards'],
+      ['>Cabinet', Gtk::Stock::HOME, 'Cabinet'],
+      ['>Exchange', 'exchange:m', 'Exchange'],
+      ['>Session', 'session:m', 'Sessions', '<control>S'],   #Gtk::Stock::JUSTIFY_FILL
+      ['>Fisher', 'fish:m', 'Fishers'],
+      ['>Wizard', Gtk::Stock::PREFERENCES.to_s+':m', '_Wizards'],
       ['-', nil, '-'],
-      ['Cabinet', Gtk::Stock::HOME, 'Cabinet'],
-      ['Wizard', Gtk::Stock::PREFERENCES.to_s+':m', 'Wizards'],
-      ['-', nil, '-'],
-      ['Help', Gtk::Stock::HELP.to_s+':m', '_Help', 'F1'],
-      ['Close', Gtk::Stock::CLOSE.to_s+':m', '_Close', '<control>W'],
-      ['Quit', Gtk::Stock::QUIT, '_Quit', '<control>Q'],
-      ['-', nil, '-'],
-      ['About', Gtk::Stock::ABOUT, '_About']
+      ['>', nil, '_Help'],
+      ['>Guide', Gtk::Stock::HELP.to_s+':m', 'Guide', 'F1'],
+      ['>DocPath', Gtk::Stock::OPEN.to_s+':m', 'Documentation'],
+      ['>About', Gtk::Stock::ABOUT, '_About'],
+      ['Close', Gtk::Stock::CLOSE.to_s+':', '_Close', '<control>W'],
+      ['Quit', Gtk::Stock::QUIT, '_Quit', '<control>Q']
       ]
 
     # Fill main menu
     # RU: Заполнить главное меню
     def fill_menubar(menubar)
       menu = nil
+      sub_menu = nil
       MENU_ITEMS.each do |mi|
-        if mi[0].nil? or menu.nil?
+        command = mi[0]
+        if command.nil? or menu.nil? or ((command.size==1) and (command[0]=='>'))
           menuitem = Gtk::MenuItem.new(_(mi[2]))
-          menubar.append(menuitem)
-          menu = Gtk::Menu.new
-          menuitem.set_submenu(menu)
+          if command and menu
+            menu.append(menuitem)
+            sub_menu = Gtk::Menu.new
+            menuitem.set_submenu(sub_menu)
+          else
+            menubar.append(menuitem)
+            menu = Gtk::Menu.new
+            menuitem.set_submenu(menu)
+            sub_menu = nil
+          end
         else
           menuitem = PandoraGtk.create_menu_item(mi)
-          menu.append(menuitem)
+          if command and (command.size>1) and (command[0]=='>')
+            if sub_menu
+              sub_menu.append(menuitem)
+            else
+              menu.append(menuitem)
+            end
+          else
+            menu.append(menuitem)
+          end
         end
       end
     end
@@ -23016,8 +23057,11 @@ module PandoraGtk
         stock, opts = PandoraGtk.detect_icon_opts(stock)
         if stock and opts.index('t')
           command = mi[0]
+          if command and (command.size>0) and (command[0]=='>')
+            command = command[1..-1]
+          end
           label = mi[2]
-          if command and (command != '-') and label and (label != '-')
+          if command and (command.size>1) and label and (label != '-')
             toggle = nil
             toggle = false if mi[4]
             btn = PandoraGtk.add_tool_btn(toolbar, stock, label, toggle) do |widget, *args|
@@ -23091,7 +23135,6 @@ module PandoraGtk
         @base_garb_model = nil
         @base_garb_kind = 0
         @base_garb_offset = nil
-        @node_reg_offset = nil
         @panreg_period = PandoraUtils.get_param('panreg_period')
         if (not(@panreg_period.is_a? Numeric)) or (@panreg_period < 0)
           @panreg_period = 30
@@ -23398,7 +23441,7 @@ module PandoraGtk
     def initialize(*args)
       super(*args)
       $window = self
-      @hunter_count, @listener_count, @fisher_count = 0, 0, 0
+      @hunter_count = @listener_count = @fisher_count = @node_reg_offset = 0
       @title_view = TV_Name
 
       @icon_factory = Gtk::IconFactory.new
@@ -23417,8 +23460,8 @@ module PandoraGtk
         Gtk::Window.default_icon = $window.icon
       end
 
-      $group = Gtk::AccelGroup.new
-      $window.add_accel_group($group)
+      @accel_group = Gtk::AccelGroup.new
+      $window.add_accel_group(accel_group)
 
       $window.register_stock(:save)
 
@@ -23666,8 +23709,7 @@ module PandoraGtk
           num = $window.notebook.n_pages
           if num>0
             n = (event.keyval - Gdk::Keyval::GDK_1)
-            n = 0 if n<0
-            if (n<num) and (n != 8)
+            if (n>=0) and (n<num)
               $window.notebook.page = n
               res = true
             else

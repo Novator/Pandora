@@ -303,6 +303,12 @@
       <state name.ru="Статус" />
     </Request>
 
+    <Block name.ru="Блок">
+      <parents name.ru="Блоки-родители" />
+      <blobs name.ru="Удостоверяемые записи" />
+      <pack name.ru="Метод упаковки" />
+    </Block>
+
   </Pandora>
 
 </pandora-model>
