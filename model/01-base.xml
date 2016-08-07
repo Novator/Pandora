@@ -112,9 +112,14 @@
     </Storage>
 
     <Product parent="Word" kind="76">
+      <stock name="Thing" type="Panhash(Word)" hash="1:hash(6)" />
+      <name name="Sort" type="String" size="64" hash="2:hash(8)" />
+      <description name="Description" type="Text" hash="3:hash(6)" />
     </Product>
 
-    <Service parent="Word" kind="77">
+    <Service parent="Product" kind="77">
+      <stock name="Operation" />
+      <name name="Specification" />
     </Service>
 
     <Currency name="Currency|Currency" kind="88">
@@ -142,23 +147,29 @@
       <creator name="Originator" type="Panhash(Person, Community)" />
       <recipient name="Recipient" type="Panhash(Person, Community)" />
       <contract name="Contract" type="Panhash(Contract)" />
-      <body name="Body" type="Text" />
+      <goods name="Goods" type="Text" />
       <currency name="Currency" type="Panhash(Currency)" />
       <sum name="Sum" type="Real" />
     </Deal>
 
-    <Debenture parent="Deal" kind="83">
+    <Debenture parent="Created" kind="83">
       <creator name="Issuer" />
       <created name="Issued" />
+      <goods name="Goods" type="Text" />
+      <recipient name="Recipient" type="Panhash(Person, Community)" />
+      <contract name="Contract" type="Panhash(Contract)" />
+      <currency name="Currency" type="Panhash(Currency)" />
+      <sum name="Sum" type="Real" />
     </Debenture>
 
     <Transfer parent="Created" kind="84">
       <creator name="Payer" />
-      <debenture name="Debenture" type="Panhash(Debenture)" />
+      <debenture name="Debenture" type="Panhash(Debenture, Transfer)" />
       <recipient name="Recipient" type="Panhash(Person, Community)" />
-      <deal name="Deal" type="Panhash(Deal)" />
+      <purpose name="Purpose" type="Panhash(Order,Deal)" />
       <currency name="Currency" type="Panhash(Currency)" />
       <sum name="Sum" type="Real" />
+      <step name="Step" type="Integer" />
     </Transfer>
 
     <Deposit parent="Created" kind="86">
@@ -319,9 +330,10 @@
     </Request>
 
     <Block name="Block" parent="Created" kind="229">
-      <parents name="Parent blocks" type="Blob" />
-      <blobs name="Notary records" type="Blob" />
+      <blobs name="Notary records" type="Panhashes(Transfer,Debenture,Contract,Deposit,Guarantee,Insurer)" hash="2:hash(10)" />
+      <parents name="Parent blocks" type="Panhashes(Block)" hash="3:hash(6)" />
       <pack name="Pack method" type="Byte" />
+      <created hash="1:integer(4)" />
     </Block>
 
   </Pandora>

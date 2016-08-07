@@ -99,9 +99,13 @@
     </Storage>
 
     <Product name.ru="Товар|Товары">
+      <stock name.ru="Вещь" />
+      <name name.ru="Разновидность" />
     </Product>
 
     <Service name.ru="Услуга|Услуги">
+      <stock name.ru="Действие" />
+      <name name.ru="Детализация" />
     </Service>
 
     <Currency name.ru="Валюта|Валюты">
@@ -129,23 +133,29 @@
       <creator name.ru="Инициатор" />
       <recipient name.ru="Получатель" />
       <contract name.ru="Договор" />
-      <body name.ru="Текст" />
+      <goods name.ru="Блага" />
       <currency name.ru="Валюта" />
       <sum name.ru="Сумма" />
     </Deal>
 
     <Debenture name.ru="Расписка">
       <creator name.ru="Издатель" />
+      <goods name.ru="Блага" />
+      <recipient name.ru="Получатель" />
+      <contract name.ru="Договор" />
+      <currency name.ru="Валюта" />
+      <sum name.ru="Сумма" />
       <created name.ru="Выпустил" />
     </Debenture>
 
-    <Transfer name.ru="Перевод">
+    <Transfer name.ru="Передача">
       <creator name.ru="Плательщик" />
       <debenture name.ru="Расписка" />
       <recipient name.ru="Получатель" />
-      <deal name.ru="Сделка" />
+      <purpose name.ru="Назначение" />
       <currency name.ru="Валюта" />
       <sum name.ru="Сумма" />
+      <step name.ru="Шаг" />
     </Transfer>
 
     <Deposit name.ru="Залог|Залоги">
@@ -171,7 +181,7 @@
 
     <Waybill name.ru="Накладная">
       <deal name.ru="Сделка" />
-      <goods name.ru="Товары и услуги" />
+      <goods name.ru="Блага" />
       <currency name.ru="Валюта" />
       <sum name.ru="Сумма" />
     </Waybill>

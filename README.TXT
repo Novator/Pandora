@@ -165,7 +165,6 @@ When you show yourself like active developer you will be added as collaborator.
 Help to Pandora project like a programmer, translator, journalist or donator:
 
   http://robux.biz/pandora.html
-
 Communicate together in facebook or vkontakte:
 
   https://www.facebook.com/p2pandora
@@ -177,4 +176,8 @@ Ask author for help:
   http://vk.com/robux
   robux@mail.ru
   Michael Galyuk
+
+Support development:
+
+  BitCoin: 1PanDR1Q6TL3qE1TSs2Zagt2ihhEiCBHZB
 

@@ -45,6 +45,22 @@
 
   <Business>
 
+    <Product>
+      <stock pos="1" />
+      <name pos="2" />
+      <description pos="3" />
+    </Product>
+
+    <Debenture>
+      <creator pos="1" />
+      <recipient pos="2" />
+      <goods pos="3" />
+      <sum pos="4" />
+      <currency pos="5" />
+      <contract pos="6" />
+      <created pos="7" />
+    </Debenture>
+
     <Deposit>
       <creator pos="1" />
       <condition pos="|2" />
