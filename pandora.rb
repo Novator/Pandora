@@ -4580,7 +4580,7 @@ module PandoraCrypto
   KT_Bf   = 0x8
   KT_Priv = 0xF
 
-  # Lengths
+  # Length key flags
   KL_None    = 0
   KL_bit128  = 0x10   # 16 byte
   KL_bit160  = 0x20   # 20 byte
@@ -4594,8 +4594,8 @@ module PandoraCrypto
 
   KL_BitLens = [128, 160, 224, 256, 384, 512, 1024, 2048, 4096]
 
-  # Key length code to byte length
-  # RU: Код длины ключа в байтовую длину
+  # Key length flag to bit length
+  # RU: Ключ-флаг длины в битовую длину
   def self.klen_to_bitlen(len)
     res = nil
     ind = len >> 4
@@ -4603,17 +4603,17 @@ module PandoraCrypto
     res
   end
 
-  # Byte length of key to code
-  # RU: Байтовая длина ключа в код длины
+  # Bit length to key length flag
+  # RU: Битовая длина в ключ-флаг длины
   def self.bitlen_to_klen(len)
     res = KL_None
     ind = KL_BitLens.index(len)
-    res = KL_BitLens[ind] << 4 if ind
+    res = (ind+1) << 4 if ind
     res
   end
 
-  # Divide type and code of length
-  # RU: Разделить тип и код длины
+  # Divide mixed key flag to type an length flags
+  # RU: Разделить общий ключ-флаг на флаги типа и длины
   def self.divide_type_and_klen(tnl)
     tnl = 0 if not tnl.is_a? Integer
     type = tnl & 0x0F
@@ -10311,14 +10311,14 @@ module PandoraNet
               if ($send_media_queues.size>0) and $send_media_rooms \
               and (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
               and ((send_state & CSF_Message) == 0) and dialog \
-              and (not dialog.destroyed?) and dialog.cab_panhash \
+              and (not dialog.destroyed?) and dialog.room_id \
               and ((dialog.webcam_btn and (not dialog.webcam_btn.destroyed?) \
               and dialog.webcam_btn.active?) \
               or (dialog.mic_btn and (not dialog.mic_btn.destroyed?) \
               and dialog.mic_btn.active?))
                 @activity = 2
                 #p 'packbuf '+cannel.to_s
-                pointer_ind = PandoraGtk.get_send_ptrind_by_panhash(dialog.cab_panhash)
+                pointer_ind = PandoraGtk.get_send_ptrind_by_panhash(dialog.room_id)
                 processed = 0
                 cannel = 0
                 while (@conn_state == CS_Connected) \
@@ -11406,6 +11406,8 @@ module PandoraGtk
   include PandoraUtils
   include PandoraModel
 
+  # Middle width of num char in pixels
+  # RU: Средняя ширина цифрового символа в пикселах
   def self.num_char_width
     @@num_char_width ||= nil
     if not @@num_char_width
@@ -11415,6 +11417,41 @@ module PandoraGtk
       @@num_char_width ||= 5
     end
     @@num_char_width
+  end
+
+  # Force set text of any Button (with stock)
+  # RU: Силовая смена текста любой кнопки (со stock)
+  def self.set_button_text(btn, text=nil)
+    alig = btn.children[0]
+    if alig.is_a? Gtk::Bin
+      hbox = alig.child
+      if (hbox.is_a? Gtk::Box) and (hbox.children.size>1)
+        lab = hbox.children[1]
+        if lab.is_a? Gtk::Label
+          if text.nil?
+            lab.destroy
+          else
+            lab.text = text
+          end
+        end
+      end
+    end
+  end
+
+  # Ctrl, Shift, Alt are pressed? (Array or Yes/No)
+  # RU: Кнопки Ctrl, Shift, Alt нажаты? (Массив или Да/Нет)
+  def self.is_ctrl_shift_alt?(ctrl=nil, shift=nil, alt=nil)
+    screen, x, y, mask = Gdk::Display.default.pointer
+    res = nil
+    ctrl_prsd = ((mask & Gdk::Window::CONTROL_MASK.to_i) != 0)
+    shift_prsd = ((mask & Gdk::Window::SHIFT_MASK.to_i) != 0)
+    alt_prsd = ((mask & Gdk::Window::MOD1_MASK.to_i) != 0)
+    if ctrl.nil? and shift.nil? and alt.nil?
+      res = [ctrl_prsd, shift_prsd, alt_prsd]
+    else
+      res = ((ctrl and ctrl_prsd) or (shift and shift_prsd) or (alt and alt_prsd))
+    end
+    res
   end
 
   # Statusbar fields
@@ -11431,6 +11468,8 @@ module PandoraGtk
   SF_Search  = 9
   SF_Harvest = 10
 
+  # Good and simle MessageDialog
+  # RU: Хороший и простой MessageDialog
   class GoodMessageDialog < Gtk::MessageDialog
 
     def initialize(a_mes, a_title=nil, a_stock=nil, an_icon=nil)
@@ -11511,12 +11550,9 @@ module PandoraGtk
       @viewport = Gtk::Viewport.new(nil, nil)
       sw.add(viewport)
 
-      image = Gtk::Image.new(Gtk::Stock::PROPERTIES, Gtk::IconSize::MENU)
-      image.set_padding(2, 0)
-      label_box1 = TabLabelBox.new(image, _('Basic'), nil, false, 0)
-
       @notebook = Gtk::Notebook.new
       @notebook.scrollable = true
+      label_box1 = TabLabelBox.new(Gtk::Stock::PROPERTIES, _('Basic'))
       page = notebook.append_page(sw, label_box1)
       vpaned.pack1(notebook, true, true)
 
@@ -11628,37 +11664,6 @@ module PandoraGtk
 
       res
     end
-  end
-
-  def self.set_button_text(btn, text=nil)
-    alig = btn.children[0]
-    if alig.is_a? Gtk::Bin
-      hbox = alig.child
-      if (hbox.is_a? Gtk::Box) and (hbox.children.size>1)
-        lab = hbox.children[1]
-        if lab.is_a? Gtk::Label
-          if text.nil?
-            lab.destroy
-          else
-            lab.text = text
-          end
-        end
-      end
-    end
-  end
-
-  def self.is_ctrl_shift_alt?(ctrl=nil, shift=nil, alt=nil)
-    screen, x, y, mask = Gdk::Display.default.pointer
-    res = nil
-    ctrl_prsd = ((mask & Gdk::Window::CONTROL_MASK.to_i) != 0)
-    shift_prsd = ((mask & Gdk::Window::SHIFT_MASK.to_i) != 0)
-    alt_prsd = ((mask & Gdk::Window::MOD1_MASK.to_i) != 0)
-    if ctrl.nil? and shift.nil? and alt.nil?
-      res = [ctrl_prsd, shift_prsd, alt_prsd]
-    else
-      res = ((ctrl and ctrl_prsd) or (shift and shift_prsd) or (alt and alt_prsd))
-    end
-    res
   end
 
   # ToggleButton with safety "active" switching
@@ -11865,11 +11870,6 @@ module PandoraGtk
       @entry = entry_class.new
       stock ||= :list
 
-      #@button = Gtk::ToolButton.new(:date)
-      #buf = $window.get_icon_scale_buf(stock.to_s, 'pan', 15)
-      #aimage = Gtk::Image.new(buf)
-      #@button = Gtk::ToolButton.new(aimage, nil)
-
       @init_yield_block = nil
       if block_given?
         @init_yield_block = Proc.new do |*args|
@@ -11896,8 +11896,11 @@ module PandoraGtk
       @button.can_focus = false
 
       @entry.instance_variable_set('@button', @button)
-      def @entry.key_event(widget, event)
-        res = ((event.keyval==32) or ((event.state.shift_mask? or event.state.mod1_mask?) \
+
+      #def @entry.key_event(widget, event)
+      @entry.define_singleton_method('key_event') do |widget, event|
+        res = ((event.keyval==32) or ((event.state.shift_mask? \
+          or event.state.mod1_mask?) \
           and (event.keyval==65364)))  # Space, Shift+Down or Alt+Down
         if res
           if @button.is_a? GoodButton
@@ -12311,7 +12314,9 @@ module PandoraGtk
 
   end
 
-  class DayBox < Gtk::EventBox
+  # Color box for calendar day
+  # RU: Цветной бокс дня календаря
+  class ColorDayBox < Gtk::EventBox
     attr_accessor :bg, :day_date
 
     def initialize(background=nil)
@@ -12369,7 +12374,7 @@ module PandoraGtk
       super(amodal)
       self.signal_connect('key-press-event') do |widget, event|
         if [32, Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-          if focus and (focus.is_a? DayBox)
+          if focus and (focus.is_a? ColorDayBox)
             event = Gdk::EventButton.new(Gdk::Event::BUTTON_PRESS)
             event.button = 1
             focus.signal_emit('button-press-event', event)
@@ -12664,7 +12669,7 @@ module PandoraGtk
       else
         labs_parent.remove(labs_parent.child) if labs_parent.child
 
-        evbox = DayBox.new('#FFFFFF')
+        evbox = ColorDayBox.new('#FFFFFF')
         evbox.can_focus = false
         @@days_box = evbox
         labs_parent.add(evbox)
@@ -12683,7 +12688,7 @@ module PandoraGtk
             lab.use_markup = true
             lab.justify = Gtk::JUSTIFY_CENTER
 
-            lab_evbox = DayBox.new do |lab_evbox|
+            lab_evbox = ColorDayBox.new do |lab_evbox|
               @date_entry.on_click_btn.call(lab_evbox.day_date)
             end
             lab_evbox.add(lab)
@@ -12804,8 +12809,8 @@ module PandoraGtk
 
   end
 
-  # Entry for date
-  # RU: Поле ввода даты
+  # Entry for date with calendar button
+  # RU: Поле ввода даты с кнопкой календаря
   class DateEntry < BtnEntry
     attr_accessor :on_click_btn, :popwin
 
@@ -13128,8 +13133,7 @@ module PandoraGtk
         self.main_sw.destroy if i==0
         #image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
         image = $window.get_panobject_image(panclass.ider, Gtk::IconSize::MENU)
-        image.set_padding(2, 0)
-        label_box2 = TabLabelBox.new(image, title, nil, false, 0)
+        label_box2 = TabLabelBox.new(image, title)
         pbox = PandoraGtk::PanobjScrolledWindow.new
         page = self.notebook.append_page(pbox, label_box2)
         auto_create = PandoraGtk.show_panobject_list(panclass, nil, pbox, auto_create)
@@ -15688,8 +15692,7 @@ module PandoraGtk
           operation.run(Gtk::PrintOperation::ACTION_PRINT_DIALOG, $window)
         end
       rescue
-        dialog = PandoraGtk::GoodMessageDialog.new($!.message)
-        dialog.run_and_do
+        PandoraGtk::GoodMessageDialog.new($!.message).run_and_do
       end
     end
 
@@ -16378,9 +16381,7 @@ module PandoraGtk
           bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
           #bodywin.set_policy(Gtk::POLICY_ALWAYS, Gtk::POLICY_ALWAYS)
 
-          image = Gtk::Image.new(Gtk::Stock::DND, Gtk::IconSize::MENU)
-          image.set_padding(2, 0)
-          label_box = TabLabelBox.new(image, atext, nil, false, 0)
+          label_box = TabLabelBox.new(Gtk::Stock::DND, atext, nil)
           page = notebook.append_page(bodywin, label_box)
 
           #field[FI_Widget] = textview
@@ -16391,36 +16392,6 @@ module PandoraGtk
 
           #@fields.delete_at(i) if (atype=='Text')
         end
-      end
-
-      panhash = get_fld_value_by_id('panhash')
-      if (panhash.is_a? String) and (panhash.size>0)
-        #image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
-        image = $window.get_preset_image('relation')
-        image.set_padding(2, 0)
-        label_box2 = TabLabelBox.new(image, _('Relations'), nil, false, 0)
-        pbox = PandoraGtk::PanobjScrolledWindow.new
-        page = notebook.append_page(pbox, label_box2)
-        PandoraGtk.show_panobject_list(PandoraModel::Relation, nil, pbox, false, \
-          'first='+panhash+' OR second='+panhash)
-
-        #image = Gtk::Image.new(Gtk::Stock::DIALOG_AUTHENTICATION, Gtk::IconSize::MENU)
-        image = $window.get_preset_image('sign')
-        image.set_padding(2, 0)
-        label_box2 = TabLabelBox.new(image, _('Signs'), nil, false, 0)
-        pbox = PandoraGtk::PanobjScrolledWindow.new
-        page = notebook.append_page(pbox, label_box2)
-        PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox, false, \
-          'obj_hash='+panhash)
-
-        #image = Gtk::Image.new(Gtk::Stock::DIALOG_INFO, Gtk::IconSize::MENU)
-        image = $window.get_preset_image('opinion')
-        image.set_padding(2, 0)
-        label_box2 = TabLabelBox.new(image, _('Opinions'), nil, false, 0)
-        pbox = PandoraGtk::PanobjScrolledWindow.new
-        page = notebook.append_page(pbox, label_box2)
-        PandoraGtk.show_panobject_list(PandoraModel::Message, nil, pbox, false, \
-          'destination='+panhash)
       end
 
       signal_connect('key-press-event') do |widget, event|
@@ -16848,12 +16819,19 @@ module PandoraGtk
   # RU: Бокс закладки для блокнота с картинкой и кнопкой
   class TabLabelBox < Gtk::HBox
     attr_accessor :label
+
     def initialize(image, title, child=nil, *args)
+      args ||= [false, 0]
       super(*args)
-      label_box = self
-      label_box.pack_start(image, false, false, 0) if image
+      image ||= :person
+      if (image.is_a? Symbol) or (image.is_a? String)
+        $window.register_stock(image)
+        image = Gtk::Image.new(image, Gtk::IconSize::MENU)
+      end
+      image.set_padding(2, 0)
+      self.pack_start(image, false, false, 0) if image
       @label = Gtk::Label.new(title)
-      label_box.pack_start(label, false, false, 0)
+      self.pack_start(label, false, false, 0)
       if child
         btn = Gtk::Button.new
         btn.relief = Gtk::RELIEF_NONE
@@ -16868,17 +16846,17 @@ module PandoraGtk
           yield if block_given?
           ind = $window.notebook.children.index(child)
           $window.notebook.remove_page(ind) if ind
-          label_box.destroy if not label_box.destroyed?
+          self.destroy if not self.destroyed?
           child.destroy if not child.destroyed?
         end
         close_image = Gtk::Image.new(Gtk::Stock::CLOSE, Gtk::IconSize::MENU)
         btn.add(close_image)
         align = Gtk::Alignment.new(1.0, 0.5, 0.0, 0.0)
         align.add(btn)
-        label_box.pack_start(align, false, false, 0)
+        self.pack_start(align, false, false, 0)
       end
-      label_box.spacing = 3
-      label_box.show_all
+      self.spacing = 3
+      self.show_all
     end
   end
 
@@ -16931,14 +16909,14 @@ module PandoraGtk
   CSI_Nodes   = 2
   CSI_PersonRecs = 3
 
-  # Talk dialog
-  # RU: Диалог разговора
+  # Panobject cabinet page
+  # RU: Страница кабинета панобъекта
   class CabScrollWin < Gtk::ScrolledWindow
-    attr_accessor :cab_panhash, :targets, :online_btn, :mic_btn, :webcam_btn, :talkview, \
+    attr_accessor :room_id, :online_btn, :mic_btn, :webcam_btn, :talkview, \
       :edit_box, :area_send, :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, :sender_box, \
       :option_box, :captcha_enter, :edit_sw, :trust_scale, :main_hpaned, :send_hpaned,
-      :cab_notebook, :send_btn
+      :cab_notebook, :send_btn, :opt_btns, :cab_panhash, :targets
 
     include PandoraGtk
 
@@ -17065,19 +17043,23 @@ module PandoraGtk
       end
     end
 
-    CPI_Property = 0
-    CPI_Text     = 1
-    CPI_Dialog   = 2
-    CPI_Chat     = 3
-    CPI_Opinions = 4
-    CPI_Profile  = 5
+    CPI_Property  = 0
+    CPI_Text      = 1
+    CPI_Dialog    = 2
+    CPI_Chat      = 3
+    CPI_Opinions  = 4
+    CPI_Relations = 5
+    CPI_Signs     = 6
+    CPI_Profile   = 7
 
-    def show_page(page=CPI_Dialog)
-      p '=======show_page  page='+page.inspect
-      cab_notebook.page = page
+    def show_page(page=CPI_Dialog, tab_signal=nil)
+      opt_btns.each do |opt_btn|
+        opt_btn.safe_set_active(false)
+      end
+      cab_notebook.page = page if not tab_signal
       container = cab_notebook.get_nth_page(page)
-      p [cab_notebook.page, container.children.size]
-      if (not container) or (container.children.size>0)
+      opt_btns[page].safe_set_active(true)
+      if container and (container.children.size>0)
         container.show_all
         return container
       end
@@ -17169,10 +17151,10 @@ module PandoraGtk
           #list_sw.visible = false
 
           list_store = Gtk::ListStore.new(TrueClass, String)
-          targets[CSI_Persons].each do |person|
-            user_iter = list_store.append
-            user_iter[CL_Name] = PandoraUtils.bytes_to_hex(person)
-          end
+          #targets[CSI_Persons].each do |person|
+          #  user_iter = list_store.append
+          #  user_iter[CL_Name] = PandoraUtils.bytes_to_hex(person)
+          #end
 
           # create tree view
           list_tree = Gtk::TreeView.new(list_store)
@@ -17275,17 +17257,35 @@ module PandoraGtk
           end
           load_history($load_history_count, $sort_history_mode)
           container.add(main_hpaned)
+        when CPI_Opinions
+          pbox = PandoraGtk::PanobjScrolledWindow.new
+          panhash = PandoraUtils.bytes_to_hex(cab_panhash)
+          PandoraGtk.show_panobject_list(PandoraModel::Message, nil, pbox, false, \
+            'destination='+panhash)
+          container.add(pbox)
+        when CPI_Relations
+          pbox = PandoraGtk::PanobjScrolledWindow.new
+          panhash = PandoraUtils.bytes_to_hex(cab_panhash)
+          PandoraGtk.show_panobject_list(PandoraModel::Relation, nil, pbox, false, \
+            'first='+panhash+' OR second='+panhash)
+          container.add(pbox)
+        when CPI_Signs
+          pbox = PandoraGtk::PanobjScrolledWindow.new
+          panhash = PandoraUtils.bytes_to_hex(cab_panhash)
+          PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox, false, \
+            'obj_hash='+panhash)
+          container.add(pbox)
       end
       container.show_all
     end
 
     # Show conversation dialog
     # RU: Показать диалог общения
-    def initialize(known_node, a_cab_panhash, a_targets)
+    def initialize(known_node, a_room_id, a_targets)
       super(nil, nil)
 
       @has_unread = false
-      @cab_panhash = a_cab_panhash
+      @room_id = a_room_id
       @targets = a_targets
       @recv_media_queue = Array.new
       @recv_media_pipeline = Array.new
@@ -17294,135 +17294,75 @@ module PandoraGtk
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       border_width = 0
 
+      @cab_panhash = nil
       dlg_title = 'unknown'
       dlg_pixbuf = nil
       dlg_image = nil
-      panhash = nil
       if targets[CSI_Persons] and (targets[CSI_Persons].size>0)
-        panhash = targets[CSI_Persons][0]
-        dlg_pixbuf = PandoraModel.get_avatar_icon(panhash, self, false)
+        @cab_panhash = targets[CSI_Persons][0]
+        dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, false)
         dlg_image = Gtk::Image.new(dlg_pixbuf) if dlg_pixbuf
       end
-      kind = PandoraUtils.kind_from_panhash(panhash)
-      panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-      dlg_stock = $window.get_panobject_stock(panobjectclass.ider)
+      if cab_panhash
+        kind = PandoraUtils.kind_from_panhash(cab_panhash)
+        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+        dlg_stock = $window.get_panobject_stock(panobjectclass.ider)
+      end
       dlg_stock ||= Gtk::Stock::PROPERTIES
 
       main_vbox = Gtk::VBox.new
       add_with_viewport(main_vbox)
 
       @cab_notebook = Gtk::Notebook.new
-      cab_notebook.set_show_tabs(false)
-      #cab_notebook.shadow_type = Gtk::SHADOW_NONE
+      cab_notebook.show_tabs = false
       cab_notebook.border_width = 0
-
-      label_box = Gtk::HBox.new(false, 0)
-      pixwid = Gtk::Image.new(Gtk::Stock::PROPERTIES, Gtk::IconSize::MENU)
-      pixwid.set_padding(2, 0)
-      label_box.pack_start(pixwid, false, true, 0)
-      label = Gtk::Label.new(_('Basic'))
-      label_box.pack_start(label, false, true, 0)
-      label_box.show_all
-      #container = Gtk::Viewport.new(nil, nil)
-      #container.shadow_type = Gtk::SHADOW_NONE
-      #container.border_width = 0
-      container = Gtk::Viewport.new(nil, nil)
-      cab_notebook.append_page_menu(container, label_box)
-
-      label_box = Gtk::HBox.new(false, 0)
-      pixwid = Gtk::Image.new(Gtk::Stock::EDIT, Gtk::IconSize::MENU)
-      pixwid.set_padding(2, 0)
-      label_box.pack_start(pixwid, false, true, 0)
-      label = Gtk::Label.new(_('Text'))
-      label_box.pack_start(label, false, true, 0)
-      label_box.show_all
-      container = Gtk::Viewport.new(nil, nil)
-      cab_notebook.append_page_menu(container, label_box)
-
-      label_box = Gtk::HBox.new(false, 0)
-      pixwid = $window.get_preset_image('dialog')
-      pixwid.set_padding(2, 0)
-      label_box.pack_start(pixwid, false, true, 0)
-      label = Gtk::Label.new(_('Dialog'))
-      label_box.pack_start(label, false, true, 0)
-      label_box.show_all
-      container = Gtk::Viewport.new(nil, nil)
-      #container.shadow_type = Gtk::SHADOW_NONE
-      container.border_width = 0
-      cab_notebook.append_page_menu(container, label_box)
-
-      label_box = Gtk::HBox.new(false, 0)
-      pixwid = $window.get_preset_image('chat')
-      pixwid.set_padding(2, 0)
-      label_box.pack_start(pixwid, false, true, 0)
-      label = Gtk::Label.new(_('Chat'))
-      label_box.pack_start(label, false, true, 0)
-      label_box.show_all
-      container = Gtk::Viewport.new(nil, nil)
-      cab_notebook.append_page_menu(container, label_box)
-
-      label_box = Gtk::HBox.new(false, 0)
-      pixwid = $window.get_preset_image('opinion')
-      pixwid.set_padding(2, 0)
-      label_box.pack_start(pixwid, false, true, 0)
-      label = Gtk::Label.new(_('Opinions'))
-      label_box.pack_start(label, false, true, 0)
-      label_box.show_all
-      container = Gtk::Viewport.new(nil, nil)
-      cab_notebook.append_page_menu(container, label_box)
-
-      label_box = Gtk::HBox.new(false, 0)
-      pixwid = Gtk::Image.new(Gtk::Stock::HOME, Gtk::IconSize::MENU)
-      pixwid.set_padding(2, 0)
-      label_box.pack_start(pixwid, false, true, 0)
-      label = Gtk::Label.new(_('Profile'))
-      label_box.pack_start(label, false, true, 0)
-      label_box.show_all
-      container = Gtk::Viewport.new(nil, nil)
-      cab_notebook.append_page_menu(container, label_box)
-
+      @option_box = Gtk::HBox.new
       main_vbox.pack_start(cab_notebook, true, true, 0)
 
-      @option_box = Gtk::HBox.new
-
-      property_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::PROPERTIES)
-      #property_btn = PandoraGtk::SafeToggleToolButton.new(dlg_stock)
-      property_btn.tooltip_text = _('Basic')
-      property_btn.safe_signal_clicked do |widget|
-        show_page(CPI_Property)
+      @opt_btns = []
+      (CPI_Property..CPI_Profile).each do |index|
+        case index
+          when CPI_Property
+            stock = Gtk::Stock::PROPERTIES
+            text = 'Basic'
+          when CPI_Text
+            stock = Gtk::Stock::EDIT
+            text = 'Edit'
+          when CPI_Dialog
+            stock = :dialog
+            text = 'Dialog'
+          when CPI_Chat
+            stock = :chat
+            text = 'Chat'
+          when CPI_Opinions
+            stock = :opinion
+            text = 'Opinions'
+          when CPI_Relations
+            stock = :relation
+            text = 'Relations'
+          when CPI_Signs
+            stock = :sign
+            text = 'Signs'
+          when CPI_Profile
+            stock = Gtk::Stock::HOME
+            text = 'Profile'
+        end
+        text = _(text)
+        label_box = TabLabelBox.new(stock, text)
+        container = Gtk::Viewport.new(nil, nil)
+        cab_notebook.append_page_menu(container, label_box)
+        opt_btn = PandoraGtk::SafeToggleToolButton.new(stock)
+        opt_btn.tooltip_text = text
+        opt_btn.safe_signal_clicked do |widget|
+          show_page(index)
+        end
+        opt_btns[index] = opt_btn
+        option_box.pack_start(opt_btn, false, false, 2)
       end
-      option_box.pack_start(property_btn, false, false, 2)
-
-      body_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::DND)
-      body_btn.tooltip_text = _('Body')
-      option_box.pack_start(body_btn, false, false, 2)
-
-      edit_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::EDIT)
-      edit_btn.tooltip_text = _('Edit')
-      option_box.pack_start(edit_btn, false, false, 2)
-
-      $window.register_stock(:dialog)
-      dialog_btn = PandoraGtk::SafeToggleToolButton.new(:dialog)
-      dialog_btn.tooltip_text = _('Dialog')
-      #dialog_btn.safe_set_active(true)
-      dialog_btn.safe_signal_clicked do |widget|
-        show_page(CPI_Dialog)
+      cab_notebook.signal_connect('switch-page') do |widget, page, page_num|
+        #container = widget.get_nth_page(page_num)
+        show_page(page_num, true)
       end
-      option_box.pack_start(dialog_btn, false, false, 2)
-
-      $window.register_stock(:chat)
-      chat_btn = PandoraGtk::SafeToggleToolButton.new(:chat)
-      chat_btn.tooltip_text = _('Chat')
-      option_box.pack_start(chat_btn, false, false, 2)
-
-      $window.register_stock(:opinion)
-      opinion_btn = PandoraGtk::SafeToggleToolButton.new(:opinion)
-      opinion_btn.tooltip_text = _('Opinion')
-      option_box.pack_start(opinion_btn, false, false, 2)
-
-      chat_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::HOME)
-      chat_btn.tooltip_text = _('Profile')
-      option_box.pack_start(chat_btn, false, false, 2)
 
       option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
 
@@ -17571,7 +17511,7 @@ module PandoraGtk
       dlg_image ||= $window.get_preset_image('dialog')
       dlg_image ||= Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU)
       dlg_image.set_padding(2, 0)
-      label_box = TabLabelBox.new(dlg_image, dlg_title, self, false, 0) do
+      label_box = TabLabelBox.new(dlg_image, dlg_title, self) do
         area_send.destroy if not area_send.destroyed?
         area_recv.destroy if not area_recv.destroyed?
         $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
@@ -17588,7 +17528,7 @@ module PandoraGtk
       end
 
       show_all
-      dialog_btn.active = true
+      opt_btns[CPI_Dialog].active = true
 
       $window.notebook.page = $window.notebook.n_pages-1 if not known_node
     end
@@ -18250,7 +18190,7 @@ module PandoraGtk
           area_send.queue_draw if area_send and (not area_send.destroyed?)
         else
           #$webcam_xvimagesink.xwindow_id = 0
-          count = PandoraGtk.nil_send_ptrind_by_panhash(cab_panhash)
+          count = PandoraGtk.nil_send_ptrind_by_panhash(room_id)
           if video_pipeline and (count==0) and (not PandoraUtils::elem_stopped?(video_pipeline))
             video_pipeline.stop
             area_send.set_expose_event(nil)
@@ -18382,7 +18322,7 @@ module PandoraGtk
           if just_upd_area
             video_pipeline.play if (not PandoraUtils.elem_playing?(video_pipeline))
           else
-            ptrind = PandoraGtk.set_send_ptrind_by_panhash(cab_panhash)
+            ptrind = PandoraGtk.set_send_ptrind_by_panhash(room_id)
             count = PandoraGtk.nil_send_ptrind_by_panhash(nil)
             if count>0
               #Gtk.main_iteration
@@ -18447,7 +18387,7 @@ module PandoraGtk
             p 'init_video_receiver INIT'
             winos = (PandoraUtils.os_family == 'windows')
             @recv_media_queue[1] ||= PandoraUtils::RoundQueue.new
-            dialog_id = '_v'+PandoraUtils.bytes_to_hex(cab_panhash[-6..-1])
+            dialog_id = '_v'+PandoraUtils.bytes_to_hex(room_id[-6..-1])
             @recv_media_pipeline[1] = Gst::Pipeline.new('rpipe'+dialog_id)
             vidpipe = @recv_media_pipeline[1]
 
@@ -18549,7 +18489,7 @@ module PandoraGtk
       audio_pipeline = $send_media_pipelines['audio']
       #p 'init_audio_sender pipe='+audio_pipeline.inspect+'  btn='+mic_btn.active?.inspect
       if not start
-        #count = PandoraGtk.nil_send_ptrind_by_panhash(cab_panhash)
+        #count = PandoraGtk.nil_send_ptrind_by_panhash(room_id)
         #if audio_pipeline and (count==0) and (audio_pipeline.get_state != Gst::STATE_NULL)
         if audio_pipeline and (not PandoraUtils::elem_stopped?(audio_pipeline))
           audio_pipeline.stop
@@ -18634,7 +18574,7 @@ module PandoraGtk
         end
 
         if audio_pipeline
-          ptrind = PandoraGtk.set_send_ptrind_by_panhash(cab_panhash)
+          ptrind = PandoraGtk.set_send_ptrind_by_panhash(room_id)
           count = PandoraGtk.nil_send_ptrind_by_panhash(nil)
           #p 'AAAAAAAAAAAAAAAAAAA count='+count.to_s
           if (count>0) and (not PandoraUtils::elem_playing?(audio_pipeline))
@@ -18680,7 +18620,7 @@ module PandoraGtk
             Gst.init
             winos = (PandoraUtils.os_family == 'windows')
             @recv_media_queue[0] ||= PandoraUtils::RoundQueue.new
-            dialog_id = '_a'+PandoraUtils.bytes_to_hex(cab_panhash[-6..-1])
+            dialog_id = '_a'+PandoraUtils.bytes_to_hex(room_id[-6..-1])
             #p 'init_audio_receiver:  dialog_id='+dialog_id.inspect
             @recv_media_pipeline[0] = Gst::Pipeline.new('rpipe'+dialog_id)
             audpipe = @recv_media_pipeline[0]
@@ -19998,7 +19938,9 @@ module PandoraGtk
   # RU: Выполнить действие над выделенной записью
   def self.act_panobject(tree_view, action)
 
-    def self.update_dlg_text(dialog, arch_cb, keep_cb, ignore_cb)
+    # Set delete dialog wigets (checkboxes and text)
+    # RU: Задать виджеты диалога удаления (чекбоксы и текст)
+    def self.set_del_dlg_wids(dialog, arch_cb, keep_cb, ignore_cb)
       text = nil
       if arch_cb and arch_cb.active?
         if keep_cb.active?
@@ -20114,7 +20056,7 @@ module PandoraGtk
                 else
                   keep_cb.safe_set_active(false)
                 end
-                update_dlg_text(dialog, arch_cb, keep_cb, ignore_cb)
+                set_del_dlg_wids(dialog, arch_cb, keep_cb, ignore_cb)
                 false
               end
               dialog.vbox.pack_start(arch_cb, false, true, 0)
@@ -20129,7 +20071,7 @@ module PandoraGtk
                   arch_cb.safe_set_active(true) if not in_arch
                   ignore_cb.safe_set_active(false)
                 end
-                update_dlg_text(dialog, arch_cb, keep_cb, ignore_cb)
+                set_del_dlg_wids(dialog, arch_cb, keep_cb, ignore_cb)
                 false
               end
               dialog.vbox.pack_start(keep_cb, false, true, 0)
@@ -20146,12 +20088,12 @@ module PandoraGtk
               elsif not in_arch
                 arch_cb.safe_set_active(true) if arch_cb
               end
-              update_dlg_text(dialog, arch_cb, keep_cb, ignore_cb)
+              set_del_dlg_wids(dialog, arch_cb, keep_cb, ignore_cb)
               false
             end
             dialog.vbox.pack_start(ignore_cb, false, true, 0)
 
-            update_dlg_text(dialog, arch_cb, keep_cb, ignore_cb)
+            set_del_dlg_wids(dialog, arch_cb, keep_cb, ignore_cb)
             dialog.vbox.show_all
 
             do_del = dialog.run_and_do do
@@ -21053,6 +20995,9 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(hbox, :dialog, 'Dialog') do |widget|
         $window.do_menu_act('Dialog', treeview)
       end
+      PandoraGtk.add_tool_btn(hbox, :opinion, 'Opinions') do |widget|
+        $window.do_menu_act('Dialog', treeview)
+      end
     end
     page_sw.update_btn = PandoraGtk.add_tool_btn(hbox, Gtk::Stock::REFRESH, 'Update') do |widget|
       page_sw.update_treeview
@@ -21109,7 +21054,7 @@ module PandoraGtk
       #end
       image.set_padding(2, 0)
 
-      label_box = TabLabelBox.new(image, panobject.pname, page_sw, false, 0) do
+      label_box = TabLabelBox.new(image, panobject.pname, page_sw) do
         store.clear
         treeview.destroy
       end
@@ -21208,16 +21153,16 @@ module PandoraGtk
 
   # Take pointer index for sending by room
   # RU: Взять индекс указателя для отправки по id комнаты
-  def self.set_send_ptrind_by_panhash(cab_panhash)
+  def self.set_send_ptrind_by_panhash(room_id)
     ptr = nil
-    if cab_panhash
-      ptr = $send_media_rooms[cab_panhash]
+    if room_id
+      ptr = $send_media_rooms[room_id]
       if ptr
         ptr[0] = true
         ptr = ptr[1]
       else
         ptr = $send_media_rooms.size
-        $send_media_rooms[cab_panhash] = [true, ptr]
+        $send_media_rooms[room_id] = [true, ptr]
       end
     end
     ptr
@@ -21225,10 +21170,10 @@ module PandoraGtk
 
   # Check pointer index for sending by room
   # RU: Проверить индекс указателя для отправки по id комнаты
-  def self.get_send_ptrind_by_panhash(cab_panhash)
+  def self.get_send_ptrind_by_panhash(room_id)
     ptr = nil
-    if cab_panhash
-      set_ptr = $send_media_rooms[cab_panhash]
+    if room_id
+      set_ptr = $send_media_rooms[room_id]
       if set_ptr and set_ptr[0]
         ptr = set_ptr[1]
       end
@@ -21238,9 +21183,9 @@ module PandoraGtk
 
   # Clear pointer index for sending for room
   # RU: Сбросить индекс указателя для отправки для комнаты
-  def self.nil_send_ptrind_by_panhash(cab_panhash)
-    if cab_panhash
-      ptr = $send_media_rooms[cab_panhash]
+  def self.nil_send_ptrind_by_panhash(room_id)
+    if room_id
+      ptr = $send_media_rooms[room_id]
       if ptr
         ptr[0] = false
       end
@@ -21360,7 +21305,7 @@ module PandoraGtk
 
   # Construct room id
   # RU: Создать идентификатор комнаты
-  def self.construct_cab_panhash(persons, session=nil)
+  def self.construct_room_id(persons, session=nil)
     res = nil
     if (persons.is_a? Array) and (persons.size>0)
       sha1 = Digest::SHA1.new
@@ -21548,16 +21493,16 @@ module PandoraGtk
     end
     if target_exist or session
       p '@@@@@@@@@ nodehash, conntype='+[nodehash, conntype].inspect
-      cab_panhash = construct_cab_panhash(persons, session)
+      room_id = construct_room_id(persons, session)
       if conntype.nil? or (conntype==PandoraNet::ST_Hunter)
         creator = PandoraCrypto.current_user_or_key(true)
         if (persons.size==1) and (persons[0]==creator)
-          cab_panhash[-1] = (cab_panhash[-1].ord ^ 1).chr
+          room_id[-1] = (room_id[-1].ord ^ 1).chr
         end
       end
-      p 'cab_panhash='+cab_panhash.inspect
+      p 'room_id='+room_id.inspect
       $window.notebook.children.each do |child|
-        if (child.is_a? CabScrollWin) and (child.cab_panhash==cab_panhash)
+        if (child.is_a? CabScrollWin) and (child.room_id==room_id)
           child.targets = targets
           #child.online_btn.safe_set_active(nodehash != nil)
           #child.online_btn.inconsistent = false
@@ -21566,17 +21511,16 @@ module PandoraGtk
           break
         end
       end
-      sw ||= CabScrollWin.new(nodehash, cab_panhash, targets)
+      sw ||= CabScrollWin.new(nodehash, room_id, targets)
     elsif (nodehash.nil? and session.nil?)
       mes = ''
-      mes = _('node') if nodes.size == 0
+      mes << _('node') if nodes.size == 0
       if persons.size == 0
         mes << ', ' if mes.size>0
         mes << _('person')
       end
       mes = _('No one')+' '+mes+' '+_('is not found')+".\n"+_('Add nodes and do hunt')
-      dialog = PandoraGtk::GoodMessageDialog.new(mes)
-      dialog.run_and_do do
+      PandoraGtk::GoodMessageDialog.new(mes).run_and_do do
         PandoraGtk.show_panobject_list(PandoraModel::Node, nil, nil, true)
       end
     end
@@ -21591,7 +21535,7 @@ module PandoraGtk
     image = Gtk::Image.new(Gtk::Stock::FIND, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
 
-    label_box = TabLabelBox.new(image, _('Search'), sw, false, 0) do
+    label_box = TabLabelBox.new(image, _('Search'), sw) do
       #store.clear
       #treeview.destroy
       #sw.destroy
@@ -21682,7 +21626,7 @@ module PandoraGtk
 
     short_name = _('Profile') if not((short_name.is_a? String) and (short_name.size>0))
 
-    label_box = TabLabelBox.new(image, short_name, sw, false, 0) do
+    label_box = TabLabelBox.new(image, short_name, sw) do
       #store.clear
       #treeview.destroy
       #sw.destroy
@@ -21708,7 +21652,7 @@ module PandoraGtk
 
     image = Gtk::Image.new(:session, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
-    label_box = TabLabelBox.new(image, _('Sessions'), sw, false, 0) do
+    label_box = TabLabelBox.new(image, _('Sessions'), sw) do
       #sw.destroy
     end
     page = $window.notebook.append_page(sw, label_box)
@@ -21785,7 +21729,7 @@ module PandoraGtk
 
     image = Gtk::Image.new(:fish, Gtk::IconSize::MENU)
     image.set_padding(2, 0)
-    label_box = TabLabelBox.new(image, _('Fishers'), sw, false, 0) do
+    label_box = TabLabelBox.new(image, _('Fishers'), sw) do
       #sw.destroy
     end
     page = $window.notebook.append_page(sw, label_box)
@@ -22628,6 +22572,7 @@ module PandoraGtk
     # Register new stock by name of image preset
     # RU: Регистрирует новый stock по имени пресета иконки
     def register_stock(stock=:person, preset=nil, name=nil)
+      stock = stock.to_sym if stock.is_a? String
       stock_inf = nil
       preset ||= 'pan'
       suff = preset
