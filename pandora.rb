@@ -15039,580 +15039,550 @@ module PandoraGtk
     end
   end
 
-  # Dialog with enter fields
-  # RU: Диалог с полями ввода
-  class FieldsDialog < AdvancedDialog
-    include PandoraUtils
+  # Tab box for notebook with image and close button
+  # RU: Бокс закладки для блокнота с картинкой и кнопкой
+  class TabLabelBox < Gtk::HBox
+    attr_accessor :label
 
-    attr_accessor :panobject, :fields, :text_fields, :toolbar, :toolbar2, :statusbar, \
-      :keep_btn, :rate_label, :vouch_btn, :follow_btn, :trust_scale, :trust0, :public_btn, \
-      :public_scale, :lang_entry, :last_sw, :rate_btn, :format_btn
-
-    # Window for view body (text or blob)
-    # RU: Окно просмотра тела (текста или блоба)
-    class BodyScrolledWindow < Gtk::ScrolledWindow
-      attr_accessor :field, :link_name, :body_child, :format, :raw_buffer, :view_buffer, \
-        :view_mode, :color_mode
-
-      def parent_win
-        res = parent.parent.parent
+    def initialize(image, title, child=nil, *args)
+      args ||= [false, 0]
+      super(*args)
+      image ||= :person
+      if (image.is_a? Symbol) or (image.is_a? String)
+        $window.register_stock(image)
+        image = Gtk::Image.new(image, Gtk::IconSize::MENU)
       end
-
-      def initialize(*args)
-        super(*args)
-        @format = nil
-        @view_mode = true
-        @color_mode = true
-      end
-
-      def init_view_buf(buf)
-        if (not @view_buffer) and buf
-          @view_buffer = buf
+      image.set_padding(2, 0)
+      self.pack_start(image, false, false, 0) if image
+      @label = Gtk::Label.new(title)
+      self.pack_start(label, false, false, 0)
+      if child
+        btn = Gtk::Button.new
+        btn.relief = Gtk::RELIEF_NONE
+        btn.focus_on_click = false
+        style = btn.modifier_style
+        style.xthickness = 0
+        style.ythickness = 0
+        btn.modify_style(style)
+        wim,him = Gtk::IconSize.lookup(Gtk::IconSize::MENU)
+        btn.set_size_request(wim+2,him+2)
+        btn.signal_connect('clicked') do |*args|
+          yield if block_given?
+          ind = $window.notebook.children.index(child)
+          $window.notebook.remove_page(ind) if ind
+          self.destroy if not self.destroyed?
+          child.destroy if not child.destroyed?
         end
+        close_image = Gtk::Image.new(Gtk::Stock::CLOSE, Gtk::IconSize::MENU)
+        btn.add(close_image)
+        align = Gtk::Alignment.new(1.0, 0.5, 0.0, 0.0)
+        align.add(btn)
+        self.pack_start(align, false, false, 0)
       end
+      self.spacing = 3
+      self.show_all
+    end
+  end
 
-      def init_raw_buf(text=nil)
-        if (not @raw_buffer)
-          buf ||= Gtk::TextBuffer.new
-          @raw_buffer = buf
-          buf.text = text if text
-          buf.create_tag('string', {'foreground' => '#00f000'})
-          buf.create_tag('symbol', {'foreground' => '#008020'})
-          buf.create_tag('comment', {'foreground' => '#8080e0'})
-          buf.create_tag('keyword', {'foreground' => '#ffffff', \
-            'weight' => Pango::FontDescription::WEIGHT_BOLD})
-          buf.create_tag('keyword2', {'foreground' => '#ffffff'})
-          buf.create_tag('function', {'foreground' => '#f12111'})
-          buf.create_tag('number', {'foreground' => '#f050e0'})
-          buf.create_tag('hexadec', {'foreground' => '#e070e7'})
-          buf.create_tag('constant', {'foreground' => '#60eedd'})
-          buf.create_tag('big_constant', {'foreground' => '#d080e0'})
-          buf.create_tag('identifer', {'foreground' => '#ffff33'})
-          buf.create_tag('global', {'foreground' => '#ffa500'})
-          buf.create_tag('instvar', {'foreground' => '#ff85a2'})
-          buf.create_tag('classvar', {'foreground' => '#ff79ec'})
-          buf.create_tag('operator', {'foreground' => '#ffffff'})
-          buf.create_tag('class', {'foreground' => '#ff1100', \
-            'weight' => Pango::FontDescription::WEIGHT_BOLD})
-          buf.create_tag('module', {'foreground' => '#1111ff', \
-            'weight' => Pango::FontDescription::WEIGHT_BOLD})
-          buf.create_tag('regex', {'foreground' => '#105090'})
+  # Window for view body (text or blob)
+  # RU: Окно просмотра тела (текста или блоба)
+  class BodyScrolledWindow < Gtk::ScrolledWindow
+    attr_accessor :field, :link_name, :body_child, :format, :raw_buffer, :view_buffer, \
+      :view_mode, :color_mode, :toolbar, :toolbar2
 
-          buf.signal_connect('changed') do |buf|  #modified-changed
+    def parent_win
+      res = parent.parent.parent
+    end
+
+    def initialize(*args)
+      super(*args)
+      @format = nil
+      @view_mode = true
+      @color_mode = true
+    end
+
+    def init_view_buf(buf)
+      if (not @view_buffer) and buf
+        @view_buffer = buf
+      end
+    end
+
+    def init_raw_buf(text=nil)
+      if (not @raw_buffer)
+        buf ||= Gtk::TextBuffer.new
+        @raw_buffer = buf
+        buf.text = text if text
+        buf.create_tag('string', {'foreground' => '#00f000'})
+        buf.create_tag('symbol', {'foreground' => '#008020'})
+        buf.create_tag('comment', {'foreground' => '#8080e0'})
+        buf.create_tag('keyword', {'foreground' => '#ffffff', \
+          'weight' => Pango::FontDescription::WEIGHT_BOLD})
+        buf.create_tag('keyword2', {'foreground' => '#ffffff'})
+        buf.create_tag('function', {'foreground' => '#f12111'})
+        buf.create_tag('number', {'foreground' => '#f050e0'})
+        buf.create_tag('hexadec', {'foreground' => '#e070e7'})
+        buf.create_tag('constant', {'foreground' => '#60eedd'})
+        buf.create_tag('big_constant', {'foreground' => '#d080e0'})
+        buf.create_tag('identifer', {'foreground' => '#ffff33'})
+        buf.create_tag('global', {'foreground' => '#ffa500'})
+        buf.create_tag('instvar', {'foreground' => '#ff85a2'})
+        buf.create_tag('classvar', {'foreground' => '#ff79ec'})
+        buf.create_tag('operator', {'foreground' => '#ffffff'})
+        buf.create_tag('class', {'foreground' => '#ff1100', \
+          'weight' => Pango::FontDescription::WEIGHT_BOLD})
+        buf.create_tag('module', {'foreground' => '#1111ff', \
+          'weight' => Pango::FontDescription::WEIGHT_BOLD})
+        buf.create_tag('regex', {'foreground' => '#105090'})
+
+        buf.signal_connect('changed') do |buf|  #modified-changed
+          mark = buf.get_mark('insert')
+          iter = buf.get_iter_at_mark(mark)
+          line1 = iter.line
+          set_tags(buf, line1, line1, true)
+          false
+        end
+
+        buf.signal_connect('insert-text') do |buf, iter, text, len|
+          $view_buffer_off1 = iter.offset
+          false
+        end
+
+        buf.signal_connect('paste-done') do |buf|
+          if $view_buffer_off1
+            line1 = buf.get_iter_at_offset($view_buffer_off1).line
             mark = buf.get_mark('insert')
             iter = buf.get_iter_at_mark(mark)
-            line1 = iter.line
-            set_tags(buf, line1, line1, true)
-            #p '====changed!!!!!!!!!!!!!!'
-
-            #tv = self.body_child
-            #if line1==buf.line_count-1
-            #  adj = self.vadjustment
-            #  adj.value = adj.upper - adj.page_size
-            #end
-
-            #tv.scroll_mark_onscreen(mark)
-            #tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0) if tv
-            #tv.scroll_to_mark(mark, 0.0, true, 0.0, 1.0)
-
-            #x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
-            #y, height = tv.get_line_yrange(iter)
-
-            false
-          end
-
-          buf.signal_connect('insert-text') do |buf, iter, text, len|
+            line2 = iter.line
             $view_buffer_off1 = iter.offset
-            false
+            set_tags(buf, line1, line2)
           end
-
-          buf.signal_connect('paste-done') do |buf|
-            if $view_buffer_off1
-              line1 = buf.get_iter_at_offset($view_buffer_off1).line
-              mark = buf.get_mark('insert')
-              iter = buf.get_iter_at_mark(mark)
-              line2 = iter.line
-              $view_buffer_off1 = iter.offset
-              set_tags(buf, line1, line2)
-
-              #tv = self.body_child
-              #tv.scroll_to_iter(buf.end_iter, 0, false, 0.0, 0.0) if tv
-              #adj = tv.parent.vadjustment
-              #adj.value = adj.upper #- adj.page_size
-              #adj.value_changed       # bug: not scroll to end
-              #adj.value = adj.upper   # if add many lines
-              #mark = buf.create_mark(nil, buf.end_iter, false)
-              #tv.scroll_to_mark(mark, 0, true, 0.0, 1.0)
-              #tv.scroll_to_mark(buf.get_mark('insert'), 0.0, true, 0.0, 1.0)
-              #buf.delete_mark(mark)
-            end
-            false
-          end
+          false
         end
       end
+    end
 
-      # Ruby key words
-      # Ключевые слова Ruby
-      RUBY_KEYWORDS = ('begin end module class def if then else elsif' \
-        +' while unless do case when require yield rescue include').split
-      RUBY_KEYWORDS2 = 'self nil true false not and or'.split
+    # Ruby key words
+    # Ключевые слова Ruby
+    RUBY_KEYWORDS = ('begin end module class def if then else elsif' \
+      +' while unless do case when require yield rescue include').split
+    RUBY_KEYWORDS2 = 'self nil true false not and or'.split
 
-      # Call a code block with the text
-      # RU: Вызвать блок кода по тексту
-      def ruby_tag_line(str, index=0, mode=0)
+    # Call a code block with the text
+    # RU: Вызвать блок кода по тексту
+    def ruby_tag_line(str, index=0, mode=0)
 
-        def ident_char?(c)
-          ('a'..'z').include?(c) or ('A'..'Z').include?(c) or (c == '_')
-        end
+      def ident_char?(c)
+        ('a'..'z').include?(c) or ('A'..'Z').include?(c) or (c == '_')
+      end
 
-        def capt_char?(c)
-          ('A'..'Z').include?(c) or ('0'..'9').include?(c) or (c == '_')
-        end
+      def capt_char?(c)
+        ('A'..'Z').include?(c) or ('0'..'9').include?(c) or (c == '_')
+      end
 
-        def word_char?(c)
-          ('a'..'z').include?(c) or ('A'..'Z').include?(c) \
-          or ('0'..'9').include?(c) or (c == '_')
-        end
+      def word_char?(c)
+        ('a'..'z').include?(c) or ('A'..'Z').include?(c) \
+        or ('0'..'9').include?(c) or (c == '_')
+      end
 
-        def oper_char?(c)
-          ".+,-=*^%()<>&[]!?~{}|/\\".include?(c)
-        end
+      def oper_char?(c)
+        ".+,-=*^%()<>&[]!?~{}|/\\".include?(c)
+      end
 
-        def rewind_ident(str, i, ss, pc, prev_kw=nil)
+      def rewind_ident(str, i, ss, pc, prev_kw=nil)
 
-          def check_func(prev_kw, c, i, ss, str)
-            if (prev_kw=='def') and (c.nil? or (c=='.'))
-              if not c.nil?
-                yield(:operator, i, i+1)
-                i += 1
-              end
-              i1 = i
-              i += 1 while (i<ss) and ident_char?(str[i])
-              i += 1 if (i<ss) and ('=?!'.include?(str[i]))
-              i2 = i
-              yield(:function, i1, i2)
+        def check_func(prev_kw, c, i, ss, str)
+          if (prev_kw=='def') and (c.nil? or (c=='.'))
+            if not c.nil?
+              yield(:operator, i, i+1)
+              i += 1
             end
-            i
+            i1 = i
+            i += 1 while (i<ss) and ident_char?(str[i])
+            i += 1 if (i<ss) and ('=?!'.include?(str[i]))
+            i2 = i
+            yield(:function, i1, i2)
           end
+          i
+        end
 
-          kw = nil
+        kw = nil
+        c = str[i]
+        fc = c
+        i1 = i
+        i += 1
+        big_cons = true
+        while (i<ss)
           c = str[i]
-          fc = c
-          i1 = i
-          i += 1
-          big_cons = true
-          while (i<ss)
-            c = str[i]
-            if ('a'..'z').include?(c)
-              big_cons = false if big_cons
-            elsif not capt_char?(c)
-              break
-            end
-            i += 1
+          if ('a'..'z').include?(c)
+            big_cons = false if big_cons
+          elsif not capt_char?(c)
+            break
           end
-          #p 'rewind_ident(str, i1, i, ss, pc)='+[str, i1, i, ss, pc].inspect
-          #i -= 1
-          i2 = i
-          if ('A'..'Z').include?(fc)
-            if prev_kw=='class'
-              yield(:class, i1, i2)
-            elsif prev_kw=='module'
-              yield(:module, i1, i2)
-            else
-              if big_cons
-                if ['TRUE', 'FALSE'].include?(str[i1, i2-i1])
-                  yield(:keyword2, i1, i2)
-                else
-                  yield(:big_constant, i1, i2)
-                end
-              else
-                yield(:constant, i1, i2)
-              end
-              i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
-                yield(tag, id1, id2)
-              end
-            end
+          i += 1
+        end
+        #p 'rewind_ident(str, i1, i, ss, pc)='+[str, i1, i, ss, pc].inspect
+        #i -= 1
+        i2 = i
+        if ('A'..'Z').include?(fc)
+          if prev_kw=='class'
+            yield(:class, i1, i2)
+          elsif prev_kw=='module'
+            yield(:module, i1, i2)
           else
-            if pc==':'
-              yield(:symbol, i1-1, i2)
-            elsif pc=='@'
-              if (i1-2>0) and (str[i1-2]=='@')
-                yield(:classvar, i1-2, i2)
-              else
-                yield(:instvar, i1-1, i2)
-              end
-            elsif pc=='$'
-              yield(:global, i1-1, i2)
-            else
-              can_keyw = (((i1<=0) or " \t\n({}[]=|+&,".include?(str[i1-1])) \
-                and ((i2>=ss) or " \t\n(){}[]=|+&,.".include?(str[i2])))
-              s = str[i1, i2-i1]
-              if can_keyw and RUBY_KEYWORDS.include?(s)
-                yield(:keyword, i1, i2)
-                kw = s
-              elsif can_keyw and RUBY_KEYWORDS2.include?(s)
+            if big_cons
+              if ['TRUE', 'FALSE'].include?(str[i1, i2-i1])
                 yield(:keyword2, i1, i2)
-                if (s=='self') and (prev_kw=='def')
+              else
+                yield(:big_constant, i1, i2)
+              end
+            else
+              yield(:constant, i1, i2)
+            end
+            i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
+              yield(tag, id1, id2)
+            end
+          end
+        else
+          if pc==':'
+            yield(:symbol, i1-1, i2)
+          elsif pc=='@'
+            if (i1-2>0) and (str[i1-2]=='@')
+              yield(:classvar, i1-2, i2)
+            else
+              yield(:instvar, i1-1, i2)
+            end
+          elsif pc=='$'
+            yield(:global, i1-1, i2)
+          else
+            can_keyw = (((i1<=0) or " \t\n({}[]=|+&,".include?(str[i1-1])) \
+              and ((i2>=ss) or " \t\n(){}[]=|+&,.".include?(str[i2])))
+            s = str[i1, i2-i1]
+            if can_keyw and RUBY_KEYWORDS.include?(s)
+              yield(:keyword, i1, i2)
+              kw = s
+            elsif can_keyw and RUBY_KEYWORDS2.include?(s)
+              yield(:keyword2, i1, i2)
+              if (s=='self') and (prev_kw=='def')
+                i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
+                  yield(tag, id1, id2)
+                end
+              end
+            else
+              i += 1 if (i<ss) and ('?!'.include?(str[i]))
+              if prev_kw=='def'
+                if (i<ss) and (str[i]=='.')
+                  yield(:identifer, i1, i)
                   i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
+                    yield(tag, id1, id2)
+                  end
+                else
+                  i = check_func(prev_kw, nil, i1, ss, str) do |tag, id1, id2|
                     yield(tag, id1, id2)
                   end
                 end
               else
-                i += 1 if (i<ss) and ('?!'.include?(str[i]))
-                if prev_kw=='def'
-                  if (i<ss) and (str[i]=='.')
-                    yield(:identifer, i1, i)
-                    i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
-                      yield(tag, id1, id2)
-                    end
-                  else
-                    i = check_func(prev_kw, nil, i1, ss, str) do |tag, id1, id2|
-                      yield(tag, id1, id2)
-                    end
-                  end
-                else
-                  yield(:identifer, i1, i)
-                end
+                yield(:identifer, i1, i)
               end
             end
           end
-          [i, kw]
         end
+        [i, kw]
+      end
 
-        ss = str.size
-        if ss>0
-          i = 0
-          if (mode == 1)
-            if (str[0,4] == '=end')
-              mode = 0
-              i = 4
-              yield(:comment, index, index + i)
-            else
-              yield(:comment, index, index + ss)
-            end
-          elsif (mode == 0) and (str[0,6] == '=begin')
-            mode = 1
+      ss = str.size
+      if ss>0
+        i = 0
+        if (mode == 1)
+          if (str[0,4] == '=end')
+            mode = 0
+            i = 4
+            yield(:comment, index, index + i)
+          else
             yield(:comment, index, index + ss)
-          elsif (mode != 1)
-            i += 1 while (i<ss) and ((str[i] == ' ') or (str[i] == "\t"))
-            pc = ' '
-            kw, kw2 = nil
-            while (i<ss)
-              c = str[i]
-              if (c != ' ') and (c != "\t")
-                if (c == '#')
-                  yield(:comment, index + i, index + ss)
-                  break
-                elsif (c == "'") or (c == '"') or (c == '/')
-                  qc = c
-                  i1 = i
-                  i += 1
-                  if (i<ss)
-                    c = str[i]
-                    if c==qc
-                      i += 1
-                    else
-                      pc = ' '
-                      while (i<ss) and ((c != qc) or (pc == "\\") or (pc == qc))
-                        if (pc=="\\")
-                          pc = ' '
-                        else
-                          pc = c
-                        end
-                        c = str[i]
-                        if (qc=='"') and (c=='{') and (pc=='#')
-                          yield(:string, index + i1, index + i - 1)
-                          yield(:operator, index + i - 1, index + i + 1)
-                          i, kw2 = rewind_ident(str, i, ss, ' ') do |tag, id1, id2|
-                            yield(tag, index + id1, index + id2)
-                          end
-                          i1 = i
-                        end
-                        i += 1
+          end
+        elsif (mode == 0) and (str[0,6] == '=begin')
+          mode = 1
+          yield(:comment, index, index + ss)
+        elsif (mode != 1)
+          i += 1 while (i<ss) and ((str[i] == ' ') or (str[i] == "\t"))
+          pc = ' '
+          kw, kw2 = nil
+          while (i<ss)
+            c = str[i]
+            if (c != ' ') and (c != "\t")
+              if (c == '#')
+                yield(:comment, index + i, index + ss)
+                break
+              elsif (c == "'") or (c == '"') or (c == '/')
+                qc = c
+                i1 = i
+                i += 1
+                if (i<ss)
+                  c = str[i]
+                  if c==qc
+                    i += 1
+                  else
+                    pc = ' '
+                    while (i<ss) and ((c != qc) or (pc == "\\") or (pc == qc))
+                      if (pc=="\\")
+                        pc = ' '
+                      else
+                        pc = c
                       end
+                      c = str[i]
+                      if (qc=='"') and (c=='{') and (pc=='#')
+                        yield(:string, index + i1, index + i - 1)
+                        yield(:operator, index + i - 1, index + i + 1)
+                        i, kw2 = rewind_ident(str, i, ss, ' ') do |tag, id1, id2|
+                          yield(tag, index + id1, index + id2)
+                        end
+                        i1 = i
+                      end
+                      i += 1
                     end
                   end
-                  if (qc == '/')
-                    i += 1 while (i<ss) and ('imxouesn'.include?(str[i]))
-                    yield(:regex, index + i1, index + i)
-                  else
-                    yield(:string, index + i1, index + i)
-                  end
-                elsif ident_char?(c)
-                  i, kw = rewind_ident(str, i, ss, pc, kw) do |tag, id1, id2|
-                    yield(tag, index + id1, index + id2)
-                  end
-                  pc = ' '
-                elsif (c=='$') and (i+1<ss) and ('~'.include?(str[i+1]))
-                  i1 = i
-                  i += 2
-                  yield(:global, index + i1, index + i)
-                  pc = ' '
-                elsif oper_char?(c) or ((pc==':') and (c==':'))
-                  i1 = i
-                  i1 -=1 if (i1>0) and (c==':')
+                end
+                if (qc == '/')
+                  i += 1 while (i<ss) and ('imxouesn'.include?(str[i]))
+                  yield(:regex, index + i1, index + i)
+                else
+                  yield(:string, index + i1, index + i)
+                end
+              elsif ident_char?(c)
+                i, kw = rewind_ident(str, i, ss, pc, kw) do |tag, id1, id2|
+                  yield(tag, index + id1, index + id2)
+                end
+                pc = ' '
+              elsif (c=='$') and (i+1<ss) and ('~'.include?(str[i+1]))
+                i1 = i
+                i += 2
+                yield(:global, index + i1, index + i)
+                pc = ' '
+              elsif oper_char?(c) or ((pc==':') and (c==':'))
+                i1 = i
+                i1 -=1 if (i1>0) and (c==':')
+                i += 1
+                while (i<ss) and (oper_char?(str[i]) or (str[i]==':'))
                   i += 1
-                  while (i<ss) and (oper_char?(str[i]) or (str[i]==':'))
+                end
+                if i<ss
+                  pc = ' '
+                  c = str[i]
+                end
+                yield(:operator, index + i1, index + i)
+              elsif ((c==':') or (c=='$')) and (i+1<ss) and (ident_char?(str[i+1]))
+                i += 1
+                pc = c
+                i, kw2 = rewind_ident(str, i, ss, pc) do |tag, id1, id2|
+                  yield(tag, index + id1, index + id2)
+                end
+                pc = ' '
+              elsif ('0'..'9').include?(c)
+                i1 = i
+                i += 1
+                if (i<ss) and ((str[i]=='x') or (str[i]=='X'))
+                  i += 1
+                  while (i<ss)
+                    c = str[i]
+                    break unless (('0'..'9').include?(c) or ('A'..'F').include?(c))
+                    i += 1
+                  end
+                  yield(:hexadec, index + i1, index + i)
+                else
+                  while (i<ss)
+                    c = str[i]
+                    break unless (('0'..'9').include?(c) or (c=='.') or (c=='e'))
                     i += 1
                   end
                   if i<ss
+                    i -= 1 if str[i-1]=='.'
                     pc = ' '
-                    c = str[i]
                   end
-                  yield(:operator, index + i1, index + i)
-                elsif ((c==':') or (c=='$')) and (i+1<ss) and (ident_char?(str[i+1]))
-                  i += 1
-                  pc = c
-                  i, kw2 = rewind_ident(str, i, ss, pc) do |tag, id1, id2|
-                    yield(tag, index + id1, index + id2)
-                  end
-                  pc = ' '
-                elsif ('0'..'9').include?(c)
-                  i1 = i
-                  i += 1
-                  if (i<ss) and ((str[i]=='x') or (str[i]=='X'))
-                    i += 1
-                    while (i<ss)
-                      c = str[i]
-                      break unless (('0'..'9').include?(c) or ('A'..'F').include?(c))
-                      i += 1
-                    end
-                    yield(:hexadec, index + i1, index + i)
-                  else
-                    while (i<ss)
-                      c = str[i]
-                      break unless (('0'..'9').include?(c) or (c=='.') or (c=='e'))
-                      i += 1
-                    end
-                    if i<ss
-                      i -= 1 if str[i-1]=='.'
-                      pc = ' '
-                    end
-                    yield(:number, index + i1, index + i)
-                  end
-                else
-                  #yield(:keyword, index + i, index + ss/2)
-                  #break
-                  pc = c
-                  i += 1
+                  yield(:number, index + i1, index + i)
                 end
               else
+                #yield(:keyword, index + i, index + ss/2)
+                #break
                 pc = c
                 i += 1
               end
-            end
-          end
-        end
-        mode
-      end
-
-      # Call a code block with the text
-      # RU: Вызвать блок кода по тексту
-      def bbcode_html_tag_line(str, index=0, mode=0, format='bbcode')
-        open_brek = '['
-        close_brek = ']'
-        if format=='html'
-          open_brek = '<'
-          close_brek = '>'
-        end
-        d = 0
-        ss = str.size
-        while ss>0
-          if mode>0
-            # find close brek
-            i = str.index(close_brek)
-            #p 'close brek  [str,i,d]='+[str,i,d].inspect
-            k = ss
-            if i
-              k = i
-              yield(:operator, index + d + i , index + d + i + 1)
-              i += 1
-              mode = 0
             else
-              i = ss
-            end
-            if k>0
-              com = str[0, k]
-              j = 0
-              cs = com.size
-              j +=1 while (j<cs) and (not ' ='.index(com[j]))
-              comu = nil
-              params = nil
-              if (j<cs)
-                params = com[j+1..-1].strip
-                comu = com[0, j]
-              else
-                comu = com
-              end
-              if comu and (comu.size>0)
-                if SuperTextView::BBCODES.include?(comu.upcase)
-                  yield(:big_constant, index + d, index + d + j)
-                else
-                  yield(:constant, index + d, index + d + j)
-                end
-              end
-              if j<cs
-                yield(:comment, index + d + j + 1, index + d + k)
-              end
-            end
-          else
-            # find open brek
-            i = str.index(open_brek)
-            #p 'open brek  [str,i,d]='+[str,i,d].inspect
-            if i
-              yield(:operator, index + d + i , index + d + i + 1)
+              pc = c
               i += 1
-              mode = 1
-              if (i<ss) and (str[i]=='/')
-                yield(:operator, index + d + i, index + d + i+1)
-                i += 1
-                mode = 2
-              end
-            else
-              i = ss
-            end
-          end
-          d += i
-          str = str[i..-1]
-          ss = str.size
-        end
-        mode
-      end
-
-      # Set tags for line range of TextView
-      # RU: Проставить теги для диапазона строк TextView
-      def set_tags(buf, line1, line2, clean=nil)
-        #p 'line1, line2, view_mode='+[line1, line2, view_mode].inspect
-        if (not @view_mode) and @color_mode
-          buf.begin_user_action do
-            line = line1
-            iter1 = buf.get_iter_at_line(line)
-            iterN = nil
-            mode = 0
-            while line<=line2
-              line += 1
-              if line<buf.line_count
-                iterN = buf.get_iter_at_line(line)
-                iter2 = buf.get_iter_at_offset(iterN.offset-1)
-              else
-                iter2 = buf.end_iter
-                line = line2+1
-              end
-
-              text = buf.get_text(iter1, iter2)
-              offset1 = iter1.offset
-              buf.remove_all_tags(iter1, iter2) if clean
-              #buf.apply_tag('keyword', iter1, iter2)
-              case @format
-                when 'ruby'
-                  mode = ruby_tag_line(text, offset1, mode) do |tag, start, last|
-                    buf.apply_tag(tag.to_s,
-                      buf.get_iter_at_offset(start),
-                      buf.get_iter_at_offset(last))
-                  end
-                when 'bbcode', 'html'
-                  mode = bbcode_html_tag_line(text, offset1, mode, @format) do |tag, start, last|
-                    buf.apply_tag(tag.to_s,
-                      buf.get_iter_at_offset(start),
-                      buf.get_iter_at_offset(last))
-                  end
-                #end-case-when
-              end
-              #p mode
-              iter1 = iterN if iterN
-              #Gtk.main_iteration
             end
           end
         end
       end
-
-      # Set buffers
-      # RU: Задать буферы
-      def set_buffers
-        tv = body_child
-        tv.hide
-        #sleep 2
-        #freeze_child_notify
-        text_changed = false
-
-        p '====set_buffers    view_mode,format='+[view_mode, @format].inspect
-
-        #if bw.view_mode
-        #  if (tv.buffer != bw.view_buffer)
-        #    tv.buffer = bw.view_buffer
-        #    text_changed = true
-        #  end
-        #elsif tv.buffer != bw.raw_buffer
-        #  tv.buffer = bw.raw_buffer
-        #  text_changed = true
-        #end
-
-        @format ||= 'auto'
-        unless ['markdown', 'bbcode', 'html', 'ruby', 'plain'].include?(@format)
-          @format = 'bbcode' #if aformat=='auto' #need autodetect here
-        end
-
-        @tv_style ||= tv.modifier_style
-        if view_mode
-          tv.modify_style(@tv_style)
-          tv.modify_font(nil)
-          tv.hide
-          view_buffer.text = ''
-          tv.buffer = view_buffer
-          tv.insert_taged_str_to_buffer(raw_buffer.text, view_buffer, @format)
-          tv.set_left_border_width(tv.view_border)
-          tv.show
-          #if text_changed
-          #  bw.raw_buffer.text = bw.view_buffer.text
-          #else
-          #  buf = bw.raw_buffer
-          #  buf.remove_all_tags(buf.start_iter, buf.end_iter)
-          #end
-          #tv.buffer = view_buffer
-          tv.editable = false
-        else
-          tv.modify_font($font_desc)
-          tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
-          tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
-          tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
-          tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
-          tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
-          tv.hide
-          #convert_buffer(view_buffer.text, raw_buffer, false, @format)
-          tv.buffer = raw_buffer
-          left_bord = tv.raw_border
-          left_bord ||= -3
-          tv.set_left_border_width(left_bord)
-          tv.show
-          tv.editable = true
-          #if text_changed
-          #  bw.view_buffer.text = bw.raw_buffer.text
-          #else
-          #  buf = bw.view_buffer
-          #  buf.remove_all_tags(buf.start_iter, buf.end_iter)
-          #end
-          raw_buffer.remove_all_tags(raw_buffer.start_iter, raw_buffer.end_iter)
-          set_tags(raw_buffer, 0, raw_buffer.line_count)
-        end
-        fmt_btn = parent.parent.parent.format_btn
-        fmt_btn.label = format if (fmt_btn.label != format)
-        #vadjustment.value = vadjustment.upper
-        #tv.scroll_to_iter(tv.buffer.end_iter, 0, false, 0.0, 0.0)
-        #adj.value_changed       # bug: not scroll to end
-        #adj.value = adj.upper   # if add many lines
-        #thaw_child_notify
-        tv.show
-        tv.grab_focus
-      end
-
+      mode
     end
 
-    def get_bodywin(page_num=nil)
-      res = nil
-      page_num ||= notebook.page
-      child = notebook.get_nth_page(page_num)
-      res = child if (child.is_a? BodyScrolledWindow)
-      res
+    # Call a code block with the text
+    # RU: Вызвать блок кода по тексту
+    def bbcode_html_tag_line(str, index=0, mode=0, format='bbcode')
+      open_brek = '['
+      close_brek = ']'
+      if format=='html'
+        open_brek = '<'
+        close_brek = '>'
+      end
+      d = 0
+      ss = str.size
+      while ss>0
+        if mode>0
+          # find close brek
+          i = str.index(close_brek)
+          #p 'close brek  [str,i,d]='+[str,i,d].inspect
+          k = ss
+          if i
+            k = i
+            yield(:operator, index + d + i , index + d + i + 1)
+            i += 1
+            mode = 0
+          else
+            i = ss
+          end
+          if k>0
+            com = str[0, k]
+            j = 0
+            cs = com.size
+            j +=1 while (j<cs) and (not ' ='.index(com[j]))
+            comu = nil
+            params = nil
+            if (j<cs)
+              params = com[j+1..-1].strip
+              comu = com[0, j]
+            else
+              comu = com
+            end
+            if comu and (comu.size>0)
+              if SuperTextView::BBCODES.include?(comu.upcase)
+                yield(:big_constant, index + d, index + d + j)
+              else
+                yield(:constant, index + d, index + d + j)
+              end
+            end
+            if j<cs
+              yield(:comment, index + d + j + 1, index + d + k)
+            end
+          end
+        else
+          # find open brek
+          i = str.index(open_brek)
+          #p 'open brek  [str,i,d]='+[str,i,d].inspect
+          if i
+            yield(:operator, index + d + i , index + d + i + 1)
+            i += 1
+            mode = 1
+            if (i<ss) and (str[i]=='/')
+              yield(:operator, index + d + i, index + d + i+1)
+              i += 1
+              mode = 2
+            end
+          else
+            i = ss
+          end
+        end
+        d += i
+        str = str[i..-1]
+        ss = str.size
+      end
+      mode
+    end
+
+    # Set tags for line range of TextView
+    # RU: Проставить теги для диапазона строк TextView
+    def set_tags(buf, line1, line2, clean=nil)
+      #p 'line1, line2, view_mode='+[line1, line2, view_mode].inspect
+      if (not @view_mode) and @color_mode
+        buf.begin_user_action do
+          line = line1
+          iter1 = buf.get_iter_at_line(line)
+          iterN = nil
+          mode = 0
+          while line<=line2
+            line += 1
+            if line<buf.line_count
+              iterN = buf.get_iter_at_line(line)
+              iter2 = buf.get_iter_at_offset(iterN.offset-1)
+            else
+              iter2 = buf.end_iter
+              line = line2+1
+            end
+
+            text = buf.get_text(iter1, iter2)
+            offset1 = iter1.offset
+            buf.remove_all_tags(iter1, iter2) if clean
+            #buf.apply_tag('keyword', iter1, iter2)
+            case @format
+              when 'ruby'
+                mode = ruby_tag_line(text, offset1, mode) do |tag, start, last|
+                  buf.apply_tag(tag.to_s,
+                    buf.get_iter_at_offset(start),
+                    buf.get_iter_at_offset(last))
+                end
+              when 'bbcode', 'html'
+                mode = bbcode_html_tag_line(text, offset1, mode, @format) do |tag, start, last|
+                  buf.apply_tag(tag.to_s,
+                    buf.get_iter_at_offset(start),
+                    buf.get_iter_at_offset(last))
+                end
+              #end-case-when
+            end
+            #p mode
+            iter1 = iterN if iterN
+            #Gtk.main_iteration
+          end
+        end
+      end
+    end
+
+    # Set buffers
+    # RU: Задать буферы
+    def set_buffers
+      tv = body_child
+      tv.hide
+      text_changed = false
+
+      p '====set_buffers    view_mode,format='+[view_mode, @format].inspect
+
+      @format ||= 'auto'
+      unless ['markdown', 'bbcode', 'html', 'ruby', 'plain'].include?(@format)
+        @format = 'bbcode' #if aformat=='auto' #need autodetect here
+      end
+
+      @tv_style ||= tv.modifier_style
+      if view_mode
+        tv.modify_style(@tv_style)
+        tv.modify_font(nil)
+        tv.hide
+        view_buffer.text = ''
+        tv.buffer = view_buffer
+        tv.insert_taged_str_to_buffer(raw_buffer.text, view_buffer, @format)
+        tv.set_left_border_width(tv.view_border)
+        tv.show
+        tv.editable = false
+      else
+        tv.modify_font($font_desc)
+        tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+        tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
+        tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
+        tv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#A0A0A0'))
+        tv.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+        tv.hide
+        #convert_buffer(view_buffer.text, raw_buffer, false, @format)
+        tv.buffer = raw_buffer
+        left_bord = tv.raw_border
+        left_bord ||= -3
+        tv.set_left_border_width(left_bord)
+        tv.show
+        tv.editable = true
+        raw_buffer.remove_all_tags(raw_buffer.start_iter, raw_buffer.end_iter)
+        set_tags(raw_buffer, 0, raw_buffer.line_count)
+      end
+      #fmt_btn = parent.parent.parent.format_btn
+      #fmt_btn.label = format if (fmt_btn.label != format)
+      tv.show
+      tv.grab_focus
     end
 
     # Add menu item
@@ -15650,17 +15620,11 @@ module PandoraGtk
           if bw.view_mode
             btn = PandoraGtk.find_tool_btn(toolbar, 'Edit')
             btn.active = true if btn.is_a? Gtk::ToggleToolButton
-            #buffer = tv.buffer
-            #bounds = buffer.selection_bounds
-            #buffer.apply_tag(tag, bounds[0], bounds[1])
           end
           tv.set_tag(tag, params, defval, bw.format)
         end
       end
     end
-
-    SexList = [[1, _('man')], [0, _('woman')], [2, _('gay')], [3, _('trans')], [4, _('lesbo')]]
-
 
     Data = Struct.new(:font_size, :lines_per_page, :lines, :n_pages)
     HEADER_HEIGHT = 10 * 72 / 25.4
@@ -15672,10 +15636,6 @@ module PandoraGtk
 
         operation.use_full_page = false
         operation.unit = Gtk::PaperSize::UNIT_POINTS
-        #page_setup = Gtk::PageSetup.new
-        #paper_size = Gtk::PaperSize.new(Gtk::PaperSize.default)
-        #page_setup.paper_size_and_default_margins = paper_size
-        #operation.default_page_setup = page_setup
         operation.show_progress = true
         data = Data.new
         data.font_size = 12.0
@@ -15743,24 +15703,6 @@ module PandoraGtk
     def draw_body(cr, operation, context, page_number, data)
       bw = get_bodywin
       if bw.view_mode
-        #overlay = Gtk::Overlay.new
-        #win = Gtk::OffscreenWindow.new
-        #btn = Gtk::Button.new('Hello World')
-        #win = Gtk::Window.new(Gtk::Window::TOPLEVEL)
-        #win.set_default_size(500, 400)
-        #win.add(btn)
-        #btn.show_all
-        #win.show_all
-
-        #dst = Cairo::ImageSurface.new(Cairo::FORMAT_ARGB32, 400, 300)
-        #ctx = Cairo::Context.new(dst)
-        #surface = Gdk.cairo_create(win.window()).get_target()  # here
-        #ctx.set_source_surface(surface)
-        #cr.set_source_surface(dst)
-        #ctx.paint()
-        #dst.write_to_png('xx.png')
-        #btn.draw(cr)
-
         tv = bw.body_child
         cm = Gdk::Colormap.system
         width = context.width
@@ -15812,32 +15754,10 @@ module PandoraGtk
       end
     end
 
-    def get_fld_value_by_id(id)
-      res = nil
-      fld = @fields.detect{ |f| (f[FI_Id].to_s == id) }
-      res = fld[FI_Value] if fld.is_a? Array
-      res
-    end
-
-    # Create fields dialog
-    # RU: Создать форму с полями
-    def initialize(apanobject, afields=[], *args)
-      super(*args)
-      @panobject = apanobject
-      @fields = afields
-
-      window.signal_connect('configure-event') do |widget, event|
-        window.on_resize_window(widget, event)
-        false
-      end
-
+    def fill_edit_toolbar(toolbar)
       @toolbar = Gtk::Toolbar.new
       toolbar.toolbar_style = Gtk::Toolbar::Style::ICONS
       panelbox.pack_start(toolbar, false, false, 0)
-
-      @toolbar2 = Gtk::Toolbar.new
-      toolbar2.toolbar_style = Gtk::Toolbar::Style::ICONS
-      panelbox.pack_start(toolbar2, false, false, 0)
 
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::EDIT, 'Edit', false) do |btn|
         bw = get_bodywin
@@ -16113,12 +16033,18 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE)
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) { |*args| @response=2 }
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::CANCEL) { |*args| @response=1 }
+    end
 
-      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ADD, 'Add')
-      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::DELETE, 'Delete')
-      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
-      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
-      @zoom_100 = PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_100, 'Show 1:1', true) do |btn|
+    def fill_view_toolbar(toolbar)
+      @toolbar = Gtk::Toolbar.new
+      toolbar.toolbar_style = Gtk::Toolbar::Style::ICONS
+      panelbox.pack_start(toolbar, false, false, 0)
+
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::ADD, 'Add')
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::DELETE, 'Delete')
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
+      @zoom_100 = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::ZOOM_100, 'Show 1:1', true) do |btn|
         bw = get_bodywin
         if bw and (bc = bw.body_child)
           p image = bc
@@ -16126,39 +16052,77 @@ module PandoraGtk
         @zoom_fit.safe_set_active(false)
         true
       end
-      @zoom_fit = PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_FIT, 'Zoom to fit', false) do |btn|
+      @zoom_fit = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::ZOOM_FIT, 'Zoom to fit', false) do |btn|
         @zoom_100.safe_set_active(false)
         true
       end
-      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_IN, 'Zoom in') do |btn|
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::ZOOM_IN, 'Zoom in') do |btn|
         @zoom_fit.safe_set_active(false)
         @zoom_100.safe_set_active(false)
         true
       end
-      PandoraGtk.add_tool_btn(toolbar2, Gtk::Stock::ZOOM_OUT, 'Zoom out') do |btn|
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::ZOOM_OUT, 'Zoom out') do |btn|
         @zoom_fit.safe_set_active(false)
         @zoom_100.safe_set_active(false)
         true
+
       end
+    end
+
+  end
+
+
+  # Dialog with enter fields
+  # RU: Диалог с полями ввода
+  class FieldsDialog < AdvancedDialog
+    include PandoraUtils
+
+    attr_accessor :panobject, :fields, :text_fields, :statusbar, \
+      :keep_btn, :rate_label, :vouch_btn, :follow_btn, :trust_scale, :trust0, :public_btn, \
+      :public_scale, :lang_entry, :last_sw, :rate_btn, :format_btn
+
+    SexList = [[1, _('man')], [0, _('woman')], [2, _('gay')], [3, _('trans')], [4, _('lesbo')]]
+
+    def get_fld_value_by_id(id)
+      res = nil
+      fld = @fields.detect{ |f| (f[FI_Id].to_s == id) }
+      res = fld[FI_Value] if fld.is_a? Array
+      res
+    end
+
+    def get_bodywin(page_num=nil)
+      res = nil
+      page_num ||= notebook.page
+      child = notebook.get_nth_page(page_num)
+      res = child if (child.is_a? BodyScrolledWindow)
+      res
+    end
+
+    # Create fields dialog
+    # RU: Создать форму с полями
+    def initialize(apanobject, afields=[], *args)
+      super(*args)
+      @panobject = apanobject
+      @fields = afields
+
+      #fill_edit_toolbar
+      #fill_view_toolbar
+
       @last_sw = nil
       notebook.signal_connect('switch-page') do |widget, page, page_num|
         if (page_num != 1) and @last_sw
-          #@last_sw.children.each do |child|
-          #  child.destroy if (not child.destroyed?) \
-          #    and child.class.method_defined? 'destroy'
-          #end
           @last_sw = nil
         end
 
         if page_num==0
-          toolbar.hide
-          toolbar2.hide
+          #toolbar.hide
+          #toolbar2.hide
           hbox.show
         else
           bodywin = get_bodywin(page_num)
           p 'bodywin='+bodywin.inspect
           if bodywin
-            toolbar2.hide
+            #toolbar2.hide
             hbox.hide
             field = bodywin.field
             if field
@@ -16223,10 +16187,6 @@ module PandoraGtk
                   else
                     bodywin.add_with_viewport(bodywid)
                   end
-                  #viewport = Gtk::Viewport.new(nil, nil)
-                  #bodywin.add(viewport)
-                  #viewport.add(bodywid)
-                  #format_btn.label
                   fmt = get_fld_value_by_id('type')
                   bodywin.format = fmt.downcase if fmt.is_a? String
                 end
@@ -16235,21 +16195,26 @@ module PandoraGtk
                   bodywin.init_view_buf(bodywin.body_child.buffer)
                   bodywin.init_raw_buf(field[FI_Value].to_s)
                   bodywin.set_buffers
-                  toolbar.show
+                  #toolbar.show
                 else
-                  toolbar2.show
+                  #toolbar2.show
                 end
                 bodywin.show_all
               else
-                toolbar2.show
+                #toolbar2.show
               end
             end
           else
-            toolbar.hide
+            #toolbar.hide
             hbox.hide
-            toolbar2.show
+            #toolbar2.show
           end
         end
+      end
+
+      window.signal_connect('configure-event') do |widget, event|
+        window.on_resize_window(widget, event)
+        false
       end
 
       @vbox = Gtk::VBox.new
@@ -16264,16 +16229,8 @@ module PandoraGtk
 
       panelbox.pack_start(statusbar, false, false, 0)
 
-
-      #rbvbox = Gtk::VBox.new
-
       keep_box = Gtk::VBox.new
       @keep_btn = Gtk::CheckButton.new(_('Keep'), true)
-      #keep_btn.signal_connect('toggled') do |widget|
-      #  p "keep"
-      #end
-      #rbvbox.pack_start(keep_btn, false, false, 0)
-      #@rate_label = Gtk::Label.new('-')
       keep_box.pack_start(keep_btn, false, false, 0)
       @follow_btn = Gtk::CheckButton.new(_('Follow'), true)
       follow_btn.signal_connect('clicked') do |widget|
@@ -16373,24 +16330,14 @@ module PandoraGtk
         i -= 1
         field = @fields[i]
         atext = field[FI_VFName]
-        #atype = field[FI_Type]
-        #if (atype=='Blob') or (atype=='Text')
         aview = field[FI_View]
         if (aview=='blob') or (aview=='text')
           bodywin = BodyScrolledWindow.new(nil, nil)
           bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-          #bodywin.set_policy(Gtk::POLICY_ALWAYS, Gtk::POLICY_ALWAYS)
-
           label_box = TabLabelBox.new(Gtk::Stock::DND, atext, nil)
           page = notebook.append_page(bodywin, label_box)
-
-          #field[FI_Widget] = textview
-
-          #field << page
           @text_fields << field
           bodywin.field = field
-
-          #@fields.delete_at(i) if (atype=='Text')
         end
       end
 
@@ -16815,51 +16762,6 @@ module PandoraGtk
     end
   end
 
-  # Tab box for notebook with image and close button
-  # RU: Бокс закладки для блокнота с картинкой и кнопкой
-  class TabLabelBox < Gtk::HBox
-    attr_accessor :label
-
-    def initialize(image, title, child=nil, *args)
-      args ||= [false, 0]
-      super(*args)
-      image ||= :person
-      if (image.is_a? Symbol) or (image.is_a? String)
-        $window.register_stock(image)
-        image = Gtk::Image.new(image, Gtk::IconSize::MENU)
-      end
-      image.set_padding(2, 0)
-      self.pack_start(image, false, false, 0) if image
-      @label = Gtk::Label.new(title)
-      self.pack_start(label, false, false, 0)
-      if child
-        btn = Gtk::Button.new
-        btn.relief = Gtk::RELIEF_NONE
-        btn.focus_on_click = false
-        style = btn.modifier_style
-        style.xthickness = 0
-        style.ythickness = 0
-        btn.modify_style(style)
-        wim,him = Gtk::IconSize.lookup(Gtk::IconSize::MENU)
-        btn.set_size_request(wim+2,him+2)
-        btn.signal_connect('clicked') do |*args|
-          yield if block_given?
-          ind = $window.notebook.children.index(child)
-          $window.notebook.remove_page(ind) if ind
-          self.destroy if not self.destroyed?
-          child.destroy if not child.destroyed?
-        end
-        close_image = Gtk::Image.new(Gtk::Stock::CLOSE, Gtk::IconSize::MENU)
-        btn.add(close_image)
-        align = Gtk::Alignment.new(1.0, 0.5, 0.0, 0.0)
-        align.add(btn)
-        self.pack_start(align, false, false, 0)
-      end
-      self.spacing = 3
-      self.show_all
-    end
-  end
-
   $you_color = 'red'
   $dude_color = 'blue'
   $tab_color = 'blue'
@@ -17043,6 +16945,182 @@ module PandoraGtk
       end
     end
 
+    def hide_toolbar_btns(page=nil)
+      @add_toolbar_btns.each do |btns|
+        if btns.is_a? Array
+          btns.each do |btn|
+            btn.hide
+          end
+        end
+      end
+    end
+
+    def show_toolbar_btns(page=nil)
+      btns = @add_toolbar_btns[page]
+      if btns.is_a? Array
+        btns.each do |btn|
+          btn.show
+        end
+      end
+    end
+
+    def add_btn_to_toolbar(btn, text=nil, toogle=nil, page=nil)
+      page ||= @active_page
+      btns = @add_toolbar_btns[page]
+      if not (btns.is_a? Array)
+        btns = Array.new
+        @add_toolbar_btns[page] = btns
+      end
+      padd = 2
+      if (btn.is_a? Symbol) or (btn.is_a? String)
+        btn = btn.to_sym
+        $window.register_stock(btn)
+        if toogle.nil?
+          #image = $window.get_preset_image('game')
+          #game_btn = Gtk::ToolButton.new(image, _('Game'))
+          btn = Gtk::ToolButton.new(btn)
+          btn.signal_connect('clicked') do |widget|
+            yield(widget) if block_given?
+          end
+        else
+          btn = PandoraGtk::SafeToggleToolButton.new(btn)
+          btn.safe_signal_clicked do |widget|
+            yield(widget) if block_given?
+          end
+          btn.safe_set_active(toogle) if toogle
+        end
+        text, keyb = text.split('|')
+        if keyb
+          keyb = ' '+keyb
+        else
+          keyb = ''
+        end
+        btn.tooltip_text = _(text) + keyb
+      elsif btn.nil?
+        if text=='-'
+          btn = Gtk::SeparatorToolItem.new
+          padd = 0
+        else
+          btn = Gtk::SeparatorToolItem.new
+        end
+      end
+      option_box.pack_start(btn, false, false, padd)
+      btns << btn
+      btn
+    end
+
+    def fill_dlg_toolbar
+      is_online = (@known_node != nil)
+      @online_btn = add_btn_to_toolbar(Gtk::Stock::CONNECT, 'Online', \
+      is_online) do |widget|
+        p 'widget.active?='+widget.active?.inspect
+        if widget.active? #and (not widget.inconsistent?)
+          #widget.safe_set_active(false)
+          #widget.inconsistent = true
+          targets[CSI_Persons].each_with_index do |person, i|
+            keys = targets[CSI_Keys]
+            keys = keys[-1] if (keys.is_a? Array) and (keys.size>0)
+            $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
+              person, keys, nil, PandoraNet::CM_Captcha)
+          end
+        else
+          widget.safe_set_active(false)
+          #widget.inconsistent = false
+          $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
+        end
+      end
+
+      @webcam_btn = add_btn_to_toolbar(:webcam, 'Webcam', false) do |widget|
+        if widget.active?
+          if init_video_sender(true)
+            online_btn.active = true
+          end
+        else
+          init_video_sender(false, true)
+          init_video_sender(false)
+        end
+      end
+
+      @mic_btn = add_btn_to_toolbar(:mic, 'Mic', false) do |widget|
+        if widget.active?
+          if init_audio_sender(true)
+            online_btn.active = true
+          end
+        else
+          init_audio_sender(false, true)
+          init_audio_sender(false)
+        end
+      end
+
+      record_btn = add_btn_to_toolbar(Gtk::Stock::MEDIA_RECORD, 'Record', false) do |widget|
+        if widget.active?
+          #start record video and audio
+          sleep(0.5)
+          widget.safe_set_active(false)
+        else
+          #stop record, save the file and add a link to edit_box
+        end
+      end
+
+      add_btn_to_toolbar(nil, '-')
+
+      crypt_btn = add_btn_to_toolbar(:crypt, 'Crypt|(Ctrl+K)', false)
+
+      trust0 = nil
+      vouch_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |widget|
+        if not widget.destroyed?
+          trust_scale.sensitive = widget.active?
+          if widget.active?
+            trust0 ||= 1.0
+            trust_scale.value = trust0
+            trust_scale.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
+          else
+            trust0 = trust_scale.value
+            trust_scale.modify_bg(Gtk::STATE_NORMAL, nil)
+          end
+        end
+      end
+
+      @trust_scale = TrustScale.new
+      trust_scale.set_size_request(95, -1)
+      trust_scale.value = 1.0
+      trust_scale.value_pos = Gtk::POS_RIGHT
+      trust_scale.sensitive = vouch_btn.active?
+      add_btn_to_toolbar(trust_scale)
+
+      require_sign_btn = add_btn_to_toolbar(:require, 'Require sign', false)
+
+      add_btn_to_toolbar(nil, '-')
+
+      def_smiles = PandoraUtils.get_param('def_smiles')
+      smile_btn = SmileButton.new(def_smiles) do |preset, label|
+        smile_img = '[img='+preset+'/'+label+']'
+        smile_img = ' '+smile_img if edit_box.buffer.text != ''
+        edit_box.buffer.insert_at_cursor(smile_img)
+      end
+      smile_btn.tooltip_text = _('Smile')+' (Alt+Down)'
+      add_btn_to_toolbar(smile_btn)
+
+      game_btn = add_btn_to_toolbar(:game, 'Game')
+
+      @send_btn = add_btn_to_toolbar(:send, 'Send') do |widget|
+        if edit_box.buffer.text != ''
+          mes = edit_box.buffer.text
+          sign_trust = nil
+          sign_trust = trust_scale.value if vouch_btn.active?
+          res = send_mes(mes, crypt_btn.active?, sign_trust)
+          if res
+            edit_box.buffer.text = ''
+            vouch_btn.active = false if sign_trust
+          end
+        end
+        false
+      end
+      send_btn.sensitive = false
+
+      option_box.show_all
+    end
+
     CPI_Property  = 0
     CPI_Text      = 1
     CPI_Dialog    = 2
@@ -17059,8 +17137,11 @@ module PandoraGtk
       cab_notebook.page = page if not tab_signal
       container = cab_notebook.get_nth_page(page)
       opt_btns[page].safe_set_active(true)
+      @active_page = page
+      hide_toolbar_btns
       if container and (container.children.size>0)
         container.show_all
+        show_toolbar_btns(cab_notebook.page)
         return container
       end
       case page
@@ -17255,6 +17336,9 @@ module PandoraGtk
           area_recv.signal_connect('destroy') do |*args|
             init_video_receiver(false, false)
           end
+
+          fill_dlg_toolbar
+
           load_history($load_history_count, $sort_history_mode)
           container.add(main_hpaned)
         when CPI_Opinions
@@ -17275,21 +17359,68 @@ module PandoraGtk
           PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox, false, \
             'obj_hash='+panhash)
           container.add(pbox)
+        when CPI_Profile
+          short_name = ''
+
+          hpaned = Gtk::HPaned.new
+          hpaned.border_width = 2
+
+          list_sw = Gtk::ScrolledWindow.new(nil, nil)
+          list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+          list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+
+          list_store = Gtk::ListStore.new(String)
+
+          user_iter = list_store.append
+          user_iter[0] = _('Profile')
+          user_iter = list_store.append
+          user_iter[0] = _('Events')
+
+          # create tree view
+          list_tree = Gtk::TreeView.new(list_store)
+          #list_tree.rules_hint = true
+          #list_tree.search_column = CL_Name
+
+          renderer = Gtk::CellRendererText.new
+          column = Gtk::TreeViewColumn.new('№', renderer, 'text' => 0)
+          column.set_sort_column_id(0)
+          list_tree.append_column(column)
+
+          #renderer = Gtk::CellRendererText.new
+          #column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
+          #column.set_sort_column_id(1)
+          #list_tree.append_column(column)
+
+          list_tree.signal_connect('row_activated') do |tree_view, path, column|
+            # download and go to record
+          end
+
+          list_sw.add(list_tree)
+
+          feed = PandoraGtk::ChatTextView.new
+
+          hpaned.pack1(list_sw, false, true)
+          hpaned.pack2(feed, true, true)
+          list_sw.show_all
+
+          container.add(hpaned)
       end
       container.show_all
     end
 
     # Show conversation dialog
     # RU: Показать диалог общения
-    def initialize(known_node, a_room_id, a_targets)
+    def initialize(a_known_node, a_room_id, a_targets)
       super(nil, nil)
 
       @has_unread = false
+      @known_node = a_known_node
       @room_id = a_room_id
       @targets = a_targets
       @recv_media_queue = Array.new
       @recv_media_pipeline = Array.new
       @appsrcs = Array.new
+      @add_toolbar_btns = Array.new
 
       set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       border_width = 0
@@ -17366,145 +17497,6 @@ module PandoraGtk
 
       option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
 
-      @online_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::CONNECT)
-      online_btn.tooltip_text = _('Online')
-      online_btn.safe_signal_clicked do |widget|
-        p 'widget.active?='+widget.active?.inspect
-        if widget.active? #and (not widget.inconsistent?)
-          #widget.safe_set_active(false)
-          #widget.inconsistent = true
-          targets[CSI_Persons].each_with_index do |person, i|
-            keys = targets[CSI_Keys]
-            keys = keys[-1] if (keys.is_a? Array) and (keys.size>0)
-            $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-              person, keys, nil, PandoraNet::CM_Captcha)
-          end
-        else
-          widget.safe_set_active(false)
-          #widget.inconsistent = false
-          $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
-        end
-      end
-      online_btn.safe_set_active(known_node != nil)
-      option_box.pack_start(online_btn, false, false, 2)
-
-      $window.register_stock(:webcam)
-      @webcam_btn = PandoraGtk::SafeToggleToolButton.new(:webcam)
-      webcam_btn.tooltip_text = _('Webcam')
-      webcam_btn.safe_signal_clicked do |widget|
-        if widget.active?
-          if init_video_sender(true)
-            online_btn.active = true
-          end
-        else
-          init_video_sender(false, true)
-          init_video_sender(false)
-        end
-      end
-      option_box.pack_start(webcam_btn, false, false, 2)
-
-      $window.register_stock(:mic)
-      @mic_btn = PandoraGtk::SafeToggleToolButton.new(:mic)
-      mic_btn.tooltip_text = _('Mic')
-      mic_btn.safe_signal_clicked do |widget|
-        if widget.active?
-          if init_audio_sender(true)
-            online_btn.active = true
-          end
-        else
-          init_audio_sender(false, true)
-          init_audio_sender(false)
-        end
-      end
-      option_box.pack_start(mic_btn, false, false, 2)
-
-      record_btn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::MEDIA_RECORD)
-      record_btn.tooltip_text = _('Record')
-      record_btn.safe_signal_clicked do |widget|
-        if widget.active?
-          #start record video and audio
-          sleep(0.5)
-          widget.safe_set_active(false)
-        else
-          #stop record, save the file and add a link to edit_box
-        end
-      end
-      option_box.pack_start(record_btn, false, false, 2)
-
-      option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
-
-      $window.register_stock(:crypt)
-      crypt_btn = PandoraGtk::SafeToggleToolButton.new(:crypt)
-      crypt_btn.tooltip_text = _('Crypt')+' (Ctrl+K)'
-      #crypt_btn.active = true
-      option_box.pack_start(crypt_btn, false, false, 2)
-
-      $window.register_stock(:sign)
-      vouch_btn = PandoraGtk::SafeToggleToolButton.new(:sign)
-      vouch_btn.tooltip_text = _('Vouch')+' (Ctrl+G)'
-      trust0 = nil
-      vouch_btn.signal_connect('clicked') do |widget|
-        if not widget.destroyed?
-          trust_scale.sensitive = widget.active?
-          if widget.active?
-            trust0 ||= 1.0
-            trust_scale.value = trust0
-            trust_scale.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
-          else
-            trust0 = trust_scale.value
-            trust_scale.modify_bg(Gtk::STATE_NORMAL, nil)
-          end
-        end
-      end
-      option_box.pack_start(vouch_btn, false, false, 0)
-
-      @trust_scale = TrustScale.new
-      trust_scale.set_size_request(95, -1)
-      trust_scale.value = 1.0
-      trust_scale.value_pos = Gtk::POS_RIGHT
-      trust_scale.sensitive = vouch_btn.active?
-      option_box.pack_start(trust_scale, false, false, 2)
-
-      $window.register_stock(:require)
-      require_sign_btn = PandoraGtk::SafeToggleToolButton.new(:require)
-      require_sign_btn.tooltip_text = _('Require sign')
-      option_box.pack_start(require_sign_btn, false, false, 2)
-
-      option_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
-
-      def_smiles = PandoraUtils.get_param('def_smiles')
-      smile_btn = SmileButton.new(def_smiles) do |preset, label|
-        smile_img = '[img='+preset+'/'+label+']'
-        smile_img = ' '+smile_img if edit_box.buffer.text != ''
-        edit_box.buffer.insert_at_cursor(smile_img)
-      end
-      smile_btn.tooltip_text = _('Smile')+' (Alt+Down)'
-      option_box.pack_start(smile_btn, false, false, 2)
-
-      image = $window.get_preset_image('game')
-      game_btn = Gtk::ToolButton.new(image, _('Game'))
-      game_btn.tooltip_text = _('Game')
-      option_box.pack_start(game_btn, false, false, 2)
-
-      $window.register_stock(:send)
-      @send_btn = Gtk::ToolButton.new(:send)
-      send_btn.tooltip_text = _('Send')
-      send_btn.sensitive = false
-      option_box.pack_start(send_btn, false, false, 2)
-
-      send_btn.signal_connect('clicked') do |widget|
-        if edit_box.buffer.text != ''
-          mes = edit_box.buffer.text
-          sign_trust = nil
-          sign_trust = trust_scale.value if vouch_btn.active?
-          res = send_mes(mes, crypt_btn.active?, sign_trust)
-          if res
-            edit_box.buffer.text = ''
-            vouch_btn.active = false if sign_trust
-          end
-        end
-        false
-      end
 
       main_vbox.pack_start(option_box, false, true, 0)
 
@@ -17530,7 +17522,7 @@ module PandoraGtk
       show_all
       opt_btns[CPI_Dialog].active = true
 
-      $window.notebook.page = $window.notebook.n_pages-1 if not known_node
+      $window.notebook.page = $window.notebook.n_pages-1 if not @known_node
     end
 
     # Put message to dialog
@@ -21562,75 +21554,6 @@ module PandoraGtk
       end
     end
 
-    short_name = ''
-    aname, afamily = nil, nil
-    if a_person0
-      mykey = nil
-      mykey = PandoraCrypto.current_key(false, false) if (not a_person0)
-      if mykey and mykey[PandoraCrypto::KV_Creator] and (mykey[PandoraCrypto::KV_Creator] != a_person)
-        aname, afamily = PandoraCrypto.name_and_family_of_person(mykey, a_person)
-      else
-        aname, afamily = PandoraCrypto.name_and_family_of_person(nil, a_person)
-      end
-
-      short_name = afamily[0, 15] if afamily
-      short_name = aname[0]+'. '+short_name if aname
-    end
-
-    sw = ProfileScrollWin.new(a_person)
-
-    hpaned = Gtk::HPaned.new
-    hpaned.border_width = 2
-    sw.add_with_viewport(hpaned)
-
-
-    list_sw = Gtk::ScrolledWindow.new(nil, nil)
-    list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
-    list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
-
-    list_store = Gtk::ListStore.new(String)
-
-    user_iter = list_store.append
-    user_iter[0] = _('Profile')
-    user_iter = list_store.append
-    user_iter[0] = _('Events')
-
-    # create tree view
-    list_tree = Gtk::TreeView.new(list_store)
-    #list_tree.rules_hint = true
-    #list_tree.search_column = CL_Name
-
-    renderer = Gtk::CellRendererText.new
-    column = Gtk::TreeViewColumn.new('№', renderer, 'text' => 0)
-    column.set_sort_column_id(0)
-    list_tree.append_column(column)
-
-    #renderer = Gtk::CellRendererText.new
-    #column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
-    #column.set_sort_column_id(1)
-    #list_tree.append_column(column)
-
-    list_tree.signal_connect('row_activated') do |tree_view, path, column|
-      # download and go to record
-    end
-
-    list_sw.add(list_tree)
-
-    hpaned.pack1(list_sw, false, true)
-    hpaned.pack2(Gtk::Label.new('test'), true, true)
-    list_sw.show_all
-
-
-    image = Gtk::Image.new(Gtk::Stock::HOME, Gtk::IconSize::MENU)
-    image.set_padding(2, 0)
-
-    short_name = _('Profile') if not((short_name.is_a? String) and (short_name.size>0))
-
-    label_box = TabLabelBox.new(image, short_name, sw) do
-      #store.clear
-      #treeview.destroy
-      #sw.destroy
-    end
 
     page = $window.notebook.append_page(sw, label_box)
     $window.notebook.set_tab_reorderable(sw, true)

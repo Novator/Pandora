@@ -10,11 +10,12 @@
 // http://a.com/panreg.php?node=a1b2c3&ips=222.111.222.111,2001:0:53aa:64c:1c4c:798c:b284:2af0
 // http://a.com/panreg.php?node=a1b2c3&ips=2001:0:53aa:64c:1c4c:798c:b284:2af0
 // http://a.com/panreg.php?node=a1b2c3&ips=auto  - add ip autodetect
-// http://a.com/panreg.php?node=a1b2c3&ips=none  - leech gets the list
+// http://a.com/panreg.php?node=a1b2c3&ips=none  - read a list by leech
 // http://a.com/panreg.php?node=a1b2c3           - demote record
+// http://a.com/panreg.php?hex=1&time=1          - all nodes in hex format with time
 
 
-// Detect parameters
+// Detect GET-parameters
 $node = $_GET['node'];
 $time = $_GET['time'];
 $ips = $_GET['ips'];
@@ -35,7 +36,7 @@ if ($ips) {
     $ips = getenv(REMOTE_ADDR);
 }
 
-// Read config parameters
+// Read ini-file parameters
 $conf = parse_ini_file('panreg.ini', true);
 if (! $conf)
   die('!No config file');
@@ -168,7 +169,7 @@ if ($node) {
 $flds = 'node,ip';
 if ($time)
   $flds .= ',time';
-if (($node) or (! $time))
+if (($node) or (! $time) or (time==0))
   $table .= " WHERE time IS NOT NULL AND time>NOW()-INTERVAL 1 YEAR AND ip IS NOT NULL AND ip != ''";
 $sql = mysql_query("SELECT $flds FROM $table ORDER BY time DESC LIMIT $limit");
 if (! $sql)
@@ -196,4 +197,5 @@ while ($row=mysql_fetch_array($sql)):
     $line .= '|'.$row['time'];
   echo $line."<br>";
 endwhile;
+
 ?>
