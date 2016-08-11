@@ -12333,7 +12333,13 @@ module PandoraGtk
             event.area.width-2, event.area.height-2)
         else
           bgc = nil
-          bgc = Gdk::Color.parse(bg) if bg
+          if not bg.nil?
+            if bg.is_a? String
+              bgc = Gdk::Color.parse(bg)
+            elsif
+              bgc = bg
+            end
+          end
           widget.modify_bg(Gtk::STATE_NORMAL, bgc)
         end
         false
@@ -15000,42 +15006,69 @@ module PandoraGtk
 
   # Trust change Scale
   # RU: Шкала для изменения доверия
-  class TrustScale < Gtk::HScale
+  class TrustScale < ColorDayBox
+    attr_accessor :scale
+
     def colorize
-      val = self.value
-      trust = (val*127).round
-      r = 0
-      g = 0
-      b = 0
-      if trust==0
-        b = 40000
-      else
-        mul = ((trust.fdiv(127))*45000).round
-        if trust>0
-          g = mul+20000
+      if sensitive?
+        val = scale.value
+        trust = (val*127).round
+        r = 0
+        g = 0
+        b = 0
+        if trust==0
+          b = 40000
         else
-          r = -mul+20000
+          mul = ((trust.fdiv(127))*45000).round
+          if trust>0
+            g = mul+20000
+          else
+            r = -mul+20000
+          end
         end
+        color = Gdk::Color.new(r, g, b)
+        #scale.modify_fg(Gtk::STATE_NORMAL, color)
+        self.bg = color
+        prefix = ''
+        prefix = _(@tooltip_prefix) + ': ' if @tooltip_prefix
+        scale.tooltip_text = prefix+val.to_s
+      else
+        #modify_fg(Gtk::STATE_NORMAL, nil)
+        self.bg = nil
+        scale.tooltip_text = ''
       end
-      color = Gdk::Color.new(r, g, b)
-      self.modify_fg(Gtk::STATE_NORMAL, color)
-      prefix = ''
-      prefix = _(@tooltip_prefix) + ': ' if @tooltip_prefix
-      self.tooltip_text = prefix+val.to_s
     end
 
-    def initialize(tooltip_prefix = nil)
-      adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0)
-      super(adjustment)
+    def initialize(bg=nil, tooltip_prefix=nil, avalue=nil)
+      super(bg)
       @tooltip_prefix = tooltip_prefix
-      set_size_request(140, -1)
-      update_policy = Gtk::UPDATE_DELAYED
-      digits = 1
-      draw_value = true
-
-      signal_connect('value-changed') do |widget|
+      adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0.0)
+      @scale = Gtk::HScale.new(adjustment)
+      #@scale = Gtk::HScale.new(-1.0, 1.0, 0.1)
+      scale.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
+      scale.set_size_request(100, -1)
+      scale.value_pos = Gtk::POS_RIGHT
+      scale.digits = 1
+      scale.draw_value = true
+      scale.signal_connect('value-changed') do |widget|
         colorize
       end
+      self.signal_connect('notify::sensitive') do |widget, param|
+        colorize
+      end
+      scale.signal_connect('scroll-event') do |widget, event|
+        res = (not (event.state.control_mask? or event.state.shift_mask?))
+        if (event.direction==Gdk::EventScroll::UP) \
+        or (event.direction==Gdk::EventScroll::LEFT)
+          widget.value = (widget.value-0.1).round(1) if res
+        else
+          widget.value = (widget.value+0.1).round(1) if res
+        end
+        res
+      end
+      scale.value = avalue if avalue
+      self.add(scale)
+      colorize
     end
   end
 
@@ -15828,21 +15861,15 @@ module PandoraGtk
     attr_accessor :panobject, :vbox, :fields, :text_fields, :statusbar, \
       :keep_btn, :rate_label, :vouch_btn, :follow_btn, :trust_scale, :trust0, :public_btn, \
       :public_scale, :lang_entry, :last_sw, :rate_btn, :format_btn, \
-      :window_width, :window_height, :form_width, :form_height, :notebook
+      :last_width, :last_height, :notebook
 
     # Create fields dialog
     # RU: Создать форму с полями
-    def initialize(apanobject, afields, anotebook=nil)
+    def initialize(apanobject, afields, anotebook=nil, width_loss=nil, height_loss=nil)
       super()
       @panobject = apanobject
       @fields = afields
       @notebook = anotebook
-
-      self.signal_connect('check-resize') do |widget|
-      #self.signal_connect('configure-event') do |widget, event|
-        self.on_resize_window #(event.width, event.height)
-        false
-      end
 
       @vbox = self
 
@@ -15914,9 +15941,9 @@ module PandoraGtk
 
       # max window size
       scr = Gdk::Screen.default
-      @window_width, @window_height = [scr.width-50, scr.height-100]
-      @form_width = window_width-36
-      @form_height = window_height-55
+      width_loss = 40 if (width_loss.nil? or (width_loss<10))
+      height_loss = 150 if (height_loss.nil? or (height_loss<10))
+      @last_width, @last_height = [scr.width-width_loss-40, scr.height-height_loss-70]
 
       # compose first matrix, calc its geometry
       # create entries, set their widths/maxlen, remember them
@@ -15992,20 +16019,12 @@ module PandoraGtk
             when 'Filename' , 'Blob', 'Text'
               def_size = 256
           end
-          #p '---'
-          #p 'name='+field[FI_Name]
-          #p 'atype='+atype.inspect
-          #p 'def_size='+def_size.inspect
           fld_size = field[FI_FSize].to_i if field[FI_FSize]
-          #p 'fld_size='+fld_size.inspect
           max_size = field[FI_Size].to_i
           max_size = fld_size if (max_size==0)
-          #p 'max_size1='+max_size.inspect
           fld_size = def_size if (fld_size<=0)
           max_size = fld_size if (max_size<fld_size) and (max_size>0)
-          #p 'max_size2='+max_size.inspect
         rescue
-          #p 'FORM rescue [fld_size, max_size, def_size]='+[fld_size, max_size, def_size].inspect
           fld_size = def_size
         end
         #entry.width_chars = fld_size
@@ -16020,7 +16039,7 @@ module PandoraGtk
         entry.modify_text(Gtk::STATE_NORMAL, color)
 
         ew = fld_size*@middle_char_width
-        ew = form_width if ew > form_width
+        ew = last_width if ew > last_width
         entry.width_request = ew if ((fld_size != 44) and (not (entry.is_a? PanhashBox)))
         ew,eh = entry.size_request
         #p 'Final [fld_size, max_size, ew]='+[fld_size, max_size, ew].inspect
@@ -16065,8 +16084,18 @@ module PandoraGtk
       end
       #field_matrix << row if row != []
       mw, mh = [mw, rw].max, mh+rh
-      if (mw<=form_width) and (mh<=form_height) then
-        @window_width, @window_height = mw+36, mh+134
+      if (mw<=last_width) and (mh<=last_height) then
+        @last_width, @last_height = mw+10, mh+10
+      end
+
+      #self.signal_connect('check-resize') do |widget|
+      #self.signal_connect('configure-event') do |widget, event|
+      #self.signal_connect('notify::position') do |widget, param|
+      #self.signal_connect('expose-event') do |widget, param|
+      #self.signal_connect('size-request') do |widget, requisition|
+      self.signal_connect('size-allocate') do |widget, allocation|
+        self.on_resize
+        false
       end
 
       @old_field_matrix = []
@@ -16099,199 +16128,204 @@ module PandoraGtk
 
     # Event on resize window
     # RU: Событие при изменении размеров окна
-    def on_resize_window(new_width=nil, new_height=nil)
-      new_width ||= allocation.width
-      new_height ||= allocation.height
-      #if (@window_width == new_width) and (@window_height == new_height)
-      #  return
-      #end
-      @window_width, @window_height = new_width, new_height
-      p '----------RESIZE [new_width, new_height]='+[new_width, new_height].inspect
+    def on_resize(view_width=nil, view_height=nil, force=nil)
+      view_width ||= parent.allocation.width
+      view_height ||= parent.allocation.height
+      if (((view_width != last_width) or (view_height != last_height) or force) \
+      and (@pre_last_width.nil? or @pre_last_height.nil? \
+      or ((view_width != @pre_last_width) and (view_height != @pre_last_height))))
+        p '----------RESIZE [view_width, view_height, last_width, last_height, parent]='+\
+          [view_width, view_height, last_width, last_height, parent].inspect
+        @pre_last_width, @pre_last_height = last_width, last_height
+        @last_width, @last_height = view_width, view_height
 
-      form_width = @window_width-36
-      form_height = @window_height-55
+        form_width = last_width-30
+        form_height = last_height-65
 
-      #p '---fill'
+        # create and fill field matrix to merge in form
+        step = 1
+        found = false
+        while not found do
+          fields = Array.new
+          @fields.each do |field|
+            fields << field.dup
+          end
 
-      # create and fill field matrix to merge in form
-      step = 1
-      found = false
-      while not found do
-        fields = Array.new
-        @fields.each do |field|
-          fields << field.dup
-        end
-
-        field_matrix = Array.new
-        mw, mh = 0, 0
-        case step
-          when 1  #normal compose. change "left" to "up" when doesn't fit to width
-            row = Array.new
-            row_index = -1
-            rw, rh = 0, 0
-            orient = :up
-            fields.each_with_index do |field, index|
-              if (index==0) or (field[FI_NewRow]==1)
-                row_index += 1
-                field_matrix << row if row != []
-                mw, mh = [mw, rw].max, mh+rh
-                #p [mh, form_height]
-                if (mh>form_height)
-                  #step = 2
-                  step = 5
-                  break
+          field_matrix = Array.new
+          mw, mh = 0, 0
+          case step
+            when 1  #normal compose. change "left" to "up" when doesn't fit to width
+              row = Array.new
+              row_index = -1
+              rw, rh = 0, 0
+              orient = :up
+              fields.each_with_index do |field, index|
+                if (index==0) or (field[FI_NewRow]==1)
+                  row_index += 1
+                  field_matrix << row if row != []
+                  mw, mh = [mw, rw].max, mh+rh
+                  #p [mh, form_height]
+                  if (mh>form_height)
+                    #step = 2
+                    step = 5
+                    break
+                  end
+                  row = Array.new
+                  rw, rh = 0, 0
                 end
-                row = Array.new
-                rw, rh = 0, 0
-              end
 
-              if ! [:up, :down, :left, :right].include?(field[FI_LabOr]) then field[FI_LabOr]=orient; end
-              orient = field[FI_LabOr]
+                if (not [:up, :down, :left, :right].include?(field[FI_LabOr]))
+                  field[FI_LabOr]=orient
+                end
+                orient = field[FI_LabOr]
 
-              field_size = calc_field_size(field)
-              rw, rh = rw+field_size[0], [rh, field_size[1]].max
-              row << field
+                field_size = calc_field_size(field)
+                rw, rh = rw+field_size[0], [rh, field_size[1]].max
+                row << field
 
-              if rw>form_width
-                col = row.size
-                while (col>0) and (rw>form_width)
-                  col -= 1
-                  fld = row[col]
-                  if [:left, :right].include?(fld[FI_LabOr])
-                    fld[FI_LabOr]=:up
-                    rw, rh = calc_row_size(row)
+                if rw>form_width
+                  col = row.size
+                  while (col>0) and (rw>form_width)
+                    col -= 1
+                    fld = row[col]
+                    if [:left, :right].include?(fld[FI_LabOr])
+                      fld[FI_LabOr]=:up
+                      rw, rh = calc_row_size(row)
+                    end
+                  end
+                  if (rw>form_width)
+                    #step = 3
+                    step = 5
+                    break
                   end
                 end
-                if (rw>form_width)
-                  #step = 3
-                  step = 5
-                  break
+              end
+              field_matrix << row if row != []
+              mw, mh = [mw, rw].max, mh+rh
+              if (mh>form_height) or (mw>form_width)
+                #step = 2
+                step = 5
+              end
+              found = (step==1)
+            when 2
+              found = true
+            when 3
+              found = true
+            when 5  #need to rebuild rows by width
+              row = Array.new
+              row_index = -1
+              rw, rh = 0, 0
+              orient = :up
+              fields.each_with_index do |field, index|
+                if ! [:up, :down, :left, :right].include?(field[FI_LabOr])
+                  field[FI_LabOr] = orient
                 end
+                orient = field[FI_LabOr]
+                field_size = calc_field_size(field)
+
+                if (rw+field_size[0]>form_width)
+                  row_index += 1
+                  field_matrix << row if row != []
+                  mw, mh = [mw, rw].max, mh+rh
+                  #p [mh, form_height]
+                  row = Array.new
+                  rw, rh = 0, 0
+                end
+
+                row << field
+                rw, rh = rw+field_size[0], [rh, field_size[1]].max
+
               end
-            end
-            field_matrix << row if row != []
-            mw, mh = [mw, rw].max, mh+rh
-            if (mh>form_height) or (mw>form_width)
-              #step = 2
-              step = 5
-            end
-            found = (step==1)
-          when 2
-            found = true
-          when 3
-            found = true
-          when 5  #need to rebuild rows by width
-            row = Array.new
-            row_index = -1
-            rw, rh = 0, 0
-            orient = :up
-            fields.each_with_index do |field, index|
-              if ! [:up, :down, :left, :right].include?(field[FI_LabOr])
-                field[FI_LabOr] = orient
-              end
-              orient = field[FI_LabOr]
-              field_size = calc_field_size(field)
-
-              if (rw+field_size[0]>form_width)
-                row_index += 1
-                field_matrix << row if row != []
-                mw, mh = [mw, rw].max, mh+rh
-                #p [mh, form_height]
-                row = Array.new
-                rw, rh = 0, 0
-              end
-
-              row << field
-              rw, rh = rw+field_size[0], [rh, field_size[1]].max
-
-            end
-            field_matrix << row if row != []
-            mw, mh = [mw, rw].max, mh+rh
-            found = true
-          else
-            found = true
-        end
-      end
-
-      matrix_is_changed = @old_field_matrix.size != field_matrix.size
-      if not matrix_is_changed
-        field_matrix.each_index do |rindex|
-          row = field_matrix[rindex]
-          orow = @old_field_matrix[rindex]
-          if row.size != orow.size
-            matrix_is_changed = true
-            break
+              field_matrix << row if row != []
+              mw, mh = [mw, rw].max, mh+rh
+              found = true
+            else
+              found = true
           end
-          row.each_index do |findex|
-            field = row[findex]
-            ofield = orow[findex]
-            if (field[FI_LabOr] != ofield[FI_LabOr]) or (field[FI_LabW] != ofield[FI_LabW]) \
-              or (field[FI_LabH] != ofield[FI_LabH]) \
-              or (field[FI_WidW] != ofield[FI_WidW]) or (field[FI_WidH] != ofield[FI_WidH]) \
-            then
+        end
+
+        matrix_is_changed = @old_field_matrix.size != field_matrix.size
+        if not matrix_is_changed
+          field_matrix.each_index do |rindex|
+            row = field_matrix[rindex]
+            orow = @old_field_matrix[rindex]
+            if row.size != orow.size
               matrix_is_changed = true
               break
             end
-          end
-          if matrix_is_changed then break; end
-        end
-      end
-
-      # compare matrix with previous
-      if matrix_is_changed
-        #p "----+++++redraw"
-        @old_field_matrix = field_matrix
-
-        #!!!@def_widget = focus if focus
-
-        # delete sub-containers
-        if @vbox.children.size>0
-          @vbox.hide_all
-          @vbox.child_visible = false
-          @fields.each_index do |index|
-            field = @fields[index]
-            label = field[FI_Label]
-            entry = field[FI_Widget]
-            label.parent.remove(label)
-            entry.parent.remove(entry)
-          end
-          @vbox.each do |child|
-            child.destroy
-          end
-        end
-
-        # show field matrix on form
-        field_matrix.each do |row|
-          row_hbox = Gtk::HBox.new
-          row.each_index do |field_index|
-            field = row[field_index]
-            label = field[FI_Label]
-            entry = field[FI_Widget]
-            if (field[FI_LabOr]==nil) or (field[FI_LabOr]==:left)
-              row_hbox.pack_start(label, false, false, 2)
-              row_hbox.pack_start(entry, false, false, 2)
-            elsif (field[FI_LabOr]==:right)
-              row_hbox.pack_start(entry, false, false, 2)
-              row_hbox.pack_start(label, false, false, 2)
-            else
-              field_vbox = Gtk::VBox.new
-              if (field[FI_LabOr]==:down)
-                field_vbox.pack_start(entry, false, false, 2)
-                field_vbox.pack_start(label, false, false, 2)
-              else
-                field_vbox.pack_start(label, false, false, 2)
-                field_vbox.pack_start(entry, false, false, 2)
+            row.each_index do |findex|
+              field = row[findex]
+              ofield = orow[findex]
+              if (field[FI_LabOr] != ofield[FI_LabOr]) \
+                or (field[FI_LabW] != ofield[FI_LabW]) \
+                or (field[FI_LabH] != ofield[FI_LabH]) \
+                or (field[FI_WidW] != ofield[FI_WidW]) \
+                or (field[FI_WidH] != ofield[FI_WidH]) \
+              then
+                matrix_is_changed = true
+                break
               end
-              row_hbox.pack_start(field_vbox, false, false, 2)
+            end
+            if matrix_is_changed then break; end
+          end
+        end
+
+        # compare matrix with previous
+        if matrix_is_changed
+          #p "----+++++redraw"
+          @old_field_matrix = field_matrix
+
+          #!!!@def_widget = focus if focus
+
+          # delete sub-containers
+          if @vbox.children.size>0
+            @vbox.hide_all
+            @vbox.child_visible = false
+            @fields.each_index do |index|
+              field = @fields[index]
+              label = field[FI_Label]
+              entry = field[FI_Widget]
+              label.parent.remove(label)
+              entry.parent.remove(entry)
+            end
+            @vbox.each do |child|
+              child.destroy
             end
           end
-          @vbox.pack_start(row_hbox, false, false, 2)
-        end
-        @vbox.child_visible = true
-        @vbox.show_all
-        if @def_widget
-          #focus = @def_widget
-          @def_widget.grab_focus
+
+          # show field matrix on form
+          field_matrix.each do |row|
+            row_hbox = Gtk::HBox.new
+            row.each_index do |field_index|
+              field = row[field_index]
+              label = field[FI_Label]
+              entry = field[FI_Widget]
+              if (field[FI_LabOr]==nil) or (field[FI_LabOr]==:left)
+                row_hbox.pack_start(label, false, false, 2)
+                row_hbox.pack_start(entry, false, false, 2)
+              elsif (field[FI_LabOr]==:right)
+                row_hbox.pack_start(entry, false, false, 2)
+                row_hbox.pack_start(label, false, false, 2)
+              else
+                field_vbox = Gtk::VBox.new
+                if (field[FI_LabOr]==:down)
+                  field_vbox.pack_start(entry, false, false, 2)
+                  field_vbox.pack_start(label, false, false, 2)
+                else
+                  field_vbox.pack_start(label, false, false, 2)
+                  field_vbox.pack_start(entry, false, false, 2)
+                end
+                row_hbox.pack_start(field_vbox, false, false, 2)
+              end
+            end
+            @vbox.pack_start(row_hbox, false, false, 2)
+          end
+          @vbox.child_visible = true
+          @vbox.show_all
+          if @def_widget
+            #focus = @def_widget
+            @def_widget.grab_focus
+          end
         end
       end
     end
@@ -16314,14 +16348,18 @@ module PandoraGtk
     # RU: Создать форму с полями
     def initialize(apanobject, afields=[], *args)
       super(*args)
-      @property_box = PropertyBox.new(apanobject, afields, self.notebook)
+      width_loss = 36
+      height_loss = 134
+      @property_box = PropertyBox.new(apanobject, afields, self.notebook, \
+        width_loss, height_loss)
       viewport.add(@property_box)
-      self.signal_connect('configure-event') do |widget, event|
-        property_box.on_resize_window(event.width, event.height)
-        false
-      end
-      self.set_default_size(property_box.window_width, property_box.window_height)
-      property_box.window_width = property_box.window_height = 0
+      #self.signal_connect('configure-event') do |widget, event|
+      #  property_box.on_resize_window(event.width, event.height)
+      #  false
+      #end
+      self.set_default_size(property_box.last_width+width_loss, \
+        property_box.last_height+height_loss)
+      #property_box.window_width = property_box.window_height = 0
       viewport.show_all
 
       @last_sw = nil
@@ -16389,9 +16427,9 @@ module PandoraGtk
 
   # Add button to toolbar
   # RU: Добавить кнопку на панель инструментов
-  def self.add_tool_btn(toolbar, stock, title=nil, toggle=nil)
+  def self.add_tool_btn(toolbar, stock=nil, title=nil, toggle=nil)
     btn = nil
-    padd = 2
+    padd = 1
     if stock.is_a? Gtk::Widget
       btn = stock
     else
@@ -16451,7 +16489,11 @@ module PandoraGtk
     if toolbar.is_a? Gtk::Toolbar
       toolbar.add(btn)
     else
-      toolbar.pack_start(btn, false, false, padd)
+      if btn.is_a? Gtk::Toolbar
+        toolbar.pack_start(btn, true, true, padd)
+      else
+        toolbar.pack_start(btn, false, false, padd)
+      end
     end
     btn
   end
@@ -16462,14 +16504,14 @@ module PandoraGtk
   CSI_PersonRecs = 3
 
   CPI_Property  = 0
-  CPI_Profile   = 1
-  CPI_Text      = 2
-  CPI_Dialog    = 3
-  CPI_Chat      = 4
-  CPI_Opinions  = 5
-  CPI_Relations = 6
-  CPI_Signs     = 7
-  CPI_Last      = CPI_Signs
+  CPI_Dialog    = 1
+  CPI_Chat      = 2
+  CPI_Opinions  = 3
+  CPI_Relations = 4
+  CPI_Signs     = 5
+  CPI_Profile   = 6
+  CPI_Text      = 7
+  CPI_Last      = 7
 
   # Panobject cabinet page
   # RU: Страница кабинета панобъекта
@@ -16479,7 +16521,9 @@ module PandoraGtk
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, :sender_box, \
       :toolbar_box, :captcha_enter, :edit_sw, :trust_scale, :main_hpaned, :send_hpaned,
       :cab_notebook, :send_btn, :opt_btns, :cab_panhash, :targets, :bodywin, :fields, \
-      :property_box
+      :property_box, :keep_btn, :follow_btn, :vouch_btn, :vouch_scale, :piblic_btn, \
+      :public_scale, :ignore_btn, :sign_btn, :sign_scale
+
 
     include PandoraGtk
 
@@ -16626,18 +16670,73 @@ module PandoraGtk
     end
 
     def add_btn_to_toolbar(stock=nil, title=nil, toggle=nil, page=nil)
-      page ||= @active_page
-      btns = @add_toolbar_btns[page]
-      if not (btns.is_a? Array)
-        btns = Array.new
-        @add_toolbar_btns[page] = btns
+      btns = nil
+      if page.is_a? Array
+        btns = page
+      else
+        page ||= @active_page
+        btns = @add_toolbar_btns[page]
+        if not (btns.is_a? Array)
+          btns = Array.new
+          @add_toolbar_btns[page] = btns
+        end
       end
-      btn = PandoraGtk.add_tool_btn(toolbar_box, stock, title, toggle)
+      btn = PandoraGtk.add_tool_btn(toolbar_box, stock, title, toggle) do |*args|
+        yield(*args) if block_given?
+      end
       btns << btn
       btn
     end
 
+    def show_toolbar
+      toolbar_box.show_all
+    end
+
     def fill_property_toolbar
+      @keep_btn = add_btn_to_toolbar(:keep, 'Keep', false)
+      @follow_btn = add_btn_to_toolbar(:follow, 'Follow', false)
+
+      @vouch0 = 0.4
+      @vouch_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |widget|
+        if not widget.destroyed?
+          vouch_scale.sensitive = widget.active?
+          if widget.active?
+            @vouch0 ||= 0.4
+            vouch_scale.scale.value = @vouch0
+          else
+            @vouch0 = vouch_scale.scale.value
+          end
+        end
+      end
+      @vouch_scale = TrustScale.new(nil, 'Vouch', @vouch0)
+      vouch_scale.sensitive = vouch_btn.active?
+      add_btn_to_toolbar(vouch_scale)
+
+      @public0 = 0.0
+      @piblic_btn = add_btn_to_toolbar(:public, 'Public', false) do |widget|
+        if not widget.destroyed?
+          public_scale.sensitive = widget.active?
+          if widget.active?
+            @public0 ||= 0.0
+            public_scale.scale.value = @public0
+          else
+            @public0 = public_scale.scale.value
+          end
+        end
+      end
+      @public_scale = TrustScale.new(nil, 'Public', @public0)
+      public_scale.sensitive = piblic_btn.active?
+      add_btn_to_toolbar(public_scale)
+
+      @ignore_btn = add_btn_to_toolbar(:ignore, 'Ignore', false)
+
+      add_btn_to_toolbar
+
+      add_btn_to_toolbar(Gtk::Stock::SAVE)
+      add_btn_to_toolbar(Gtk::Stock::OK) { |*args| @response=2 }
+      add_btn_to_toolbar(Gtk::Stock::CANCEL) { |*args| @response=1 }
+
+      show_toolbar
     end
 
     def fill_dlg_toolbar
@@ -16697,27 +16796,21 @@ module PandoraGtk
 
       crypt_btn = add_btn_to_toolbar(:crypt, 'Crypt|(Ctrl+K)', false)
 
-      trust0 = nil
-      vouch_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |widget|
+      @sign0 = 1.0
+      @sign_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |widget|
         if not widget.destroyed?
-          trust_scale.sensitive = widget.active?
+          sign_scale.sensitive = widget.active?
           if widget.active?
-            trust0 ||= 1.0
-            trust_scale.value = trust0
-            trust_scale.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C9C9C9'))
+            @sign0 ||= 1.0
+            sign_scale.scale.value = @sign0
           else
-            trust0 = trust_scale.value
-            trust_scale.modify_bg(Gtk::STATE_NORMAL, nil)
+            @sign0 = sign_scale.scale.value
           end
         end
       end
-
-      @trust_scale = TrustScale.new
-      trust_scale.set_size_request(95, -1)
-      trust_scale.value = 1.0
-      trust_scale.value_pos = Gtk::POS_RIGHT
-      trust_scale.sensitive = vouch_btn.active?
-      add_btn_to_toolbar(trust_scale)
+      @sign_scale = TrustScale.new(nil, 'Vouch', @sign0)
+      sign_scale.sensitive = sign_btn.active?
+      add_btn_to_toolbar(sign_scale)
 
       require_sign_btn = add_btn_to_toolbar(:require, 'Require sign', false)
 
@@ -16772,11 +16865,19 @@ module PandoraGtk
     # Fill editor toolbar
     # RU: Заполнить панель редактора
     def fill_edit_toolbar
-      add_btn_to_toolbar(Gtk::Stock::EDIT, 'Edit', false) do |btn|
+      bodywin = nil
+      bodywid = nil
+      first_body_fld = property_box.text_fields[0]
+      if first_body_fld
+        bodywin = first_body_fld[FI_Widget2]
+        bodywid = bodywin.child
+      end
+
+      btn = add_btn_to_toolbar(Gtk::Stock::EDIT, 'Edit', false) do |btn|
         bodywin.view_mode = (not btn.active?)
         bodywin.set_buffers
       end
-      add_btn_to_toolbar(:tags, 'Color tags', true) do |btn|
+      btn = add_btn_to_toolbar(:tags, 'Color tags', true) do |btn|
         bodywin.color_mode = btn.active?
         bodywin.set_buffers
       end
@@ -16795,13 +16896,38 @@ module PandoraGtk
       end
       menu.show_all
 
+      #add_btn_to_toolbar(Gtk::Stock::EDIT, 'Edit', false) do |btn|
+      #  bodywin.view_mode = (not btn.active?)
+      #  bodywin.set_buffers
+      #end
+      #add_btn_to_toolbar(:tags, 'Color tags', true) do |btn|
+      #  bodywin.color_mode = btn.active?
+      #  bodywin.set_buffers
+      #end
+
+      #btn = add_btn_to_toolbar(nil, 'auto', 0)
+      #@format_btn = btn
+      #menu = Gtk::Menu.new
+      #['auto', 'plain', 'markdown', 'bbcode', 'wiki', 'html', 'ruby', \
+      #'python', 'xml'].each do |title|
+      #  btn.menu = menu
+      #  add_menu_item(btn, menu, title) do |mi|
+      #    btn.label = mi.label
+      #    bodywin.format = mi.label.to_s
+      #    bodywin.set_buffers
+      #  end
+      #end
+      #menu.show_all
+
       add_btn_to_toolbar
 
-      add_btn_to_toolbar(Gtk::Stock::BOLD) do
+      toolbar = Gtk::Toolbar.new
+
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::BOLD) do
         bodywin.insert_tag('bold')
       end
 
-      btn = add_btn_to_toolbar(Gtk::Stock::ITALIC, nil, 0) do
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::ITALIC, nil, 0) do
         bodywin.insert_tag('italic')
       end
       menu = Gtk::Menu.new
@@ -16830,7 +16956,7 @@ module PandoraGtk
       menu.show_all
 
       @selected_color = 'red'
-      btn = add_btn_to_toolbar(Gtk::Stock::SELECT_COLOR, nil, 0) do
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SELECT_COLOR, nil, 0) do
         bodywin.insert_tag('color', @selected_color)
       end
       menu = Gtk::Menu.new
@@ -16873,7 +16999,7 @@ module PandoraGtk
       end
       menu.show_all
 
-      btn = add_btn_to_toolbar(Gtk::Stock::JUSTIFY_CENTER, nil, 0) do
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUSTIFY_CENTER, nil, 0) do
         bodywin.insert_tag('center')
       end
       menu = Gtk::Menu.new
@@ -16889,7 +17015,7 @@ module PandoraGtk
       end
       menu.show_all
 
-      add_btn_to_toolbar(:image, 'Image') do
+      PandoraGtk.add_tool_btn(toolbar, :image, 'Image') do
         dialog = PandoraGtk::PanhashDialog.new([PandoraModel::Blob])
         dialog.choose_record('sha1','md5','name') do |panhash,sha1,md5,name|
           params = ''
@@ -16903,11 +17029,11 @@ module PandoraGtk
           end
         end
       end
-      add_btn_to_toolbar(Gtk::Stock::JUMP_TO, 'Link') do
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link') do
         bodywin.insert_tag('link', 'http://priroda.su', 'Priroda.SU')
       end
 
-      btn = add_btn_to_toolbar(Gtk::Stock::INDENT, 'h1', 0) do
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::INDENT, 'h1', 0) do
         bodywin.insert_tag('h1')
       end
       menu = Gtk::Menu.new
@@ -16929,7 +17055,7 @@ module PandoraGtk
       end
       menu.show_all
 
-      btn = add_btn_to_toolbar(:code, 'Code', 0) do
+      btn = PandoraGtk.add_tool_btn(toolbar, :code, 'Code', 0) do
         bodywin.insert_tag('code', 'ruby')
       end
       menu = Gtk::Menu.new
@@ -16988,9 +17114,9 @@ module PandoraGtk
       end
       menu.show_all
 
-      add_btn_to_toolbar
+      PandoraGtk.add_tool_btn(toolbar)
 
-      btn = add_btn_to_toolbar(Gtk::Stock::FIND, nil, 0) do
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::FIND, nil, 0) do
         #find
       end
       menu = Gtk::Menu.new
@@ -17000,7 +17126,7 @@ module PandoraGtk
       end
       menu.show_all
 
-      btn = add_btn_to_toolbar(Gtk::Stock::PRINT_PREVIEW, nil, 0) do
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::PRINT_PREVIEW, nil, 0) do
         bodywin.run_print_operation(true)
       end
       menu = Gtk::Menu.new
@@ -17013,7 +17139,7 @@ module PandoraGtk
       end
       menu.show_all
 
-      btn = add_btn_to_toolbar(Gtk::Stock::UNDO, nil, 0) do
+      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::UNDO, nil, 0) do
         #do undo
       end
       menu = Gtk::Menu.new
@@ -17032,9 +17158,12 @@ module PandoraGtk
       end
       menu.show_all
 
-      add_btn_to_toolbar(Gtk::Stock::SAVE)
-      add_btn_to_toolbar(Gtk::Stock::OK) { |*args| @response=2 }
-      add_btn_to_toolbar(Gtk::Stock::CANCEL) { |*args| @response=1 }
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE)
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) { |*args| @response=2 }
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::CANCEL) { |*args| @response=1 }
+
+      toolbar.show_all
+      add_btn_to_toolbar(toolbar)
     end
 
     def fill_view_toolbar
@@ -17068,7 +17197,7 @@ module PandoraGtk
 
     def show_page(page=CPI_Dialog, tab_signal=nil)
       opt_btns.each do |opt_btn|
-        opt_btn.safe_set_active(false)
+        opt_btn.safe_set_active(false) if (not opt_btn.is_a?(Gtk::SeparatorToolItem))
       end
       cab_notebook.page = page if not tab_signal
       container = cab_notebook.get_nth_page(page)
@@ -17087,9 +17216,9 @@ module PandoraGtk
         when CPI_Property
           fill_property_toolbar
           @property_box ||= PropertyBox.new(@panobject, @fields)
-          property_box.window_width = property_box.window_height = 0
+          #property_box.window_width = property_box.window_height = 0
           p [self.allocation.width, self.allocation.height]
-          property_box.on_resize_window(self.allocation.width, self.allocation.height)
+          #property_box.on_resize_window(self.allocation.width, self.allocation.height)
           #property_box.on_resize_window(container.allocation.width, container.allocation.height)
           #container.signal_connect('configure-event') do |widget, event|
           #  property_box.on_resize_window(event.width, event.height)
@@ -17420,7 +17549,7 @@ module PandoraGtk
       cab_notebook.show_tabs = false
       cab_notebook.show_border = false
       cab_notebook.border_width = 0
-      @toolbar_box = Gtk::Toolbar.new   #HBox.new
+      @toolbar_box = Gtk::HBox.new #Toolbar.new HBox.new
       main_vbox.pack_start(cab_notebook, true, true, 0)
 
       @opt_btns = []
@@ -17463,14 +17592,10 @@ module PandoraGtk
         label_box = TabLabelBox.new(stock, text)
         container ||= Gtk::Viewport.new(nil, nil)
         cab_notebook.append_page_menu(container, label_box)
-        opt_btn = PandoraGtk::SafeToggleToolButton.new(stock)
-        opt_btn.tooltip_text = text
-        opt_btn.safe_signal_clicked do |widget|
+
+        opt_btn = add_btn_to_toolbar(stock, text, false, opt_btns) do
           show_page(index)
         end
-        opt_btns[index] = opt_btn
-        #toolbar_box.pack_start(opt_btn, false, false, 2)
-        toolbar_box.add(opt_btn)
       end
       cab_notebook.signal_connect('switch-page') do |widget, page, page_num|
         #container = widget.get_nth_page(page_num)
@@ -17478,7 +17603,8 @@ module PandoraGtk
       end
 
       #toolbar_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
-      toolbar_box.add(Gtk::SeparatorToolItem.new)
+      #toolbar_box.add(Gtk::SeparatorToolItem.new)
+      add_btn_to_toolbar(nil, nil, nil, opt_btns)
       main_vbox.pack_start(toolbar_box, false, false, 0)
 
       dlg_image ||= $window.get_preset_image('dialog')
@@ -20201,7 +20327,7 @@ module PandoraGtk
             flds_hash = {}
             file_way = nil
             file_way_exist = nil
-            dialog.fields.each do |field|
+            dialog.property_box.fields.each do |field|
               type = field[FI_Type]
               view = field[FI_View]
               entry = field[FI_Widget]
@@ -20257,7 +20383,7 @@ module PandoraGtk
             end
 
             # text and blob fields
-            dialog.text_fields.each do |field|
+            dialog.property_box.text_fields.each do |field|
               entry = field[FI_Widget]
               if entry.text == ''
                 textview = field[FI_Widget2].child
@@ -20293,7 +20419,7 @@ module PandoraGtk
             # language detect
             lg = nil
             begin
-              lg = PandoraModel.text_to_lang(dialog.lang_entry.entry.text)
+              lg = PandoraModel.text_to_lang(dialog.property_box.lang_entry.entry.text)
             rescue
             end
             lang = lg if lg
@@ -20313,7 +20439,7 @@ module PandoraGtk
             end
             flds_hash['modified'] = time_now
             panstate = 0
-            panstate = panstate | PandoraModel::PSF_Support if dialog.keep_btn.active?
+            #panstate = panstate | PandoraModel::PSF_Support if dialog.keep_btn.active?
             flds_hash['panstate'] = panstate
             if (panobject.is_a? PandoraModel::Key)
               lang = flds_hash['rights'].to_i
@@ -20360,41 +20486,41 @@ module PandoraGtk
                   tree_view.set_cursor(Gtk::TreePath.new(tree_view.sel.size-1), nil, false)
                 end
 
-                if not dialog.vouch_btn.inconsistent?
-                  PandoraCrypto.unsign_panobject(panhash0, true)
-                  if dialog.vouch_btn.active?
-                    trust = (dialog.trust_scale.value*127).round
-                    PandoraCrypto.sign_panobject(panobject, trust)
-                  end
-                end
+                #if not dialog.vouch_btn.inconsistent?
+                #  PandoraCrypto.unsign_panobject(panhash0, true)
+                #  if dialog.vouch_btn.active?
+                #    trust = (dialog.trust_scale.value*127).round
+                #    PandoraCrypto.sign_panobject(panobject, trust)
+                #  end
+                #end
 
-                if not dialog.follow_btn.inconsistent?
-                  PandoraModel.act_relation(nil, panhash0, RK_Follow, :delete, \
-                    true, true)
-                  if (panhash != panhash0)
-                    PandoraModel.act_relation(nil, panhash, RK_Follow, :delete, \
-                      true, true)
-                  end
-                  if dialog.follow_btn.active?
-                    PandoraModel.act_relation(nil, panhash, RK_Follow, :create, \
-                      true, true)
-                  end
-                end
+                #if not dialog.follow_btn.inconsistent?
+                #  PandoraModel.act_relation(nil, panhash0, RK_Follow, :delete, \
+                #    true, true)
+                #  if (panhash != panhash0)
+                #    PandoraModel.act_relation(nil, panhash, RK_Follow, :delete, \
+                #      true, true)
+                #  end
+                #  if dialog.follow_btn.active?
+                #    PandoraModel.act_relation(nil, panhash, RK_Follow, :create, \
+                #      true, true)
+                #  end
+                #end
 
-                if not dialog.public_btn.inconsistent?
-                  public_level = RK_MinPublic + (dialog.public_scale.value*10).round+10
-                  p 'public_level='+public_level.inspect
-                  PandoraModel.act_relation(nil, panhash0, RK_MinPublic, :delete, \
-                    true, true)
-                  if (panhash != panhash0)
-                    PandoraModel.act_relation(nil, panhash, RK_MinPublic, :delete, \
-                      true, true)
-                  end
-                  if dialog.public_btn.active?
-                    PandoraModel.act_relation(nil, panhash, public_level, :create, \
-                      true, true)
-                  end
-                end
+                #if not dialog.public_btn.inconsistent?
+                #  public_level = RK_MinPublic + (dialog.public_scale.value*10).round+10
+                #  p 'public_level='+public_level.inspect
+                #  PandoraModel.act_relation(nil, panhash0, RK_MinPublic, :delete, \
+                #    true, true)
+                #  if (panhash != panhash0)
+                #    PandoraModel.act_relation(nil, panhash, RK_MinPublic, :delete, \
+                #      true, true)
+                #  end
+                #  if dialog.public_btn.active?
+                #    PandoraModel.act_relation(nil, panhash, public_level, :create, \
+                #      true, true)
+                #  end
+                #end
               end
             end
           end
