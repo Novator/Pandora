@@ -11930,10 +11930,11 @@ module PandoraGtk
       else
         @popwin = Gtk::Window.new #(Gtk::Window::POPUP)
         popwin = @popwin
-        popwin.transient_for = $window
+        #popwin.transient_for = $window
         popwin.modal = true
         popwin.decorated = false
         popwin.skip_taskbar_hint = true
+        popwin.destroy_with_parent = true
 
         popwidget = get_popwidget
         popwin.add(popwidget)
@@ -11941,7 +11942,7 @@ module PandoraGtk
 
         popwin.signal_connect('focus-out-event') do |win, event|
           GLib::Timeout.add(100) do
-            if not popwin.destroyed?
+            if not win.destroyed?
               @popwin.destroy
               @popwin = nil
             end
@@ -12035,14 +12036,13 @@ module PandoraGtk
       nil
     end
 
-    def initialize(amodal=nil)
-      super()
+    def initialize
+      super
 
       @just_leaved = false
 
-      self.transient_for = $window
-      self.modal = amodal
-      #self.modal = true
+      #self.transient_for = $window
+      self.modal = true
       self.decorated = false
       self.skip_taskbar_hint = true
 
@@ -12100,10 +12100,10 @@ module PandoraGtk
   class SmilePopWindow < PopWindow
     attr_accessor :preset, :poly_btn, :preset
 
-    def initialize(apreset=nil, amodal=nil)
+    def initialize(apreset=nil)
       apreset ||= 'vk'
       @preset = apreset
-      super(amodal)
+      super()
       self.signal_connect('key-press-event') do |widget, event|
         if (event.keyval==Gdk::Keyval::GDK_Tab)
           if preset=='qip'
@@ -12297,7 +12297,7 @@ module PandoraGtk
           popwin.hide
         else
           if popwin.nil? or popwin.destroyed?
-            @@popwin = SmilePopWindow.new(@preset, false)
+            @@popwin = SmilePopWindow.new(@preset)
             popwin = @@popwin
           end
           borig = self.window.origin
@@ -12370,14 +12370,14 @@ module PandoraGtk
     attr_accessor :date, :year, :month, :month_btn, :year_btn, :date_entry, \
       :holidays, :left_mon_btn, :right_mon_btn, :left_year_btn, :right_year_btn
 
-    def initialize(adate=nil, amodal=nil)
+    def initialize(adate=nil)
       @@month_menu = nil
       @@year_menu  = nil
       @@year_mi = nil
       @@days_box = nil
       @date ||= adate
       @year_holidays = {}
-      super(amodal)
+      super()
       self.signal_connect('key-press-event') do |widget, event|
         if [32, Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
           if focus and (focus.is_a? ColorDayBox)
@@ -12850,7 +12850,7 @@ module PandoraGtk
       else
         date = PandoraUtils.str_to_date(@entry.text)
         if popwin.nil? or popwin.destroyed?
-          @@popwin = DatePopWindow.new(date, true)
+          @@popwin = DatePopWindow.new(date)
           popwin = @@popwin
         end
         borig = @entry.window.origin
@@ -13546,8 +13546,8 @@ module PandoraGtk
   class DateTimeBox < Gtk::HBox
     attr_accessor :date, :time
 
-    def initialize
-      super
+    def initialize(modal=nil)
+      super()
       @date   = DateEntry.new
       @time   = TimeEntry.new
       #date.width_request = CoordWidth
