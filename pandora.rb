@@ -2507,12 +2507,24 @@ module PandoraUtils
     # RU: Берет записи из таблицы
     def select(afilter=nil, set_namesvalues=false, fields=nil, sort=nil, limit=nil, like_ex=nil)
       adap = self.class.get_adapter(table)
-      res = adap.select_table(self.table, afilter, fields, \
+      sel_fields = nil
+      if fields and (not set_namesvalues)
+        sel_fields = fields
+      end
+      res = adap.select_table(self.table, afilter, sel_fields, \
         sort, limit, like_ex)
       if set_namesvalues and res[0].is_a? Array
         @namesvalues = {}
         tab_fields.each_with_index do |td, i|
-          namesvalues[td[TI_Name]] = res[0][i]
+          fld_name = td[TI_Name].to_s.downcase
+          namesvalues[fld_name] = res[0][i]
+        end
+        if fields
+          res[0] = []
+          fields.split(',').each do |fld|
+            fld_name = fld.to_s.downcase
+            res[0] << namesvalues[fld_name]
+          end
         end
       end
       res
@@ -2546,7 +2558,8 @@ module PandoraUtils
         if set_namesvalues and res
           @namesvalues = {}
           values.each_with_index do |v, i|
-            namesvalues[names[i]] = v
+            fld_name = names[i].to_s.downcase
+            namesvalues[fld_name] = v
           end
         end
       end
@@ -2791,9 +2804,10 @@ module PandoraUtils
         panhash_pattern.each do |pat|
           fname = pat[0]
           if fname
-            fval = namesvalues[fname]
+            fld_name = fname.to_s.downcase
+            fval = namesvalues[fld_name]
             if (pack_empty or (not PandoraUtils.value_is_empty?(fval)))
-              res[fname] = fval
+              res[fld_name] = fval
             end
           end
         end
@@ -9032,8 +9046,8 @@ module PandoraNet
                       text     = row[3]
                       panstate = row[4]
                       panstate ||= 0
-                      p 'panstate=================='+panstate.inspect
-                      panstate = (panstate & PandoraModel::PSF_Crypted)
+                      panstate = (panstate & (PandoraModel::PSF_Crypted | \
+                        PandoraModel::PSF_Verified))
                       panstate = (panstate | PandoraModel::PSF_Support)
                     else
                       creator = @skey[PandoraCrypto::KV_Creator]
@@ -9059,24 +9073,17 @@ module PandoraNet
                     talkview = nil
                     talkview = dialog.talkview if dialog
                     if talkview
-                      #talkview.before_addition(t)
-                      #talkview.buffer.insert(talkview.buffer.end_iter, "\n") if talkview.buffer.text != ''
-                      #talkview.buffer.insert(talkview.buffer.end_iter, t.strftime('%H:%M:%S')+' ', 'dude')
                       myname = PandoraCrypto.short_name_of_person(pool.current_key)
-                      #dude_name = PandoraCrypto.short_name_of_person(@skey, nil, 0, myname)
-                      #talkview.buffer.insert(talkview.buffer.end_iter, dude_name+':', 'dude_bold')
-                      #talkview.buffer.insert(talkview.buffer.end_iter, ' '+text)
-                      #talkview.after_addition
-                      #talkview.show_all
-                      #dialog.update_state(true)
                       sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
                       id = nil
                       id = sel[0][0] if sel and (sel.size > 0)
-                      dialog.add_mes_to_view(text, id, panstate, nil, @skey, myname, time_now, created)
+                      dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
+                        myname, time_now, created)
                     else
                       PandoraUtils.log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
                     end
 
+                    # This is a chat "!command"
                     if ((panstate & PandoraModel::PSF_Crypted)==0) and (text.is_a? String) \
                     and (text.size>1) and ((text[0]=='!') or (text[0]=='/'))
                       i = text.index(' ')
@@ -10262,7 +10269,8 @@ module PandoraNet
                       row = sel[i]
                       panstate = row[4]
                       if panstate
-                        row[4] = (panstate & (PandoraModel::PSF_Crypted | PandoraModel::PSF_Support))
+                        row[4] = (panstate & (PandoraModel::PSF_Support | \
+                          PandoraModel::PSF_Crypted | PandoraModel::PSF_Verified))
                       end
                       creator = row[1]
                       text = row[3]
@@ -12325,23 +12333,12 @@ module PandoraGtk
       self.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
         | Gdk::Event::ENTER_NOTIFY_MASK | Gdk::Event::LEAVE_NOTIFY_MASK \
         | Gdk::Event::VISIBILITY_NOTIFY_MASK | Gdk::Event::FOCUS_CHANGE_MASK
-      self.signal_connect('expose-event') do |widget, event|
-        if widget.focus?   #STATE_PRELIGHT
-          widget.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#88CC88'))
-          widget.style.paint_focus(widget.window, Gtk::STATE_ACTIVE, \
-            event.area, widget, '', event.area.x+1, event.area.y+1, \
-            event.area.width-2, event.area.height-2)
-        else
-          bgc = nil
-          if not bg.nil?
-            if bg.is_a? String
-              bgc = Gdk::Color.parse(bg)
-            elsif
-              bgc = bg
-            end
-          end
-          widget.modify_bg(Gtk::STATE_NORMAL, bgc)
-        end
+      self.signal_connect('focus-in-event') do |widget, event|
+        self.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#88CC88')) if day_date
+        false
+      end
+      self.signal_connect('focus-out-event') do |widget, event|
+        self.modify_bg(Gtk::STATE_NORMAL, @bg)
         false
       end
       self.signal_connect('button-press-event') do |widget, event|
@@ -12359,7 +12356,20 @@ module PandoraGtk
         end
         res
       end
-      #self.signal_connect('button-release-event') do |widget, event|
+    end
+
+    def bg=(background)
+      @bg = background
+      bgc = nil
+      if not bg.nil?
+        if bg.is_a? String
+          bgc = Gdk::Color.parse(bg)
+        elsif
+          bgc = bg
+        end
+      end
+      @bg = bgc
+      self.modify_bg(Gtk::STATE_NORMAL, bgc)
     end
 
   end
@@ -14909,11 +14919,14 @@ module PandoraGtk
       @@recv_buf ||= $window.get_icon_scale_buf('recv', 'pan', 14)
       @@crypt_buf ||= $window.get_icon_scale_buf('crypt', 'pan', 14)
       @@sign_buf ||= $window.get_icon_scale_buf('sign', 'pan', 14)
+      @@fail_buf ||= $window.get_preset_icon(Gtk::Stock::DIALOG_WARNING, nil, 14)
+
       super(*args)
       @mes_ids = Array.new
       @numbers = Array.new
       @pixels = Array.new
       @mes_model = PandoraUtils.get_model('Message')
+      @sign_model = PandoraUtils.get_model('Sign')
 
       signal_connect('expose-event') do |widget, event|
         type = nil
@@ -14942,7 +14955,8 @@ module PandoraGtk
             attr = 1
             id = mes_ids[line]
             if id
-              sel = @mes_model.select({:id=>id}, false, 'state, panstate', nil, 1)
+              flds = 'state, panstate, panhash'
+              sel = @mes_model.select({:id=>id}, false, flds, nil, 1)
               if sel and (sel.size > 0)
                 state = sel[0][0]
                 panstate = sel[0][1]
@@ -14964,7 +14978,13 @@ module PandoraGtk
                     cr.paint
                   end
                   if (panstate & PandoraModel::PSF_Verified) > 0
-                    cr.set_source_pixbuf(@@sign_buf, 35, y+h1-@@sign_buf.height)
+                    panhash = sel[0][2]
+                    sel = @sign_model.select({:obj_hash=>panhash}, false, 'id', nil, 1)
+                    if sel and (sel.size > 0)
+                      cr.set_source_pixbuf(@@sign_buf, 35, y+h1-@@sign_buf.height)
+                    else
+                      cr.set_source_pixbuf(@@fail_buf, 35, y+h1-@@fail_buf.height)
+                    end
                     cr.paint
                   end
                 end
@@ -14978,7 +14998,8 @@ module PandoraGtk
 
     # Update status icon border if visible lines contain id or ids
     # RU: Обновляет бордюр с иконками статуса, если видимые строки содержат ids
-    def update_lines_with_id(ids=nil)
+    def update_lines_with_id(ids=nil, redraw_before=true)
+      self.queue_draw if redraw_before
       need_redraw = nil
       if ids
         if ids.is_a? Array
@@ -15044,7 +15065,6 @@ module PandoraGtk
       @tooltip_prefix = tooltip_prefix
       adjustment = Gtk::Adjustment.new(0, -1.0, 1.0, 0.1, 0.3, 0.0)
       @scale = Gtk::HScale.new(adjustment)
-      #@scale = Gtk::HScale.new(-1.0, 1.0, 0.1)
       scale.modify_fg(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
       scale.set_size_request(100, -1)
       scale.value_pos = Gtk::POS_RIGHT
@@ -16510,7 +16530,7 @@ module PandoraGtk
   CPI_Relations = 4
   CPI_Signs     = 5
   CPI_Profile   = 6
-  CPI_Text      = 7
+  CPI_Editor      = 7
   CPI_Last      = 7
 
   # Panobject cabinet page
@@ -16522,7 +16542,7 @@ module PandoraGtk
       :toolbar_box, :captcha_enter, :edit_sw, :trust_scale, :main_hpaned, :send_hpaned,
       :cab_notebook, :send_btn, :opt_btns, :cab_panhash, :targets, :bodywin, :fields, \
       :property_box, :keep_btn, :follow_btn, :vouch_btn, :vouch_scale, :piblic_btn, \
-      :public_scale, :ignore_btn, :sign_btn, :sign_scale
+      :public_scale, :ignore_btn, :crypt_btn, :sign_btn, :sign_scale
 
 
     include PandoraGtk
@@ -16538,7 +16558,7 @@ module PandoraGtk
     end
 
     def hide_recv_area
-      main_hpaned.position = 0
+      main_hpaned.position = 0 if (main_hpaned and (not main_hpaned.destroyed?))
     end
 
     def show_send_area(width=nil)
@@ -16549,7 +16569,7 @@ module PandoraGtk
     end
 
     def hide_send_area
-      send_hpaned.position = 0
+      send_hpaned.position = 0 if (send_hpaned and (not send_hpaned.destroyed?))
     end
 
     def init_captcha_entry(pixbuf, length=nil, symbols=nil, clue=nil, node_text=nil)
@@ -16664,7 +16684,7 @@ module PandoraGtk
       btns = @add_toolbar_btns[page]
       if btns.is_a? Array
         btns.each do |btn|
-          btn.show
+          btn.show_all
         end
       end
     end
@@ -16688,19 +16708,31 @@ module PandoraGtk
       btn
     end
 
-    def show_toolbar
-      toolbar_box.show_all
-    end
-
     def fill_property_toolbar
-      @keep_btn = add_btn_to_toolbar(:keep, 'Keep', false)
-      @follow_btn = add_btn_to_toolbar(:follow, 'Follow', false)
+      @keep_btn = add_btn_to_toolbar(:keep, 'Keep', false) do |btn|
+        if ((not btn.destroyed?) and btn.active? \
+        and (not PandoraGtk.is_ctrl_shift_alt?(true, true)))
+          ignore_btn.safe_set_active(false)
+        end
+      end
+
+      @follow_btn = add_btn_to_toolbar(:follow, 'Follow', false) do |btn|
+        if ((not btn.destroyed?) and btn.active? \
+        and (not PandoraGtk.is_ctrl_shift_alt?(true, true)))
+          keep_btn.safe_set_active(true)
+          ignore_btn.safe_set_active(false)
+        end
+      end
 
       @vouch0 = 0.4
-      @vouch_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |widget|
-        if not widget.destroyed?
-          vouch_scale.sensitive = widget.active?
-          if widget.active?
+      @vouch_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |btn|
+        if not btn.destroyed?
+          vouch_scale.sensitive = btn.active?
+          if btn.active?
+            if (not PandoraGtk.is_ctrl_shift_alt?(true, true))
+              keep_btn.safe_set_active(true)
+              ignore_btn.safe_set_active(false)
+            end
             @vouch0 ||= 0.4
             vouch_scale.scale.value = @vouch0
           else
@@ -16713,10 +16745,16 @@ module PandoraGtk
       add_btn_to_toolbar(vouch_scale)
 
       @public0 = 0.0
-      @piblic_btn = add_btn_to_toolbar(:public, 'Public', false) do |widget|
-        if not widget.destroyed?
-          public_scale.sensitive = widget.active?
-          if widget.active?
+      @piblic_btn = add_btn_to_toolbar(:public, 'Public', false) do |btn|
+        if not btn.destroyed?
+          public_scale.sensitive = btn.active?
+          if btn.active?
+            if (not PandoraGtk.is_ctrl_shift_alt?(true, true))
+              keep_btn.safe_set_active(true)
+              follow_btn.safe_set_active(true)
+              vouch_btn.active = true
+              ignore_btn.safe_set_active(false)
+            end
             @public0 ||= 0.0
             public_scale.scale.value = @public0
           else
@@ -16724,77 +16762,29 @@ module PandoraGtk
           end
         end
       end
-      @public_scale = TrustScale.new(nil, 'Public', @public0)
+      @public_scale = TrustScale.new(nil, 'Publish for level (and higher)', @public0)
       public_scale.sensitive = piblic_btn.active?
       add_btn_to_toolbar(public_scale)
 
-      @ignore_btn = add_btn_to_toolbar(:ignore, 'Ignore', false)
+      @ignore_btn = add_btn_to_toolbar(:ignore, 'Ignore', false) do |btn|
+        if ((not btn.destroyed?) and btn.active? \
+        and (not PandoraGtk.is_ctrl_shift_alt?(true, true)))
+          keep_btn.safe_set_active(false)
+          follow_btn.safe_set_active(false)
+          vouch_btn.active = false
+          piblic_btn.active = false
+        end
+      end
 
       add_btn_to_toolbar
 
       add_btn_to_toolbar(Gtk::Stock::SAVE)
       add_btn_to_toolbar(Gtk::Stock::OK) { |*args| @response=2 }
       add_btn_to_toolbar(Gtk::Stock::CANCEL) { |*args| @response=1 }
-
-      show_toolbar
     end
 
-    def fill_dlg_toolbar
-      is_online = (@known_node != nil)
-      @online_btn = add_btn_to_toolbar(Gtk::Stock::CONNECT, 'Online', \
-      is_online) do |widget|
-        p 'widget.active?='+widget.active?.inspect
-        if widget.active? #and (not widget.inconsistent?)
-          #widget.safe_set_active(false)
-          #widget.inconsistent = true
-          targets[CSI_Persons].each_with_index do |person, i|
-            keys = targets[CSI_Keys]
-            keys = keys[-1] if (keys.is_a? Array) and (keys.size>0)
-            $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-              person, keys, nil, PandoraNet::CM_Captcha)
-          end
-        else
-          widget.safe_set_active(false)
-          #widget.inconsistent = false
-          $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
-        end
-      end
-
-      @webcam_btn = add_btn_to_toolbar(:webcam, 'Webcam', false) do |widget|
-        if widget.active?
-          if init_video_sender(true)
-            online_btn.active = true
-          end
-        else
-          init_video_sender(false, true)
-          init_video_sender(false)
-        end
-      end
-
-      @mic_btn = add_btn_to_toolbar(:mic, 'Mic', false) do |widget|
-        if widget.active?
-          if init_audio_sender(true)
-            online_btn.active = true
-          end
-        else
-          init_audio_sender(false, true)
-          init_audio_sender(false)
-        end
-      end
-
-      record_btn = add_btn_to_toolbar(Gtk::Stock::MEDIA_RECORD, 'Record', false) do |widget|
-        if widget.active?
-          #start record video and audio
-          sleep(0.5)
-          widget.safe_set_active(false)
-        else
-          #stop record, save the file and add a link to edit_box
-        end
-      end
-
-      add_btn_to_toolbar
-
-      crypt_btn = add_btn_to_toolbar(:crypt, 'Crypt|(Ctrl+K)', false)
+    def fill_dlg_toolbar(page=nil)
+      @crypt_btn = add_btn_to_toolbar(:crypt, 'Crypt|(Ctrl+K)', false)
 
       @sign0 = 1.0
       @sign_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |widget|
@@ -16812,7 +16802,64 @@ module PandoraGtk
       sign_scale.sensitive = sign_btn.active?
       add_btn_to_toolbar(sign_scale)
 
-      require_sign_btn = add_btn_to_toolbar(:require, 'Require sign', false)
+
+      if page==CPI_Dialog
+        require_sign_btn = add_btn_to_toolbar(:require, 'Require sign', false)
+
+        add_btn_to_toolbar
+
+        is_online = (@known_node != nil)
+        @online_btn = add_btn_to_toolbar(Gtk::Stock::CONNECT, 'Online', \
+        is_online) do |widget|
+          p 'widget.active?='+widget.active?.inspect
+          if widget.active? #and (not widget.inconsistent?)
+            #widget.safe_set_active(false)
+            #widget.inconsistent = true
+            targets[CSI_Persons].each_with_index do |person, i|
+              keys = targets[CSI_Keys]
+              keys = keys[-1] if (keys.is_a? Array) and (keys.size>0)
+              $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
+                person, keys, nil, PandoraNet::CM_Captcha)
+            end
+          else
+            widget.safe_set_active(false)
+            #widget.inconsistent = false
+            $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
+          end
+        end
+
+        @webcam_btn = add_btn_to_toolbar(:webcam, 'Webcam', false) do |widget|
+          if widget.active?
+            if init_video_sender(true)
+              online_btn.active = true
+            end
+          else
+            init_video_sender(false, true)
+            init_video_sender(false)
+          end
+        end
+
+        @mic_btn = add_btn_to_toolbar(:mic, 'Mic', false) do |widget|
+          if widget.active?
+            if init_audio_sender(true)
+              online_btn.active = true
+            end
+          else
+            init_audio_sender(false, true)
+            init_audio_sender(false)
+          end
+        end
+
+        record_btn = add_btn_to_toolbar(Gtk::Stock::MEDIA_RECORD, 'Record', false) do |widget|
+          if widget.active?
+            #start record video and audio
+            sleep(0.5)
+            widget.safe_set_active(false)
+          else
+            #stop record, save the file and add a link to edit_box
+          end
+        end
+      end
 
       add_btn_to_toolbar
 
@@ -16825,24 +16872,21 @@ module PandoraGtk
       smile_btn.tooltip_text = _('Smile')+' (Alt+Down)'
       add_btn_to_toolbar(smile_btn)
 
-      game_btn = add_btn_to_toolbar(:game, 'Game')
+      game_btn = add_btn_to_toolbar(:game, 'Game') if page==CPI_Dialog
 
       @send_btn = add_btn_to_toolbar(:send, 'Send') do |widget|
         if edit_box.buffer.text != ''
           mes = edit_box.buffer.text
           sign_trust = nil
-          sign_trust = trust_scale.value if vouch_btn.active?
+          sign_trust = sign_scale.scale.value if sign_btn.active?
           res = send_mes(mes, crypt_btn.active?, sign_trust)
           if res
             edit_box.buffer.text = ''
-            vouch_btn.active = false if sign_trust
           end
         end
         false
       end
       send_btn.sensitive = false
-
-      toolbar_box.show_all
     end
 
     # Add menu item
@@ -17196,6 +17240,8 @@ module PandoraGtk
     end
 
     def show_page(page=CPI_Dialog, tab_signal=nil)
+      p '---show_page [page, tab_signal]='+[page, tab_signal].inspect
+      hide_toolbar_btns
       opt_btns.each do |opt_btn|
         opt_btn.safe_set_active(false) if (not opt_btn.is_a?(Gtk::SeparatorToolItem))
       end
@@ -17203,12 +17249,11 @@ module PandoraGtk
       container = cab_notebook.get_nth_page(page)
       opt_btns[page].safe_set_active(true)
       @active_page = page
-      hide_toolbar_btns
       if container
         container = container.child if page==CPI_Property
         if (container.children.size>0)
           container.show_all
-          show_toolbar_btns(cab_notebook.page)
+          show_toolbar_btns(page)  #cab_notebook.page
           return container
         end
       end
@@ -17271,7 +17316,7 @@ module PandoraGtk
 
           fill_view_toolbar
           container.add(hpaned)
-        when CPI_Text
+        when CPI_Editor
           #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
           #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
           @property_box ||= PropertyBox.new(@panobject, @fields)
@@ -17285,7 +17330,7 @@ module PandoraGtk
               container.add(bodywin)
             end
           end
-        when CPI_Dialog
+        when CPI_Dialog, CPI_Chat
           listsend_vpaned = Gtk::VPaned.new
 
           @area_recv = ViewDrawingArea.new(self)
@@ -17481,7 +17526,7 @@ module PandoraGtk
             init_video_receiver(false, false)
           end
 
-          fill_dlg_toolbar
+          fill_dlg_toolbar(page)
 
           load_history($load_history_count, $sort_history_mode)
           container.add(main_hpaned)
@@ -17504,6 +17549,7 @@ module PandoraGtk
             'obj_hash='+panhash)
           container.add(pbox)
       end
+      show_toolbar_btns(page)
       container.show_all
     end
 
@@ -17569,9 +17615,9 @@ module PandoraGtk
           when CPI_Profile
             stock = Gtk::Stock::HOME
             text = 'Profile'
-          when CPI_Text
-            stock = Gtk::Stock::EDIT
-            text = 'Edit'
+          when CPI_Editor
+            stock = :editor
+            text = 'Editor'
           when CPI_Dialog
             stock = :dialog
             text = 'Dialog'
@@ -17599,7 +17645,7 @@ module PandoraGtk
       end
       cab_notebook.signal_connect('switch-page') do |widget, page, page_num|
         #container = widget.get_nth_page(page_num)
-        show_page(page_num, true)
+        #show_page(page_num, true)
       end
 
       #toolbar_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
@@ -17637,11 +17683,13 @@ module PandoraGtk
     # RU: Добавляет сообщение в диалог
     def add_mes_to_view(mes, id, panstate=nil, to_end=nil, key_or_panhash=nil, \
     myname=nil, modified=nil, created=nil)
-
       if mes
         encrypted = ((panstate.is_a? Integer) \
           and ((panstate & PandoraModel::PSF_Crypted) > 0))
         mes = PandoraCrypto.recrypt_mes(mes) if encrypted
+
+        p '---add_mes_to_view [mes, id, pstate to_end, key_or_phash, myname, modif, created]=' + \
+          [mes, id, panstate, to_end, key_or_panhash, myname, modified, created].inspect
 
         notice = false
         if not myname
@@ -17663,45 +17711,11 @@ module PandoraGtk
           notice = (not to_end.is_a? FalseClass)
         else
           user_name = myname
-          #if not user_name
-          #  mykey = PandoraCrypto.current_key(false, false)
-          #  user_name = PandoraCrypto.short_name_of_person(mykey)
-          #end
         end
         user_name = 'noname' if (not user_name) or (user_name=='')
 
         time_now = Time.now
         created = time_now if (not modified) and (not created)
-
-        #vals = time_now.to_a
-        #ny, nm, nd = vals[5], vals[4], vals[3]
-        #midnight = Time.local(y, m, d)
-        ##midnight = PandoraUtils.calc_midnight(time_now)
-
-        #if created
-        #  vals = modified.to_a
-        #  my, mm, md = vals[5], vals[4], vals[3]
-
-        #  cy, cm, cd = my, mm, md
-        #  if created
-        #    vals = created.to_a
-        #    cy, cm, cd = vals[5], vals[4], vals[3]
-        #  end
-
-        #  if [cy, cm, cd] == [my, mm, md]
-
-        #else
-        #end
-
-        #'12:30:11'
-        #'27.07.2013 15:57:56'
-
-        #'12:30:11 (12:31:05)'
-        #'27.07.2013 15:57:56 (21:05:00)'
-        #'27.07.2013 15:57:56 (28.07.2013 15:59:33)'
-
-        #'(15:59:33)'
-        #'(28.07.2013 15:59:33)'
 
         time_str = ''
         time_str << PandoraUtils.time_to_dialog_str(created, time_now) if created
@@ -17875,18 +17889,21 @@ module PandoraGtk
         state = 0
         panstate = 0
         crypt_text = text
-        if crypt
+        sign = (not sign_trust.nil?)
+        if crypt or sign
+          panstate = (panstate | PandoraModel::PSF_Support)
           keyhash = PandoraCrypto.current_user_or_key(false, false)
           if keyhash
-            crypt_text = PandoraCrypto.recrypt_mes(text, keyhash)
-            panstate = (panstate | PandoraModel::PSF_Crypted)
+            if crypt
+              crypt_text = PandoraCrypto.recrypt_mes(text, keyhash)
+              panstate = (panstate | PandoraModel::PSF_Crypted)
+            end
+            panstate = (panstate | PandoraModel::PSF_Verified) if sign
+          else
+            crypt = sign = false
           end
         end
         targets[CSI_Persons].each do |dest|
-          sign = (not sign_trust.nil?)
-          if crypt or sign
-            panstate = (panstate | PandoraModel::PSF_Support)
-          end
           values = {:destination=>dest, :text=>crypt_text, :state=>state, \
             :creator=>creator, :created=>time_now, :modified=>time_now, :panstate=>panstate}
           model = PandoraUtils.get_model('Message')
@@ -17894,15 +17911,26 @@ module PandoraGtk
           values[:panhash] = panhash
           res = model.update(values, nil, nil, sign)
           if res
-            sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
-            id = nil
-            id = sel[0][0] if sel and (sel.size>0)
-            if sign
-              namesvalues = model.namesvalues
-              namesvalues[:text] = text   #restore pure text for sign
-              PandoraCrypto.sign_panobject(model, sign_trust)
+            filter = {:panhash=>panhash, :created=>time_now}
+            sel = model.select(filter, true, 'id', 'id DESC', 1)
+            if sel and (sel.size>0)
+              p 'send_mes sel='+sel.inspect
+              if sign
+                namesvalues = model.namesvalues
+                namesvalues['text'] = text   #restore pure text for sign
+                if not PandoraCrypto.sign_panobject(model, sign_trust)
+                  panstate = panstate & (~ PandoraModel::PSF_Verified)
+                  res = model.update(filter, nil, {:panstate=>panstate})
+                  PandoraUtils.log_message(LM_Warning, _('Cannot create sign')+' ['+text+']')
+                end
+              end
+              id = sel[0][0]
+              add_mes_to_view(crypt_text, id, panstate, true)
+            else
+              PandoraUtils.log_message(LM_Error, _('Cannot read message')+' ['+text+']')
             end
-            add_mes_to_view(crypt_text, id, panstate, true)
+          else
+            PandoraUtils.log_message(LM_Error, _('Cannot insert message')+' ['+text+']')
           end
         end
         dlg_sessions = $window.pool.sessions_on_dialog(self)
@@ -20202,40 +20230,42 @@ module PandoraGtk
 
         edit = ((not new_act) and (action != 'Copy'))
 
-        i = 0
-        formfields = panobject.def_fields.clone
-        tab_flds = panobject.tab_fields
-        formfields.each do |field|
-          val = nil
-          fid = field[FI_Id]
-          view = field[FI_View]
-          col = tab_flds.index{ |tf| tf[0] == fid }
-          if col and sel and (sel[0].is_a? Array)
-            val = sel[0][col]
-            if (panobject.kind==PK_Parameter) and (fid=='value')
-              type = panobject.field_val('type', sel[0])
-              setting = panobject.field_val('setting', sel[0])
-              ps = PandoraUtils.decode_param_setting(setting)
-              view = ps['view']
-              view ||= PandoraUtils.pantype_to_view(type)
-              field[FI_View] = view
-              field[FI_FSize] = 256 if not view
+        if panobject
+          i = 0
+          formfields = panobject.def_fields.clone
+          tab_flds = panobject.tab_fields
+          formfields.each do |field|
+            val = nil
+            fid = field[FI_Id]
+            view = field[FI_View]
+            col = tab_flds.index{ |tf| tf[0] == fid }
+            if col and sel and (sel[0].is_a? Array)
+              val = sel[0][col]
+              if (panobject.kind==PK_Parameter) and (fid=='value')
+                type = panobject.field_val('type', sel[0])
+                setting = panobject.field_val('setting', sel[0])
+                ps = PandoraUtils.decode_param_setting(setting)
+                view = ps['view']
+                view ||= PandoraUtils.pantype_to_view(type)
+                field[FI_View] = view
+                field[FI_FSize] = 256 if not view
+              end
             end
-          end
 
-          if (not edit) and val.nil? and (panobject.is_a? PandoraModel::Created)
-            case fid
-              when 'created'
-                val = Time.now.to_i
-              when 'creator'
-                creator = PandoraCrypto.current_user_or_key(true, false)
-                val = creator if creator
+            if (not edit) and val.nil? and (panobject.is_a? PandoraModel::Created)
+              case fid
+                when 'created'
+                  val = Time.now.to_i
+                when 'creator'
+                  creator = PandoraCrypto.current_user_or_key(true, false)
+                  val = creator if creator
+              end
             end
-          end
 
-          val, color = PandoraUtils.val_to_view(val, type, view, true)
-          field[FI_Value] = val
-          field[FI_Color] = color
+            val, color = PandoraUtils.val_to_view(val, type, view, true)
+            field[FI_Value] = val
+            field[FI_Color] = color
+          end
         end
 
         if panhash0
@@ -20244,7 +20274,6 @@ module PandoraGtk
           page = CPI_Opinions if (action=='Opinion')
           show_dialog(panhash0, nil, nil, nil, nil, nil, page, formfields)
         else
-
           dialog = FieldsDialog.new(panobject, formfields, panobject.sname)
           dialog.icon = get_panobject_icon(panobject)
 
@@ -22497,7 +22526,7 @@ module PandoraGtk
           res = Gtk::IconFactory.lookup_default(iname.to_s)
           iname = iname.to_s if res.nil?
         end
-        if res.nil?
+        if res.nil? and preset
           buf = get_icon_buf(iname, preset)
           if buf
             width = buf.width
@@ -22521,13 +22550,24 @@ module PandoraGtk
       res
     end
 
-    def get_preset_icon(iname, preset='pan')
+    def get_preset_icon(iname, preset='pan', icon_size=nil)
       res = nil
       iconset = get_preset_iconset(iname, preset)
       if iconset
+        icon_size ||= Gtk::IconSize::DIALOG
+        if icon_size.is_a? Integer
+          icon_name = Gtk::IconSize.get_name(icon_size)
+          icon_name ||= 'SIZE'+icon_size.to_s
+          icon_res = Gtk::IconSize.from_name(icon_name)
+          if (not icon_res) or (icon_res==0)
+            icon_size = Gtk::IconSize.register(icon_name, icon_size, icon_size)
+          else
+            icon_size = icon_res
+          end
+        end
         style = Gtk::Widget.default_style
         res = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
-          Gtk::STATE_NORMAL, Gtk::IconSize::DIALOG)  #Gtk::IconSize::LARGE_TOOLBAR)
+          Gtk::STATE_NORMAL, icon_size)  #Gtk::IconSize::LARGE_TOOLBAR)
       end
       res
     end
@@ -22554,7 +22594,7 @@ module PandoraGtk
       if mi
         stock_opt = mi[1]
         stock, opts = PandoraGtk.detect_icon_opts(stock_opt)
-        res = stock if stock
+        res = stock.to_sym if stock
       end
       res
     end
