@@ -16948,14 +16948,26 @@ module PandoraGtk
   CSI_PersonRecs = 3
 
   CPI_Property  = 0
-  CPI_Dialog    = 1
-  CPI_Chat      = 2
-  CPI_Opinions  = 3
-  CPI_Relations = 4
-  CPI_Signs     = 5
-  CPI_Profile   = 6
-  CPI_Editor      = 7
+  CPI_Profile   = 1
+  CPI_Opinions  = 2
+  CPI_Relations = 3
+  CPI_Signs     = 4
+  CPI_Chat      = 5
+  CPI_Dialog    = 6
+  CPI_Editor    = 7
+
+  CPI_Sub       = 1
+  CPI_Last_Sub  = 4
   CPI_Last      = 7
+
+  CabPageInfo = [[Gtk::Stock::PROPERTIES, 'Basic'], \
+    [Gtk::Stock::HOME, 'Profile'], \
+    [:opinion, 'Opinions'], \
+    [:relation, 'Relations'], \
+    [:sign, 'Signs'], \
+    [:chat, 'Chat'], \
+    [:dialog, 'Dialog'], \
+    [:editor, 'Editor']]
 
   # Tab view of person
   TV_Name    = 0   # Name only
@@ -17122,6 +17134,8 @@ module PandoraGtk
       btns = nil
       if page.is_a? Array
         btns = page
+      elsif page.is_a? FalseClass
+        btns = nil
       else
         page ||= @active_page
         btns = @add_toolbar_btns[page]
@@ -17133,7 +17147,7 @@ module PandoraGtk
       btn = PandoraGtk.add_tool_btn(toolbar_box, stock, title, toggle) do |*args|
         yield(*args) if block_given?
       end
-      btns << btn
+      btns << btn if (not btns.nil?)
       btn
     end
 
@@ -17230,7 +17244,7 @@ module PandoraGtk
     end
 
     def fill_dlg_toolbar(page=nil)
-      @crypt_btn = add_btn_to_toolbar(:crypt, 'Crypt|(Ctrl+K)', false)
+      @crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', false)
 
       @sign0 = 1.0
       @sign_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |widget|
@@ -17368,9 +17382,9 @@ module PandoraGtk
       btn = add_btn_to_toolbar(nil, 'auto', 0)
       @format_btn = btn
       menu = Gtk::Menu.new
+      btn.menu = menu
       ['auto', 'plain', 'markdown', 'bbcode', 'wiki', 'html', 'ruby', \
       'python', 'xml'].each do |title|
-        btn.menu = menu
         add_menu_item(btn, menu, title) do |mi|
           btn.label = mi.label
           bodywin.format = mi.label.to_s
@@ -17657,10 +17671,10 @@ module PandoraGtk
       add_btn_to_toolbar(Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
       add_btn_to_toolbar(Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
       @zoom_100 = add_btn_to_toolbar(Gtk::Stock::ZOOM_100, 'Show 1:1', true) do
-        bw = get_bodywin
-        if bw and (bc = bw.body_child)
-          p image = bc
-        end
+        #bw = get_bodywin
+        #if bw and (bc = bw.body_child)
+        #  p image = bc
+        #end
         @zoom_fit.safe_set_active(false)
         true
       end
@@ -17684,11 +17698,22 @@ module PandoraGtk
       p '---show_page [page, tab_signal]='+[page, tab_signal].inspect
       hide_toolbar_btns
       opt_btns.each do |opt_btn|
-        opt_btn.safe_set_active(false) if (not opt_btn.is_a?(Gtk::SeparatorToolItem))
+        opt_btn.safe_set_active(false) if (opt_btn.is_a?(SafeToggleToolButton))
       end
       cab_notebook.page = page if not tab_signal
       container = cab_notebook.get_nth_page(page)
-      opt_btns[page].safe_set_active(true)
+      sub_btn = opt_btns[CPI_Sub]
+      sub_stock = CabPageInfo[CPI_Sub][0]
+      if page<=CPI_Sub
+        opt_btns[page].safe_set_active(true)
+        sub_btn.stock_id = sub_stock if (sub_btn.stock_id != sub_stock)
+      elsif page>CPI_Last_Sub
+        opt_btns[page-CPI_Last_Sub+CPI_Sub+1].safe_set_active(true)
+        sub_btn.stock_id = sub_stock if (sub_btn.stock_id != sub_stock)
+      else
+        sub_btn.safe_set_active(true)
+        sub_btn.stock_id = CabPageInfo[page][0]
+      end
       @active_page = page
       if container
         container = container.child if page==CPI_Property
@@ -17820,29 +17845,32 @@ module PandoraGtk
           end
 
           edit_box.signal_connect('key-press-event') do |widget, event|
+            res = false
             if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
             and (not event.state.control_mask?) and (not event.state.shift_mask?) \
             and (not event.state.mod1_mask?)
               send_btn.clicked
-              true
+              res = true
             elsif (Gdk::Keyval::GDK_Escape==event.keyval)
               edit_box.buffer.text = ''
-              false
             elsif ((event.state.shift_mask? or event.state.mod1_mask?) \
             and (event.keyval==65364))  # Shift+Down or Alt+Down
               smile_btn.clicked
+              res = true
             elsif ([Gdk::Keyval::GDK_k, Gdk::Keyval::GDK_K, 1740, 1772].include?(event.keyval) \
             and event.state.control_mask?) #k, K, л, Л
-              crypt_btn.active = (not crypt_btn.active?)
-              true
+              if crypt_btn and (not crypt_btn.destroyed?)
+                crypt_btn.active = (not crypt_btn.active?)
+                res = true
+              end
             elsif ([Gdk::Keyval::GDK_g, Gdk::Keyval::GDK_G, 1744, 1776].include?(event.keyval) \
             and event.state.control_mask?) #g, G, п, П
-              vouch_btn.active = (not vouch_btn.active?)
-              true
-            else
-              #p event.keyval
-              false
+              if sign_btn and (not sign_btn.destroyed?)
+                sign_btn.active = (not sign_btn.active?)
+                res = true
+              end
             end
+            res
           end
 
           @send_hpaned = Gtk::HPaned.new
@@ -18039,48 +18067,45 @@ module PandoraGtk
       main_vbox.pack_start(cab_notebook, true, true, 0)
 
       @opt_btns = []
+      btn_down = nil
       (CPI_Property..CPI_Last).each do |index|
         container = nil
-        case index
-          when CPI_Property
-            stock = dlg_stock
-            stock ||= Gtk::Stock::PROPERTIES
-            text = 'Basic'
-            container = Gtk::ScrolledWindow.new(nil, nil)
-            container.shadow_type = Gtk::SHADOW_NONE
-            container.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-            container.border_width = 0
-            viewport = Gtk::Viewport.new(nil, nil)
-            container.add(viewport)
-          when CPI_Profile
-            stock = Gtk::Stock::HOME
-            text = 'Profile'
-          when CPI_Editor
-            stock = :editor
-            text = 'Editor'
-          when CPI_Dialog
-            stock = :dialog
-            text = 'Dialog'
-          when CPI_Chat
-            stock = :chat
-            text = 'Chat'
-          when CPI_Opinions
-            stock = :opinion
-            text = 'Opinions'
-          when CPI_Relations
-            stock = :relation
-            text = 'Relations'
-          when CPI_Signs
-            stock = :sign
-            text = 'Signs'
+        if index==CPI_Property
+          stock = dlg_stock
+          stock ||= CabPageInfo[index][0]
+          text = CabPageInfo[index][1]
+          container = Gtk::ScrolledWindow.new(nil, nil)
+          container.shadow_type = Gtk::SHADOW_NONE
+          container.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+          container.border_width = 0
+          viewport = Gtk::Viewport.new(nil, nil)
+          container.add(viewport)
+        else
+          stock = CabPageInfo[index][0]
+          text = CabPageInfo[index][1]
+          if index==CPI_Last_Sub+1
+            btn_down.menu.show_all
+            btn_down = nil
+          end
         end
         text = _(text)
         label_box = TabLabelBox.new(stock, text)
         container ||= Gtk::Viewport.new(nil, nil)
         cab_notebook.append_page_menu(container, label_box)
 
-        opt_btn = add_btn_to_toolbar(stock, text, false, opt_btns) do
-          show_page(index)
+        if not btn_down
+          opt_btn = add_btn_to_toolbar(stock, text, false, opt_btns) do
+            show_page(index)
+          end
+          if index==CPI_Sub
+            btn_down = add_btn_to_toolbar(nil, nil, 0, opt_btns)
+            btn_down.menu = Gtk::Menu.new
+          end
+        end
+        if btn_down
+          add_menu_item(btn_down, btn_down.menu, stock, text) do
+            show_page(index)
+          end
         end
       end
       cab_notebook.signal_connect('switch-page') do |widget, page, page_num|
@@ -18122,6 +18147,10 @@ module PandoraGtk
       show_all
       a_page ||= CPI_Dialog
       show_page(a_page)
+      opt_btns[CPI_Sub+1].children[0].children[0].hide
+      btn_offset = CPI_Last_Sub-CPI_Sub-1
+      opt_btns[CPI_Dialog-btn_offset].hide if (kind != PandoraModel::PK_Person)
+      opt_btns[CPI_Editor-btn_offset].hide if (kind != PandoraModel::PK_Blob)
 
       $window.notebook.page = $window.notebook.n_pages-1 if not @known_node
     end
