@@ -76,9 +76,9 @@
     </Word>
 
     <Blob name="File|Files" parent="Created" kind="12">
-      <name name="Name" type="String" size="512" hash="2:hash(4)" />
+      <name name="Name" type="String" size="512" hash="1:hash(4)" />
       <blob name="Blob" type="Blob" />
-      <type name="Type" type="String" size="32" hash="1:hash(2)" />
+      <type name="Type" type="String" size="32" hash="2:hash(2)" />
       <sha1 name="Hash SHA1" type="String" size="65" hash="3:raw(14)" />
       <md5 name="Hash MD5" type="String" size="65" />
       <size name="Size" type="Integer" />

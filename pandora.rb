@@ -2819,16 +2819,17 @@ module PandoraUtils
 
     # Return brief record information
     # RU: Показывает краткую информацию о записи
-    def record_info(max_len=nil, namesvls=nil, sname_sep=nil)
+    def record_info(max_len=nil, namesvls=nil, sname_sep=nil, sep=nil)
       @namesvalues = namesvls if namesvls
       str = ''
       if @namesvalues.is_a? Hash
+        sep ||= '|'
         mfields = self.matter_fields(false)
         mfields.each do |n,v|
           fd = self.field_des(n)
           val, color = PandoraUtils.val_to_view(v, fd[FI_Type], fd[FI_View], false)
           if val
-            str << '|' if (str.size>0)
+            str << sep if (str.size>0)
             val = val[0, MaxFldInfo] if val.size>MaxFldInfo
             str << val.to_s
             if str.size >= max_len
@@ -3838,6 +3839,7 @@ module PandoraModel
           filter['kind'] = 0x81
         end
         pson = (pson_with_kind != nil)
+        #p 'filter='+filter.inspect
         sel = model.select(filter, pson, getfields, nil, 1)
         if sel and (sel.size>0)
           if pson
@@ -6008,7 +6010,7 @@ module PandoraCrypto
       kind = PandoraUtils.kind_from_panhash(person)
       if PandoraUtils.kind_from_panhash(person)==PandoraModel::PK_Person
         sel = PandoraModel.get_record_by_panhash(kind, person, nil, nil, 'first_name, last_name')
-        #p 'key, person, sel='+[key, person, sel].inspect
+        #p 'key, person, sel='+[key, person, sel, PandoraUtils.bytes_to_hex(person)].inspect
         if (sel.is_a? Array) and (sel.size>0)
           aname, afamily = [Utf8String.new(sel[0][0]), Utf8String.new(sel[0][1])]
           key[KV_NameFamily] = [aname, afamily] if key
@@ -6032,7 +6034,7 @@ module PandoraCrypto
     end
     aname ||= ''
     afamily ||= ''
-    p 'name_and_family_of_person: '+[aname, afamily].inspect
+    #p 'name_and_family_of_person: '+[aname, afamily].inspect
     [aname, afamily]
   end
 
@@ -7288,7 +7290,7 @@ module PandoraNet
             end
           end
           if filter
-            p 'filter='+filter.inspect
+            #p 'filter='+filter.inspect
             sel = node_model.select(filter, false, 'addr, tport, domain, key_hash, id')
           end
           sel ||= Array.new
@@ -7337,12 +7339,14 @@ module PandoraNet
 
     # Stop session with a node
     # RU: Останавливает соединение с заданным узлом
-    def stop_session(node=nil, persons=nil, nodehashs=nil, disconnect=nil)  #, wait_disconnect=true)
+    def stop_session(node=nil, persons=nil, nodehashs=nil, disconnect=nil, \
+    session=nil)  #, wait_disconnect=true)
       res = false
       p 'stop_session1 nodehashs='+nodehashs.inspect
       person = PandoraUtils.first_array_element_or_val(persons)
       nodehash = PandoraUtils.first_array_element_or_val(nodehashs)
       sessions = Array.new
+      sessions << session if session
       sessions << sessions_of_node(nodehash) if nodehash
       sessions << sessions_of_address(node) if node
       sessions << sessions_of_person(person) if person
@@ -8241,7 +8245,7 @@ module PandoraNet
           @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
           #node = PandoraNet.encode_addr(host_ip, port, proto)
           panhash = @skey[PandoraCrypto::KV_Creator]
-          @dialog = PandoraGtk.show_cabinet(panhash, self, @node_panhash, conn_type)
+          @dialog = PandoraGtk.show_cabinet(panhash, self, conn_type)
           dialog.update_state(true)
           Thread.pass
           #PandoraUtils.play_mp3('online')
@@ -9079,8 +9083,9 @@ module PandoraNet
                 p log_mes+'EC_Message  dialog='+@dialog.inspect
                 if (not @dialog) or @dialog.destroyed?
                   @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
-                  panhashes = [@skey[PandoraCrypto::KV_Panhash], @skey[PandoraCrypto::KV_Creator]]
-                  @dialog = PandoraGtk.show_cabinet(panhashes, self, @node_panhash, conn_type)
+                  #panhashes = [@skey[PandoraCrypto::KV_Panhash], @skey[PandoraCrypto::KV_Creator]]
+                  panhash = @skey[PandoraCrypto::KV_Creator]
+                  @dialog = PandoraGtk.show_cabinet(panhash, self, conn_type)
                   Thread.pass
                   #PandoraUtils.play_mp3('online')
                 end
@@ -13211,7 +13216,7 @@ module PandoraGtk
         title = _(PandoraUtils.get_name_or_names(panclass.name, true))
         self.main_sw.destroy if i==0
         #image = Gtk::Image.new(Gtk::Stock::INDEX, Gtk::IconSize::MENU)
-        image = $window.get_panobject_image(panclass.ider, Gtk::IconSize::MENU)
+        image = $window.get_panobject_image(panclass.ider, Gtk::IconSize::SMALL_TOOLBAR)
         label_box2 = TabLabelBox.new(image, title)
         pbox = PandoraGtk::PanobjScrolledWindow.new
         page = self.notebook.append_page(pbox, label_box2)
@@ -15169,7 +15174,7 @@ module PandoraGtk
       image ||= :person
       if (image.is_a? Symbol) or (image.is_a? String)
         $window.register_stock(image)
-        image = Gtk::Image.new(image, Gtk::IconSize::MENU)
+        image = Gtk::Image.new(image, Gtk::IconSize::SMALL_TOOLBAR)
       end
       image.set_padding(2, 0)
       self.pack_start(image, false, false, 0) if image
@@ -16952,6 +16957,12 @@ module PandoraGtk
   CPI_Editor      = 7
   CPI_Last      = 7
 
+  # Tab view of person
+  TV_Name    = 0   # Name only
+  TV_Family  = 1   # Family only
+  TV_NameFam   = 2   # Name and family
+  TV_NameN   = 3   # Name with number
+
   # Panobject cabinet page
   # RU: Страница кабинета панобъекта
   class CabinetBox < Gtk::VBox
@@ -16960,8 +16971,8 @@ module PandoraGtk
       :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, \
       :sender_box, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
-      :send_hpaned, :cab_notebook, :send_btn, :opt_btns, :cab_panhash, :targets, \
-      :bodywin, :fields, :obj_id, :edit, :property_box
+      :send_hpaned, :cab_notebook, :send_btn, :opt_btns, :cab_panhash, :session, \
+      :bodywin, :fields, :obj_id, :edit, :property_box, :kind
 
     include PandoraGtk
 
@@ -17237,29 +17248,22 @@ module PandoraGtk
       sign_scale.sensitive = sign_btn.active?
       add_btn_to_toolbar(sign_scale)
 
-      if page==CPI_Dialog
+      if (page==CPI_Dialog) and (kind==PandoraModel::PK_Person)
         require_sign_btn = add_btn_to_toolbar(:require, 'Require sign', false)
 
         add_btn_to_toolbar
 
-        is_online = (@known_node != nil)
-        @online_btn = add_btn_to_toolbar(Gtk::Stock::CONNECT, 'Online', \
-        is_online) do |widget|
+        is_online = (@session != nil)
+        @online_btn = add_btn_to_toolbar(Gtk::Stock::CONNECT, 'Online', is_online) \
+        do |widget|
           p 'widget.active?='+widget.active?.inspect
           if widget.active? #and (not widget.inconsistent?)
-            #widget.safe_set_active(false)
-            #widget.inconsistent = true
-            targets[CSI_Persons].each_with_index do |person, i|
-              keys = targets[CSI_Keys]
-              keys = keys[-1] if (keys.is_a? Array) and (keys.size>0)
-              $window.pool.init_session(nil, targets[CSI_Nodes], 0, self, nil, \
-                person, keys, nil, PandoraNet::CM_Captcha)
-            end
+            $window.pool.init_session(nil, nil, 0, self, nil, \
+              cab_panhash, nil, nil, PandoraNet::CM_Captcha)
           else
             widget.safe_set_active(false)
-            #widget.inconsistent = false
-            $window.pool.stop_session(nil, targets[CSI_Persons], \
-              targets[CSI_Nodes], false)
+            $window.pool.stop_session(nil, cab_panhash, \
+              nil, false, self.session)
           end
         end
 
@@ -17696,7 +17700,6 @@ module PandoraGtk
       end
       case page
         when CPI_Property
-          kind = PandoraUtils.kind_from_panhash(cab_panhash)
           @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
           fill_property_toolbar(property_box)
           property_box.set_status_icons
@@ -17758,7 +17761,6 @@ module PandoraGtk
         when CPI_Editor
           #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
           #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-          kind = PandoraUtils.kind_from_panhash(cab_panhash)
           @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
           if property_box.text_fields.size>0
             p property_box.text_fields
@@ -17995,34 +17997,29 @@ module PandoraGtk
 
     # Show cabinet
     # RU: Показать кабинет
-    def initialize(a_known_node, a_room_id, a_targets, a_page=nil, a_fields=nil, \
-    an_id=nil, an_edit=nil)
+    def initialize(a_panhash, a_room_id, a_page=nil, a_fields=nil, an_id=nil, \
+    an_edit=nil, a_session=nil)
       super(nil, nil)
 
-      @has_unread = false
-      @known_node = a_known_node
+      p '==Cabinet.new a_panhash='+PandoraUtils.bytes_to_hex(a_panhash)
+
+      @cab_panhash = a_panhash
+      @kind = PandoraUtils.kind_from_panhash(cab_panhash)
+      @session = a_session
       @room_id = a_room_id
-      @targets = a_targets
-      @recv_media_queue = Array.new
-      @recv_media_pipeline = Array.new
-      @appsrcs = Array.new
-      @add_toolbar_btns = Array.new
       @fields = a_fields
       @obj_id = an_id
       @edit = an_edit
 
+      @has_unread = false
+      @recv_media_queue = Array.new
+      @recv_media_pipeline = Array.new
+      @appsrcs = Array.new
+      @add_toolbar_btns = Array.new
+
       #set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       #border_width = 0
 
-      @cab_panhash = nil
-      dlg_title = 'unknown'
-      dlg_pixbuf = nil
-      dlg_image = nil
-      if targets[CSI_Persons] and (targets[CSI_Persons].size>0)
-        @cab_panhash = targets[CSI_Persons][0]
-        dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, false)
-        dlg_image = Gtk::Image.new(dlg_pixbuf) if dlg_pixbuf
-      end
       dlg_stock = nil
       if cab_panhash
         kind = PandoraUtils.kind_from_panhash(cab_panhash)
@@ -18096,19 +18093,26 @@ module PandoraGtk
       add_btn_to_toolbar(nil, nil, nil, opt_btns)
       main_vbox.pack_start(toolbar_box, false, false, 0)
 
-      dlg_image ||= $window.get_preset_image('dialog')
-      dlg_image ||= Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::MENU)
+      its_blob = (kind==PandoraModel::PK_Blob)
+      p Gtk::IconSize.lookup(Gtk::IconSize::SMALL_TOOLBAR)
+      dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, its_blob, \
+        Gtk::IconSize.lookup(Gtk::IconSize::SMALL_TOOLBAR)[0])
+      #buf = PandoraModel.scale_buf_to_size(buf, icon_size, center)
+      dlg_image = Gtk::Image.new(dlg_pixbuf) if dlg_pixbuf
+      #dlg_image ||= $window.get_preset_image('dialog')
+      dlg_image ||= Gtk::Image.new(dlg_stock, Gtk::IconSize::SMALL_TOOLBAR)
+      dlg_image ||= Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::SMALL_TOOLBAR)
       dlg_image.set_padding(2, 0)
-      label_box = TabLabelBox.new(dlg_image, dlg_title, self) do
+      label_box = TabLabelBox.new(dlg_image, 'unknown', self) do
         area_send.destroy if area_send and (not area_send.destroyed?)
         area_recv.destroy if area_recv and (not area_recv.destroyed?)
-        $window.pool.stop_session(nil, targets[CSI_Persons], targets[CSI_Nodes], false)
+        $window.pool.stop_session(nil, cab_panhash, nil, false, self.session)
       end
 
       page = $window.notebook.append_page(self, label_box)
       $window.notebook.set_tab_reorderable(self, true)
 
-      $window.construct_cab_title(self)
+      construct_cab_title
 
       self.signal_connect('delete-event') do |*args|
         area_send.destroy if not area_send.destroyed?
@@ -18120,6 +18124,109 @@ module PandoraGtk
       show_page(a_page)
 
       $window.notebook.page = $window.notebook.n_pages-1 if not @known_node
+    end
+
+    MaxTitleLen = 15
+
+    # Construct room title
+    # RU: Задаёт осмысленный заголовок окна
+    def construct_cab_title(check_all=true, atitle_view=nil)
+      res = 'unknown'
+      if (kind==PandoraModel::PK_Person)
+        title_view = atitle_view
+        title_view ||= $window.title_view
+        title_view ||= TV_Name
+        res = ''
+        aname, afamily = PandoraCrypto.name_and_family_of_person(nil, cab_panhash)
+        #p '------------[aname, afamily, cab_panhash]='+[aname, afamily, cab_panhash, \
+        #  PandoraUtils.bytes_to_hex(cab_panhash)].inspect
+        addname = ''
+        case title_view
+          when TV_Name, TV_NameN
+            if (aname.size==0)
+              addname << afamily
+            else
+              addname << aname
+            end
+          when TV_Family
+            if (afamily.size==0)
+              addname << aname
+            else
+              addname << afamily
+            end
+          when TV_NameFam
+            if (aname.size==0)
+              addname << afamily
+            else
+              addname << aname #[0, 4]
+              addname << ' '+afamily if afamily and (afamily.size>0)
+            end
+        end
+        if (addname.size>0)
+          res << ',' if (res.size>0)
+          res << addname
+        end
+        res = 'unknown' if (res.size==0)
+        if res.size>MaxTitleLen
+          res = res[0, MaxTitleLen-1]+'..'
+        end
+        tab_widget = $window.notebook.get_tab_label(self)
+        tab_widget.label.text = res if tab_widget
+        #p '$window.title_view, res='+[@$window.title_view, res].inspect
+        if check_all
+          title_view=TV_Name if (title_view==TV_NameN)
+          has_conflict = true
+          while has_conflict and (title_view < TV_NameN)
+            has_conflict = false
+            names = Array.new
+            $window.notebook.children.each do |child|
+              if (child.is_a? CabinetBox)
+                tab_widget = $window.notebook.get_tab_label(child)
+                if tab_widget
+                  tit = tab_widget.label.text
+                  if names.include? tit
+                    has_conflict = true
+                    break
+                  else
+                    names << tit
+                  end
+                end
+              end
+            end
+            if has_conflict
+              if (title_view < TV_NameN)
+                title_view += 1
+              end
+              #p '@$window.title_view='+@$window.title_view.inspect
+              names = Array.new
+              $window.notebook.children.each do |child|
+                if (child.is_a? CabinetBox)
+                  sn = child.construct_cab_title(false, title_view)
+                  if (title_view == TV_NameN)
+                    names << sn
+                    c = names.count(sn)
+                    sn = sn+c.to_s if c>1
+                    tab_widget = $window.notebook.get_tab_label(child)
+                    tab_widget.label.text = sn if tab_widget
+                  end
+                end
+              end
+            end
+          end
+        end
+      else
+        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+        if panobjectclass
+          model = PandoraUtils.get_model(panobjectclass.ider)
+          if model
+            sel = model.select({'panhash'=>cab_panhash}, true, nil, nil, 1)
+            res = model.record_info(MaxTitleLen, nil, nil, ' ')
+            tab_widget = $window.notebook.get_tab_label(self)
+            tab_widget.label.text = res if tab_widget
+          end
+        end
+      end
+      res
     end
 
     # Put message to dialog
@@ -18194,39 +18301,37 @@ module PandoraGtk
         mypanhash = PandoraCrypto.current_user_or_key(true)
         myname = PandoraCrypto.short_name_of_person(nil, mypanhash)
 
-        persons = targets[CSI_Persons]
         nil_create_time = false
-        persons.each do |person|
-          model = PandoraUtils.get_model('Message')
-          max_message2 = max_message
-          max_message2 = max_message * 2 if (person == mypanhash)
-          sel = model.select({:creator=>person, :destination=>mypanhash}, false, fields, \
-            'id DESC', max_message2)
-          sel.reverse!
-          if (person == mypanhash)
-            i = sel.size-1
-            while i>0 do
+        person = cab_panhash
+        model = PandoraUtils.get_model('Message')
+        max_message2 = max_message
+        max_message2 = max_message * 2 if (person == mypanhash)
+        sel = model.select({:creator=>person, :destination=>mypanhash}, false, fields, \
+          'id DESC', max_message2)
+        sel.reverse!
+        if (person == mypanhash)
+          i = sel.size-1
+          while i>0 do
+            i -= 1
+            time, text, time_prev, text_prev = sel[i][1], sel[i][4], sel[i+1][1], sel[i+1][4]
+            #p [time, text, time_prev, text_prev]
+            if (not time) or (not time_prev)
+              time, time_prev = sel[i][6], sel[i+1][6]
+              nil_create_time = true
+            end
+            if (not text) or (time and text and time_prev and text_prev \
+            and ((time-time_prev).abs<30) and (AsciiString.new(text)==AsciiString.new(text_prev)))
+              #p 'DEL '+[time, text, time_prev, text_prev].inspect
+              sel.delete_at(i)
               i -= 1
-              time, text, time_prev, text_prev = sel[i][1], sel[i][4], sel[i+1][1], sel[i+1][4]
-              #p [time, text, time_prev, text_prev]
-              if (not time) or (not time_prev)
-                time, time_prev = sel[i][6], sel[i+1][6]
-                nil_create_time = true
-              end
-              if (not text) or (time and text and time_prev and text_prev \
-              and ((time-time_prev).abs<30) and (AsciiString.new(text)==AsciiString.new(text_prev)))
-                #p 'DEL '+[time, text, time_prev, text_prev].inspect
-                sel.delete_at(i)
-                i -= 1
-              end
             end
           end
+        end
+        messages += sel
+        if (person != mypanhash)
+          sel = model.select({:creator=>mypanhash, :destination=>person}, false, fields, \
+            'id DESC', max_message)
           messages += sel
-          if (person != mypanhash)
-            sel = model.select({:creator=>mypanhash, :destination=>person}, false, fields, \
-              'id DESC', max_message)
-            messages += sel
-          end
         end
         if nil_create_time or (sort_mode==0) #sort by created
           messages.sort! do |a,b|
@@ -18266,35 +18371,6 @@ module PandoraGtk
       end
     end
 
-    # Get name and family
-    # RU: Определить имя и фамилию
-    # Get name and family
-    # RU: Определить имя и фамилию
-    def get_name_and_family(i)
-      person = nil
-      if i.is_a? String
-        person = i
-        i = targets[CSI_Persons].index(person)
-      else
-        person = targets[CSI_Persons][i]
-      end
-      aname, afamily = '', ''
-      if i and person
-        person_recs = targets[CSI_PersonRecs]
-        if not person_recs
-          person_recs = Array.new
-          targets[CSI_PersonRecs] = person_recs
-        end
-        if person_recs[i]
-          aname, afamily = person_recs[i]
-        else
-          aname, afamily = PandoraCrypto.name_and_family_of_person(nil, person)
-          person_recs[i] = [aname, afamily]
-        end
-      end
-      [aname, afamily]
-    end
-
     # Set session
     # RU: Задать сессию
     def set_session(session, online=true, keep=true)
@@ -18309,7 +18385,7 @@ module PandoraGtk
         session.dialog = nil
       end
       active = (@sessions.size>0)
-      online_btn.safe_set_active(active) if (not online_btn.destroyed?)
+      online_btn.safe_set_active(active) if (online_btn and (not online_btn.destroyed?))
       if active
         #online_btn.inconsistent = false if (not online_btn.destroyed?)
       else
@@ -18346,38 +18422,37 @@ module PandoraGtk
             crypt = sign = false
           end
         end
-        targets[CSI_Persons].each do |dest|
-          values = {:destination=>dest, :text=>crypt_text, :state=>state, \
-            :creator=>creator, :created=>time_now, :modified=>time_now, :panstate=>panstate}
-          model = PandoraUtils.get_model('Message')
-          panhash = model.calc_panhash(values)
-          values[:panhash] = panhash
-          res = model.update(values, nil, nil, sign)
-          if res
-            filter = {:panhash=>panhash, :created=>time_now}
-            sel = model.select(filter, true, 'id', 'id DESC', 1)
-            if sel and (sel.size>0)
-              p 'send_mes sel='+sel.inspect
-              if sign
-                namesvalues = model.namesvalues
-                namesvalues['text'] = text   #restore pure text for sign
-                if not PandoraCrypto.sign_panobject(model, sign_trust)
-                  panstate = panstate & (~ PandoraModel::PSF_Verified)
-                  res = model.update(filter, nil, {:panstate=>panstate})
-                  PandoraUtils.log_message(LM_Warning, _('Cannot create sign')+' ['+text+']')
-                end
+        dest = cab_panhash
+        values = {:destination=>dest, :text=>crypt_text, :state=>state, \
+          :creator=>creator, :created=>time_now, :modified=>time_now, :panstate=>panstate}
+        model = PandoraUtils.get_model('Message')
+        panhash = model.calc_panhash(values)
+        values[:panhash] = panhash
+        res = model.update(values, nil, nil, sign)
+        if res
+          filter = {:panhash=>panhash, :created=>time_now}
+          sel = model.select(filter, true, 'id', 'id DESC', 1)
+          if sel and (sel.size>0)
+            p 'send_mes sel='+sel.inspect
+            if sign
+              namesvalues = model.namesvalues
+              namesvalues['text'] = text   #restore pure text for sign
+              if not PandoraCrypto.sign_panobject(model, sign_trust)
+                panstate = panstate & (~ PandoraModel::PSF_Verified)
+                res = model.update(filter, nil, {:panstate=>panstate})
+                PandoraUtils.log_message(LM_Warning, _('Cannot create sign')+' ['+text+']')
               end
-              id = sel[0][0]
-              add_mes_to_view(crypt_text, id, panstate, true)
-            else
-              PandoraUtils.log_message(LM_Error, _('Cannot read message')+' ['+text+']')
             end
+            id = sel[0][0]
+            add_mes_to_view(crypt_text, id, panstate, true)
           else
-            PandoraUtils.log_message(LM_Error, _('Cannot insert message')+' ['+text+']')
+            PandoraUtils.log_message(LM_Error, _('Cannot read message')+' ['+text+']')
           end
+        else
+          PandoraUtils.log_message(LM_Error, _('Cannot insert message')+' ['+text+']')
         end
-        dlg_sessions = $window.pool.sessions_on_dialog(self)
-        dlg_sessions.each do |session|
+        sessions = $window.pool.sessions_on_dialog(self)
+        sessions.each do |session|
           session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep)
           session.send_state = (session.send_state | PandoraNet::CSF_Message)
         end
@@ -18773,7 +18848,7 @@ module PandoraGtk
           end
         end
         #Thread.pass
-      elsif (not self.destroyed?) and (not webcam_btn.destroyed?) and webcam_btn.active? \
+      elsif (not self.destroyed?) and webcam_btn and (not webcam_btn.destroyed?) and webcam_btn.active? \
       and area_send and (not area_send.destroyed?)
         if not video_pipeline
           begin
@@ -19976,7 +20051,7 @@ module PandoraGtk
 
       list_sw.add(list_tree)
       #image = Gtk::Image.new(Gtk::Stock::GO_FORWARD, Gtk::IconSize::MENU)
-      image = Gtk::Image.new(:radar, Gtk::IconSize::MENU)
+      image = Gtk::Image.new(:radar, Gtk::IconSize::SMALL_TOOLBAR)
       image.set_padding(2, 0)
       #image1 = Gtk::Image.new(Gtk::Stock::ORIENTATION_PORTRAIT, Gtk::IconSize::MENU)
       #image1.set_padding(2, 2)
@@ -20593,8 +20668,8 @@ module PandoraGtk
 
               $window.register_stock(:keep)
               keep_cb = SafeCheckButton.new(:keep)
-              keep_cb.active = keep_mode
               PandoraGtk.set_button_text(keep_cb, _('Keep in archive'))
+              keep_cb.active = keep_mode
               keep_cb.safe_signal_clicked do |widget|
                 widget.safe_set_active(false) if in_arch
                 if widget.active?
@@ -20683,7 +20758,7 @@ module PandoraGtk
           page = CPI_Property
           page = CPI_Dialog if (action=='Dialog')
           page = CPI_Opinions if (action=='Opinion')
-          show_cabinet(panhash0, nil, nil, nil, nil, nil, page, formfields, id, edit)
+          show_cabinet(panhash0, nil, nil, nil, nil, page, formfields, id, edit)
         else
           dialog = FieldsDialog.new(panobject, tree_view, formfields, panhash0, id, \
             edit, panobject.sname)
@@ -21343,7 +21418,7 @@ module PandoraGtk
     end
 
     if single
-      image = $window.get_panobject_image(panobject_class.ider, Gtk::IconSize::MENU)
+      image = $window.get_panobject_image(panobject_class.ider, Gtk::IconSize::SMALL_TOOLBAR)
       #p 'single: widget='+widget.inspect
       #if widget.is_a? Gtk::ImageMenuItem
       #  animage = widget.image
@@ -21616,15 +21691,9 @@ module PandoraGtk
 
   # Construct room id
   # RU: Создать идентификатор комнаты
-  def self.construct_room_id(persons, session=nil)
+  def self.construct_room_id(panhash, session=nil)
     res = nil
-    if (persons.is_a? Array) and (persons.size>0)
-      sha1 = Digest::SHA1.new
-      persons.each do |panhash|
-        sha1.update(panhash)
-      end
-      res = sha1.digest
-    end
+    res = panhash.dup if panhash
     res ||= session.object_id if session
     res
   end
@@ -21634,7 +21703,8 @@ module PandoraGtk
   def self.find_another_active_sender(not_this=nil)
     res = nil
     $window.notebook.children.each do |child|
-      if (child != not_this) and (child.is_a? CabinetBox) and child.webcam_btn.active?
+      if (child != not_this) and (child.is_a? CabinetBox) \
+      and child.webcam_btn and child.webcam_btn.active?
         return child
       end
     end
@@ -21729,7 +21799,7 @@ module PandoraGtk
     p '--recognize_captcha(captcha_buf.size, clue_text, node, node_id, models)='+\
       [captcha_buf.size, clue_text, node, node_id, models].inspect
     if captcha_buf
-      sw = PandoraGtk.show_cabinet(panhashes, session, @node_panhash, conntype, node_id, models)
+      sw = PandoraGtk.show_cabinet(panhashes, session, conntype, node_id, models)
       if sw
         clue_text ||= ''
         clue, length, symbols = clue_text.split('|')
@@ -21768,13 +21838,7 @@ module PandoraGtk
     [res, sw]
   end
 
-  # Show panobject cabinet
-  # RU: Показать кабинет панобъекта
-  def self.show_cabinet(panhashes, session=nil, nodehash=nil, conntype=nil, \
-  node_id=nil, models=nil, page=nil, fields=nil, obj_id=nil, edit=nil)
-    sw = nil
-    p 'show_talk_dialog: [panhashes, nodehash, node_id, session.object_id, conntype]='+\
-      [panhashes, nodehash, node_id, session.object_id, conntype].inspect
+  def self.extract_from_panhash(panhash)
     targets = [[], [], []]
     persons, keys, nodes = targets
     if nodehash and (panhashes.is_a? String)
@@ -21802,40 +21866,36 @@ module PandoraGtk
         target_exist = ((persons.size>0) or (nodes.size>0) or (keys.size>0))
       end
     end
-    if target_exist or session
-      p '@@@@@@@@@ nodehash, conntype='+[nodehash, conntype].inspect
-      room_id = construct_room_id(persons, session)
-      if conntype.nil? or (conntype==PandoraNet::ST_Hunter)
-        creator = PandoraCrypto.current_user_or_key(true)
-        if (persons.size==1) and (persons[0]==creator)
-          room_id[-1] = (room_id[-1].ord ^ 1).chr
-        end
-      end
-      p 'room_id='+room_id.inspect
-      $window.notebook.children.each do |child|
-        if (child.is_a? CabinetBox) and (child.room_id==room_id)
-          child.targets = targets
-          #child.online_btn.safe_set_active(nodehash != nil)
-          #child.online_btn.inconsistent = false
-          $window.notebook.page = $window.notebook.children.index(child) if conntype.nil?
-          sw = child
-          sw.show_page(page) if page
-          break
-        end
-      end
-      sw ||= CabinetBox.new(nodehash, room_id, targets, page, fields, obj_id, edit)
-    elsif (nodehash.nil? and session.nil?)
-      mes = ''
-      mes << _('node') if nodes.size == 0
-      if persons.size == 0
-        mes << ', ' if mes.size>0
-        mes << _('person')
-      end
-      mes = _('No one')+' '+mes+' '+_('is not found')+".\n"+_('Add nodes and do hunt')
-      PandoraGtk::GoodMessageDialog.new(mes).run_and_do do
-        PandoraGtk.show_panobject_list(PandoraModel::Node, nil, nil, true)
+  end
+
+  # Show panobject cabinet
+  # RU: Показать кабинет панобъекта
+  def self.show_cabinet(panhash, session=nil, conntype=nil, \
+  node_id=nil, models=nil, page=nil, fields=nil, obj_id=nil, edit=nil)
+    sw = nil
+
+    p '---show_cabinet(panhash, session, conntype, node_id, models, page, fields, obj_id, edit)=' \
+      +[panhash, session, conntype, node_id, models, page, fields, obj_id, edit].inspect
+
+    room_id = construct_room_id(panhash, session)
+    if conntype.nil? or (conntype==PandoraNet::ST_Hunter)
+      creator = PandoraCrypto.current_user_or_key(true)
+      room_id[-1] = (room_id[-1].ord ^ 1).chr if panhash==creator
+    end
+    p 'room_id='+room_id.inspect
+    $window.notebook.children.each do |child|
+      if (child.is_a? CabinetBox) and ((child.room_id==room_id) \
+      or (not session.nil?) and (child.session==session))
+        #child.targets = targets
+        #child.online_btn.safe_set_active(nodehash != nil)
+        #child.online_btn.inconsistent = false
+        $window.notebook.page = $window.notebook.children.index(child) if conntype.nil?
+        sw = child
+        sw.show_page(page) if page
+        break
       end
     end
+    sw ||= CabinetBox.new(panhash, room_id, page, fields, obj_id, edit, session)
     sw
   end
 
@@ -21844,7 +21904,7 @@ module PandoraGtk
   def self.show_search_panel(text=nil)
     sw = SearchBox.new(text)
 
-    image = Gtk::Image.new(Gtk::Stock::FIND, Gtk::IconSize::MENU)
+    image = Gtk::Image.new(Gtk::Stock::FIND, Gtk::IconSize::SMALL_TOOLBAR)
     image.set_padding(2, 0)
 
     label_box = TabLabelBox.new(image, _('Search'), sw) do
@@ -21874,7 +21934,6 @@ module PandoraGtk
       end
     end
 
-
     page = $window.notebook.append_page(sw, label_box)
     $window.notebook.set_tab_reorderable(sw, true)
     sw.show_all
@@ -21893,7 +21952,7 @@ module PandoraGtk
     end
     sw = SessionScrollWin.new
 
-    image = Gtk::Image.new(:session, Gtk::IconSize::MENU)
+    image = Gtk::Image.new(:session, Gtk::IconSize::SMALL_TOOLBAR)
     image.set_padding(2, 0)
     label_box = TabLabelBox.new(image, _('Sessions'), sw) do
       #sw.destroy
@@ -21970,7 +22029,7 @@ module PandoraGtk
     end
     sw = FisherScrollWin.new
 
-    image = Gtk::Image.new(:fish, Gtk::IconSize::MENU)
+    image = Gtk::Image.new(:fish, Gtk::IconSize::SMALL_TOOLBAR)
     image.set_padding(2, 0)
     label_box = TabLabelBox.new(image, _('Fishers'), sw) do
       #sw.destroy
@@ -22851,103 +22910,6 @@ module PandoraGtk
       stock_inf
     end
 
-    TV_Name    = 0
-    TV_NameF   = 1
-    TV_Family  = 2
-    TV_NameN   = 3
-
-    MaxTitleLen = 15
-
-    # Construct room title
-    # RU: Задаёт осмысленный заголовок окна
-    def construct_cab_title(dialog, check_all=true)
-      res = 'unknown'
-      persons = dialog.targets[CSI_Persons]
-      if (persons.is_a? Array) and (persons.size>0)
-        res = ''
-        persons.each_with_index do |person, i|
-          aname, afamily = dialog.get_name_and_family(i)
-          addname = ''
-          case @title_view
-            when TV_Name, TV_NameN
-              if (aname.size==0)
-                addname << afamily
-              else
-                addname << aname
-              end
-            when TV_NameF
-              if (aname.size==0)
-                addname << afamily
-              else
-                addname << aname
-                addname << afamily[0] if afamily[0]
-              end
-            when TV_Family
-              if (afamily.size==0)
-                addname << aname
-              else
-                addname << afamily
-              end
-          end
-          if (addname.size>0)
-            res << ',' if (res.size>0)
-            res << addname
-          end
-        end
-        res = 'unknown' if (res.size==0)
-        if res.size>MaxTitleLen
-          res = res[0, MaxTitleLen-1]+'..'
-        end
-        tab_widget = $window.notebook.get_tab_label(dialog)
-        tab_widget.label.text = res if tab_widget
-        #p 'title_view, res='+[@title_view, res].inspect
-        if check_all
-          @title_view=TV_Name if (@title_view==TV_NameN)
-          has_conflict = true
-          while has_conflict
-            has_conflict = false
-            names = Array.new
-            $window.notebook.children.each do |child|
-              if (child.is_a? CabinetBox)
-                tab_widget = $window.notebook.get_tab_label(child)
-                if tab_widget
-                  tit = tab_widget.label.text
-                  if names.include? tit
-                    has_conflict = true
-                    break
-                  else
-                    names << tit
-                  end
-                end
-              end
-            end
-            if has_conflict
-              if (@title_view < TV_NameN)
-                @title_view += 1
-              else
-                has_conflict = false
-              end
-              #p '@title_view='+@title_view.inspect
-              names = Array.new
-              $window.notebook.children.each do |child|
-                if (child.is_a? CabinetBox)
-                  sn = construct_cab_title(child, false)
-                  if (@title_view == TV_NameN)
-                    names << sn
-                    c = names.count(sn)
-                    sn = sn+c.to_s if c>1
-                    tab_widget = $window.notebook.get_tab_label(child)
-                    tab_widget.label.text = sn if tab_widget
-                  end
-                end
-              end
-            end
-          end
-        end
-      end
-      res
-    end
-
     # Export table to file
     # RU: Выгрузить таблицу в файл
     def export_table(panobject, filename=nil)
@@ -23628,7 +23590,6 @@ module PandoraGtk
       super(*args)
       $window = self
       @hunter_count = @listener_count = @fisher_count = @node_reg_offset = 0
-      @title_view = TV_Name
 
       @icon_factory = Gtk::IconFactory.new
       @icon_factory.add_default
@@ -23966,7 +23927,10 @@ module PandoraGtk
       #  p 'focus-out-event: ' + $window.has_toplevel_focus?.inspect
       #  false
       #end
-      $window.do_on_start = PandoraUtils.get_param('do_on_start')
+      @do_on_start = PandoraUtils.get_param('do_on_start')
+      @title_view = PandoraUtils.get_param('title_view')
+      @title_view ||= TV_Name
+
       #$window.signal_connect('show') do |window, event|
       #  false
       #end
