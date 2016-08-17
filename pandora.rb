@@ -1967,7 +1967,15 @@ module PandoraUtils
       end
 
       def field_des(fld_name)
-        df = def_fields.detect{ |e| (e.is_a? Array) and (e[FI_Id].to_s == fld_name) or (e.to_s == fld_name) }
+        df = def_fields.detect{ |e| (e.is_a? Array) \
+          and (e[FI_Id].to_s == fld_name) or (e.to_s == fld_name) }
+      end
+
+      def has_blob_fields?
+        res = def_fields.detect{ |e| (e.is_a? Array) \
+          and ((e[FI_Type].to_s.downcase == 'blob') \
+          or (e[FI_Type].to_s.downcase == 'text')) }
+        (res != nil)
       end
 
       # The title of field in current language
@@ -3833,10 +3841,10 @@ module PandoraModel
     if panobjectclass
       model = PandoraUtils.get_model(panobjectclass.ider, models)
       if model
-        filter = {'panhash'=>panhash}
+        filter = ['panhash=?', panhash]
         if (kind==PK_Key)
-          # Select only open keys!
-          filter['kind'] = 0x81
+          # Except private RSA keys
+          filter[0] << ' AND cipher<>'+PandoraCrypto::KT_Priv.to_s
         end
         pson = (pson_with_kind != nil)
         #p 'filter='+filter.inspect
@@ -15166,17 +15174,28 @@ module PandoraGtk
   # Tab box for notebook with image and close button
   # RU: Бокс закладки для блокнота с картинкой и кнопкой
   class TabLabelBox < Gtk::HBox
-    attr_accessor :label
+    attr_accessor :image, :label, :stock
 
-    def initialize(image, title, child=nil, *args)
+    def set_stock(astock)
+      p @stock = astock
+      #$window.register_stock(stock)
+      an_image = $window.get_preset_image(stock, Gtk::IconSize::SMALL_TOOLBAR, nil)
+      if (@image.is_a? Gtk::Image) and @image.icon_set
+        @image.icon_set = an_image.icon_set
+      else
+        @image = an_image
+      end
+    end
+
+    def initialize(an_image, title, child=nil, *args)
       args ||= [false, 0]
       super(*args)
-      image ||= :person
-      if (image.is_a? Symbol) or (image.is_a? String)
-        $window.register_stock(image)
-        image = Gtk::Image.new(image, Gtk::IconSize::SMALL_TOOLBAR)
+      @image = an_image
+      @image ||= :person
+      if ((image.is_a? Symbol) or (image.is_a? String))
+        set_stock(image)
       end
-      image.set_padding(2, 0)
+      @image.set_padding(2, 0)
       self.pack_start(image, false, false, 0) if image
       @label = Gtk::Label.new(title)
       self.pack_start(label, false, false, 0)
@@ -15214,7 +15233,7 @@ module PandoraGtk
     include PandoraUtils
 
     attr_accessor :field, :link_name, :body_child, :format, :raw_buffer, :view_buffer, \
-      :view_mode, :color_mode, :toolbar, :toolbar2, :fields
+      :view_mode, :color_mode, :toolbar, :toolbar2, :fields, :property_box
 
     def parent_win
       res = parent.parent.parent
@@ -15309,8 +15328,9 @@ module PandoraGtk
       end
     end
 
-    def initialize(afields, *args)
+    def initialize(aproperty_box, afields, *args)
       super(*args)
+      @property_box = aproperty_box
       @format = nil
       @view_mode = true
       @color_mode = true
@@ -15792,8 +15812,8 @@ module PandoraGtk
           raw_buffer.remove_all_tags(raw_buffer.start_iter, raw_buffer.end_iter)
           set_tags(raw_buffer, 0, raw_buffer.line_count)
         end
-        #fmt_btn = parent.parent.parent.format_btn
-        #fmt_btn.label = format if (fmt_btn.label != format)
+        fmt_btn = property_box.format_btn
+        fmt_btn.label = format if (fmt_btn.label != format)
         tv.show
         tv.grab_focus
       end
@@ -15998,7 +16018,7 @@ module PandoraGtk
         atext = field[FI_VFName]
         aview = field[FI_View]
         if (aview=='blob') or (aview=='text')
-          bodywin = BodyScrolledWindow.new(@fields, nil, nil)
+          bodywin = BodyScrolledWindow.new(self, @fields, nil, nil)
           bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
           bodywin.field = field
           field[FI_Widget2] = bodywin
@@ -16732,20 +16752,19 @@ module PandoraGtk
         entry = field[FI_Widget]
         if entry.text == ''
           textview = field[FI_Widget2].child
-          scrolwin = nil
-          scrolwin = textview.parent if textview and (not textview.destroyed?)
-          scrolwin = scrolwin.parent if scrolwin and (not scrolwin.destroyed?) \
-            and not (scrolwin.is_a? FieldsDialog::BodyScrolledWindow)
+          body_win = nil
+          body_win = textview.parent if textview and (not textview.destroyed?)
           text = nil
-          if scrolwin and (not scrolwin.destroyed?) and scrolwin.raw_buffer
+          if body_win and (not body_win.destroyed?) \
+          and (body_win.is_a? PandoraGtk::BodyScrolledWindow) and body_win.raw_buffer
             #text = textview.buffer.text
-            text = scrolwin.raw_buffer.text
+            text = body_win.raw_buffer.text
             if text and (text.size>0)
               #p '===TEXT BUF!!!!!!!!!!!'
               field[FI_Value] = text
               flds_hash[field[FI_Id]] = text
               type_fld = panobject.field_des('type')
-              flds_hash['type'] = dialog.format_btn.label.upcase if type_fld
+              flds_hash['type'] = body_win.property_box.format_btn.label.upcase if type_fld
             else
               text = nil
             end
@@ -16984,7 +17003,7 @@ module PandoraGtk
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, \
       :sender_box, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
       :send_hpaned, :cab_notebook, :send_btn, :opt_btns, :cab_panhash, :session, \
-      :bodywin, :fields, :obj_id, :edit, :property_box, :kind
+      :bodywin, :fields, :obj_id, :edit, :property_box, :kind, :label_box
 
     include PandoraGtk
 
@@ -17244,7 +17263,7 @@ module PandoraGtk
     end
 
     def fill_dlg_toolbar(page=nil)
-      @crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', false)
+      @crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', false) if (page==CPI_Dialog)
 
       @sign0 = 1.0
       @sign_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |widget|
@@ -17364,6 +17383,7 @@ module PandoraGtk
     def fill_edit_toolbar
       bodywin = nil
       bodywid = nil
+      pb = property_box
       first_body_fld = property_box.text_fields[0]
       if first_body_fld
         bodywin = first_body_fld[FI_Widget2]
@@ -17380,7 +17400,7 @@ module PandoraGtk
       end
 
       btn = add_btn_to_toolbar(nil, 'auto', 0)
-      @format_btn = btn
+      pb.format_btn = btn
       menu = Gtk::Menu.new
       btn.menu = menu
       ['auto', 'plain', 'markdown', 'bbcode', 'wiki', 'html', 'ruby', \
@@ -17392,29 +17412,6 @@ module PandoraGtk
         end
       end
       menu.show_all
-
-      #add_btn_to_toolbar(Gtk::Stock::EDIT, 'Edit', false) do |btn|
-      #  bodywin.view_mode = (not btn.active?)
-      #  bodywin.set_buffers
-      #end
-      #add_btn_to_toolbar(:tags, 'Color tags', true) do |btn|
-      #  bodywin.color_mode = btn.active?
-      #  bodywin.set_buffers
-      #end
-
-      #btn = add_btn_to_toolbar(nil, 'auto', 0)
-      #@format_btn = btn
-      #menu = Gtk::Menu.new
-      #['auto', 'plain', 'markdown', 'bbcode', 'wiki', 'html', 'ruby', \
-      #'python', 'xml'].each do |title|
-      #  btn.menu = menu
-      #  add_menu_item(btn, menu, title) do |mi|
-      #    btn.label = mi.label
-      #    bodywin.format = mi.label.to_s
-      #    bodywin.set_buffers
-      #  end
-      #end
-      #menu.show_all
 
       add_btn_to_toolbar
 
@@ -17657,9 +17654,13 @@ module PandoraGtk
       end
       menu.show_all
 
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE)
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) { |*args| @response=2 }
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::CANCEL) { |*args| @response=1 }
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE) do
+        pb.save_fields_with_flags
+      end
+      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) do
+        pb.save_fields_with_flags
+        self.destroy
+      end
 
       toolbar.show_all
       add_btn_to_toolbar(toolbar)
@@ -17704,6 +17705,14 @@ module PandoraGtk
       container = cab_notebook.get_nth_page(page)
       sub_btn = opt_btns[CPI_Sub]
       sub_stock = CabPageInfo[CPI_Sub][0]
+      stock_id = CabPageInfo[page][0]
+      if label_box.stock
+        if page==CPI_Property
+          label_box.set_stock(opt_btns[page].stock_id)
+        else
+          label_box.set_stock(stock_id)
+        end
+      end
       if page<=CPI_Sub
         opt_btns[page].safe_set_active(true)
         sub_btn.stock_id = sub_stock if (sub_btn.stock_id != sub_stock)
@@ -17712,7 +17721,7 @@ module PandoraGtk
         sub_btn.stock_id = sub_stock if (sub_btn.stock_id != sub_stock)
       else
         sub_btn.safe_set_active(true)
-        sub_btn.stock_id = CabPageInfo[page][0]
+        sub_btn.stock_id = stock_id
       end
       @active_page = page
       if container
@@ -17787,13 +17796,13 @@ module PandoraGtk
           #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
           #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
           @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
+          fill_edit_toolbar
           if property_box.text_fields.size>0
             p property_box.text_fields
             first_body_fld = property_box.text_fields[0]
             if first_body_fld
               bodywin = first_body_fld[FI_Widget2]
               bodywin.fill_body
-              fill_edit_toolbar
               container.add(bodywin)
             end
           end
@@ -18049,9 +18058,13 @@ module PandoraGtk
       #border_width = 0
 
       dlg_stock = nil
+      its_blob = nil
       if cab_panhash
         kind = PandoraUtils.kind_from_panhash(cab_panhash)
         panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+        its_blob = ((kind==PandoraModel::PK_Blob) \
+          or (panobjectclass <= PandoraModel::Blob) \
+          or panobjectclass.has_blob_fields?)
         dlg_stock = $window.get_panobject_stock(panobjectclass.ider)
       end
       dlg_stock ||= Gtk::Stock::PROPERTIES
@@ -18089,9 +18102,9 @@ module PandoraGtk
           end
         end
         text = _(text)
-        label_box = TabLabelBox.new(stock, text)
+        page_box = TabLabelBox.new(stock, text)
         container ||= Gtk::Viewport.new(nil, nil)
-        cab_notebook.append_page_menu(container, label_box)
+        cab_notebook.append_page_menu(container, page_box)
 
         if not btn_down
           opt_btn = add_btn_to_toolbar(stock, text, false, opt_btns) do
@@ -18118,17 +18131,16 @@ module PandoraGtk
       add_btn_to_toolbar(nil, nil, nil, opt_btns)
       main_vbox.pack_start(toolbar_box, false, false, 0)
 
-      its_blob = (kind==PandoraModel::PK_Blob)
       p Gtk::IconSize.lookup(Gtk::IconSize::SMALL_TOOLBAR)
       dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, its_blob, \
         Gtk::IconSize.lookup(Gtk::IconSize::SMALL_TOOLBAR)[0])
       #buf = PandoraModel.scale_buf_to_size(buf, icon_size, center)
+      dlg_image = nil
       dlg_image = Gtk::Image.new(dlg_pixbuf) if dlg_pixbuf
       #dlg_image ||= $window.get_preset_image('dialog')
-      dlg_image ||= Gtk::Image.new(dlg_stock, Gtk::IconSize::SMALL_TOOLBAR)
-      dlg_image ||= Gtk::Image.new(Gtk::Stock::MEDIA_PLAY, Gtk::IconSize::SMALL_TOOLBAR)
-      dlg_image.set_padding(2, 0)
-      label_box = TabLabelBox.new(dlg_image, 'unknown', self) do
+      dlg_image ||= dlg_stock
+      dlg_image ||= Gtk::Stock::MEDIA_PLAY
+      @label_box = TabLabelBox.new(dlg_image, 'unknown', self) do
         area_send.destroy if area_send and (not area_send.destroyed?)
         area_recv.destroy if area_recv and (not area_recv.destroyed?)
         $window.pool.stop_session(nil, cab_panhash, nil, false, self.session)
@@ -18149,8 +18161,8 @@ module PandoraGtk
       show_page(a_page)
       opt_btns[CPI_Sub+1].children[0].children[0].hide
       btn_offset = CPI_Last_Sub-CPI_Sub-1
+      opt_btns[CPI_Editor-btn_offset].hide if (not its_blob)
       opt_btns[CPI_Dialog-btn_offset].hide if (kind != PandoraModel::PK_Person)
-      opt_btns[CPI_Editor-btn_offset].hide if (kind != PandoraModel::PK_Blob)
 
       $window.notebook.page = $window.notebook.n_pages-1 if not @known_node
     end
