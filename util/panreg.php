@@ -13,6 +13,7 @@
 // http://a.com/panreg.php?node=a1b2c3&ips=none  - read a list by leech
 // http://a.com/panreg.php?node=a1b2c3           - demote record
 // http://a.com/panreg.php?hex=1&time=1          - all nodes in hex format with time
+// http://a.com/panreg.php?node=a1b2c3&ips=none&trace=1  - show mysql trace info
 
 
 // Detect GET-parameters
@@ -26,6 +27,7 @@ if (! $ips)
 if (! $ips)
   $ips = $_GET['ip6'];
 $hex = $_GET['hex'];
+$trace = $_GET['trace'];
 
 // Autodetect user IP
 $leech = FALSE;
@@ -55,13 +57,23 @@ if (! $db)
 if (! $table)
   $table='active_nodes';
 
+// Show MySQL error and die
+function die_mysql($mes,$query=NULL) {
+  global $trace;
+  if ($trace)
+    if ($query)
+      $mes .= ' ['.htmlspecialchars($query).']';
+    $mes .= ': '.htmlspecialchars(mysql_error());
+  die($mes);
+}
+
 // Connect to DB
 $res = mysql_connect($sql_server, $db_user, $db_pass);
 if (! $res)
-  die('!SQL connection error');
+  die_mysql('!SQL connection error');
 $res = mysql_select_db($db);
 if (! $res)
-  die('!DB select error');
+  die_mysql('!DB select error');
 
 // Change table
 if ($node) {
@@ -72,7 +84,7 @@ if ($node) {
     if ($res)
       die('!Table is clear');
     else
-      die('!Truncate table error');
+      die_mysql('!Truncate table error');
   }
 
   // Convert HEX node to str
@@ -90,6 +102,8 @@ if ($node) {
   if ($len != 20)
     die("!Node length is not 20 (=$len)");
 
+  $node = mysql_real_escape_string($node);
+
   // MySQL formula for calc old year time
   function old_now($year) {
     return "DATE_FORMAT(NOW(),'".$year."-%m-%d %T')";
@@ -102,7 +116,7 @@ if ($node) {
     foreach ($ips as $i => $val) {
       $ip = inet_pton($val);
       if ($ip)
-        $ips[$i] = $ip;
+        $ips[$i] = mysql_real_escape_string($ip);
       else
         unset($ips[$i]);
     }
@@ -120,10 +134,10 @@ if ($node) {
         $filter .= ' OR ';
       $filter .= "(time>NOW()-INTERVAL 1 YEAR AND time<NOW()-INTERVAL $erase_time)";
       $now2001 = old_now(2001);
-      $filter .= " OR (YEAR(time)=2000 AND ((time<'$now2000-INTERVAL $erase_time) OR (time>$now2001-INTERVAL $erase_time)))";
+      $filter .= " OR (YEAR(time)=2000 AND ((time<$now2000-INTERVAL $erase_time) OR (time>$now2001-INTERVAL $erase_time)))";
       $now1996 = old_now(1996);
       $now1997 = old_now(1997);
-      $filter .= " OR (YEAR(time)=1996 AND ((time<'$now1996-INTERVAL $erase_time) OR (time>$now1997-INTERVAL $erase_time)))";
+      $filter .= " OR (YEAR(time)=1996 AND ((time<$now1996-INTERVAL $erase_time) OR (time>$now1997-INTERVAL $erase_time)))";
     }
     if ($limit) {
       if (strlen($filter)>0)
@@ -133,7 +147,7 @@ if ($node) {
     if (strlen($filter)>0) {
       $res = mysql_query("DELETE FROM $table WHERE ".$filter);
       if (! $res)
-        die('!Delete error');
+        die_mysql('!Delete error', $filter);
     }
 
     // Insert by ips list
@@ -145,13 +159,14 @@ if ($node) {
         $tim = $now2000;
       $res = mysql_query("INSERT INTO $table (node,ip,time) VALUES('$node', '$ip', $tim)");
       if (! $res)
-        die('!Insert error');
+        die_mysql('!Insert error');
     }
   } else {
     // Delete excess nodes (except the newest)
-    $res = mysql_query("DELETE FROM $table WHERE node='$node' AND node NOT IN (SELECT * FROM (SELECT node FROM $table WHERE node='$node' ORDER BY time DESC LIMIT 1) s )");
+    $query = "DELETE FROM $table WHERE node='$node' AND node NOT IN (SELECT * FROM (SELECT node FROM $table WHERE node='$node' ORDER BY time DESC LIMIT 1) s )";
+    $res = mysql_query($query);
     if (! $res)
-      die('!Delete excess nodes error');
+      die_mysql('!Delete excess nodes error', $query);
     // Demoted record marks with 1996 year
     $filter = '';
     if ($alive_time)
@@ -161,7 +176,7 @@ if ($node) {
     if ($res)
       die('!Nodes are demoted');
     else
-      die('!Demote error');
+      die_mysql('!Demote error', $filter);
   }
 
 }
@@ -170,11 +185,11 @@ if ($node) {
 $flds = 'node,ip';
 if ($time)
   $flds .= ',time';
-if (($node) or (! $time) or (time==0))
+if (($node) or (! $time))
   $table .= " WHERE time IS NOT NULL AND time>NOW()-INTERVAL 1 YEAR AND ip IS NOT NULL AND ip != ''";
 $sql = mysql_query("SELECT $flds FROM $table ORDER BY time DESC LIMIT $limit");
 if (! $sql)
-  die('!Tab select error');
+  die_mysql('!Tab select error', $table);
 
 // If empty table
 if (mysql_num_rows($sql)==0)
