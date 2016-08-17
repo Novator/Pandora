@@ -16687,11 +16687,12 @@ module PandoraGtk
       end
     end
 
-    def save_fields_with_flags(created0=nil)
+    def save_fields_with_flags(created0=nil, row=nil)
       # view_fields to raw_fields and hash
       flds_hash = {}
       file_way = nil
       file_way_exist = nil
+      row ||= fields
       fields.each do |field|
         type = field[FI_Type]
         view = field[FI_View]
@@ -16702,8 +16703,8 @@ module PandoraGtk
         and ((field[FI_Id]=='first') or (field[FI_Id]=='second')))
           PandoraModel.del_image_from_cache(val, true)
         elsif (panobject.kind==PK_Parameter) and (field[FI_Id]=='value')
-          par_type = panobject.field_val('type', sel[0])
-          setting = panobject.field_val('setting', sel[0])
+          par_type = panobject.field_val('type', row)
+          setting = panobject.field_val('setting', row)
           ps = PandoraUtils.decode_param_setting(setting)
           view = ps['view']
           view ||= PandoraUtils.pantype_to_view(par_type)
@@ -20788,9 +20789,9 @@ module PandoraGtk
 
         edit = ((not new_act) and (action != 'Copy'))
 
+        row = nil
         formfields = nil
         if panobject
-          row = nil
           row = sel[0] if sel
           formfields = panobject.get_fields_as_view(row, edit)
         end
@@ -20854,7 +20855,7 @@ module PandoraGtk
           end
 
           st_text = panobject.panhash_formula
-          st_text = st_text + ' [#'+panobject.calc_panhash(sel[0], lang, \
+          st_text = st_text + ' [#'+panobject.calc_panhash(row, lang, \
             true, true)+']' if sel and sel.size>0
           #!!!PandoraGtk.set_statusbar_text(dialog.statusbar, st_text)
 
@@ -20881,7 +20882,7 @@ module PandoraGtk
           dialog.title += ' ('+titadd+')' if titadd and (titadd != '')
 
           dialog.run2 do
-            dialog.property_box.save_fields_with_flags(created0)
+            dialog.property_box.save_fields_with_flags(created0, row)
           end
         end
       end

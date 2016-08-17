@@ -120,9 +120,10 @@ if ($node) {
         $filter .= ' OR ';
       $filter .= "(time>NOW()-INTERVAL 1 YEAR AND time<NOW()-INTERVAL $erase_time)";
       $now2001 = old_now(2001);
-      $filter .= " OR (YEAR(time)=2000 AND ((time<$now2000-INTERVAL $erase_time) OR (time>$now2001-INTERVAL $erase_time)))";
-      $now1996 = old_now(1996); $now1997 = old_now(1997);
-      $filter .= " OR (YEAR(time)=1996 AND ((time<$now1996-INTERVAL $erase_time) OR (time>$now1997-INTERVAL $erase_time)))";
+      $filter .= " OR (YEAR(time)=2000 AND ((time<'$now2000-INTERVAL $erase_time) OR (time>$now2001-INTERVAL $erase_time)))";
+      $now1996 = old_now(1996);
+      $now1997 = old_now(1997);
+      $filter .= " OR (YEAR(time)=1996 AND ((time<'$now1996-INTERVAL $erase_time) OR (time>$now1997-INTERVAL $erase_time)))";
     }
     if ($limit) {
       if (strlen($filter)>0)
