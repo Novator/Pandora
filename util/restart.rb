@@ -5,8 +5,8 @@
 # Utility for restart Pandora after the update
 # Утилита для перезапуска Пандоры после обновления
 
-# 2012 (c) Michael Galyuk
-# RU: 2012 (c) Михаил Галюк
+# 2012 (c) Michael Galyuk, GNU GPLv2
+# RU: 2012 (c) Михаил Галюк, GNU GPLv2
 
 
 def add_quotes(str, qts='"')

@@ -31,9 +31,9 @@
     </Country>
 
     <Relation>
-      <first view="panhash" />
-      <second view="panhash" />
-      <kind view="bytelist" />
+      <first view="panhash" pos="1" />
+      <second view="panhash" pos="3" />
+      <kind view="bytelist" pos="2" />
     </Relation>
 
     <Task>
