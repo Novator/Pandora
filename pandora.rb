@@ -14773,7 +14773,6 @@ module PandoraGtk
                                   type = 'LIST'
                                 end
 
-                                dest_buf.insert(dest_buf.end_iter, name)
                                 dest_buf.insert(dest_buf.end_iter, name, 'bold')
                                 dest_buf.insert(dest_buf.end_iter, ': ')
                                 shift_coms(name.size+2)
@@ -15361,7 +15360,11 @@ module PandoraGtk
           bodywin.body_child = bodywid
           if bodywid.is_a? Gtk::TextView
             bodywin.init_view_buf(bodywin.body_child.buffer)
-            bodywin.init_raw_buf(field[FI_Value].to_s)
+            atext = field[FI_Value].to_s
+            bodywin.init_raw_buf(atext)
+            if atext and (atext.size==0)
+              bodywin.view_mode = false
+            end
             bodywin.set_buffers
             #toolbar.show
           else
@@ -15373,6 +15376,7 @@ module PandoraGtk
     end
 
     def initialize(aproperty_box, afields, *args)
+      @@page_setup ||= nil
       super(*args)
       @property_box = aproperty_box
       @format = nil
@@ -15820,7 +15824,7 @@ module PandoraGtk
     # RU: Задать буферы
     def set_buffers
       tv = body_child
-      if tv
+      if tv and (tv.is_a? Gtk::TextView)
         tv.hide
         text_changed = false
         @format ||= 'auto'
@@ -15866,8 +15870,8 @@ module PandoraGtk
     # Set tag for selection
     # RU: Задать тэг для выделенного
     def insert_tag(tag, params=nil, defval=nil)
-      if tag
-        tv = body_child
+      tv = body_child
+      if tag and (tv.is_a? Gtk::TextView)
         edit_btn.active = true if edit_btn if view_mode
         tv.set_tag(tag, params, defval, format)
       end
@@ -15877,9 +15881,19 @@ module PandoraGtk
     HEADER_HEIGHT = 10 * 72 / 25.4
     HEADER_GAP = 3 * 72 / 25.4
 
+    def set_page_setup
+      if not @@page_setup
+        @@page_setup = Gtk::PageSetup.new
+        paper_size = Gtk::PaperSize.new(Gtk::PaperSize.default)
+        @@page_setup.paper_size_and_default_margins = paper_size
+      end
+      @@page_setup = Gtk::PrintOperation::run_page_setup_dialog($window, @@page_setup)
+    end
+
     def run_print_operation(preview=false)
       begin
         operation = Gtk::PrintOperation.new
+        operation.default_page_setup = @@page_setup if @@page_setup
 
         operation.use_full_page = false
         operation.unit = Gtk::PaperSize::UNIT_POINTS
@@ -15909,8 +15923,13 @@ module PandoraGtk
       p '[context.height, height, HEADER_HEIGHT, HEADER_GAP, data.lines_per_page]='+\
         [context.height, height, HEADER_HEIGHT, HEADER_GAP, data.lines_per_page].inspect
       tv = body_child
-      data.lines = tv.buffer
-      data.n_pages = (data.lines.line_count - 1) / data.lines_per_page + 1
+      data.lines = nil
+      data.lines = tv.buffer if (tv.is_a? Gtk::TextView)
+      if data.lines
+        data.n_pages = (data.lines.line_count - 1) / data.lines_per_page + 1
+      else
+        data.n_pages = 1
+      end
       operation.set_n_pages(data.n_pages)
     end
 
@@ -15949,8 +15968,8 @@ module PandoraGtk
 
     def draw_body(cr, operation, context, page_number, data)
       bw = self
-      if bw.view_mode
-        tv = bw.body_child
+      tv = bw.body_child
+      if (not (tv.is_a? Gtk::TextView)) or bw.view_mode
         cm = Gdk::Colormap.system
         width = context.width
         height = context.height
@@ -15958,10 +15977,8 @@ module PandoraGtk
         min_width = tv.allocation.width if tv.allocation.width < min_width
         min_height = height - (HEADER_HEIGHT + HEADER_GAP)
         min_height = tv.allocation.height if tv.allocation.height < min_height
-
-        pixbuf = Gdk::Pixbuf.from_drawable(cm, tv.window, 54, 0, min_width, \
+        pixbuf = Gdk::Pixbuf.from_drawable(cm, tv.window, 0, 0, min_width, \
           min_height)
-
         cr.set_source_color(Gdk::Color.new(65535, 65535, 65535))
         cr.gdk_rectangle(Gdk::Rectangle.new(0, HEADER_HEIGHT + HEADER_GAP, \
           context.width, height - (HEADER_HEIGHT + HEADER_GAP)))
@@ -16590,7 +16607,7 @@ module PandoraGtk
           end
           @vbox.child_visible = true
           @vbox.show_all
-          if @def_widget
+          if (@def_widget and (not @def_widget.destroyed?))
             #focus = @def_widget
             @def_widget.grab_focus
           end
@@ -17047,7 +17064,8 @@ module PandoraGtk
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, \
       :sender_box, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
       :send_hpaned, :cab_notebook, :send_btn, :opt_btns, :cab_panhash, :session, \
-      :bodywin, :fields, :obj_id, :edit, :property_box, :kind, :label_box
+      :bodywin, :fields, :obj_id, :edit, :property_box, :kind, :label_box, \
+      :active_page
 
     include PandoraGtk
 
@@ -17674,7 +17692,7 @@ module PandoraGtk
         bodywin.run_print_operation
       end
       add_menu_item(btn, menu, Gtk::Stock::PAGE_SETUP) do
-        #page_setup
+        bodywin.set_page_setup
       end
       menu.show_all
 
@@ -17769,313 +17787,328 @@ module PandoraGtk
         sub_btn.safe_set_active(true)
         sub_btn.stock_id = stock_id
       end
+      prev_page = @active_page
       @active_page = page
+      need_init = true
       if container
         container = container.child if page==CPI_Property
-        if (container.children.size>0)
-          container.show_all
-          show_toolbar_btns(page)  #cab_notebook.page
-          return container
+        need_init = false if (container.children.size>0)
+      end
+      if need_init
+        case page
+          when CPI_Property
+            @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
+            fill_property_toolbar(property_box)
+            property_box.set_status_icons
+            #property_box.window_width = property_box.window_height = 0
+            p [self.allocation.width, self.allocation.height]
+            #property_box.on_resize_window(self.allocation.width, self.allocation.height)
+            #property_box.on_resize_window(container.allocation.width, container.allocation.height)
+            #container.signal_connect('configure-event') do |widget, event|
+            #  property_box.on_resize_window(event.width, event.height)
+            #  false
+            #end
+            container.add(property_box)
+          when CPI_Profile
+            short_name = ''
+
+            hpaned = Gtk::HPaned.new
+            hpaned.border_width = 2
+
+            list_sw = Gtk::ScrolledWindow.new(nil, nil)
+            list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+            list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+
+            list_store = Gtk::ListStore.new(String)
+
+            user_iter = list_store.append
+            user_iter[0] = _('Profile')
+            user_iter = list_store.append
+            user_iter[0] = _('Events')
+
+            # create tree view
+            list_tree = Gtk::TreeView.new(list_store)
+            #list_tree.rules_hint = true
+            #list_tree.search_column = CL_Name
+
+            renderer = Gtk::CellRendererText.new
+            column = Gtk::TreeViewColumn.new('№', renderer, 'text' => 0)
+            column.set_sort_column_id(0)
+            list_tree.append_column(column)
+
+            #renderer = Gtk::CellRendererText.new
+            #column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
+            #column.set_sort_column_id(1)
+            #list_tree.append_column(column)
+
+            list_tree.signal_connect('row_activated') do |tree_view, path, column|
+              # download and go to record
+            end
+
+            list_sw.add(list_tree)
+
+            feed = PandoraGtk::ChatTextView.new
+
+            hpaned.pack1(list_sw, false, true)
+            hpaned.pack2(feed, true, true)
+            list_sw.show_all
+
+            fill_view_toolbar
+            container.add(hpaned)
+          when CPI_Editor
+            #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
+            #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+            @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
+            fill_edit_toolbar
+            if property_box.text_fields.size>0
+              p property_box.text_fields
+              first_body_fld = property_box.text_fields[0]
+              if first_body_fld
+                bodywin = first_body_fld[FI_Widget2]
+                bodywin.fill_body
+                container.add(bodywin)
+                bodywin.edit_btn.safe_set_active((not bodywin.view_mode)) if bodywin.edit_btn
+              end
+            end
+          when CPI_Dialog, CPI_Chat
+            listsend_vpaned = Gtk::VPaned.new
+
+            @area_recv = ViewDrawingArea.new(self)
+            area_recv.set_size_request(0, -1)
+            area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#707070'))
+
+            res = area_recv.signal_connect('expose-event') do |*args|
+              #p 'area_recv '+area_recv.window.xid.inspect
+              false
+            end
+
+            @talkview = PandoraGtk::ChatTextView.new(54)
+            talkview.set_readonly(true)
+            talkview.set_size_request(200, 200)
+            talkview.wrap_mode = Gtk::TextTag::WRAP_WORD
+
+            talkview.buffer.create_tag('you', 'foreground' => $you_color)
+            talkview.buffer.create_tag('dude', 'foreground' => $dude_color)
+            talkview.buffer.create_tag('you_bold', 'foreground' => $you_color, \
+              'weight' => Pango::FontDescription::WEIGHT_BOLD)
+            talkview.buffer.create_tag('dude_bold', 'foreground' => $dude_color,  \
+              'weight' => Pango::FontDescription::WEIGHT_BOLD)
+            talkview.buffer.create_tag('sys', 'foreground' => $sys_color, \
+              'style' => Pango::FontDescription::STYLE_ITALIC)
+            talkview.buffer.create_tag('sys_bold', 'foreground' => $sys_color,  \
+              'weight' => Pango::FontDescription::WEIGHT_BOLD)
+
+            talksw = Gtk::ScrolledWindow.new(nil, nil)
+            talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+            talksw.add(talkview)
+
+            @edit_box = PandoraGtk::SuperTextView.new
+            edit_box.wrap_mode = Gtk::TextTag::WRAP_WORD
+            edit_box.set_size_request(200, 70)
+
+            @edit_sw = Gtk::ScrolledWindow.new(nil, nil)
+            edit_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+            edit_sw.add(edit_box)
+
+            edit_box.grab_focus
+
+            edit_box.buffer.signal_connect('changed') do |buf|
+              send_btn.sensitive = (buf.text != '')
+              false
+            end
+
+            edit_box.signal_connect('key-press-event') do |widget, event|
+              res = false
+              if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
+              and (not event.state.control_mask?) and (not event.state.shift_mask?) \
+              and (not event.state.mod1_mask?)
+                send_btn.clicked
+                res = true
+              elsif (Gdk::Keyval::GDK_Escape==event.keyval)
+                edit_box.buffer.text = ''
+              elsif ((event.state.shift_mask? or event.state.mod1_mask?) \
+              and (event.keyval==65364))  # Shift+Down or Alt+Down
+                smile_btn.clicked
+                res = true
+              elsif ([Gdk::Keyval::GDK_k, Gdk::Keyval::GDK_K, 1740, 1772].include?(event.keyval) \
+              and event.state.control_mask?) #k, K, л, Л
+                if crypt_btn and (not crypt_btn.destroyed?)
+                  crypt_btn.active = (not crypt_btn.active?)
+                  res = true
+                end
+              elsif ([Gdk::Keyval::GDK_g, Gdk::Keyval::GDK_G, 1744, 1776].include?(event.keyval) \
+              and event.state.control_mask?) #g, G, п, П
+                if sign_btn and (not sign_btn.destroyed?)
+                  sign_btn.active = (not sign_btn.active?)
+                  res = true
+                end
+              end
+              res
+            end
+
+            @send_hpaned = Gtk::HPaned.new
+            @area_send = ViewDrawingArea.new(self)
+            #area_send.set_size_request(120, 90)
+            area_send.set_size_request(0, -1)
+            area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#707070'))
+            send_hpaned.pack1(area_send, false, true)
+
+            @sender_box = Gtk::VBox.new
+            sender_box.pack_start(edit_sw, true, true, 0)
+
+            send_hpaned.pack2(sender_box, true, true)
+
+            list_sw = Gtk::ScrolledWindow.new(nil, nil)
+            list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+            list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+            #list_sw.visible = false
+
+            list_store = Gtk::ListStore.new(TrueClass, String)
+            #targets[CSI_Persons].each do |person|
+            #  user_iter = list_store.append
+            #  user_iter[CL_Name] = PandoraUtils.bytes_to_hex(person)
+            #end
+
+            # create tree view
+            list_tree = Gtk::TreeView.new(list_store)
+            list_tree.rules_hint = true
+            list_tree.search_column = CL_Name
+
+            # column for fixed toggles
+            renderer = Gtk::CellRendererToggle.new
+            renderer.signal_connect('toggled') do |cell, path_str|
+              path = Gtk::TreePath.new(path_str)
+              iter = list_store.get_iter(path)
+              fixed = iter[CL_Online]
+              p 'fixed='+fixed.inspect
+              fixed ^= 1
+              iter[CL_Online] = fixed
+            end
+
+            tit_image = Gtk::Image.new(Gtk::Stock::CONNECT, Gtk::IconSize::MENU)
+            #tit_image.set_padding(2, 0)
+            tit_image.show_all
+
+            column = Gtk::TreeViewColumn.new('', renderer, 'active' => CL_Online)
+            column.widget = tit_image
+
+            # set this column to a fixed sizing (of 50 pixels)
+            #column.sizing = Gtk::TreeViewColumn::FIXED
+            #column.fixed_width = 50
+            list_tree.append_column(column)
+
+            # column for description
+            renderer = Gtk::CellRendererText.new
+
+            column = Gtk::TreeViewColumn.new(_('Nodes'), renderer, 'text' => CL_Name)
+            column.set_sort_column_id(CL_Name)
+            list_tree.append_column(column)
+
+            list_sw.add(list_tree)
+
+            list_hpaned = Gtk::HPaned.new
+            list_hpaned.pack1(list_sw, true, true)
+            list_hpaned.pack2(talksw, true, true)
+            #motion-notify-event  #leave-notify-event  enter-notify-event
+            #list_hpaned.signal_connect('notify::position') do |widget, param|
+            #  if list_hpaned.position <= 1
+            #    list_tree.set_size_request(0, -1)
+            #    list_sw.set_size_request(0, -1)
+            #  end
+            #end
+            list_hpaned.position = 1
+            list_hpaned.position = 0
+
+            area_send.add_events(Gdk::Event::BUTTON_PRESS_MASK)
+            area_send.signal_connect('button-press-event') do |widget, event|
+              if list_hpaned.position <= 1
+                list_sw.width_request = 150 if list_sw.width_request <= 1
+                list_hpaned.position = list_sw.width_request
+              else
+                list_sw.width_request = list_sw.allocation.width
+                list_hpaned.position = 0
+              end
+            end
+
+            area_send.signal_connect('visibility_notify_event') do |widget, event_visibility|
+              case event_visibility.state
+                when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
+                  init_video_sender(true, true) if not area_send.destroyed?
+                when Gdk::EventVisibility::FULLY_OBSCURED
+                  init_video_sender(false, true, false) if not area_send.destroyed?
+              end
+            end
+
+            area_send.signal_connect('destroy') do |*args|
+              init_video_sender(false)
+            end
+
+            listsend_vpaned.pack1(list_hpaned, true, true)
+            listsend_vpaned.pack2(send_hpaned, false, true)
+
+            @main_hpaned = Gtk::HPaned.new
+            main_hpaned.pack1(area_recv, false, true)
+            main_hpaned.pack2(listsend_vpaned, true, true)
+
+            area_recv.signal_connect('visibility_notify_event') do |widget, event_visibility|
+              #p 'visibility_notify_event!!!  state='+event_visibility.state.inspect
+              case event_visibility.state
+                when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
+                  init_video_receiver(true, true, false) if not area_recv.destroyed?
+                when Gdk::EventVisibility::FULLY_OBSCURED
+                  init_video_receiver(false, true) if not area_recv.destroyed?
+              end
+            end
+
+            #area_recv.signal_connect('map') do |widget, event|
+            #  p 'show!!!!'
+            #  init_video_receiver(true, true, false) if not area_recv.destroyed?
+            #end
+
+            area_recv.signal_connect('destroy') do |*args|
+              init_video_receiver(false, false)
+            end
+
+            fill_dlg_toolbar(page)
+
+            load_history($load_history_count, $sort_history_mode)
+            container.add(main_hpaned)
+          when CPI_Opinions
+            pbox = PandoraGtk::PanobjScrolledWindow.new
+            panhash = PandoraUtils.bytes_to_hex(cab_panhash)
+            PandoraGtk.show_panobject_list(PandoraModel::Message, nil, pbox, false, \
+              'destination='+panhash)
+            container.add(pbox)
+          when CPI_Relations
+            pbox = PandoraGtk::PanobjScrolledWindow.new
+            panhash = PandoraUtils.bytes_to_hex(cab_panhash)
+            PandoraGtk.show_panobject_list(PandoraModel::Relation, nil, pbox, false, \
+              'first='+panhash+' OR second='+panhash)
+            container.add(pbox)
+          when CPI_Signs
+            pbox = PandoraGtk::PanobjScrolledWindow.new
+            panhash = PandoraUtils.bytes_to_hex(cab_panhash)
+            PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox, false, \
+              'obj_hash='+panhash)
+            container.add(pbox)
+        end
+      else
+        case page
+          when CPI_Editor
+            if (prev_page == @active_page) and property_box \
+            and property_box.text_fields and (property_box.text_fields.size>0)
+              first_body_fld = property_box.text_fields[0]
+              if first_body_fld
+                bodywin = first_body_fld[FI_Widget2]
+                if bodywin.edit_btn
+                  bodywin.edit_btn.active = (not bodywin.edit_btn.active?)
+                end
+              end
+            end
         end
       end
-      case page
-        when CPI_Property
-          @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
-          fill_property_toolbar(property_box)
-          property_box.set_status_icons
-          #property_box.window_width = property_box.window_height = 0
-          p [self.allocation.width, self.allocation.height]
-          #property_box.on_resize_window(self.allocation.width, self.allocation.height)
-          #property_box.on_resize_window(container.allocation.width, container.allocation.height)
-          #container.signal_connect('configure-event') do |widget, event|
-          #  property_box.on_resize_window(event.width, event.height)
-          #  false
-          #end
-          container.add(property_box)
-        when CPI_Profile
-          short_name = ''
-
-          hpaned = Gtk::HPaned.new
-          hpaned.border_width = 2
-
-          list_sw = Gtk::ScrolledWindow.new(nil, nil)
-          list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
-          list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
-
-          list_store = Gtk::ListStore.new(String)
-
-          user_iter = list_store.append
-          user_iter[0] = _('Profile')
-          user_iter = list_store.append
-          user_iter[0] = _('Events')
-
-          # create tree view
-          list_tree = Gtk::TreeView.new(list_store)
-          #list_tree.rules_hint = true
-          #list_tree.search_column = CL_Name
-
-          renderer = Gtk::CellRendererText.new
-          column = Gtk::TreeViewColumn.new('№', renderer, 'text' => 0)
-          column.set_sort_column_id(0)
-          list_tree.append_column(column)
-
-          #renderer = Gtk::CellRendererText.new
-          #column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
-          #column.set_sort_column_id(1)
-          #list_tree.append_column(column)
-
-          list_tree.signal_connect('row_activated') do |tree_view, path, column|
-            # download and go to record
-          end
-
-          list_sw.add(list_tree)
-
-          feed = PandoraGtk::ChatTextView.new
-
-          hpaned.pack1(list_sw, false, true)
-          hpaned.pack2(feed, true, true)
-          list_sw.show_all
-
-          fill_view_toolbar
-          container.add(hpaned)
-        when CPI_Editor
-          #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
-          #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-          @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
-          fill_edit_toolbar
-          if property_box.text_fields.size>0
-            p property_box.text_fields
-            first_body_fld = property_box.text_fields[0]
-            if first_body_fld
-              bodywin = first_body_fld[FI_Widget2]
-              bodywin.fill_body
-              container.add(bodywin)
-            end
-          end
-        when CPI_Dialog, CPI_Chat
-          listsend_vpaned = Gtk::VPaned.new
-
-          @area_recv = ViewDrawingArea.new(self)
-          area_recv.set_size_request(0, -1)
-          area_recv.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#707070'))
-
-          res = area_recv.signal_connect('expose-event') do |*args|
-            #p 'area_recv '+area_recv.window.xid.inspect
-            false
-          end
-
-          @talkview = PandoraGtk::ChatTextView.new(54)
-          talkview.set_readonly(true)
-          talkview.set_size_request(200, 200)
-          talkview.wrap_mode = Gtk::TextTag::WRAP_WORD
-
-          talkview.buffer.create_tag('you', 'foreground' => $you_color)
-          talkview.buffer.create_tag('dude', 'foreground' => $dude_color)
-          talkview.buffer.create_tag('you_bold', 'foreground' => $you_color, \
-            'weight' => Pango::FontDescription::WEIGHT_BOLD)
-          talkview.buffer.create_tag('dude_bold', 'foreground' => $dude_color,  \
-            'weight' => Pango::FontDescription::WEIGHT_BOLD)
-          talkview.buffer.create_tag('sys', 'foreground' => $sys_color, \
-            'style' => Pango::FontDescription::STYLE_ITALIC)
-          talkview.buffer.create_tag('sys_bold', 'foreground' => $sys_color,  \
-            'weight' => Pango::FontDescription::WEIGHT_BOLD)
-
-          talksw = Gtk::ScrolledWindow.new(nil, nil)
-          talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-          talksw.add(talkview)
-
-          @edit_box = PandoraGtk::SuperTextView.new
-          edit_box.wrap_mode = Gtk::TextTag::WRAP_WORD
-          edit_box.set_size_request(200, 70)
-
-          @edit_sw = Gtk::ScrolledWindow.new(nil, nil)
-          edit_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-          edit_sw.add(edit_box)
-
-          edit_box.grab_focus
-
-          edit_box.buffer.signal_connect('changed') do |buf|
-            send_btn.sensitive = (buf.text != '')
-            false
-          end
-
-          edit_box.signal_connect('key-press-event') do |widget, event|
-            res = false
-            if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
-            and (not event.state.control_mask?) and (not event.state.shift_mask?) \
-            and (not event.state.mod1_mask?)
-              send_btn.clicked
-              res = true
-            elsif (Gdk::Keyval::GDK_Escape==event.keyval)
-              edit_box.buffer.text = ''
-            elsif ((event.state.shift_mask? or event.state.mod1_mask?) \
-            and (event.keyval==65364))  # Shift+Down or Alt+Down
-              smile_btn.clicked
-              res = true
-            elsif ([Gdk::Keyval::GDK_k, Gdk::Keyval::GDK_K, 1740, 1772].include?(event.keyval) \
-            and event.state.control_mask?) #k, K, л, Л
-              if crypt_btn and (not crypt_btn.destroyed?)
-                crypt_btn.active = (not crypt_btn.active?)
-                res = true
-              end
-            elsif ([Gdk::Keyval::GDK_g, Gdk::Keyval::GDK_G, 1744, 1776].include?(event.keyval) \
-            and event.state.control_mask?) #g, G, п, П
-              if sign_btn and (not sign_btn.destroyed?)
-                sign_btn.active = (not sign_btn.active?)
-                res = true
-              end
-            end
-            res
-          end
-
-          @send_hpaned = Gtk::HPaned.new
-          @area_send = ViewDrawingArea.new(self)
-          #area_send.set_size_request(120, 90)
-          area_send.set_size_request(0, -1)
-          area_send.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#707070'))
-          send_hpaned.pack1(area_send, false, true)
-
-          @sender_box = Gtk::VBox.new
-          sender_box.pack_start(edit_sw, true, true, 0)
-
-          send_hpaned.pack2(sender_box, true, true)
-
-          list_sw = Gtk::ScrolledWindow.new(nil, nil)
-          list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
-          list_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
-          #list_sw.visible = false
-
-          list_store = Gtk::ListStore.new(TrueClass, String)
-          #targets[CSI_Persons].each do |person|
-          #  user_iter = list_store.append
-          #  user_iter[CL_Name] = PandoraUtils.bytes_to_hex(person)
-          #end
-
-          # create tree view
-          list_tree = Gtk::TreeView.new(list_store)
-          list_tree.rules_hint = true
-          list_tree.search_column = CL_Name
-
-          # column for fixed toggles
-          renderer = Gtk::CellRendererToggle.new
-          renderer.signal_connect('toggled') do |cell, path_str|
-            path = Gtk::TreePath.new(path_str)
-            iter = list_store.get_iter(path)
-            fixed = iter[CL_Online]
-            p 'fixed='+fixed.inspect
-            fixed ^= 1
-            iter[CL_Online] = fixed
-          end
-
-          tit_image = Gtk::Image.new(Gtk::Stock::CONNECT, Gtk::IconSize::MENU)
-          #tit_image.set_padding(2, 0)
-          tit_image.show_all
-
-          column = Gtk::TreeViewColumn.new('', renderer, 'active' => CL_Online)
-          column.widget = tit_image
-
-          # set this column to a fixed sizing (of 50 pixels)
-          #column.sizing = Gtk::TreeViewColumn::FIXED
-          #column.fixed_width = 50
-          list_tree.append_column(column)
-
-          # column for description
-          renderer = Gtk::CellRendererText.new
-
-          column = Gtk::TreeViewColumn.new(_('Nodes'), renderer, 'text' => CL_Name)
-          column.set_sort_column_id(CL_Name)
-          list_tree.append_column(column)
-
-          list_sw.add(list_tree)
-
-          list_hpaned = Gtk::HPaned.new
-          list_hpaned.pack1(list_sw, true, true)
-          list_hpaned.pack2(talksw, true, true)
-          #motion-notify-event  #leave-notify-event  enter-notify-event
-          #list_hpaned.signal_connect('notify::position') do |widget, param|
-          #  if list_hpaned.position <= 1
-          #    list_tree.set_size_request(0, -1)
-          #    list_sw.set_size_request(0, -1)
-          #  end
-          #end
-          list_hpaned.position = 1
-          list_hpaned.position = 0
-
-          area_send.add_events(Gdk::Event::BUTTON_PRESS_MASK)
-          area_send.signal_connect('button-press-event') do |widget, event|
-            if list_hpaned.position <= 1
-              list_sw.width_request = 150 if list_sw.width_request <= 1
-              list_hpaned.position = list_sw.width_request
-            else
-              list_sw.width_request = list_sw.allocation.width
-              list_hpaned.position = 0
-            end
-          end
-
-          area_send.signal_connect('visibility_notify_event') do |widget, event_visibility|
-            case event_visibility.state
-              when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
-                init_video_sender(true, true) if not area_send.destroyed?
-              when Gdk::EventVisibility::FULLY_OBSCURED
-                init_video_sender(false, true, false) if not area_send.destroyed?
-            end
-          end
-
-          area_send.signal_connect('destroy') do |*args|
-            init_video_sender(false)
-          end
-
-          listsend_vpaned.pack1(list_hpaned, true, true)
-          listsend_vpaned.pack2(send_hpaned, false, true)
-
-          @main_hpaned = Gtk::HPaned.new
-          main_hpaned.pack1(area_recv, false, true)
-          main_hpaned.pack2(listsend_vpaned, true, true)
-
-          area_recv.signal_connect('visibility_notify_event') do |widget, event_visibility|
-            #p 'visibility_notify_event!!!  state='+event_visibility.state.inspect
-            case event_visibility.state
-              when Gdk::EventVisibility::UNOBSCURED, Gdk::EventVisibility::PARTIAL
-                init_video_receiver(true, true, false) if not area_recv.destroyed?
-              when Gdk::EventVisibility::FULLY_OBSCURED
-                init_video_receiver(false, true) if not area_recv.destroyed?
-            end
-          end
-
-          #area_recv.signal_connect('map') do |widget, event|
-          #  p 'show!!!!'
-          #  init_video_receiver(true, true, false) if not area_recv.destroyed?
-          #end
-
-          area_recv.signal_connect('destroy') do |*args|
-            init_video_receiver(false, false)
-          end
-
-          fill_dlg_toolbar(page)
-
-          load_history($load_history_count, $sort_history_mode)
-          container.add(main_hpaned)
-        when CPI_Opinions
-          pbox = PandoraGtk::PanobjScrolledWindow.new
-          panhash = PandoraUtils.bytes_to_hex(cab_panhash)
-          PandoraGtk.show_panobject_list(PandoraModel::Message, nil, pbox, false, \
-            'destination='+panhash)
-          container.add(pbox)
-        when CPI_Relations
-          pbox = PandoraGtk::PanobjScrolledWindow.new
-          panhash = PandoraUtils.bytes_to_hex(cab_panhash)
-          PandoraGtk.show_panobject_list(PandoraModel::Relation, nil, pbox, false, \
-            'first='+panhash+' OR second='+panhash)
-          container.add(pbox)
-        when CPI_Signs
-          pbox = PandoraGtk::PanobjScrolledWindow.new
-          panhash = PandoraUtils.bytes_to_hex(cab_panhash)
-          PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox, false, \
-            'obj_hash='+panhash)
-          container.add(pbox)
-      end
-      show_toolbar_btns(page)
       container.show_all
+      show_toolbar_btns(page)
     end
 
     # Show cabinet
@@ -18218,6 +18251,20 @@ module PandoraGtk
     # Construct room title
     # RU: Задаёт осмысленный заголовок окна
     def construct_cab_title(check_all=true, atitle_view=nil)
+
+      def trunc_big_title(title)
+        title.strip! if title
+        if title.size>MaxTitleLen
+          need_dots = (title[MaxTitleLen] != ' ')
+          len = MaxTitleLen
+          len -= 1 if need_dots
+          need_dots = (title[len-1] != ' ')
+          title = title[0, len].strip
+          title << '..' if need_dots
+        end
+        title
+      end
+
       res = 'unknown'
       if (kind==PandoraModel::PK_Person)
         title_view = atitle_view
@@ -18254,9 +18301,7 @@ module PandoraGtk
           res << addname
         end
         res = 'unknown' if (res.size==0)
-        if res.size>MaxTitleLen
-          res = res[0, MaxTitleLen-1]+'..'
-        end
+        res = trunc_big_title(res)
         tab_widget = $window.notebook.get_tab_label(self)
         tab_widget.label.text = res if tab_widget
         #p '$window.title_view, res='+[@$window.title_view, res].inspect
@@ -18307,7 +18352,8 @@ module PandoraGtk
           model = PandoraUtils.get_model(panobjectclass.ider)
           if model
             sel = model.select({'panhash'=>cab_panhash}, true, nil, nil, 1)
-            res = model.record_info(MaxTitleLen, nil, nil, ' ')
+            res = model.record_info(MaxTitleLen+1, nil, nil, ' ')
+            res = trunc_big_title(res)
             tab_widget = $window.notebook.get_tab_label(self)
             tab_widget.label.text = res if tab_widget
           end
@@ -22096,6 +22142,25 @@ module PandoraGtk
     $window.notebook.show_tabs = need_show
     $window.log_sw.visible = need_show
     $window.radar_sw.visible = need_show
+    @last_cur_page_toolbar ||= nil
+    if @last_cur_page_toolbar and (not @last_cur_page_toolbar.destroyed?)
+      if need_show and (not @last_cur_page_toolbar.visible?)
+        @last_cur_page_toolbar.visible = true
+      end
+      @last_cur_page_toolbar = nil
+    end
+    page = $window.notebook.page
+    if (page >= 0)
+      cur_page = $window.notebook.get_nth_page(page)
+      if (cur_page.is_a? PandoraGtk::CabinetBox) and cur_page.toolbar_box
+        if need_show
+          cur_page.toolbar_box.visible = true if (not cur_page.toolbar_box.visible?)
+        elsif PandoraGtk.is_ctrl_shift_alt?(true, true) and cur_page.toolbar_box.visible?
+          cur_page.toolbar_box.visible = false
+          @last_cur_page_toolbar = cur_page.toolbar_box
+        end
+      end
+    end
     $window.set_status_field(PandoraGtk::SF_FullScr, nil, nil, (not need_show))
   end
 
