@@ -3506,6 +3506,7 @@ module PandoraModel
   # Pandora record kind
   # RU: Тип записей Пандоры
   PK_Person    = 1
+  PK_City      = 4
   PK_Blob      = 12
   PK_Relation  = 14
   PK_Key       = 221
@@ -10630,10 +10631,12 @@ module PandoraNet
   # RU: Взять следующий сокет клиента со слушателя, или вернуть nil
   def self.get_listener_client_or_nil(server)
     client = nil
-    begin
-      client = server.accept_nonblock
-    rescue Errno::EAGAIN, Errno::EWOULDBLOCK
-      client = nil
+    if server
+      begin
+        client = server.accept_nonblock
+      rescue Errno::EAGAIN, Errno::EWOULDBLOCK
+        client = nil
+      end
     end
     client
   end
@@ -10688,6 +10691,40 @@ module PandoraNet
     res = (not($tcp_listen_thread.nil?) or not($udp_listen_thread.nil?))
   end
 
+  def self.parse_host_name(host, ip6=false)
+    if host
+      if host.size==0
+        host = nil
+      else
+        any = ((host=='any') or (host=='all'))
+        if ((host=='any4') or (host=='all4') or (host=='ip4') or (host=='IP4') \
+        or (any and (not ip6)))
+          host = Socket::INADDR_ANY   #"", "0.0.0.0", "0", "0::0", "::"
+        elsif ((host=='any6') or (host=='all6') or (host=='ip6') or (host=='IP6') \
+        or (any and ip6))
+          host = '::'
+        end
+      end
+    end
+    host
+  end
+
+  def self.create_session_for_socket(socket)
+    if socket
+      host_ip = socket.peeraddr[2]
+      if $window.pool.is_black?(host_ip)
+        PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
+      else
+        host_name = socket.peeraddr[3]
+        port = socket.peeraddr[1]
+        proto = 'tcp'
+        p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
+        session = Session.new(socket, host_name, host_ip, port, proto, \
+          0, nil, nil, nil, nil)
+      end
+    end
+  end
+
   WaitSecPanRegOnExit = 1.5
   $node_registering_thread = nil
 
@@ -10702,70 +10739,68 @@ module PandoraNet
       user = PandoraCrypto.current_user_or_key(true)
       if user
         $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, true)
-        host = $host
-        if not host
-          host = PandoraUtils.get_param('listen_host')
-          host ||= 'any'
-        end
-        if (not host)
-          host = ''
-        elsif ((host=='any') or (host=='any4') or (host=='all') or (host=='ip4') or (host=='IP4'))  #else can be "", "0.0.0.0", "0", "0::0", "::"
-          host = Socket::INADDR_ANY
-          p "ipv4 all"
-        elsif ((host=='any6') or (host=='all6') or (host=='ip6') or (host=='IP6'))
-          host = '::'
-          p "ipv6 all"
-        end
-
+        hosts = $host
+        hosts ||= PandoraUtils.get_param('listen_host')
+        hosts = hosts.split(',') if hosts
+        hosts.compact!
         # TCP Listener
         tcp_port = $tcp_port
         tcp_port ||= PandoraUtils.get_param('tcp_port')
         tcp_port ||= PandoraNet::DefTcpPort
-        if (tcp_port>0) and $tcp_listen_thread.nil?
+        if (hosts.is_a? Array) and (hosts.size>0) and (tcp_port>0) and $tcp_listen_thread.nil?
           $tcp_listen_thread = Thread.new do
-            begin
-              server = TCPServer.open(host, tcp_port)
-              addr_str = 'TCP ['+server.addr[3].to_s+']:'+server.addr[1].to_s
-              PandoraUtils.log_message(LM_Info, _('Listening')+' '+addr_str)
-            rescue
-              server = nil
-              str = 'TCP ['+host.to_s+']:'+tcp_port.to_s
-              PandoraUtils.log_message(LM_Warning, _('Cannot open')+' '+str)
-            end
-            if server
-              PandoraNet.register_node_ips(true)
-              Thread.current[:tcp_server] = server
-              Thread.current[:listen_tcp] = (server != nil)
-              while Thread.current[:listen_tcp] and server and (not server.closed?)
-                socket = get_listener_client_or_nil(server)
-                while Thread.current[:listen_tcp] and not server.closed? and not socket
-                  sleep 0.05
-                  #Thread.pass
-                  #Gtk.main_iteration
-                  socket = get_listener_client_or_nil(server)
-                end
-
-                if Thread.current[:listen_tcp] and (not server.closed?) and socket
-                  host_ip = socket.peeraddr[2]
-                  if $window.pool.is_black?(host_ip)
-                    PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
-                  else
-                    host_name = socket.peeraddr[3]
-                    port = socket.peeraddr[1]
-                    proto = 'tcp'
-                    p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
-                    session = Session.new(socket, host_name, host_ip, port, proto, \
-                      0, nil, nil, nil, nil)
+            servers = Array.new
+            addr_strs = Array.new
+            ip4, ip6 = PandoraNet.register_node_ips(true)
+            hosts.each do |host|
+              host = parse_host_name(host, (not ip6.nil?))
+              if host
+                begin
+                  server = TCPServer.open(host, tcp_port)
+                  if server
+                    servers << server
+                    addr_str = 'TCP ['+server.addr[3].to_s+']:'+server.addr[1].to_s
+                    addr_strs << addr_str
+                    PandoraUtils.log_message(LM_Info, _('Listening')+' '+addr_str)
                   end
+                rescue => err
+                  str = 'TCP ['+host.to_s+']:'+tcp_port.to_s
+                  PandoraUtils.log_message(LM_Warning, _('Cannot open')+' '+str+' ' \
+                    +Utf8String.new(err.message))
                 end
               end
-              server.close if server and (not server.closed?)
-              PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
-              $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
-              $tcp_listen_thread = nil
-              $window.correct_lis_btn_state
-              PandoraNet.register_node_ips(false)
             end
+            if servers.size>0
+              Thread.current[:listen_tcp] = true
+              while Thread.current[:listen_tcp]
+                has_active = true
+                socket = nil
+                while Thread.current[:listen_tcp] and has_active and (not socket)
+                  sleep(0.05)
+                  has_active = false
+                  servers.each_with_index do |server,i|
+                    if server
+                      if (server and server.closed?)
+                        servers[i] = nil
+                      else
+                        has_active= true
+                        socket = get_listener_client_or_nil(server)
+                        break if socket
+                      end
+                    end
+                  end
+                end
+                create_session_for_socket(socket)
+              end
+              servers.each_with_index do |server,i|
+                server.close if (server and (not server.closed?))
+                PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_strs[i])
+              end
+            end
+            $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
+            $tcp_listen_thread = nil
+            $window.correct_lis_btn_state
+            PandoraNet.register_node_ips(false)
           end
         end
 
@@ -10773,7 +10808,8 @@ module PandoraNet
         udp_port = $udp_port
         udp_port ||= PandoraUtils.get_param('udp_port')
         udp_port ||= PandoraNet::DefUdpPort
-        if (udp_port>0) and $udp_listen_thread.nil?
+        if (udp_port>0) and $udp_listen_thread.nil? and (hosts.size>0)
+          host = parse_host_name(hosts[0])
           $udp_listen_thread = Thread.new do
             # Init UDP listener
             begin
@@ -11071,6 +11107,7 @@ module PandoraNet
         end
       end
       $node_registering_thread = nil
+      [ip4, ip6]
     end
   end
 
@@ -11533,16 +11570,17 @@ module PandoraGtk
   # Statusbar fields
   # RU: Поля в статусбаре
   SF_Log     = 0
-  SF_Update  = 1
-  SF_Lang    = 2
-  SF_Auth    = 3
-  SF_Listen  = 4
-  SF_Hunt    = 5
-  SF_Conn    = 6
-  SF_Radar   = 7
-  SF_Fisher  = 8
-  SF_Search  = 9
-  SF_Harvest = 10
+  SF_FullScr = 1
+  SF_Update  = 2
+  SF_Lang    = 3
+  SF_Auth    = 4
+  SF_Listen  = 5
+  SF_Hunt    = 6
+  SF_Conn    = 7
+  SF_Radar   = 8
+  SF_Fisher  = 9
+  SF_Search  = 10
+  SF_Harvest = 11
 
   # Good and simle MessageDialog
   # RU: Хороший и простой MessageDialog
@@ -13555,7 +13593,7 @@ module PandoraGtk
     attr_accessor :latitude, :longitude
     CoordWidth = 110
 
-    def initialize(amodal=nil)
+    def initialize(amodal=nil, hide_btn=nil)
       super(Gtk::HBox, :coord, 'Coordinates', amodal)
       @latitude   = CoordEntry.new
       latitude.tooltip_text = _('Latitude')+': 60.716, 60 43\', 60.43\'00"N'+"\n["+latitude.mask+']'
@@ -13565,6 +13603,10 @@ module PandoraGtk
       longitude.width_request = CoordWidth
       entry.pack_start(latitude, false, false, 0)
       @entry.pack_start(longitude, false, false, 1)
+      if hide_btn
+        @button.destroy
+        @button = nil
+      end
     end
 
     def do_on_click
@@ -13583,7 +13625,9 @@ module PandoraGtk
     end
 
     def max_length=(maxlen)
-      ml = (maxlen-@button.allocation.width) / 2
+      btn_width = 0
+      btn_width = @button.allocation.width if @button
+      ml = (maxlen-btn_width) / 2
       latitude.max_length = ml
       longitude.max_length = ml
     end
@@ -14729,7 +14773,7 @@ module PandoraGtk
                                   type = 'LIST'
                                 end
 
-                                dest_buf.insert(iter, name)
+                                dest_buf.insert(dest_buf.end_iter, name)
                                 dest_buf.insert(dest_buf.end_iter, name, 'bold')
                                 dest_buf.insert(dest_buf.end_iter, ': ')
                                 shift_coms(name.size+2)
@@ -15233,7 +15277,7 @@ module PandoraGtk
     include PandoraUtils
 
     attr_accessor :field, :link_name, :body_child, :format, :raw_buffer, :view_buffer, \
-      :view_mode, :color_mode, :toolbar, :toolbar2, :fields, :property_box
+      :view_mode, :color_mode, :fields, :property_box, :toolbar, :edit_btn
 
     def parent_win
       res = parent.parent.parent
@@ -15813,7 +15857,7 @@ module PandoraGtk
           set_tags(raw_buffer, 0, raw_buffer.line_count)
         end
         fmt_btn = property_box.format_btn
-        fmt_btn.label = format if (fmt_btn.label != format)
+        fmt_btn.label = format if (fmt_btn and (fmt_btn.label != format))
         tv.show
         tv.grab_focus
       end
@@ -15823,12 +15867,9 @@ module PandoraGtk
     # RU: Задать тэг для выделенного
     def insert_tag(tag, params=nil, defval=nil)
       if tag
-        tv = self.body_child
-        if self.view_mode
-          btn = PandoraGtk.find_tool_btn(toolbar, 'Edit')
-          btn.active = true if btn.is_a? Gtk::ToggleToolButton
-        end
-        tv.set_tag(tag, params, defval, self.format)
+        tv = body_child
+        edit_btn.active = true if edit_btn if view_mode
+        tv.set_tag(tag, params, defval, format)
       end
     end
 
@@ -15867,8 +15908,8 @@ module PandoraGtk
       data.lines_per_page = (height / data.font_size).floor
       p '[context.height, height, HEADER_HEIGHT, HEADER_GAP, data.lines_per_page]='+\
         [context.height, height, HEADER_HEIGHT, HEADER_GAP, data.lines_per_page].inspect
-      bw = get_bodywin
-      data.lines = bw.body_child.buffer
+      tv = body_child
+      data.lines = tv.buffer
       data.n_pages = (data.lines.line_count - 1) / data.lines_per_page + 1
       operation.set_n_pages(data.n_pages)
     end
@@ -15907,7 +15948,7 @@ module PandoraGtk
     end
 
     def draw_body(cr, operation, context, page_number, data)
-      bw = get_bodywin
+      bw = self
       if bw.view_mode
         tv = bw.body_child
         cm = Gdk::Colormap.system
@@ -16104,7 +16145,9 @@ module PandoraGtk
           when 'date'
             entry = DateEntry.new(amodal)
           when 'coord'
-            entry = CoordBox.new(amodal)
+            its_city = (panobject and (panobject.is_a? PandoraModel::City)) \
+              or (kind==PandoraModel::PK_City)
+            entry = CoordBox.new(amodal, its_city)
           when 'filename', 'blob'
             entry = FilenameBox.new(window, amodal) do |filename, entry, button, filename0|
               name_fld = @panobject.field_des('name')
@@ -17395,10 +17438,7 @@ module PandoraGtk
         bodywin.view_mode = (not btn.active?)
         bodywin.set_buffers
       end
-      btn = add_btn_to_toolbar(:tags, 'Color tags', true) do |btn|
-        bodywin.color_mode = btn.active?
-        bodywin.set_buffers
-      end
+      bodywin.edit_btn = btn if bodywin
 
       btn = add_btn_to_toolbar(nil, 'auto', 0)
       pb.format_btn = btn
@@ -17419,6 +17459,8 @@ module PandoraGtk
       toolbar = Gtk::Toolbar.new
       toolbar.show_arrow = true
       toolbar.toolbar_style = Gtk::Toolbar::Style::ICONS
+
+      bodywin.toolbar = toolbar if bodywin
 
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::BOLD) do
         bodywin.insert_tag('bold')
@@ -17655,6 +17697,13 @@ module PandoraGtk
       end
       menu.show_all
 
+      PandoraGtk.add_tool_btn(toolbar, :tags, 'Color tags', true) do |btn|
+        bodywin.color_mode = btn.active?
+        bodywin.set_buffers
+      end
+
+      PandoraGtk.add_tool_btn(toolbar)
+
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE) do
         pb.save_fields_with_flags
       end
@@ -17673,10 +17722,6 @@ module PandoraGtk
       add_btn_to_toolbar(Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
       add_btn_to_toolbar(Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
       @zoom_100 = add_btn_to_toolbar(Gtk::Stock::ZOOM_100, 'Show 1:1', true) do
-        #bw = get_bodywin
-        #if bw and (bc = bw.body_child)
-        #  p image = bc
-        #end
         @zoom_fit.safe_set_active(false)
         true
       end
@@ -20292,14 +20337,18 @@ module PandoraGtk
 
   def self.find_tool_btn(toolbar, title)
     res = nil
-    i = 0
-    #p 'find_tool_btn  toolbar='+toolbar.inspect
-    while (i<toolbar.children.size) and (not res)
-      ch = toolbar.children[i]
-      if (ch.is_a? Gtk::ToolButton) or (ch.is_a? Gtk::ToggleToolButton)
-        res = ch if (ch.label == title)
+    if toolbar
+      lang_title = _(title)
+      i = 0
+      while (i<toolbar.children.size) and (not res)
+        ch = toolbar.children[i]
+        if (((ch.is_a? Gtk::ToolButton) or (ch.is_a? Gtk::ToggleToolButton)) \
+        and ((ch.label == title) or (ch.label == lang_title)))
+          res = ch
+          break
+        end
+        i += 1
       end
-      i += 1
     end
     res
   end
@@ -22038,6 +22087,18 @@ module PandoraGtk
     #$window.notebook.page = $window.notebook.n_pages-1
   end
 
+  # Switch full screen mode
+  # RU: Переключить режим полного экрана
+  def self.full_screen_switch
+    need_show = (not $window.menubar.visible?)
+    $window.menubar.visible = need_show
+    $window.toolbar.visible = need_show
+    $window.notebook.show_tabs = need_show
+    $window.log_sw.visible = need_show
+    $window.radar_sw.visible = need_show
+    $window.set_status_field(PandoraGtk::SF_FullScr, nil, nil, (not need_show))
+  end
+
   # Show log bar
   # RU: Показать log бар
   def self.show_log_bar(new_size=nil)
@@ -22504,7 +22565,8 @@ module PandoraGtk
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
       :pool, :focus_timer, :title_view, :do_on_start, :radar_hpaned, :task_offset, \
-      :radar_sw, :log_vpaned, :log_sw, :accel_group, :node_reg_offset
+      :radar_sw, :log_vpaned, :log_sw, :accel_group, :node_reg_offset, :menubar, :toolbar
+
 
     include PandoraUtils
 
@@ -23113,6 +23175,8 @@ module PandoraGtk
           PandoraGtk.show_session_panel
         when 'Radar'
           PandoraGtk.show_radar_panel
+        when 'FullScr'
+          PandoraGtk.full_screen_switch
         when 'LogBar'
           PandoraGtk.show_log_bar
         when 'Fisher'
@@ -23654,10 +23718,10 @@ module PandoraGtk
 
       $window.register_stock(:save)
 
-      menubar = Gtk::MenuBar.new
+      @menubar = Gtk::MenuBar.new
       fill_menubar(menubar)
 
-      toolbar = Gtk::Toolbar.new
+      @toolbar = Gtk::Toolbar.new
       toolbar.show_arrow = true
       toolbar.toolbar_style = Gtk::Toolbar::Style::ICONS
       fill_main_toolbar(toolbar)
@@ -23748,6 +23812,9 @@ module PandoraGtk
 
       add_status_field(SF_Log, nil, 'Logbar', :log, false, 0) do
         do_menu_act('LogBar')
+      end
+      add_status_field(SF_FullScr, nil, 'Full screen', Gtk::Stock::FULLSCREEN, false, 0) do
+        do_menu_act('FullScr')
       end
 
       path = $pandora_app_dir
@@ -23951,9 +24018,9 @@ module PandoraGtk
         then
           if notebook.page >= 0
             sw = notebook.get_nth_page(notebook.page)
-            if sw.is_a? CabinetBox
-              sw.init_video_sender(false, true) if not sw.area_send.destroyed?
-              sw.init_video_receiver(false) if not sw.area_recv.destroyed?
+            if (sw.is_a? CabinetBox) and (not sw.destroyed?)
+              sw.init_video_sender(false, true) if sw.area_send and (not sw.area_send.destroyed?)
+              sw.init_video_receiver(false) if sw.area_recv and (not sw.area_recv.destroyed?)
             end
           end
           if widget.visible? and widget.active? and $statusicon.hide_on_minimize
