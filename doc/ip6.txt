@@ -7,7 +7,7 @@ sudo apt-get -y install miredo
 2) open /etc/default/miredo and set autorun:
 START_MIREDO=true
 
-3) open /etc/miredo/miredo.conf and add 2 line:
+3) open /etc/miredo/miredo.conf and add/change 2 line:
 InterfaceName  teredo
 ServerAddress  teredo.trex.fi
 

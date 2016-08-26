@@ -3361,7 +3361,7 @@ module PandoraUtils
         str.force_encoding('UTF-8')
         len = $waMultiByteToWideChar.call(CP_UTF8, 0, str, -1, nil, 0)
         if (len.is_a? Integer) and (len>0)
-          buf = 0.chr * len * 2
+          buf = 0.chr * (len * 2)
           len = $waMultiByteToWideChar.call(CP_UTF8, 0, str, -1, buf, len)
           str = buf if (len.is_a? Integer) and (len>0)
         end
@@ -3378,12 +3378,12 @@ module PandoraUtils
     #oper = :edit, :find, :open, :print, :properties
     res = nil
     if init_win32api
-      link = win_utf8_to_unicode(link)
       $waShellExecute ||= Win32API.new('shell32', 'ShellExecuteW', \
         ['L', 'P', 'P', 'P', 'P', 'L'], 'L')
       if $waShellExecute
+        #puts 'win_shell_execute [link, oper]='+[link, oper].inspect
+        link = win_utf8_to_unicode(link)
         oper = win_utf8_to_unicode(oper.to_s) if oper
-        puts 'win_shell_execute [link, oper]='+[link, oper].inspect
         res = $waShellExecute.call(0, oper, link, nil, nil, SW_SHOW)
         res = ((res.is_a? Numeric) and ((res == 33) or (res == 42)))
       end
@@ -15032,7 +15032,8 @@ module PandoraGtk
   end
 
   class ChatTextView < SuperTextView
-    attr_accessor :mes_ids, :numbers, :pixels
+    attr_accessor :mes_ids, :numbers, :pixels, :send_btn, :edit_box, \
+      :crypt_btn, :sign_btn, :smile_btn
 
     def initialize(*args)
       @@save_buf ||= $window.get_icon_scale_buf('save', 'pan', 14)
@@ -17058,12 +17059,12 @@ module PandoraGtk
   # Panobject cabinet page
   # RU: Страница кабинета панобъекта
   class CabinetBox < Gtk::VBox
-    attr_accessor :room_id, :crypt_btn, :sign_btn, :sign_scale, :sign0, \
-      :online_btn, :mic_btn, :webcam_btn, :talkview, :edit_box, :area_send, \
-      :area_recv, :recv_media_pipeline, :appsrcs, :session, :ximagesink, \
+    attr_accessor :room_id, :online_btn, :mic_btn, :webcam_btn, \
+      :talkview, :area_send, :area_recv, :recv_media_pipeline, \
+      :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, \
       :sender_box, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
-      :send_hpaned, :cab_notebook, :send_btn, :opt_btns, :cab_panhash, :session, \
+      :send_hpaned, :cab_notebook, :opt_btns, :cab_panhash, :session, \
       :bodywin, :fields, :obj_id, :edit, :property_box, :kind, :label_box, \
       :active_page
 
@@ -17188,7 +17189,7 @@ module PandoraGtk
         area_recv.queue_draw
         Thread.pass
         talkview.after_addition(true)
-        @edit_box.grab_focus
+        talkview.grab_focus
       end
     end
 
@@ -17324,22 +17325,14 @@ module PandoraGtk
 
     end
 
-    def fill_dlg_toolbar(page=nil)
-      @crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', false) if (page==CPI_Dialog)
+    def fill_dlg_toolbar(page, talkview)
+      crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', false) if (page==CPI_Dialog)
 
-      @sign0 = 1.0
-      @sign_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |widget|
-        if not widget.destroyed?
-          sign_scale.sensitive = widget.active?
-          if widget.active?
-            @sign0 ||= 1.0
-            sign_scale.scale.value = @sign0
-          else
-            @sign0 = sign_scale.scale.value
-          end
-        end
+      sign_scale = nil
+      sign_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |widget|
+        sign_scale.sensitive = widget.active? if not widget.destroyed?
       end
-      @sign_scale = TrustScale.new(nil, 'Vouch', @sign0)
+      sign_scale = TrustScale.new(nil, 'Vouch', 1.0)
       sign_scale.sensitive = sign_btn.active?
       add_btn_to_toolbar(sign_scale)
 
@@ -17400,27 +17393,32 @@ module PandoraGtk
       def_smiles = PandoraUtils.get_param('def_smiles')
       smile_btn = SmileButton.new(def_smiles) do |preset, label|
         smile_img = '[emot='+preset+'/'+label+']'
-        smile_img = ' '+smile_img if edit_box.buffer.text != ''
-        edit_box.buffer.insert_at_cursor(smile_img)
+        smile_img = ' '+smile_img if talkview.edit_box.buffer.text != ''
+        talkview.edit_box.buffer.insert_at_cursor(smile_img)
       end
       smile_btn.tooltip_text = _('Smile')+' (Alt+Down)'
       add_btn_to_toolbar(smile_btn)
 
       game_btn = add_btn_to_toolbar(:game, 'Game') if page==CPI_Dialog
 
-      @send_btn = add_btn_to_toolbar(:send, 'Send') do |widget|
-        if edit_box.buffer.text != ''
-          mes = edit_box.buffer.text
+      send_btn = add_btn_to_toolbar(:send, 'Send') do |widget|
+        mes = talkview.edit_box.buffer.text
+        if mes != ''
           sign_trust = nil
           sign_trust = sign_scale.scale.value if sign_btn.active?
-          res = send_mes(mes, crypt_btn.active?, sign_trust)
-          if res
-            edit_box.buffer.text = ''
+          crypt = nil
+          crypt = crypt_btn.active? if crypt_btn
+          if send_mes(mes, crypt, sign_trust)
+            talkview.edit_box.buffer.text = ''
           end
         end
         false
       end
       send_btn.sensitive = false
+      talkview.crypt_btn = crypt_btn
+      talkview.sign_btn = sign_btn
+      talkview.smile_btn = smile_btn
+      talkview.send_btn = send_btn
     end
 
     # Add menu item
@@ -17882,27 +17880,29 @@ module PandoraGtk
               false
             end
 
-            @talkview = PandoraGtk::ChatTextView.new(54)
-            talkview.set_readonly(true)
-            talkview.set_size_request(200, 200)
-            talkview.wrap_mode = Gtk::TextTag::WRAP_WORD
+            atalkview = PandoraGtk::ChatTextView.new(54)
+            @talkview = atalkview if page==CPI_Dialog
+            atalkview.set_readonly(true)
+            atalkview.set_size_request(200, 200)
+            atalkview.wrap_mode = Gtk::TextTag::WRAP_WORD
 
-            talkview.buffer.create_tag('you', 'foreground' => $you_color)
-            talkview.buffer.create_tag('dude', 'foreground' => $dude_color)
-            talkview.buffer.create_tag('you_bold', 'foreground' => $you_color, \
+            atalkview.buffer.create_tag('you', 'foreground' => $you_color)
+            atalkview.buffer.create_tag('dude', 'foreground' => $dude_color)
+            atalkview.buffer.create_tag('you_bold', 'foreground' => $you_color, \
               'weight' => Pango::FontDescription::WEIGHT_BOLD)
-            talkview.buffer.create_tag('dude_bold', 'foreground' => $dude_color,  \
+            atalkview.buffer.create_tag('dude_bold', 'foreground' => $dude_color,  \
               'weight' => Pango::FontDescription::WEIGHT_BOLD)
-            talkview.buffer.create_tag('sys', 'foreground' => $sys_color, \
+            atalkview.buffer.create_tag('sys', 'foreground' => $sys_color, \
               'style' => Pango::FontDescription::STYLE_ITALIC)
-            talkview.buffer.create_tag('sys_bold', 'foreground' => $sys_color,  \
+            atalkview.buffer.create_tag('sys_bold', 'foreground' => $sys_color,  \
               'weight' => Pango::FontDescription::WEIGHT_BOLD)
 
             talksw = Gtk::ScrolledWindow.new(nil, nil)
             talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-            talksw.add(talkview)
+            talksw.add(atalkview)
 
-            @edit_box = PandoraGtk::SuperTextView.new
+            edit_box = PandoraGtk::SuperTextView.new
+            atalkview.edit_box = edit_box
             edit_box.wrap_mode = Gtk::TextTag::WRAP_WORD
             edit_box.set_size_request(200, 70)
 
@@ -17913,7 +17913,7 @@ module PandoraGtk
             edit_box.grab_focus
 
             edit_box.buffer.signal_connect('changed') do |buf|
-              send_btn.sensitive = (buf.text != '')
+              atalkview.send_btn.sensitive = (buf.text != '')
               false
             end
 
@@ -17922,24 +17922,24 @@ module PandoraGtk
               if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval) \
               and (not event.state.control_mask?) and (not event.state.shift_mask?) \
               and (not event.state.mod1_mask?)
-                send_btn.clicked
+                atalkview.send_btn.clicked
                 res = true
               elsif (Gdk::Keyval::GDK_Escape==event.keyval)
                 edit_box.buffer.text = ''
               elsif ((event.state.shift_mask? or event.state.mod1_mask?) \
               and (event.keyval==65364))  # Shift+Down or Alt+Down
-                smile_btn.clicked
+                atalkview.smile_btn.clicked
                 res = true
               elsif ([Gdk::Keyval::GDK_k, Gdk::Keyval::GDK_K, 1740, 1772].include?(event.keyval) \
               and event.state.control_mask?) #k, K, л, Л
-                if crypt_btn and (not crypt_btn.destroyed?)
-                  crypt_btn.active = (not crypt_btn.active?)
+                if atalkview.crypt_btn and (not atalkview.crypt_btn.destroyed?)
+                  atalkview.crypt_btn.active = (not atalkview.crypt_btn.active?)
                   res = true
                 end
               elsif ([Gdk::Keyval::GDK_g, Gdk::Keyval::GDK_G, 1744, 1776].include?(event.keyval) \
               and event.state.control_mask?) #g, G, п, П
-                if sign_btn and (not sign_btn.destroyed?)
-                  sign_btn.active = (not sign_btn.active?)
+                if atalkview.sign_btn and (not atalkview.sign_btn.destroyed?)
+                  atalkview.sign_btn.active = (not atalkview.sign_btn.active?)
                   res = true
                 end
               end
@@ -18069,7 +18069,7 @@ module PandoraGtk
               init_video_receiver(false, false)
             end
 
-            fill_dlg_toolbar(page)
+            fill_dlg_toolbar(page, atalkview)
 
             load_history($load_history_count, $sort_history_mode)
             container.add(main_hpaned)
@@ -18407,18 +18407,20 @@ module PandoraGtk
           time_str << '('+PandoraUtils.time_to_dialog_str(modified, time_now)+')'
         end
 
-        talkview.before_addition(time_now) if (not to_end.is_a? FalseClass)
-        talkview.buffer.insert(talkview.buffer.end_iter, "\n") if (talkview.buffer.char_count>0)
-        talkview.buffer.insert(talkview.buffer.end_iter, time_str+' ', time_style)
-        talkview.buffer.insert(talkview.buffer.end_iter, user_name+':', name_style)
+        if talkview
+          talkview.before_addition(time_now) if (not to_end.is_a? FalseClass)
+          talkview.buffer.insert(talkview.buffer.end_iter, "\n") if (talkview.buffer.char_count>0)
+          talkview.buffer.insert(talkview.buffer.end_iter, time_str+' ', time_style)
+          talkview.buffer.insert(talkview.buffer.end_iter, user_name+':', name_style)
 
-        line = talkview.buffer.line_count
-        talkview.mes_ids[line] = id
+          line = talkview.buffer.line_count
+          talkview.mes_ids[line] = id
 
-        talkview.buffer.insert(talkview.buffer.end_iter, ' ')
-        talkview.insert_taged_str_to_buffer(mes, talkview.buffer, 'bbcode')
-        talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
-        talkview.show_all
+          talkview.buffer.insert(talkview.buffer.end_iter, ' ')
+          talkview.insert_taged_str_to_buffer(mes, talkview.buffer, 'bbcode')
+          talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
+          talkview.show_all
+        end
 
         update_state(true) if notice
       end
@@ -18626,8 +18628,10 @@ module PandoraGtk
             timer_setted = true
             self.read_thread = Thread.new do
               sleep(0.3)
-              if (not curpage.destroyed?) and (not curpage.edit_box.destroyed?)
-                curpage.edit_box.grab_focus if curpage.edit_box.visible?
+              if (not curpage.destroyed?) and curpage.talkview and \
+              (not curpage.talkview.destroyed?) and curpage.talkview.edit_box \
+              and (not curpage.talkview.edit_box.destroyed?)
+                curpage.talkview.edit_box.grab_focus if curpage.talkview.edit_box.visible?
                 curpage.talkview.after_addition(true)
               end
               if $window.visible? and $window.has_toplevel_focus?
@@ -18650,18 +18654,18 @@ module PandoraGtk
           end
         end
         # set focus to edit_box
-        if curpage and (curpage.is_a? CabinetBox) and curpage.edit_box
-          if not timer_setted
-            Thread.new do
-              sleep(0.3)
-              if (not curpage.destroyed?) and (not curpage.edit_box.destroyed?)
-                curpage.edit_box.grab_focus if curpage.edit_box.visible?
-              end
-            end
-          end
-          Thread.pass
-          curpage.edit_box.grab_focus if curpage.edit_box.visible?
-        end
+        #if curpage and (curpage.is_a? CabinetBox) and curpage.edit_box
+        #  if not timer_setted
+        #    Thread.new do
+        #      sleep(0.3)
+        #      if (not curpage.destroyed?) and (not curpage.edit_box.destroyed?)
+        #        curpage.edit_box.grab_focus if curpage.edit_box.visible?
+        #      end
+        #    end
+        #  end
+        #  Thread.pass
+        #  curpage.edit_box.grab_focus if curpage.edit_box.visible?
+        #end
       end
     end
 
@@ -23152,9 +23156,13 @@ module PandoraGtk
         when 'Guide'
           guide_fn = File.join($pandora_doc_dir, 'guide.'+$lang+'.pdf')
           if not File.exist?(guide_fn)
-            guide_fn = File.join($pandora_doc_dir, 'guide.en.pdf')
+            if ($lang == 'en')
+              guide_fn = File.join($pandora_doc_dir, 'guide.en.odt')
+            else
+              guide_fn = File.join($pandora_doc_dir, 'guide.en.pdf')
+            end
           end
-          if File.exist?(guide_fn)
+          if guide_fn and File.exist?(guide_fn)
             PandoraUtils.external_open(guide_fn, 'open')
           else
             PandoraUtils.external_open($pandora_doc_dir, 'open')
