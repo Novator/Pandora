@@ -7435,7 +7435,7 @@ module PandoraNet
 
   # Version of application and protocol (may be different)
   # RU: Версия программы и протокола (могут отличаться)
-  AppVersion   = '0.67'
+  AppVersion   = '0.68'
   ProtoVersion = 'pandora0.67'
 
   # Session of data exchange with another node
@@ -17346,8 +17346,18 @@ module PandoraGtk
         do |widget|
           p 'widget.active?='+widget.active?.inspect
           if widget.active? #and (not widget.inconsistent?)
-            $window.pool.init_session(nil, nil, 0, self, nil, \
-              cab_panhash, nil, nil, PandoraNet::CM_Captcha)
+            persons, keys, nodes = PandoraGtk.extract_from_panhash(cab_panhash)
+            if nodes and (nodes.size>0)
+              nodes.each do |nodehash|
+                $window.pool.init_session(nil, nodehash, 0, self, nil, \
+                  persons, keys, nil, PandoraNet::CM_Captcha)
+              end
+            elsif persons
+              persons.each do |person|
+                $window.pool.init_session(nil, nil, 0, self, nil, \
+                  person, keys, nil, PandoraNet::CM_Captcha)
+              end
+            end
           else
             widget.safe_set_active(false)
             $window.pool.stop_session(nil, cab_panhash, \
@@ -17759,6 +17769,7 @@ module PandoraGtk
 
     def show_page(page=CPI_Dialog, tab_signal=nil)
       p '---show_page [page, tab_signal]='+[page, tab_signal].inspect
+      page = CPI_Chat if ((page == CPI_Dialog) and (kind != PandoraModel::PK_Person))
       hide_toolbar_btns
       opt_btns.each do |opt_btn|
         opt_btn.safe_set_active(false) if (opt_btn.is_a?(SafeToggleToolButton))
@@ -18237,11 +18248,14 @@ module PandoraGtk
 
       show_all
       a_page ||= CPI_Dialog
-      show_page(a_page)
       opt_btns[CPI_Sub+1].children[0].children[0].hide
       btn_offset = CPI_Last_Sub-CPI_Sub-1
       opt_btns[CPI_Editor-btn_offset].hide if (not its_blob)
-      opt_btns[CPI_Dialog-btn_offset].hide if (kind != PandoraModel::PK_Person)
+      if (kind != PandoraModel::PK_Person)
+        opt_btns[CPI_Dialog-btn_offset].hide
+        a_page = CPI_Chat if a_page == CPI_Dialog
+      end
+      show_page(a_page)
 
       $window.notebook.page = $window.notebook.n_pages-1 if not @known_node
     end
@@ -20158,14 +20172,6 @@ module PandoraGtk
         res = true
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
           PandoraGtk.act_panobject(list_tree, 'Dialog')
-        elsif (event.keyval==Gdk::Keyval::GDK_Insert)
-          if event.state.control_mask?
-            #act_panobject(list_tree, 'Copy')
-          else
-            #act_panobject(list_tree, 'Create')
-          end
-        elsif (event.keyval==Gdk::Keyval::GDK_Delete)
-          #act_panobject(list_tree, 'Delete')
         elsif event.state.control_mask?
           if [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
             PandoraGtk.act_panobject(list_tree, 'Dialog')
@@ -20883,7 +20889,7 @@ module PandoraGtk
             end
           end
         end
-      elsif panobject or (action=='Dialog') or (action=='Opinion')
+      elsif panobject or (action=='Dialog') or (action=='Opinion') or (action=='Chat')
         # Edit or Insert
 
         edit = ((not new_act) and (action != 'Copy'))
@@ -20897,6 +20903,7 @@ module PandoraGtk
 
         if panhash0
           page = CPI_Property
+          page = CPI_Chat if (action=='Chat')
           page = CPI_Dialog if (action=='Dialog')
           page = CPI_Opinions if (action=='Opinion')
           show_cabinet(panhash0, nil, nil, nil, nil, page, formfields, id, edit)
@@ -21485,12 +21492,14 @@ module PandoraGtk
 
     treeview.signal_connect('row_activated') do |tree_view, path, column|
       if single
-        act_panobject(tree_view, 'Edit')
-        #act_panobject(tree_view, 'Dialog')
+        if (panobject.is_a? PandoraModel::Person)
+          act_panobject(tree_view, 'Dialog')
+        else
+          act_panobject(tree_view, 'Edit')
+        end
       else
         dialog = page_sw.parent.parent.parent
-        p '++dialog='+dialog.inspect
-        #dialog.okbutton.activate
+        dialog.okbutton.activate
       end
     end
 
@@ -21517,9 +21526,15 @@ module PandoraGtk
     PandoraGtk.add_tool_btn(hbox, Gtk::Stock::ADD, 'Create') do |widget|  #:NEW
       $window.do_menu_act('Create', treeview)
     end
+    chat_stock = :chat
+    chat_item = 'Chat'
+    if (panobject.is_a? PandoraModel::Person)
+      chat_stock = :dialog
+      chat_item = 'Dialog'
+    end
     if single
-      PandoraGtk.add_tool_btn(hbox, :dialog, 'Dialog') do |widget|
-        $window.do_menu_act('Dialog', treeview)
+      PandoraGtk.add_tool_btn(hbox, chat_stock, chat_item) do |widget|
+        $window.do_menu_act(chat_item, treeview)
       end
       PandoraGtk.add_tool_btn(hbox, :opinion, 'Opinions') do |widget|
         $window.do_menu_act('Opinion', treeview)
@@ -21558,7 +21573,14 @@ module PandoraGtk
       auto_create = false
     end
 
+    edit_opt = ':m'
+    dlg_opt = ':m'
     if single
+      if (panobject.is_a? PandoraModel::Person)
+        dlg_opt << 'b'
+      else
+        edit_opt << 'b'
+      end
       image = $window.get_panobject_image(panobject_class.ider, Gtk::IconSize::SMALL_TOOLBAR)
       #p 'single: widget='+widget.inspect
       #if widget.is_a? Gtk::ImageMenuItem
@@ -21597,11 +21619,11 @@ module PandoraGtk
 
     menu = Gtk::Menu.new
     menu.append(create_menu_item(['Create', Gtk::Stock::ADD, _('Create'), 'Insert'], treeview))  #:NEW
-    menu.append(create_menu_item(['Edit', Gtk::Stock::EDIT.to_s+':mb', _('Edit'), 'Return'], treeview))
+    menu.append(create_menu_item(['Edit', Gtk::Stock::EDIT.to_s+edit_opt, _('Edit'), 'Return'], treeview))
     menu.append(create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], treeview))
     menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], treeview))
     menu.append(create_menu_item(['-', nil, nil], treeview))
-    menu.append(create_menu_item(['Dialog', 'dialog', _('Dialog'), '<control>D'], treeview))
+    menu.append(create_menu_item([chat_item, chat_stock.to_s+dlg_opt, _(chat_item), '<control>D'], treeview))
     menu.append(create_menu_item(['Relation', :relation, _('Relate'), '<control>R'], treeview))
     menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], treeview))
     menu.append(create_menu_item(['-', nil, nil], treeview))
@@ -21725,27 +21747,29 @@ module PandoraGtk
 
   # Get person panhash by any panhash
   # RU: Получить панхэш персоны по произвольному панхэшу
-  def self.extract_targets_from_panhash(targets, panhashes)
+  def self.extract_targets_from_panhash(targets, panhashes=nil)
     persons, keys, nodes = targets
-    panhashes = [panhashes] if not panhashes.is_a? Array
-    #p '--extract_targets_from_panhash  targets='+targets.inspect
-    panhashes.each do |panhash|
-      if (panhash.is_a? String) and (panhash.bytesize>0)
-        kind = PandoraUtils.kind_from_panhash(panhash)
-        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-        if panobjectclass
-          if panobjectclass <= PandoraModel::Person
-            persons << panhash
-          elsif panobjectclass <= PandoraModel::Node
-            nodes << panhash
-          else
-            if panobjectclass <= PandoraModel::Created
-              model = PandoraUtils.get_model(panobjectclass.ider)
-              filter = {:panhash=>panhash}
-              sel = model.select(filter, false, 'creator')
-              if sel and sel.size>0
-                sel.each do |row|
-                  persons << row[0]
+    if panhashes
+      panhashes = [panhashes] if panhashes.is_a? String
+      #p '--extract_targets_from_panhash  targets='+targets.inspect
+      panhashes.each do |panhash|
+        if (panhash.is_a? String) and (panhash.bytesize>0)
+          kind = PandoraUtils.kind_from_panhash(panhash)
+          panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+          if panobjectclass
+            if panobjectclass <= PandoraModel::Person
+              persons << panhash
+            elsif panobjectclass <= PandoraModel::Node
+              nodes << panhash
+            else
+              if panobjectclass <= PandoraModel::Created
+                model = PandoraUtils.get_model(panobjectclass.ider)
+                filter = {:panhash=>panhash}
+                sel = model.select(filter, false, 'creator')
+                if sel and sel.size>0
+                  sel.each do |row|
+                    persons << row[0]
+                  end
                 end
               end
             end
@@ -21828,6 +21852,37 @@ module PandoraGtk
     nodes.uniq!
     nodes.compact!
     nodes.size
+  end
+
+  def self.extract_from_panhash(panhash, node_id=nil)
+    targets = [[], [], []]
+    persons, keys, nodes = targets
+    #if nodehash and (panhashes.is_a? String)
+    #  persons << panhashes
+    #  nodes << nodehash
+    #else
+      extract_targets_from_panhash(targets, panhash)
+    #end
+    targets.each do |list|
+      list.sort!
+      list.uniq!
+      list.compact!
+    end
+    p 'targets='+[targets].inspect
+
+    target_exist = ((persons.size>0) or (nodes.size>0) or (keys.size>0))
+    if (not target_exist) and node_id
+      node_model = PandoraUtils.get_model('Node', models)
+      sel = node_model.select({:id => node_id}, false, 'panhash, key_hash', nil, 1)
+      if sel and (sel.size>0)
+        sel.each do |row|
+          nodes << row[0]
+          keys  << row[1]
+        end
+        extract_targets_from_panhash(targets)
+      end
+    end
+    targets
   end
 
   # Construct room id
@@ -21977,36 +22032,6 @@ module PandoraGtk
       #end
     end
     [res, sw]
-  end
-
-  def self.extract_from_panhash(panhash)
-    targets = [[], [], []]
-    persons, keys, nodes = targets
-    if nodehash and (panhashes.is_a? String)
-      persons << panhashes
-      nodes << nodehash
-    else
-      extract_targets_from_panhash(targets, panhashes)
-    end
-    targets.each do |list|
-      list.sort!
-      list.uniq!
-      list.compact!
-    end
-    p 'targets='+[targets].inspect
-
-    target_exist = ((persons.size>0) or (nodes.size>0) or (keys.size>0))
-    if (not target_exist) and node_id
-      node_model = PandoraUtils.get_model('Node', models)
-      sel = node_model.select({:id => node_id}, false, 'panhash, key_hash', nil, 1)
-      if sel and sel.size>0
-        row = sel[0]
-        nodes << row[0]
-        keys  << row[1]
-        extract_targets_from_panhash(targets, panhashes)
-        target_exist = ((persons.size>0) or (nodes.size>0) or (keys.size>0))
-      end
-    end
   end
 
   # Show panobject cabinet
@@ -22159,7 +22184,7 @@ module PandoraGtk
       if (cur_page.is_a? PandoraGtk::CabinetBox) and cur_page.toolbar_box
         if need_show
           cur_page.toolbar_box.visible = true if (not cur_page.toolbar_box.visible?)
-        elsif PandoraGtk.is_ctrl_shift_alt?(true, true) and cur_page.toolbar_box.visible?
+        elsif PandoraGtk.is_ctrl_shift_alt?(true) and cur_page.toolbar_box.visible?
           cur_page.toolbar_box.visible = false
           @last_cur_page_toolbar = cur_page.toolbar_box
         end
@@ -22635,7 +22660,6 @@ module PandoraGtk
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
       :pool, :focus_timer, :title_view, :do_on_start, :radar_hpaned, :task_offset, \
       :radar_sw, :log_vpaned, :log_sw, :accel_group, :node_reg_offset, :menubar, :toolbar
-
 
     include PandoraUtils
 
@@ -23178,7 +23202,8 @@ module PandoraGtk
             close_btn = tab.children[tab.children.size-1].children[0]
             close_btn.clicked
           end
-        when 'Create','Edit','Delete','Copy', 'Dialog', 'Opinion', 'Convert', 'Import', 'Export'
+        when 'Create','Edit','Delete','Copy', 'Chat', 'Dialog', 'Opinion', \
+        'Convert', 'Import', 'Export'
           p 'act_panobject()  treeview='+treeview.inspect
           if (not treeview) and (notebook.page >= 0)
             sw = notebook.get_nth_page(notebook.page)
@@ -24043,6 +24068,9 @@ module PandoraGtk
           PandoraNet.start_or_stop_hunt(continue)
         elsif event.keyval == Gdk::Keyval::GDK_F5
           do_menu_act('Hunt')
+        elsif event.state.shift_mask? \
+        and (event.keyval == Gdk::Keyval::GDK_F11)
+          PandoraGtk.full_screen_switch
         elsif event.state.control_mask? \
         and (Gdk::Keyval::GDK_0..Gdk::Keyval::GDK_9).include?(event.keyval)
           num = $window.notebook.n_pages
