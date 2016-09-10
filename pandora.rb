@@ -4516,12 +4516,13 @@ module PandoraModel
     if panhash1 or panhash2
       creator = nil
       if panhash1.nil? or panhash2.nil?
-        panhash = PandoraCrypto.current_user_or_key(creator_for_nil, init)
-        creator = panhash if creator_for_nil
+        if creator_for_nil
+          creator = PandoraCrypto.current_user_or_key(true, init)
+        end
         if panhash1.nil?
-          panhash1 = panhash
+          panhash1 = creator
         else
-          panhash2 = panhash
+          panhash2 = creator
         end
       end
       if panhash1 and panhash2 #and (panhash1 != panhash2)
@@ -17066,7 +17067,7 @@ module PandoraGtk
       :sender_box, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
       :send_hpaned, :cab_notebook, :opt_btns, :cab_panhash, :session, \
       :bodywin, :fields, :obj_id, :edit, :property_box, :kind, :label_box, \
-      :active_page
+      :active_page, :dlg_stock, :its_blob, :def_widget
 
     include PandoraGtk
 
@@ -17292,7 +17293,7 @@ module PandoraGtk
           end
         end
       end
-      pb.public_scale = TrustScale.new(nil, 'Publish for level (and higher)', pb.public0)
+      pb.public_scale = TrustScale.new(nil, 'Publish from level and higher', pb.public0)
       pb.public_scale.sensitive = pb.public_btn.active?
       add_btn_to_toolbar(pb.public_scale)
 
@@ -17831,36 +17832,67 @@ module PandoraGtk
             list_store = Gtk::ListStore.new(String)
 
             user_iter = list_store.append
-            user_iter[0] = _('Profile')
+            user_iter[0] = _('Summary')
             user_iter = list_store.append
             user_iter[0] = _('Events')
 
             # create tree view
             list_tree = Gtk::TreeView.new(list_store)
+            list_tree.headers_visible = false
             #list_tree.rules_hint = true
             #list_tree.search_column = CL_Name
 
             renderer = Gtk::CellRendererText.new
-            column = Gtk::TreeViewColumn.new('№', renderer, 'text' => 0)
+            column = Gtk::TreeViewColumn.new(_('Menu'), renderer, 'text' => 0)
             column.set_sort_column_id(0)
             list_tree.append_column(column)
-
-            #renderer = Gtk::CellRendererText.new
-            #column = Gtk::TreeViewColumn.new(_('Record'), renderer, 'text' => 1)
-            #column.set_sort_column_id(1)
-            #list_tree.append_column(column)
 
             list_tree.signal_connect('row_activated') do |tree_view, path, column|
               # download and go to record
             end
-
+            list_tree.set_cursor(Gtk::TreePath.new(0), nil, false)
             list_sw.add(list_tree)
+
+            left_box = Gtk::VBox.new
+
+            dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, its_blob, 150)
+            #buf = PandoraModel.scale_buf_to_size(buf, icon_size, center)
+            dlg_image = nil
+            dlg_image = Gtk::Image.new(dlg_pixbuf) if dlg_pixbuf
+            #dlg_image ||= $window.get_preset_image('dialog')
+            dlg_image ||= dlg_stock
+            dlg_image ||= Gtk::Stock::MEDIA_PLAY
+            if not (dlg_image.is_a? Gtk::Image)
+              dlg_image = $window.get_preset_image(dlg_image, Gtk::IconSize::LARGE_TOOLBAR, nil)
+            end
+            dlg_image.height_request = 60 if not dlg_image.pixbuf
+            dlg_image.tooltip_text = _('Set avatar')
+            event_box = Gtk::EventBox.new.add(dlg_image)
+            event_box.events = Gdk::Event::BUTTON_PRESS_MASK
+            event_box.signal_connect("button_press_event") do |widget, event|
+              dialog = PandoraGtk::PanhashDialog.new([PandoraModel::Blob])
+              dialog.choose_record do |img_panhash|
+                PandoraModel.act_relation(img_panhash, cab_panhash, RK_AvatarFor, \
+                  :delete, false)
+                PandoraModel.act_relation(img_panhash, cab_panhash, RK_AvatarFor, \
+                  :create, false)
+                dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, its_blob, 150)
+                if dlg_pixbuf
+                  dlg_image.height_request = -1
+                  dlg_image.pixbuf = dlg_pixbuf
+                end
+              end
+            end
+
+            left_box.pack_start(event_box, false, false, 0)
+            left_box.pack_start(list_sw, true, true, 0)
 
             feed = PandoraGtk::ChatTextView.new
 
-            hpaned.pack1(list_sw, false, true)
+            hpaned.pack1(left_box, false, true)
             hpaned.pack2(feed, true, true)
             list_sw.show_all
+            def_widget = list_tree
 
             fill_view_toolbar
             container.add(hpaned)
@@ -18120,6 +18152,7 @@ module PandoraGtk
       end
       container.show_all
       show_toolbar_btns(page)
+      def_widget.grab_focus if (def_widget and (not def_widget.destroyed?))
     end
 
     # Show cabinet
@@ -18147,17 +18180,17 @@ module PandoraGtk
       #set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       #border_width = 0
 
-      dlg_stock = nil
-      its_blob = nil
+      @dlg_stock = nil
+      @its_blob = nil
       if cab_panhash
         kind = PandoraUtils.kind_from_panhash(cab_panhash)
         panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-        its_blob = ((kind==PandoraModel::PK_Blob) \
+        @its_blob = ((kind==PandoraModel::PK_Blob) \
           or (panobjectclass <= PandoraModel::Blob) \
           or panobjectclass.has_blob_fields?)
-        dlg_stock = $window.get_panobject_stock(panobjectclass.ider)
+        @dlg_stock = $window.get_panobject_stock(panobjectclass.ider)
       end
-      dlg_stock ||= Gtk::Stock::PROPERTIES
+      @dlg_stock ||= Gtk::Stock::PROPERTIES
 
       main_vbox = self #Gtk::VBox.new
       #add_with_viewport(main_vbox)
@@ -18221,7 +18254,6 @@ module PandoraGtk
       add_btn_to_toolbar(nil, nil, nil, opt_btns)
       main_vbox.pack_start(toolbar_box, false, false, 0)
 
-      p Gtk::IconSize.lookup(Gtk::IconSize::SMALL_TOOLBAR)
       dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, its_blob, \
         Gtk::IconSize.lookup(Gtk::IconSize::SMALL_TOOLBAR)[0])
       #buf = PandoraModel.scale_buf_to_size(buf, icon_size, center)
@@ -20889,7 +20921,8 @@ module PandoraGtk
             end
           end
         end
-      elsif panobject or (action=='Dialog') or (action=='Opinion') or (action=='Chat')
+      elsif panobject or (action=='Dialog') or (action=='Opinion') \
+      or (action=='Chat') or (action=='Profile')
         # Edit or Insert
 
         edit = ((not new_act) and (action != 'Copy'))
@@ -20903,6 +20936,7 @@ module PandoraGtk
 
         if panhash0
           page = CPI_Property
+          page = CPI_Profile if (action=='Profile')
           page = CPI_Chat if (action=='Chat')
           page = CPI_Dialog if (action=='Dialog')
           page = CPI_Opinions if (action=='Opinion')
@@ -23266,7 +23300,10 @@ module PandoraGtk
         when 'Wizard'
           PandoraGtk.show_log_bar(80)
         when 'Profile'
-          PandoraGtk.show_profile_panel
+          current_user = PandoraCrypto.current_user_or_key(true, true)
+          if current_user
+            PandoraGtk.show_cabinet(current_user, nil, nil, nil, nil, CPI_Profile)
+          end
         when 'Search'
           PandoraGtk.show_search_panel
         when 'Session'
