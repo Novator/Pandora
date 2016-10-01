@@ -455,5 +455,6 @@ Key is not found with panhash=>Ключ не найден с панхэшем
 Editor=>Редактор
 Shelve=>В архив
 Full screen=>Полный экран
-Summary=>Сводка
+Info=>Инфо
+Feed=>Лента
 Set avatar=>Задать аватар

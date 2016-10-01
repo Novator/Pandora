@@ -5652,6 +5652,16 @@ module PandoraCrypto
     res
   end
 
+  # Get user panhash from key panhash
+  # RU: Возвращает панхэш пользователя по панхэшу ключа
+  def self.get_userhash_by_keyhash(keyhash)
+    res = nil
+    key_model = PandoraUtils.get_model('Key')
+    sel = key_model.select({:panhash => keyhash}, false, 'creator', nil, 1)
+    res = sel[0][0] if sel and (sel.size>0)
+    res
+  end
+
   # Pack method of data before sign
   # RU: Метод упаковки данных перед подписанием
   PSM_Pson   = 1
@@ -8906,23 +8916,32 @@ module PandoraNet
                   clue_length = rdata[0].ord
                   clue_text = rdata[1,clue_length]
                   captcha_buf = rdata[clue_length+1..-1]
-
                   if $window.visible? #and $window.has_toplevel_focus?
-                    #panhashes = [@skey[PandoraCrypto::KV_Panhash], @skey[PandoraCrypto::KV_Creator]]
+                    dstkey = nil
+                    dstkey = @skey[PandoraCrypto::KV_Creator] if @skey
+                    dstkey ||= params['dstkey']
+                    dstkey ||= params['tokey']
+                    dstperson = PandoraCrypto.get_userhash_by_keyhash(dstkey)
+                    dstperson ||= dstkey
                     entered_captcha, dlg = PandoraGtk.show_captcha(captcha_buf, \
-                      clue_text, conn_type, @node, @node_id, @recv_models, nil, self)
-                    @dialog ||= dlg
-                    @dialog.set_session(self, true) if @dialog
-                    if entered_captcha
-                      @scmd = EC_Auth
-                      @scode = ECC_Auth_Answer
-                      @sbuf = entered_captcha
-                      p log_mes + 'CAPCHA ANSWER setted: '+entered_captcha.inspect
-                    elsif entered_captcha.nil?
-                      err_scmd('Cannot open captcha dialog')
+                      clue_text, conn_type, @node, @node_id, @recv_models, \
+                      dstperson, self)
+                    if dlg
+                      @dialog ||= dlg
+                      @dialog.set_session(self, true) if @dialog
+                      if entered_captcha
+                        @scmd = EC_Auth
+                        @scode = ECC_Auth_Answer
+                        @sbuf = entered_captcha
+                        p log_mes + 'CAPCHA ANSWER setted: '+entered_captcha.inspect
+                      elsif entered_captcha.nil?
+                        err_scmd('Cannot open captcha dialog')
+                      else
+                        err_scmd('Captcha enter canceled')
+                        @conn_mode = (@conn_mode & (~PandoraNet::CM_Keep))
+                      end
                     else
-                      err_scmd('Captcha enter canceled')
-                      @conn_mode = (@conn_mode & (~PandoraNet::CM_Keep))
+                      err_scmd('Cannot init captcha dialog')
                     end
                   else
                     err_scmd('User is away')
@@ -17170,9 +17189,10 @@ module PandoraGtk
 
         Thread.pass
         sleep 0.02
-        talkview.after_addition(true)
-        talkview.show_all
-
+        if talkview and (not talkview.destroyed?)
+          talkview.after_addition(true)
+          talkview.show_all
+        end
         PandoraGtk.hack_grab_focus(@captcha_entry)
       end
     end
@@ -17189,8 +17209,10 @@ module PandoraGtk
         area_recv.set_expose_event(nil)
         area_recv.queue_draw
         Thread.pass
-        talkview.after_addition(true)
-        talkview.grab_focus
+        if talkview and (not talkview.destroyed?)
+          talkview.after_addition(true)
+          talkview.grab_focus
+        end
       end
     end
 
@@ -17832,9 +17854,9 @@ module PandoraGtk
             list_store = Gtk::ListStore.new(String)
 
             user_iter = list_store.append
-            user_iter[0] = _('Summary')
+            user_iter[0] = _('Info')
             user_iter = list_store.append
-            user_iter[0] = _('Events')
+            user_iter[0] = _('Feed')
 
             # create tree view
             list_tree = Gtk::TreeView.new(list_store)
@@ -22029,7 +22051,8 @@ module PandoraGtk
     p '--recognize_captcha(captcha_buf.size, clue_text, node, node_id, models)='+\
       [captcha_buf.size, clue_text, node, node_id, models].inspect
     if captcha_buf
-      sw = PandoraGtk.show_cabinet(panhashes, session, conntype, node_id, models)
+      sw = PandoraGtk.show_cabinet(panhashes, session, conntype, node_id, \
+        models, CPI_Dialog)
       if sw
         clue_text ||= ''
         clue, length, symbols = clue_text.split('|')
@@ -24096,49 +24119,65 @@ module PandoraGtk
 
       $window.signal_connect('key-press-event') do |widget, event|
         res = true
-        if ([Gdk::Keyval::GDK_m, Gdk::Keyval::GDK_M, 1752, 1784].include?(event.keyval) \
-        and event.state.control_mask?)
-          $window.hide
-        elsif ([Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H].include?(event.keyval) \
-        and event.state.control_mask?)
-          continue = (not event.state.shift_mask?)
-          PandoraNet.start_or_stop_hunt(continue)
+        if ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
+        and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
+        1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
+          $window.do_menu_act('Quit')
         elsif event.keyval == Gdk::Keyval::GDK_F5
           do_menu_act('Hunt')
         elsif event.state.shift_mask? \
         and (event.keyval == Gdk::Keyval::GDK_F11)
           PandoraGtk.full_screen_switch
-        elsif event.state.control_mask? \
-        and (Gdk::Keyval::GDK_0..Gdk::Keyval::GDK_9).include?(event.keyval)
-          num = $window.notebook.n_pages
-          if num>0
-            n = (event.keyval - Gdk::Keyval::GDK_1)
-            if (n>=0) and (n<num)
-              $window.notebook.page = n
-              res = true
-            else
-              $window.notebook.page = num-1
-              res = true
+        elsif event.state.control_mask?
+          if [Gdk::Keyval::GDK_m, Gdk::Keyval::GDK_M, 1752, 1784].include?(event.keyval)
+            $window.hide
+          elsif ((Gdk::Keyval::GDK_0..Gdk::Keyval::GDK_9).include?(event.keyval) \
+          or (event.keyval==Gdk::Keyval::GDK_Tab))
+            num = $window.notebook.n_pages
+            if num>0
+              if (event.keyval==Gdk::Keyval::GDK_Tab)
+                n = $window.notebook.page
+                if n>=0
+                  if event.state.shift_mask?
+                    n -= 1
+                  else
+                    n += 1
+                  end
+                  if n<0
+                    $window.notebook.page = num-1
+                  elsif n>=num
+                    $window.notebook.page = 0
+                  else
+                    $window.notebook.page = n
+                  end
+                end
+              else
+                n = (event.keyval - Gdk::Keyval::GDK_1)
+                if (n>=0) and (n<num)
+                  $window.notebook.page = n
+                else
+                  $window.notebook.page = num-1
+                end
+              end
             end
-          end
-        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
-        and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
-        1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
-          $window.do_menu_act('Quit')
-        elsif ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval) \
-        and event.state.control_mask?) #w, W, ц, Ц
-          $window.do_menu_act('Close')
-        elsif event.state.control_mask? \
-        and [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
-          curpage = nil
-          if $window.notebook.n_pages>0
-            curpage = $window.notebook.get_nth_page($window.notebook.page)
-          end
-          if curpage.is_a? PandoraGtk::PanobjScrolledWindow
-            res = false
+          elsif [Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H].include?(event.keyval)
+            continue = (not event.state.shift_mask?)
+            PandoraNet.start_or_stop_hunt(continue)
+          elsif [Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval)
+            $window.do_menu_act('Close')
+          elsif [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
+            curpage = nil
+            if $window.notebook.n_pages>0
+              curpage = $window.notebook.get_nth_page($window.notebook.page)
+            end
+            if curpage.is_a? PandoraGtk::PanobjScrolledWindow
+              res = false
+            else
+              res = PandoraGtk.show_panobject_list(PandoraModel::Person)
+              res = (res != nil)
+            end
           else
-            res = PandoraGtk.show_panobject_list(PandoraModel::Person)
-            res = (res != nil)
+            res = false
           end
         else
           res = false
