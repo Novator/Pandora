@@ -77,16 +77,33 @@ Run these commands in terminal:
 
   xcode-select --install
   ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+  ruby -e "$(curl -fsSL https://raw.github.com/mxcl/homebrew/go/install)"
+  brew update
+  brew doctor
+  brew install ruby
+  brew install rbenv
+  brew install ruby-build
+  brew install openssl
+  echo 'if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi' >> ~/.bash_profile
+  source ~/.bash_profile
+  rbenv install -l
+  RUBY_CONFIGURE_OPTS=--with-openssl-dir=`brew --prefix openssl` rbenv install 2.2.2
   brew install gtk+
   brew install sqlite3
   brew install Caskroom/cask/xquartz
+  sudo gem update --system
+  rvm implode
+  \curl -sSL https://get.rvm.io | bash -s stable --ruby --autolibs=enable
+  rvm reload
 
 Restart your computer. Run also:
 
+  rvm install 2.2.2
+  rvm use 2.2.2 --default
   sudo gem install sqlite3
   sudo gem install gtk2
 
-Download and unpack zip-archive (see the next chapter).
+Download and unpack master.zip (see the next chapter), run pandora.sh.
 
 
 7. MANUAL INSTALLATION OR UPDATE
