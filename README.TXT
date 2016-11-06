@@ -36,12 +36,12 @@ https://github.com/Novator/Pandora/wiki/Install-and-first-run
 
 Mandatory:
 - Linux or Windows OS
-- Ruby script engine
+- Ruby1.9 or higher script engine
 - GTK2 graphical library
-- SQLite database library
+- SQLite3 database library
 - OpenSSL crypto library
 Optional:
-- GStreamer media library
+- GStreamer0.1 media library
 
 
 3. INSTALLATION IN UBUNTU
@@ -182,6 +182,7 @@ When you show yourself like active developer you will be added as collaborator.
 Help to Pandora project like a programmer, translator, journalist or donator:
 
   http://robux.biz/pandora.html
+
 Communicate together in facebook or vkontakte:
 
   https://www.facebook.com/p2pandora

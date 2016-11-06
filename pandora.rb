@@ -4627,6 +4627,7 @@ module PandoraModel
   PSF_Support    = 1      # must keep on this node (else will be deleted by GC)
   PSF_Verified   = 2      # signature was verified
   PSF_Crypted    = 4      # record is encrypted
+  PSF_BlockWeb   = 8      # record is in BlockWeb
   PSF_Harvest    = 64     # download by pieces in progress
   PSF_Archive    = 128    # marked to delete
 
