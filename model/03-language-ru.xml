@@ -319,6 +319,14 @@
       <pack name.ru="Метод упаковки" />
     </Block>
 
+    <Box name.ru="Коробка">
+      <key_hash name.ru="Ключ получателя" />
+      <pub_time name.ru="Время публикации" />
+      <kind name.ru="Тип" />
+      <puzzle name.ru="Загадка" />
+      <body name.ru="Тело" />
+    </Box>
+
   </Pandora>
 
 </pandora-model>

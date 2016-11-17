@@ -4627,7 +4627,8 @@ module PandoraModel
   PSF_Support    = 1      # must keep on this node (else will be deleted by GC)
   PSF_Verified   = 2      # signature was verified
   PSF_Crypted    = 4      # record is encrypted
-  PSF_BlockWeb   = 8      # record is in BlockWeb
+  PSF_BlockWeb   = 8     # record is in BlockWeb
+  PSF_ChatMes    = 16      # chat message (not dialog)
   PSF_Harvest    = 64     # download by pieces in progress
   PSF_Archive    = 128    # marked to delete
 
@@ -6316,6 +6317,13 @@ module PandoraNet
   MK_Fishing    = 4
   MK_Cascade    = 5
   MK_CiferBox   = 6
+  MK_BlockWeb   = 7
+
+  # Chat commands
+  # RU: Чатовые команды
+  MKC_Chat_Open      = 1
+  MKC_Chat_Shut      = 2
+  MKC_Chat_Message   = 0
 
   # Node list indexes
   # RU: Индексы в списке узлов
@@ -6348,8 +6356,9 @@ module PandoraNet
   # Chat field indexes
   # RU: Чатовые индексы полей
   #----Head sum: 70
-  MRC_Comm    = MR_Param1   #1 (open, shut, mess)
-  MRC_Body    = MR_Param2   #22 or ~140 (panhash or message)   #sum: 71+(23/~141)=  94/~112
+  MRC_Commamd  = MR_Param1   #1 (open, shut, mess)
+  MRC_Room     = MR_Param2   #22 (panhash)
+  MRC_Message  = MR_Param3   #~140 (panhash or message)   #sum: 33+23+(~140)= ~126
 
   # Search request and answer field indexes
   # RU: Индексы полей в поисковом и ответом запросе
@@ -7259,6 +7268,67 @@ module PandoraNet
       res.uniq!
       res.compact!
       [res, bases]
+    end
+
+    def send_chat_messages(message_model=nil, models=nil)
+      filter = 'state=0 AND IFNULL(panstate,0)&'+PandoraModel::PSF_ChatMes.to_s+'>0'
+      fields = 'id, creator, destination, created, text, panstate'
+      message_model ||= PandoraUtils.get_model('Message', models)
+      sel = message_model.select(filter, false, fields, 'created', \
+        $mes_block_count)
+      if sel and (sel.size>0)
+        #@send_state = (send_state | CSF_Messaging)
+        i = 0
+        talkview = nil
+        talkview = @dialog.chat_talkview if @dialog
+        ids = nil
+        ids = [] if talkview
+        while sel and (i<sel.size)
+          row = sel[i]
+          panstate = row[5]
+          if panstate
+            row[5] = (panstate & (PandoraModel::PSF_Support | \
+              PandoraModel::PSF_Crypted | PandoraModel::PSF_Verified | \
+              PandoraModel::PSF_ChatMes))
+          end
+          creator = row[1]
+          dest = row[2]
+          text = row[4]
+          #if ((panstate & PandoraModel::PSF_Crypted)>0) and text
+          #  dest_key = @skey[PandoraCrypto::KV_Panhash]
+          #  text = PandoraCrypto.recrypt_mes(text, nil, dest_key)
+          #  row[4] = text
+          #end
+          p '---Add MASS Mes: row='+row.inspect
+          row_pson = PandoraUtils.rubyobj_to_pson(row)
+          #p log_mes+'%%%Send EC_Message: [row_pson, row_pson.len]='+\
+          #  [row_pson, row_pson.bytesize].inspect
+          #row, len = PandoraUtils.pson_to_rubyobj(row_pson)
+          #p log_mes+'****Send EC_Message: [len, row]='+[len, row].inspect
+          if add_mass_record(MK_Chat, MKC_Chat_Message, dest, row_pson)
+          #if add_send_segment(EC_Message, true, row_pson)
+            id = row[0]
+            res = message_model.update({:state=>2}, nil, {:id=>id})
+            if res
+              ids << id if ids
+            else
+              PandoraUtils.log_message(LM_Error, _('Updating state of sent message')+' id='+id.to_s)
+            end
+          else
+            PandoraUtils.log_message(LM_Error, _('Adding message to send queue')+' id='+id.to_s)
+          end
+          i += 1
+          #if (i>=sel.size) and (processed<$mes_block_count) and (@conn_state == CS_Connected)
+          #  sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
+          #  if sel and (sel.size>0)
+          #    i = 0
+          #  else
+          #    @send_state = (send_state & (~CSF_Messaging))
+          #  end
+          #end
+        end
+        talkview.update_lines_with_id(ids) if ids and (ids.size>0)
+      end
     end
 
     # Find or create session with necessary node
@@ -9075,7 +9145,7 @@ module PandoraNet
                   res = model.update({:state=>2}, nil, {:id=>id})
                   if res
                     talkview = nil
-                    talkview = @dialog.talkview if @dialog
+                    talkview = @dialog.dlg_talkview if @dialog
                     talkview.update_lines_with_id(id) if talkview
                   else
                     PandoraUtils.log_message(LM_Warning, _('Cannot update record of confirm')+' kind,id='+[kind,id].inspect)
@@ -9161,7 +9231,7 @@ module PandoraNet
                     end
 
                     talkview = nil
-                    talkview = dialog.talkview if dialog
+                    talkview = dialog.dlg_talkview if dialog
                     if talkview
                       myname = PandoraCrypto.short_name_of_person(pool.current_key)
                       sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
@@ -9616,10 +9686,62 @@ module PandoraNet
                 params, len = PandoraUtils.pson_to_rubyobj(rdata)
                 p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
                 if (params.is_a? Array) and (params.size>=6)
-                  src_node, src_ind, atime, atrust, adepth, param1, param2, param3 = params
+                  src_node, src_ind, atime, atrust, adepth, param1, \
+                    param2, param3 = params
                   keep_node = @to_node
-                  pool.add_mass_record(kind, param1, param2, param3, src_node, \
-                    src_ind, atime, atrust, adepth, keep_node, nil, @recv_models)
+                  case kind
+                    when MK_Presence
+                    when MK_Chat
+                      p log_mes+'MK_Chat  dialog='+@dialog.inspect
+                      chat_dialog = PandoraGtk.show_cabinet(panhash, self, conn_type)
+                      Thread.pass
+                      time_now = Time.now.to_i
+                      id0 = nil
+                      creator = nil
+                      created = nil
+                      destination = pool.person
+                      text = nil
+                      panstate = 0
+                      id0 = row[0]
+                      creator  = row[1]
+                      #creator = @skey[PandoraCrypto::KV_Creator]
+                      created  = row[2]
+                      #created = time_now
+                      text     = row[3]
+                      #text = rdata
+                      panstate = row[4]
+                      panstate ||= 0
+                      panstate = (panstate & (PandoraModel::PSF_Crypted | \
+                        PandoraModel::PSF_Verified))
+                      panstate = (panstate | PandoraModel::PSF_Support | PandoraModel::PSF_ChatMes)
+                      values = {:destination=>destination, :text=>text, :state=>2, \
+                        :creator=>creator, :created=>created, :modified=>time_now, \
+                        :panstate=>panstate}
+                      p log_mes+'++++Recv MK_Chat: values='+values.inspect
+                      model = PandoraUtils.get_model('Message', @recv_models)
+                      panhash = model.calc_panhash(values)
+                      values['panhash'] = panhash
+                      res = model.update(values, nil, nil)
+                      talkview = nil
+                      talkview = dialog.chat_talkview if dialog
+                      if talkview
+                        myname = PandoraCrypto.short_name_of_person(pool.current_key)
+                        sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
+                        id = nil
+                        id = sel[0][0] if sel and (sel.size > 0)
+                        dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
+                          myname, time_now, created)
+                      else
+                        PandoraUtils.log_message(LM_Error, 'Пришло чат-сообщение, но лоток чата не найден!')
+                      end
+
+                    when MK_Search
+                    when MK_Fishing
+                    when MK_Cascade
+                    when MK_CiferBox
+                 end
+                 pool.add_mass_record(kind, param1, param2, param3, src_node, \
+                   src_ind, atime, atrust, adepth, keep_node, nil, @recv_models)
                 end
               else
                 err_scmd('Unknown command is recieved', ECC_Bye_Unknown)
@@ -10256,7 +10378,9 @@ module PandoraNet
                       receiver = @to_person
                       if (receiver.is_a? String) and (receiver.bytesize>0) \
                       and (hunter? or (mypanhash != receiver))
-                        filter = {'destination'=>receiver, 'state'=>1}
+                        filter = ['destination=? AND state=1 AND '+ \
+                          'IFNULL(panstate,0)&'+PandoraModel::PSF_ChatMes.to_s+'=0', \
+                          receiver]
                         message_model.update({:state=>0}, nil, filter)
                       end
                     end
@@ -10342,14 +10466,16 @@ module PandoraNet
                 @send_state = (send_state & (~CSF_Message))
                 receiver = @skey[PandoraCrypto::KV_Creator]
                 if @skey and receiver
-                  filter = {'destination'=>receiver, 'state'=>0}
+                  filter = {'destination'=>receiver, 'state'=>0, \
+                    'IFNULL(panstate,0)&'+PandoraModel::PSF_ChatMes.to_s=>0}
                   fields = 'id, creator, created, text, panstate'
-                  sel = message_model.select(filter, false, fields, 'created', $mes_block_count)
+                  sel = message_model.select(filter, false, fields, 'created', \
+                    $mes_block_count)
                   if sel and (sel.size>0)
                     @send_state = (send_state | CSF_Messaging)
                     i = 0
                     talkview = nil
-                    talkview = @dialog.talkview if @dialog
+                    talkview = @dialog.dlg_talkview if @dialog
                     ids = nil
                     ids = [] if talkview
                     while sel and (i<sel.size) and (processed<$mes_block_count) \
@@ -14143,7 +14269,7 @@ module PandoraGtk
         if pixbuf
           alt = pixbuf.tooltip
           if (alt.is_a? String) and (alt.size>0)
-            tooltip.text = alt if not textview.destroyed?
+            tooltip.text = alt if ((not textview.destroyed?) and (not tooltip.destroyed?))
             res = true
           end
         else
@@ -17081,7 +17207,7 @@ module PandoraGtk
   # RU: Страница кабинета панобъекта
   class CabinetBox < Gtk::VBox
     attr_accessor :room_id, :online_btn, :mic_btn, :webcam_btn, \
-      :talkview, :area_send, :area_recv, :recv_media_pipeline, \
+      :dlg_talkview, :chat_talkview, :area_send, :area_recv, :recv_media_pipeline, \
       :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, \
       :sender_box, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
@@ -17190,9 +17316,9 @@ module PandoraGtk
 
         Thread.pass
         sleep 0.02
-        if talkview and (not talkview.destroyed?)
-          talkview.after_addition(true)
-          talkview.show_all
+        if dlg_talkview and (not dlg_talkview.destroyed?)
+          dlg_talkview.after_addition(true)
+          dlg_talkview.show_all
         end
         PandoraGtk.hack_grab_focus(@captcha_entry)
       end
@@ -17210,9 +17336,9 @@ module PandoraGtk
         area_recv.set_expose_event(nil)
         area_recv.queue_draw
         Thread.pass
-        if talkview and (not talkview.destroyed?)
-          talkview.after_addition(true)
-          talkview.grab_focus
+        if dlg_talkview and (not dlg_talkview.destroyed?)
+          dlg_talkview.after_addition(true)
+          dlg_talkview.grab_focus
         end
       end
     end
@@ -17349,7 +17475,7 @@ module PandoraGtk
 
     end
 
-    def fill_dlg_toolbar(page, talkview)
+    def fill_dlg_toolbar(page, talkview, chat_mode=false)
       crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', false) if (page==CPI_Dialog)
 
       sign_scale = nil
@@ -17360,7 +17486,7 @@ module PandoraGtk
       sign_scale.sensitive = sign_btn.active?
       add_btn_to_toolbar(sign_scale)
 
-      if (page==CPI_Dialog) and (kind==PandoraModel::PK_Person)
+      if not chat_mode
         require_sign_btn = add_btn_to_toolbar(:require, 'Require sign', false)
 
         add_btn_to_toolbar
@@ -17433,7 +17559,11 @@ module PandoraGtk
       smile_btn.tooltip_text = _('Smile')+' (Alt+Down)'
       add_btn_to_toolbar(smile_btn)
 
-      game_btn = add_btn_to_toolbar(:game, 'Game') if page==CPI_Dialog
+      if page==CPI_Dialog
+        game_btn = add_btn_to_toolbar(:game, 'Game')
+        game_btn = add_btn_to_toolbar(:box, 'Box')
+        add_btn_to_toolbar
+      end
 
       send_btn = add_btn_to_toolbar(:send, 'Send') do |widget|
         mes = talkview.edit_box.buffer.text
@@ -17442,7 +17572,7 @@ module PandoraGtk
           sign_trust = sign_scale.scale.value if sign_btn.active?
           crypt = nil
           crypt = crypt_btn.active? if crypt_btn
-          if send_mes(mes, crypt, sign_trust)
+          if send_mes(mes, crypt, sign_trust, chat_mode)
             talkview.edit_box.buffer.text = ''
           end
         end
@@ -17947,7 +18077,11 @@ module PandoraGtk
             end
 
             atalkview = PandoraGtk::ChatTextView.new(54)
-            @talkview = atalkview if page==CPI_Dialog
+            if page==CPI_Chat
+              @chat_talkview = atalkview
+            else
+              @dlg_talkview = atalkview
+            end
             atalkview.set_readonly(true)
             atalkview.set_size_request(200, 200)
             atalkview.wrap_mode = Gtk::TextTag::WRAP_WORD
@@ -18135,9 +18269,10 @@ module PandoraGtk
               init_video_receiver(false, false)
             end
 
-            fill_dlg_toolbar(page, atalkview)
+            chat_mode = ((page==CPI_Chat) or (kind != PandoraModel::PK_Person))
+            fill_dlg_toolbar(page, atalkview, chat_mode)
 
-            load_history($load_history_count, $sort_history_mode)
+            load_history($load_history_count, $sort_history_mode, chat_mode)
             container.add(main_hpaned)
           when CPI_Opinions
             pbox = PandoraGtk::PanobjScrolledWindow.new
@@ -18433,11 +18568,12 @@ module PandoraGtk
 
     # Put message to dialog
     # RU: Добавляет сообщение в диалог
-    def add_mes_to_view(mes, id, panstate=nil, to_end=nil, key_or_panhash=nil, \
-    myname=nil, modified=nil, created=nil)
+    def add_mes_to_view(mes, id, panstate=nil, to_end=nil, \
+    key_or_panhash=nil, myname=nil, modified=nil, created=nil)
       if mes
         encrypted = ((panstate.is_a? Integer) \
           and ((panstate & PandoraModel::PSF_Crypted) > 0))
+        chat_mode = ((panstate & PandoraModel::PSF_ChatMes) > 0)
         mes = PandoraCrypto.recrypt_mes(mes) if encrypted
 
         p '---add_mes_to_view [mes, id, pstate to_end, key_or_phash, myname, modif, created]=' + \
@@ -18476,6 +18612,9 @@ module PandoraGtk
           time_str << '('+PandoraUtils.time_to_dialog_str(modified, time_now)+')'
         end
 
+        talkview = @dlg_talkview
+        talkview = @chat_talkview if chat_mode
+
         if talkview
           talkview.before_addition(time_now) if (not to_end.is_a? FalseClass)
           talkview.buffer.insert(talkview.buffer.end_iter, "\n") if (talkview.buffer.char_count>0)
@@ -18497,7 +18636,10 @@ module PandoraGtk
 
     # Load history of messages
     # RU: Подгрузить историю сообщений
-    def load_history(max_message=6, sort_mode=0)
+    def load_history(max_message=6, sort_mode=0, chat_mode=false)
+      p '---- load_history [max_message, sort_mode]='+[max_message, sort_mode].inspect
+      talkview = @dlg_talkview
+      talkview = @chat_talkview if chat_mode
       if talkview and max_message and (max_message>0)
         messages = []
         fields = 'creator, created, destination, state, text, panstate, modified, id'
@@ -18510,8 +18652,16 @@ module PandoraGtk
         model = PandoraUtils.get_model('Message')
         max_message2 = max_message
         max_message2 = max_message * 2 if (person == mypanhash)
-        sel = model.select({:creator=>person, :destination=>mypanhash}, false, fields, \
-          'id DESC', max_message2)
+        chatbit = PandoraModel::PSF_ChatMes.to_s
+        chat_filter = nil
+        if chat_mode
+          chat_filter = ['IFNULL(panstate,0)&'+chatbit+'>', 0]
+        else
+          chat_filter = ['IFNULL(panstate,0)&'+chatbit+'=', 0]
+        end
+        filter = [['creator=', person], ['destination=', mypanhash]]
+        filter << chat_filter if chat_filter
+        sel = model.select(filter, false, fields, 'id DESC', max_message2)
         sel.reverse!
         if (person == mypanhash)
           i = sel.size-1
@@ -18524,7 +18674,8 @@ module PandoraGtk
               nil_create_time = true
             end
             if (not text) or (time and text and time_prev and text_prev \
-            and ((time-time_prev).abs<30) and (AsciiString.new(text)==AsciiString.new(text_prev)))
+            and ((time-time_prev).abs<30) \
+            and (AsciiString.new(text)==AsciiString.new(text_prev)))
               #p 'DEL '+[time, text, time_prev, text_prev].inspect
               sel.delete_at(i)
               i -= 1
@@ -18533,8 +18684,9 @@ module PandoraGtk
         end
         messages += sel
         if (person != mypanhash)
-          sel = model.select({:creator=>mypanhash, :destination=>person}, false, fields, \
-            'id DESC', max_message)
+          filter = [['creator=', mypanhash], ['destination=', person]]
+          filter << chat_filter if chat_filter
+          sel = model.select(filter, false, fields, 'id DESC', max_message)
           messages += sel
         end
         if nil_create_time or (sort_mode==0) #sort by created
@@ -18544,7 +18696,11 @@ module PandoraGtk
             res
           end
         else   #sort by modified
-          messages.sort! {|a,b| res = (a[1]<=>b[1]); res = (a[6]<=>b[6]) if (res==0); res }
+          messages.sort! do |a,b|
+            res = (a[1]<=>b[1])
+            res = (a[6]<=>b[6]) if (res==0)
+            res
+          end
         end
 
         talkview.before_addition
@@ -18563,7 +18719,9 @@ module PandoraGtk
           key_or_panhash = nil
           key_or_panhash = creator if (creator != mypanhash)
 
-          add_mes_to_view(mes, id, panstate, false, key_or_panhash, myname, modified, created)
+          add_mes_to_view(mes, id, panstate, false, key_or_panhash, \
+            myname, modified, created)
+
           i += 1
         end
         talkview.after_addition(true)
@@ -18602,17 +18760,20 @@ module PandoraGtk
 
     # Send message to node, before encrypt it if need
     # RU: Отправляет сообщение на узел, шифрует предварительно если надо
-    def send_mes(text, crypt=nil, sign_trust=nil)
+    def send_mes(text, crypt=nil, sign_trust=nil, chat_mode=false)
       res = false
       creator = PandoraCrypto.current_user_or_key(true)
       if creator
-        online_btn.active = true if (not online_btn.active?)
+        if (not chat_mode) and (not online_btn.active?)
+          online_btn.active = true
+        end
         #Thread.pass
         time_now = Time.now.to_i
         state = 0
         panstate = 0
         crypt_text = text
         sign = (not sign_trust.nil?)
+        panstate = (panstate | PandoraModel::PSF_ChatMes) if chat_mode
         if crypt or sign
           panstate = (panstate | PandoraModel::PSF_Support)
           keyhash = PandoraCrypto.current_user_or_key(false, false)
@@ -18655,10 +18816,14 @@ module PandoraGtk
         else
           PandoraUtils.log_message(LM_Error, _('Cannot insert message')+' ['+text+']')
         end
-        sessions = $window.pool.sessions_on_dialog(self)
-        sessions.each do |session|
-          session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep)
-          session.send_state = (session.send_state | PandoraNet::CSF_Message)
+        if chat_mode
+          $window.pool.send_chat_messages
+        else
+          sessions = $window.pool.sessions_on_dialog(self)
+          sessions.each do |session|
+            session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep)
+            session.send_state = (session.send_state | PandoraNet::CSF_Message)
+          end
         end
       end
       res
@@ -18697,11 +18862,11 @@ module PandoraGtk
             timer_setted = true
             self.read_thread = Thread.new do
               sleep(0.3)
-              if (not curpage.destroyed?) and curpage.talkview and \
-              (not curpage.talkview.destroyed?) and curpage.talkview.edit_box \
-              and (not curpage.talkview.edit_box.destroyed?)
-                curpage.talkview.edit_box.grab_focus if curpage.talkview.edit_box.visible?
-                curpage.talkview.after_addition(true)
+              if (not curpage.destroyed?) and curpage.dlg_talkview and \
+              (not curpage.dlg_talkview.destroyed?) and curpage.dlg_talkview.edit_box \
+              and (not curpage.dlg_talkview.edit_box.destroyed?)
+                curpage.dlg_talkview.edit_box.grab_focus if curpage.dlg_talkview.edit_box.visible?
+                curpage.dlg_talkview.after_addition(true)
               end
               if $window.visible? and $window.has_toplevel_focus?
                 read_sec = $read_time-0.3
@@ -23413,6 +23578,7 @@ module PandoraGtk
       ['Node', 'node', 'Nodes'],  #Gtk::Stock::NETWORK
       ['Request', 'request:m', 'Requests'],  #Gtk::Stock::SELECT_COLOR
       ['Block', 'block:m', 'Blocks'],
+      ['Box', 'box:m', 'Boxes'],
       ['Event', 'event:m', 'Events'],
       ['-', nil, '-'],
       ['Authorize', :auth, 'Authorize', '<control>O', :check], #Gtk::Stock::DIALOG_AUTHENTICATION

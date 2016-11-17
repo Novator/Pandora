@@ -37,7 +37,7 @@ def getparam(sect, name, akind='str'):
 # Open config file and read parameters
 # RU: Открыть конфиг и прочитать параметры
 config = ConfigParser.SafeConfigParser()
-res = config.read('./pangate.conf')
+res = config.read('./pangate.ini')
 if len(res):
   host = getparam('network', 'host')
   port = getparam('network', 'port', 'int')
@@ -55,9 +55,10 @@ if not host: host = '0.0.0.0'
 if not port: port = 5577
 if not log_prefix: log_prefix = './pangate'
 if not max_conn: max_conn = 10
+if not max_size: max_size = 102400
 if not password: password = '12345'
 if not peer_media_first: peer_media_first = False
-if not flush_interval: flush_interval = 2
+if not flush_interval: flush_interval = 10
 
 # Calc password hash
 # RU: Высчитать хэш пароля
@@ -98,7 +99,7 @@ def closelog():
     logfile.close()
     logfile = None
 
-# Write string to log file (and screen)
+# Write string to log file (and to screen)
 # RU: Записать строку в лог файл (и на экран)
 def logmes(mes, show=True, addr=None):
   global logfile, flush_time, curlogindex, curlogsize, log_prefix, max_size, flush_interval
@@ -156,7 +157,7 @@ def logmes(mes, show=True, addr=None):
       logfile.write(logline)
       if (not flush_time) or (cur_time >= (flush_time + datetime.timedelta(0, flush_interval))):
         logfile.flush()
-        sync_time = cur_time
+        flush_time = cur_time
 
 
 # ====================================================================
