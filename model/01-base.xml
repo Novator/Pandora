@@ -316,9 +316,16 @@
     </Node>
 
     <Event name="Event" parent="Created" kind="225" >
-      <initiator name="Initiator" type="Panhash" />
-      <object name="Object" type="Panhash" />
-      <kind name="Kind" type="Integer" />
+      <node name="Node" type="Panhash(Node)" />
+      <number name="Number" type="Integer" />
+      <kind name="Kind" type="Byte" />
+      <param1 name="Param1" type="Blob" />
+      <param2 name="Param2" type="Blob" />
+      <param3 name="Param3" type="Blob" />
+      <trust name="Trust" type="Byte" />
+      <depth name="Depth" type="Byte" />
+      <keep_nodes name="Keep nodes" type="Blob" />
+      <requests name="Requests" type="Blob" />
     </Event>
 
     <Request name="Request" parent="Created" kind="228">

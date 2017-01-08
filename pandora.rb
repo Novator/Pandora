@@ -60,8 +60,8 @@ module PandoraUtils
     $detected_os_family
   end
 
-  # Log level constants
-  # RU: Константы уровня логирования
+  # Log levels
+  # RU: Уровни логирования
   LM_Error    = 0
   LM_Warning  = 1
   LM_Info     = 2
@@ -79,6 +79,7 @@ module PandoraUtils
       when LM_Trace
         mes = _('Trace')
     end
+    mes
   end
 
   MaxLogViewLineCount = 500
@@ -6319,12 +6320,6 @@ module PandoraNet
   MK_CiferBox   = 6
   MK_BlockWeb   = 7
 
-  # Chat commands
-  # RU: Чатовые команды
-  MKC_Chat_Open      = 1
-  MKC_Chat_Shut      = 2
-  MKC_Chat_Message   = 0
-
   # Node list indexes
   # RU: Индексы в списке узлов
   NL_Key             = 1  #22
@@ -6334,21 +6329,21 @@ module PandoraNet
 
   # Common field indexes of mass record array  #(size of field)
   # RU: Общие индексы полей в векторе массовых записей
-  MR_KeepNodes       = 0  #(0-220) fill when register, not sending
   #==========================={head
-  MR_Node            = 1  #22
-  MR_Index           = 2  #4
-  MR_Kind            = 3  #1  (presence, fishing, chat, search)
-  MR_CrtTime         = 4  #4
-  MR_ReqTime         = 5  #4
-  MR_Trust           = 6  #1
-  MR_Depth           = 7  #1
+  MR_Node            = 0  #22
+  MR_Index           = 1  #4
+  MR_CrtTime         = 2  #4
+  MR_Trust           = 3  #1
+  MR_Depth           = 4  #1
   #---------------------------head} (33 byte)
   #==========================={body
-  MR_Param1          = 8  #1-30
-  MR_Param2          = 9  #22-140
-  MR_Param3          = 10  #0 или 22
+  MR_Param1          = 5  #1-30
+  MR_Param2          = 6  #22-140
+  MR_Param3          = 7  #0 или 22
   #---------------------------body} (23-140 byte)
+  MR_Kind            = 8   #1  (presence, fishing, chat, search)
+  MR_KeepNodes       = 9  #(0-220) fill when register, not sending
+  MR_Requests        = 10  #4
 
   # Alive
   MRP_Nick           = MR_Param1  #~30    #sum: 33+(~30)= ~63
@@ -6356,9 +6351,17 @@ module PandoraNet
   # Chat field indexes
   # RU: Чатовые индексы полей
   #----Head sum: 70
-  MRC_Commamd  = MR_Param1   #1 (open, shut, mess)
-  MRC_Room     = MR_Param2   #22 (panhash)
-  MRC_Message  = MR_Param3   #~140 (panhash or message)   #sum: 33+23+(~140)= ~126
+  MRC_Dest     = MR_Param1   #22 (panhash)
+  MRC_MesRow   = MR_Param2   #~140 (panhash or message)   #sum: 33+22+(~140)= ~125
+
+  # MesRow (chat message row) parameters
+  # RU: Параметры сообщения чата
+  MCM_Creator  = 0
+  MCM_Created  = 1
+  MCM_Text     = 2
+  MCM_Panstate = 3
+  MCM_Id       = 4   #not send
+  MCM_Dest     = 5   #not send
 
   # Search request and answer field indexes
   # RU: Индексы полей в поисковом и ответом запросе
@@ -7110,18 +7113,19 @@ module PandoraNet
         end
       end
       if not mr
-        if (not src_ind) and (src_node==self_node)
-          ind_mutex.synchronize do
+        ind_mutex.synchronize do
+          if (not src_ind) and (src_node==self_node)
             @mass_ind += 1
             src_ind = @mass_ind
           end
-        end
-        if src_ind
-          mr = Array.new
-          mr[MR_Node]     = src_node
-          mr[MR_Index]    = src_ind
-          mr[MR_KeepNodes] = [keep_node]
-          @mass_records << mr
+          if src_ind
+            mr = Array.new
+            mr[MR_Node]     = src_node
+            mr[MR_Index]    = src_ind
+            mr[MR_KeepNodes] = [keep_node]
+            yield(mr) if block_given?
+            @mass_records << mr
+          end
         end
       end
       mr
@@ -7136,25 +7140,27 @@ module PandoraNet
       mr = find_mass_record_by_params(src_node, akind, param1, param2, param3)
       if not mr
         atrust ||= 0
-        adepth ||= 2
-        if adepth>0
+        adepth ||= 3
+        adepth -= 1
+        p 'add_mass_rec1  adepth='+adepth.inspect
+        if adepth >= 0
           cur_time = Time.now.to_i
           delete_old_mass_records(cur_time)
           case akind
             when MK_Search
               param2 = AsciiString.new(param2)
           end
-          mr = register_mass_record(src_node, src_ind, keep_node)
-          if mr
+          mr = register_mass_record(src_node, src_ind, keep_node) do |mr|
             atime ||= cur_time
-            adepth -= 1
             mr[MR_Kind]     = akind
-            mr[MR_CrtTime]     = atime
+            mr[MR_CrtTime]  = atime
             mr[MR_Trust]    = atrust
             mr[MR_Depth]    = adepth
             mr[MR_Param1]   = param1
             mr[MR_Param2]   = param2
             mr[MR_Param3]   = param3
+          end
+          if mr
             case akind
               when MK_Presence
                 $window.set_status_field(PandoraGtk::SF_Radar, @mass_records.size.to_s)
@@ -7180,6 +7186,7 @@ module PandoraNet
               when MK_Chat
                 #
             end
+            p 'add_mass_rec2  mr='+mr.inspect
           end
         end
       end
@@ -7272,7 +7279,7 @@ module PandoraNet
 
     def send_chat_messages(message_model=nil, models=nil)
       filter = 'state=0 AND IFNULL(panstate,0)&'+PandoraModel::PSF_ChatMes.to_s+'>0'
-      fields = 'id, creator, destination, created, text, panstate'
+      fields = 'creator, created, text, panstate, id, destination'
       message_model ||= PandoraUtils.get_model('Message', models)
       sel = message_model.select(filter, false, fields, 'created', \
         $mes_block_count)
@@ -7285,29 +7292,29 @@ module PandoraNet
         ids = [] if talkview
         while sel and (i<sel.size)
           row = sel[i]
-          panstate = row[5]
+          panstate = row[MCM_Panstate]
           if panstate
-            row[5] = (panstate & (PandoraModel::PSF_Support | \
+            row[MCM_Panstate] = (panstate & (PandoraModel::PSF_Support | \
               PandoraModel::PSF_Crypted | PandoraModel::PSF_Verified | \
               PandoraModel::PSF_ChatMes))
           end
-          creator = row[1]
-          dest = row[2]
-          text = row[4]
+          #creator = row[1]
+          id = row[MCM_Id]
+          dest = row[MCM_Dest]
+          #text = row[4]
           #if ((panstate & PandoraModel::PSF_Crypted)>0) and text
           #  dest_key = @skey[PandoraCrypto::KV_Panhash]
           #  text = PandoraCrypto.recrypt_mes(text, nil, dest_key)
           #  row[4] = text
           #end
           p '---Add MASS Mes: row='+row.inspect
-          row_pson = PandoraUtils.rubyobj_to_pson(row)
+          row_pson = PandoraUtils.rubyobj_to_pson(row[MCM_Creator..MCM_Panstate])
           #p log_mes+'%%%Send EC_Message: [row_pson, row_pson.len]='+\
           #  [row_pson, row_pson.bytesize].inspect
           #row, len = PandoraUtils.pson_to_rubyobj(row_pson)
           #p log_mes+'****Send EC_Message: [len, row]='+[len, row].inspect
-          if add_mass_record(MK_Chat, MKC_Chat_Message, dest, row_pson)
+          if add_mass_record(MK_Chat, dest, row_pson)
           #if add_send_segment(EC_Message, true, row_pson)
-            id = row[0]
             res = message_model.update({:state=>2}, nil, {:id=>id})
             if res
               ids << id if ids
@@ -8635,7 +8642,7 @@ module PandoraNet
           if not_dep >= 0
             nick = PandoraCrypto.short_name_of_person(@skey, @to_person, 1)
             pool.add_mass_record(MK_Presence, nick, nil, nil, \
-              @to_node, 0, nil, not_trust, not_dep, pool.self_node, \
+              nil, nil, nil, not_trust, not_dep, pool.self_node, \
               nil, @recv_models)
           end
         end
@@ -9411,8 +9418,8 @@ module PandoraNet
                       if abase_id != pool.base_id
                         p log_mes+'ADD search req to pool list'
                         pool.add_mass_record(MK_Search, search_req[SR_Kind], \
-                          search_req[SR_Request], nil, @to_node, src_ind, src_time, \
-                          src_trust, cur_depth, @to_node, nil, @recv_models)
+                          search_req[SR_Request], nil, nil, nil, nil, \
+                          nil, nil, @to_node, nil, @recv_models)
                       end
                     end
                   when ECC_Query_Fragment
@@ -9581,8 +9588,8 @@ module PandoraNet
                     if (notic.is_a? Array) and (notic.size==5)
                       #pool.add_notice_order(self, *notic)
                       pool.add_mass_record(MK_Presence, nick, nil, nil, \
-                        @to_node, src_ind, src_time, src_trust, \
-                        cur_depth, @to_node, nil, @recv_models)
+                        nil, nil, nil, nil, \
+                        nil, @to_node, nil, @recv_models)
                     end
                   when ECC_News_SessMode
                     p log_mes + 'ECC_News_SessMode'
@@ -9688,60 +9695,58 @@ module PandoraNet
                 if (params.is_a? Array) and (params.size>=6)
                   src_node, src_ind, atime, atrust, adepth, param1, \
                     param2, param3 = params
-                  keep_node = @to_node
-                  case kind
-                    when MK_Presence
-                    when MK_Chat
-                      p log_mes+'MK_Chat  dialog='+@dialog.inspect
-                      chat_dialog = PandoraGtk.show_cabinet(panhash, self, conn_type)
-                      Thread.pass
-                      time_now = Time.now.to_i
-                      id0 = nil
-                      creator = nil
-                      created = nil
-                      destination = pool.person
-                      text = nil
-                      panstate = 0
-                      id0 = row[0]
-                      creator  = row[1]
-                      #creator = @skey[PandoraCrypto::KV_Creator]
-                      created  = row[2]
-                      #created = time_now
-                      text     = row[3]
-                      #text = rdata
-                      panstate = row[4]
-                      panstate ||= 0
-                      panstate = (panstate & (PandoraModel::PSF_Crypted | \
-                        PandoraModel::PSF_Verified))
-                      panstate = (panstate | PandoraModel::PSF_Support | PandoraModel::PSF_ChatMes)
-                      values = {:destination=>destination, :text=>text, :state=>2, \
-                        :creator=>creator, :created=>created, :modified=>time_now, \
-                        :panstate=>panstate}
-                      p log_mes+'++++Recv MK_Chat: values='+values.inspect
-                      model = PandoraUtils.get_model('Message', @recv_models)
-                      panhash = model.calc_panhash(values)
-                      values['panhash'] = panhash
-                      res = model.update(values, nil, nil)
-                      talkview = nil
-                      talkview = dialog.chat_talkview if dialog
-                      if talkview
-                        myname = PandoraCrypto.short_name_of_person(pool.current_key)
-                        sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
-                        id = nil
-                        id = sel[0][0] if sel and (sel.size > 0)
-                        dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
-                          myname, time_now, created)
-                      else
-                        PandoraUtils.log_message(LM_Error, 'Пришло чат-сообщение, но лоток чата не найден!')
-                      end
-
-                    when MK_Search
-                    when MK_Fishing
-                    when MK_Cascade
-                    when MK_CiferBox
-                 end
-                 pool.add_mass_record(kind, param1, param2, param3, src_node, \
-                   src_ind, atime, atrust, adepth, keep_node, nil, @recv_models)
+                  if not pool.find_mass_record_by_params(src_node, kind, param1, param2, param3)
+                  #if not pool.find_mass_record_by_index(src_node, src_ind)
+                    keep_node = @to_node
+                    case kind
+                      when MK_Presence
+                      when MK_Chat
+                        destination  = AsciiString.new(params[MRC_Dest])
+                        row, len = PandoraUtils.pson_to_rubyobj(params[MRC_MesRow])
+                        p 'MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
+                          MRC_MesRow, params[MRC_MesRow], row].inspect
+                        creator  = row[MCM_Creator]
+                        created  = row[MCM_Created]
+                        text     = row[MCM_Text]
+                        panstate = row[MCM_Panstate]
+                        panstate ||= 0
+                        panstate = (panstate & (PandoraModel::PSF_Crypted | \
+                          PandoraModel::PSF_Verified))
+                        panstate = (panstate | PandoraModel::PSF_ChatMes)
+                        time_now = Time.now.to_i
+                        values = {:destination=>destination, :text=>text, :state=>2, \
+                          :creator=>creator, :created=>created, :modified=>time_now, \
+                          :panstate=>panstate}
+                        p log_mes+'++++Recv MK_Chat: values='+values.inspect
+                        model = PandoraUtils.get_model('Message', @recv_models)
+                        panhash = model.calc_panhash(values)
+                        values['panhash'] = panhash
+                        res = model.update(values, nil, nil)
+                        chat_dialog = PandoraGtk.show_cabinet(destination, self, \
+                          @conn_type, nil, nil, PandoraGtk::CPI_Chat)
+                        Thread.pass
+                        sleep(0.05)
+                        Thread.pass
+                        talkview = nil
+                        talkview = dialog.chat_talkview if dialog
+                        if talkview
+                          myname = PandoraCrypto.short_name_of_person(pool.current_key)
+                          sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
+                          id = nil
+                          id = sel[0][0] if sel and (sel.size > 0)
+                          dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
+                            myname, time_now, created)
+                        else
+                          PandoraUtils.log_message(LM_Error, 'Пришло чат-сообщение, но лоток чата не найден!')
+                        end
+                      when MK_Search
+                      when MK_Fishing
+                      when MK_Cascade
+                      when MK_CiferBox
+                    end
+                    pool.add_mass_record(kind, param1, param2, param3, src_node, \
+                      src_ind, atime, atrust, adepth, keep_node, nil, @recv_models)
+                  end
                 end
               else
                 err_scmd('Unknown command is recieved', ECC_Bye_Unknown)
@@ -10577,18 +10582,17 @@ module PandoraNet
               and (questioner_step>QS_ResetMessage)
                 processed = 0
                 while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
-                and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
-                and (processed<$mass_block_count) \
-                and (@mass_ind <= pool.mass_ind)
+                and (@mass_ind <= pool.mass_ind) \
+                and (processed<$mass_block_count)
+                #and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
                   mass_rec = pool.mass_records[@mass_ind]
+                  p log_mes+'FOUND [mass_rec, @to_node]='+[mass_rec, @to_node].inspect
                   if (mass_rec and (not mass_rec[MR_Node].nil?) \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], \
-                  :auto_to_float)) and (mass_rec[MR_Node] != @to_node))
+                  :auto_to_float)) and (mass_rec[MR_Node] != @to_node) and (mass_rec[MR_Depth]>0))
                   #and (mass_rec[MR_Node] != pool.self_node) \
                     kind = mass_rec[MR_Kind]
-                    params = [mass_rec[MR_Node], mass_rec[MR_Index], mass_rec[MR_CrtTime], \
-                      mass_rec[MR_Trust], mass_rec[MR_Depth], mass_rec[MR_Param1], \
-                      mass_rec[MR_Param2], mass_rec[MR_Param3]]
+                    params = mass_rec[MR_Node..MR_Param3]
                     case kind
                       when MK_Fishing
                         #line = fish_order[MR_Fisher..MR_Fish_key]
@@ -14144,8 +14148,6 @@ module PandoraGtk
       super(*args)
       self.wrap_mode = Gtk::TextTag::WRAP_WORD
 
-      @hand_cursor = Gdk::Cursor.new(Gdk::Cursor::HAND2)
-      @regular_cursor = Gdk::Cursor.new(Gdk::Cursor::XTERM)
       @hovering = false
 
       buf = self.buffer
@@ -14304,9 +14306,9 @@ module PandoraGtk
         @hovering = hovering
         window = tv.get_window(Gtk::TextView::WINDOW_TEXT)
         if @hovering
-          window.cursor = @hand_cursor
+          window.cursor = $window.hand_cursor
         else
-          window.cursor = @regular_cursor
+          window.cursor = $window.regular_cursor
         end
       end
     end
@@ -17170,6 +17172,30 @@ module PandoraGtk
     btn
   end
 
+  class CabViewport < Gtk::Viewport
+    attr_accessor :def_widget
+
+    def grab_def_widget
+      if @def_widget and (not @def_widget.destroyed?)
+        @def_widget.grab_focus
+        #self.present
+        GLib::Timeout.add(200) do
+          @def_widget.grab_focus if @def_widget and (not @def_widget.destroyed?)
+          false
+        end
+      end
+    end
+
+    def initialize(*args)
+      super(*args)
+      #self.signal_connect('show') do |window, event|
+      #  grab_def_widget
+      #  false
+      #end
+    end
+
+  end
+
   CSI_Persons = 0
   CSI_Keys    = 1
   CSI_Nodes   = 2
@@ -17213,7 +17239,7 @@ module PandoraGtk
       :sender_box, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
       :send_hpaned, :cab_notebook, :opt_btns, :cab_panhash, :session, \
       :bodywin, :fields, :obj_id, :edit, :property_box, :kind, :label_box, \
-      :active_page, :dlg_stock, :its_blob, :def_widget
+      :active_page, :dlg_stock, :its_blob
 
     include PandoraGtk
 
@@ -17553,7 +17579,8 @@ module PandoraGtk
       def_smiles = PandoraUtils.get_param('def_smiles')
       smile_btn = SmileButton.new(def_smiles) do |preset, label|
         smile_img = '[emot='+preset+'/'+label+']'
-        smile_img = ' '+smile_img if talkview.edit_box.buffer.text != ''
+        text = talkview.edit_box.buffer.text
+        smile_img = ' '+smile_img if (text.size>0) and (text[-1] != ' ')
         talkview.edit_box.buffer.insert_at_cursor(smile_img)
       end
       smile_btn.tooltip_text = _('Smile')+' (Alt+Down)'
@@ -17921,6 +17948,12 @@ module PandoraGtk
       end
     end
 
+    def grab_def_widget
+      page = cab_notebook.page
+      container = cab_notebook.get_nth_page(page)
+      container.grab_def_widget if container.is_a? CabViewport
+    end
+
     def show_page(page=CPI_Dialog, tab_signal=nil)
       p '---show_page [page, tab_signal]='+[page, tab_signal].inspect
       page = CPI_Chat if ((page == CPI_Dialog) and (kind != PandoraModel::PK_Person))
@@ -18020,9 +18053,14 @@ module PandoraGtk
             end
             dlg_image.height_request = 60 if not dlg_image.pixbuf
             dlg_image.tooltip_text = _('Set avatar')
+            dlg_image.signal_connect('realize') do |widget, event|
+              awindow = widget.window
+              awindow.cursor = $window.hand_cursor if awindow
+              false
+            end
             event_box = Gtk::EventBox.new.add(dlg_image)
             event_box.events = Gdk::Event::BUTTON_PRESS_MASK
-            event_box.signal_connect("button_press_event") do |widget, event|
+            event_box.signal_connect('button_press_event') do |widget, event|
               dialog = PandoraGtk::PanhashDialog.new([PandoraModel::Blob])
               dialog.choose_record do |img_panhash|
                 PandoraModel.act_relation(img_panhash, cab_panhash, RK_AvatarFor, \
@@ -18045,7 +18083,7 @@ module PandoraGtk
             hpaned.pack1(left_box, false, true)
             hpaned.pack2(feed, true, true)
             list_sw.show_all
-            def_widget = list_tree
+            container.def_widget = list_tree
 
             fill_view_toolbar
             container.add(hpaned)
@@ -18274,6 +18312,7 @@ module PandoraGtk
 
             load_history($load_history_count, $sort_history_mode, chat_mode)
             container.add(main_hpaned)
+            container.def_widget = edit_box
           when CPI_Opinions
             pbox = PandoraGtk::PanobjScrolledWindow.new
             panhash = PandoraUtils.bytes_to_hex(cab_panhash)
@@ -18310,7 +18349,7 @@ module PandoraGtk
       end
       container.show_all
       show_toolbar_btns(page)
-      def_widget.grab_focus if (def_widget and (not def_widget.destroyed?))
+      grab_def_widget
     end
 
     # Show cabinet
@@ -18372,7 +18411,7 @@ module PandoraGtk
           container.shadow_type = Gtk::SHADOW_NONE
           container.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
           container.border_width = 0
-          viewport = Gtk::Viewport.new(nil, nil)
+          viewport = CabViewport.new(nil, nil)
           container.add(viewport)
         else
           stock = CabPageInfo[index][0]
@@ -18381,10 +18420,10 @@ module PandoraGtk
             btn_down.menu.show_all
             btn_down = nil
           end
+          container = CabViewport.new(nil, nil)
         end
         text = _(text)
         page_box = TabLabelBox.new(stock, text)
-        container ||= Gtk::Viewport.new(nil, nil)
         cab_notebook.append_page_menu(container, page_box)
 
         if not btn_down
@@ -18404,7 +18443,9 @@ module PandoraGtk
       end
       cab_notebook.signal_connect('switch-page') do |widget, page, page_num|
         #container = widget.get_nth_page(page_num)
+        #container.grab_def_widget if container.is_a? CabViewport
         #show_page(page_num, true)
+        false
       end
 
       #toolbar_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
@@ -18653,13 +18694,14 @@ module PandoraGtk
         max_message2 = max_message
         max_message2 = max_message * 2 if (person == mypanhash)
         chatbit = PandoraModel::PSF_ChatMes.to_s
+        filter = [['destination=', person]]
         chat_filter = nil
         if chat_mode
           chat_filter = ['IFNULL(panstate,0)&'+chatbit+'>', 0]
         else
+          filter << ['creator=', mypanhash]
           chat_filter = ['IFNULL(panstate,0)&'+chatbit+'=', 0]
         end
-        filter = [['creator=', person], ['destination=', mypanhash]]
         filter << chat_filter if chat_filter
         sel = model.select(filter, false, fields, 'id DESC', max_message2)
         sel.reverse!
@@ -18683,8 +18725,8 @@ module PandoraGtk
           end
         end
         messages += sel
-        if (person != mypanhash)
-          filter = [['creator=', mypanhash], ['destination=', person]]
+        if (not chat_mode) and (person != mypanhash)
+          filter = [['creator=', person], ['destination=', mypanhash]]
           filter << chat_filter if chat_filter
           sel = model.select(filter, false, fields, 'id DESC', max_message)
           messages += sel
@@ -18888,18 +18930,9 @@ module PandoraGtk
           end
         end
         # set focus to edit_box
-        #if curpage and (curpage.is_a? CabinetBox) and curpage.edit_box
-        #  if not timer_setted
-        #    Thread.new do
-        #      sleep(0.3)
-        #      if (not curpage.destroyed?) and (not curpage.edit_box.destroyed?)
-        #        curpage.edit_box.grab_focus if curpage.edit_box.visible?
-        #      end
-        #    end
-        #  end
-        #  Thread.pass
-        #  curpage.edit_box.grab_focus if curpage.edit_box.visible?
-        #end
+        if curpage and (curpage.is_a? CabinetBox) #and curpage.edit_box
+          curpage.grab_def_widget
+        end
       end
     end
 
@@ -20270,17 +20303,19 @@ module PandoraGtk
               sess_iter = list_store.append
               akind = mr[PandoraNet::MR_Kind]
               anick = nil
-              anick = mr[PandoraNet::MRP_Nick] if (akind == PandoraNet::MK_Presence)
+              anick = '['+mr[PandoraNet::MRP_Nick]+']' if (akind == PandoraNet::MK_Presence)
               if anick.nil? and aperson
                 anick = PandoraCrypto.short_name_of_person(nil, aperson, 1)
               end
               anick = akind.to_s if anick.nil?
+              trust = mr[PandoraNet::MR_Trust]
+              trust = 0 if not (trust.is_a? Integer)
               sess_iter[0] = akind
               sess_iter[1] = anick
               sess_iter[2] = PandoraUtils.bytes_to_hex(aperson)
               sess_iter[3] = PandoraUtils.bytes_to_hex(akey)
               sess_iter[4] = PandoraUtils.bytes_to_hex(abaseid)
-              sess_iter[5] = mr[PandoraNet::MR_Trust]
+              sess_iter[5] = trust
               sess_iter[6] = mr[PandoraNet::MR_Depth]
               sess_iter[7] = 0 #distance
               sess_iter[8] = PandoraUtils.bytes_to_hex(anode)
@@ -22263,8 +22298,8 @@ module PandoraGtk
   node_id=nil, models=nil, page=nil, fields=nil, obj_id=nil, edit=nil)
     sw = nil
 
-    p '---show_cabinet(panhash, session, conntype, node_id, models, page, fields, obj_id, edit)=' \
-      +[panhash, session, conntype, node_id, models, page, fields, obj_id, edit].inspect
+    p '---show_cabinet(panhash, session.id, conntype, node_id, models, page, fields, obj_id, edit)=' \
+      +[panhash, session.object_id, conntype, node_id, models, page, fields, obj_id, edit].inspect
 
     room_id = construct_room_id(panhash, session)
     if conntype.nil? or (conntype==PandoraNet::ST_Hunter)
@@ -22882,7 +22917,9 @@ module PandoraGtk
   class MainWindow < Gtk::Window
     attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
       :pool, :focus_timer, :title_view, :do_on_start, :radar_hpaned, :task_offset, \
-      :radar_sw, :log_vpaned, :log_sw, :accel_group, :node_reg_offset, :menubar, :toolbar
+      :radar_sw, :log_vpaned, :log_sw, :accel_group, :node_reg_offset, :menubar, \
+      :toolbar, :hand_cursor, :regular_cursor
+
 
     include PandoraUtils
 
@@ -24022,9 +24059,6 @@ module PandoraGtk
       $window = self
       @hunter_count = @listener_count = @fisher_count = @node_reg_offset = 0
 
-      @icon_factory = Gtk::IconFactory.new
-      @icon_factory.add_default
-
       main_icon = nil
       begin
         main_icon = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.ico'))
@@ -24037,6 +24071,12 @@ module PandoraGtk
         $window.icon = main_icon
         Gtk::Window.default_icon = $window.icon
       end
+
+      @icon_factory = Gtk::IconFactory.new
+      @icon_factory.add_default
+
+      @hand_cursor = Gdk::Cursor.new(Gdk::Cursor::HAND2)
+      @regular_cursor = Gdk::Cursor.new(Gdk::Cursor::XTERM)
 
       @accel_group = Gtk::AccelGroup.new
       $window.add_accel_group(accel_group)

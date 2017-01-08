@@ -77,7 +77,6 @@ Run these commands in terminal:
 
   xcode-select --install
   ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
-  ruby -e "$(curl -fsSL https://raw.github.com/mxcl/homebrew/go/install)"
   brew update
   brew doctor
   brew install ruby

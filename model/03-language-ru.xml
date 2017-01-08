@@ -294,8 +294,16 @@
     </Node>
 
     <Event name.ru="Событие|События">
-      <initiator name.ru="Инициатор" />
-      <kind name.ru="Тип" />
+      <node name.ru="Узел" type="Panhash(Node)" />
+      <number name.ru="Номер" type="Integer" />
+      <kind name.ru="Тип" type="Byte" />
+      <param1 name.ru="Парам1" type="Blob" />
+      <param2 name.ru="Парам2" type="Blob" />
+      <param3 name.ru="Парам3" type="Blob" />
+      <trust name.ru="Доверие" type="Byte" />
+      <depth name.ru="Глубина" type="Byte" />
+      <keep_nodes name.ru="Узлы-хранители" type="Blob" />
+      <requests name.ru="Запросы" type="Blob" />
     </Event>
 
     <Task name.ru="Задача">
