@@ -46,7 +46,7 @@
 #git branch -v
 #git diff
 #git diff --stat
-#git log --graph --decorate
+#git log --graph --decorate --oneline
 
 ##Save version, md5 and date to history log
 echo "`grep 'AppVersion  ' pandora.rb | grep -o [\.[:digit:].]*` `md5sum ./pandora.rb`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt

@@ -82,13 +82,20 @@ module PandoraUtils
     mes
   end
 
+  # Main application window
+  # RU: Главное окно приложения
+  $window = nil
+
+  # Maximal lines in log textview
+  # RU: Максимум строк в лотке лога
   MaxLogViewLineCount = 500
 
   # Default log level
   # RU: Уровень логирования по умолчанию
   $show_log_level = LM_Trace
 
-  $window = nil
+  # Auto show log textview when this error level is achived
+  # RU: Показать лоток лога автоматом, когда этот уровень ошибки достигнут
   $show_logbar_level = LM_Warning
 
   # Add the message to log
@@ -121,6 +128,8 @@ module PandoraUtils
     end
   end
 
+  # Maximal depth for diving to cognate language files
+  # RU: Глубина погружения по родственным языковым файлам
   MaxCognateDeep = 3
 
   # Load translated phrases
@@ -460,6 +469,8 @@ module PandoraUtils
     res
   end
 
+  # Drop kind (1st char) and language (2nd char) from panhash
+  # RU: Убрать тип и язык из панхэша
   def self.phash(panhash, len=nil)
     res = nil
     if (panhash.is_a? String) and (panhash.size>2)
@@ -469,6 +480,8 @@ module PandoraUtils
     res
   end
 
+  # Get value as is, or 1st element if it's array
+  # RU: Вернуть само значение, или 1й элемент, если это вектор
   def self.first_array_element_or_val(array)
     if array.is_a? Array
       if array.size == 1
@@ -528,10 +541,14 @@ module PandoraUtils
     res
   end
 
+  # Is string in a hexadecimal view?
+  # RU: Строка в шестнадцатиричном виде?
   def self.hex?(value)
     res = (/^[0-9a-fA-F]*$/ === value)
   end
 
+  # Is string in a decimal view?
+  # RU: Строка в десятичном виде?
   def self.number?(value)
     res = (/^[0-9\.]*$/ === value)
   end
@@ -4630,6 +4647,7 @@ module PandoraModel
   PSF_Crypted    = 4      # record is encrypted
   PSF_BlockWeb   = 8     # record is in BlockWeb
   PSF_ChatMes    = 16      # chat message (not dialog)
+  PSF_SentOut    = 32      # record has went outside of node
   PSF_Harvest    = 64     # download by pieces in progress
   PSF_Archive    = 128    # marked to delete
 
@@ -6359,7 +6377,7 @@ module PandoraNet
   MCM_Creator  = 0
   MCM_Created  = 1
   MCM_Text     = 2
-  MCM_Panstate = 3
+  MCM_PanState = 3
   MCM_Id       = 4   #not send
   MCM_Dest     = 5   #not send
 
@@ -7292,9 +7310,9 @@ module PandoraNet
         ids = [] if talkview
         while sel and (i<sel.size)
           row = sel[i]
-          panstate = row[MCM_Panstate]
+          panstate = row[MCM_PanState]
           if panstate
-            row[MCM_Panstate] = (panstate & (PandoraModel::PSF_Support | \
+            row[MCM_PanState] = (panstate & (PandoraModel::PSF_Support | \
               PandoraModel::PSF_Crypted | PandoraModel::PSF_Verified | \
               PandoraModel::PSF_ChatMes))
           end
@@ -7308,7 +7326,7 @@ module PandoraNet
           #  row[4] = text
           #end
           p '---Add MASS Mes: row='+row.inspect
-          row_pson = PandoraUtils.rubyobj_to_pson(row[MCM_Creator..MCM_Panstate])
+          row_pson = PandoraUtils.rubyobj_to_pson(row[MCM_Creator..MCM_PanState])
           #p log_mes+'%%%Send EC_Message: [row_pson, row_pson.len]='+\
           #  [row_pson, row_pson.bytesize].inspect
           #row, len = PandoraUtils.pson_to_rubyobj(row_pson)
@@ -9708,7 +9726,7 @@ module PandoraNet
                         creator  = row[MCM_Creator]
                         created  = row[MCM_Created]
                         text     = row[MCM_Text]
-                        panstate = row[MCM_Panstate]
+                        panstate = row[MCM_PanState]
                         panstate ||= 0
                         panstate = (panstate & (PandoraModel::PSF_Crypted | \
                           PandoraModel::PSF_Verified))

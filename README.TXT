@@ -35,7 +35,7 @@ https://github.com/Novator/Pandora/wiki/Install-and-first-run
 2. SYSTEM REQUIREMENTS
 
 Mandatory:
-- Linux or Windows OS
+- Linux, Windows or Mac OS
 - Ruby1.9 or higher script engine
 - GTK2 graphical library
 - SQLite3 database library
