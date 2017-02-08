@@ -49,11 +49,11 @@
 #git log --graph --decorate --oneline
 
 ##Save version, md5 and date to history log
-echo "`grep 'AppVersion  ' pandora.rb | grep -o [\.[:digit:].]*` `md5sum ./pandora.rb`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
+echo "`grep 'PandoraVersion  ' ./lib/gtk.rb | grep -o [\.[:digit:].]*` `./pandora.sh --md5`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
 
 ## Push files from local to repository
 #git add --all
-git commit -a -m "version 0.68 alpha"
+git commit -a -m "version 0.69 alpha"
 git push -u bitbuc master
 git push -u github master
 #git push -u bitbuc develop
