@@ -307,8 +307,8 @@ module PandoraCrypto
     [key, keypub, keypriv, type_klen, cipher_hash, pass]
   end
 
-  # Divide type and code of length
-  # RU: Разделить тип и код длины
+  # Is type of key symmetric?
+  # RU: Это ключ симметричного типа?
   def self.symmetric_key?(type_key)
     type = nil
     if (type_key.is_a? Integer)
@@ -379,8 +379,8 @@ module PandoraCrypto
     res
   end
 
-  # Init key or key pair
-  # RU: Инициализирует ключ или ключевую пару
+  # Does key with given panhash present in database?
+  # RU: Существует ли ключ с указанным панхэшем в базе?
   def self.key_saved?(panhash, key_model=nil)
     res = nil
     key_model ||= PandoraUtils.get_model('Key')
