@@ -28,7 +28,7 @@ module PandoraNet
   CommExtSize  = 10
   SegNAttrSize = 8
 
-  # Network exchange comands
+  # Network exchange commands
   # RU: Команды сетевого обмена
   EC_Media     = 0     # Медиа данные
   EC_Auth      = 1     # Инициализация диалога (версия протокола, сжатие, авторизация, шифрование)
@@ -50,6 +50,8 @@ module PandoraNet
   # signs only
   EC_Data      = 256   # Ждем данные
 
+  # Extentions codes of commands
+  # RU: Коды расширения команд
   ECC_Auth_Hello       = 0
   ECC_Auth_Cipher      = 1
   ECC_Auth_Puzzle      = 2
@@ -121,7 +123,7 @@ module PandoraNet
   # RU: Режим соединения
   CM_Hunter       = 1
   CM_Keep         = 2
-  CM_GetNotice    = 4
+  CM_MassExch     = 4
   CM_Captcha      = 8
   CM_CiperBF      = 16
   CM_CiperAES     = 32
@@ -961,7 +963,7 @@ module PandoraNet
     def find_mass_record_by_index(src_node, src_ind)
       res = nil
       res = @mass_records.find do |mr|
-        ((mr[PandoraNet::MR_Node] == src_node) and \
+        mr and ((mr[PandoraNet::MR_Node] == src_node) and \
         (mr[PandoraNet::MR_Index] == src_ind))
       end
       res
@@ -971,7 +973,7 @@ module PandoraNet
       res = nil
       param2 = AsciiString.new(param2) if akind==MK_Search
       res = @mass_records.find do |mr|
-        ((mr[PandoraNet::MR_Node] == src_node) and \
+        mr and ((mr[PandoraNet::MR_Node] == src_node) and \
         (param1.nil? or (mr[PandoraNet::MR_Param1] == param1)) and \
         (param2.nil? or (mr[PandoraNet::MR_Param2] == param2)) and \
         (param3.nil? or (mr[PandoraNet::MR_Param3] == param3)))
@@ -1021,10 +1023,10 @@ module PandoraNet
         atrust ||= 0
         adepth ||= 3
         adepth -= 1
-        p 'add_mass_rec1  adepth='+adepth.inspect
+        p '------add_mass_rec1  adepth='+adepth.inspect
         if adepth >= 0
           cur_time = Time.now.to_i
-          delete_old_mass_records(cur_time)
+          #delete_old_mass_records(cur_time)
           case akind
             when MK_Search
               param2 = AsciiString.new(param2)
@@ -1065,31 +1067,11 @@ module PandoraNet
               when MK_Chat
                 #
             end
-            p 'add_mass_rec2  mr='+mr.inspect
+            p '=======add_mass_rec2  mr='+mr.inspect
           end
         end
       end
       mr
-    end
-
-    def connect_sessions_to_hook(sessions, sess, hook, fisher=false, line=nil)
-      res = false
-      if (sessions.is_a? Array) and (sessions.size>0)
-        sessions.each do |session|
-          sthread = session.send_thread
-          if sthread and sthread.alive? and sthread.stop?
-            sess_hook, rec = sess.reg_line(line, nil, hook)
-            fhook, rec = session.reg_line(nil, sess, nil, nil, sess_hook)
-            sess_hook2, rec2 = sess.reg_line(nil, session, nil, sess_hook, fhook)
-            PandoraUtils.log_message(PandoraUtils::LM_Info, _('Unfreeze fisher')+\
-              ': [sess, hook]='+[session.object_id, sess_hook].inspect)
-            sthread.run
-            res = true
-            break
-          end
-        end
-      end
-      res
     end
 
     # Search in bases
@@ -1415,7 +1397,7 @@ module PandoraNet
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :s_encode, \
       :r_encode, \
       :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, :to_node, \
-      :captcha_sw, :hooks, :mass_ind, :sess_trust, :notice, :activity
+      :captcha_sw, :hooks, :mr_ind, :sess_trust, :notice, :activity
 
     # Set socket options
     # RU: Установить опции сокета
@@ -1791,10 +1773,10 @@ module PandoraNet
             tokey = param
             params['tokey'] = tokey
             mode = 0
-            mode |= CM_GetNotice if $get_notice
+            mode |= CM_MassExch if $mass_exchange
             mode |= CM_Captcha if (@conn_mode & CM_Captcha)>0
             hparams = {:version=>ProtocolVersion, :mode=>mode, :mykey=>key_hash, :tokey=>tokey, \
-              :notice=>(($notice_depth << 8) | $notice_trust)}
+              :notice=>(($mass_depth << 8) | $mass_trust)}
             hparams[:addr] = $incoming_addr if $incoming_addr and ($incoming_addr != '')
             #acipher = open_last_cipher(tokey)
             #if acipher
@@ -2312,6 +2294,28 @@ module PandoraNet
         [hook, rec]
       end
 
+      # Connect session to the hook
+      # RU: Присоединить сессию к крючку
+      def connect_session_to_hook(sessions, hook, fisher=false, line=nil)
+        res = false
+        if (sessions.is_a? Array) and (sessions.size>0)
+          sessions.each do |session|
+            sthread = session.send_thread
+            if sthread and sthread.alive? and sthread.stop?
+              sess_hook, rec = self.reg_line(line, nil, hook)
+              fhook, rec = session.reg_line(nil, self, nil, nil, sess_hook)
+              sess_hook2, rec2 = self.reg_line(nil, session, nil, sess_hook, fhook)
+              PandoraUtils.log_message(PandoraUtils::LM_Info, _('Unfreeze fisher')+\
+                ': [session, hook]='+[session.object_id, sess_hook].inspect)
+              sthread.run
+              res = true
+              break
+            end
+          end
+        end
+        res
+      end
+
       # Initialize the fishing line, send hooks
       # RU: Инициализировать рыбацкую линию, разослать крючки
       def init_line(line_order, akey_hash=nil)
@@ -2336,7 +2340,7 @@ module PandoraNet
               line[MR_Fish_key] ||= pool.key_hash
               line[LN_Fish_Baseid] = pool.base_id
               p log_mes+' line='+line.inspect
-              #session = connect_sessions_to_hook([session], self, hook)
+              #session = self.connect_session_to_hook([session], hook)
               my_hook, rec = reg_line(line, session)
               if my_hook
                 line_raw = PandoraUtils.rubyobj_to_pson(line)
@@ -2402,6 +2406,7 @@ module PandoraNet
             end
           end
         end
+        res
       end
 
       # Clear out lures for the fisher and input lure
@@ -2515,9 +2520,9 @@ module PandoraNet
           not_dep = (@notice >> 8)
           if not_dep >= 0
             nick = PandoraCrypto.short_name_of_person(@skey, @to_person, 1)
-            pool.add_mass_record(MK_Presence, nick, nil, nil, \
-              nil, nil, nil, not_trust, not_dep, pool.self_node, \
-              nil, @recv_models)
+            #pool.add_mass_record(MK_Presence, nick, nil, nil, \
+            #  nil, nil, nil, not_trust, not_dep, pool.self_node, \
+            #  nil, @recv_models)
           end
         end
       end
@@ -3112,14 +3117,15 @@ module PandoraNet
                     end
 
                     talkview = nil
-                    talkview = dialog.dlg_talkview if dialog
+                    talkview = @dialog.dlg_talkview if @dialog
                     if talkview
                       myname = PandoraCrypto.short_name_of_person(pool.current_key)
                       sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
                       id = nil
                       id = sel[0][0] if sel and (sel.size > 0)
-                      dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
+                      @dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
                         myname, time_now, created)
+                      @dialog.show_page(PandoraGtk::CPI_Dialog)
                     else
                       PandoraUtils.log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
                     end
@@ -3271,31 +3277,6 @@ module PandoraNet
                     @scmd = EC_News
                     @scode = ECC_News_Record
                     @sbuf = PandoraUtils.rubyobj_to_pson([pson_records, created_list])
-                  when ECC_Query_Fish
-                    # пришла заявка на рыбалку
-                    line_order_raw = rdata
-                    line_order, len = PandoraUtils.pson_to_rubyobj(line_order_raw)
-                    p '--ECC_Query_Fish line_order='+line_order.inspect
-
-                    if init_line(line_order, pool.key_hash) == false
-                      pool.add_fish_order(self, *line_order, @recv_models)
-                      p log_mes+'ADD fish order to pool list: line_order='+line_order.inspect
-                    end
-                  when ECC_Query_Search
-                    # пришёл поисковый запрос
-                    search_req_raw = rdata
-                    search_req, len = PandoraUtils.pson_to_rubyobj(search_req_raw)
-                    p '--ECC_Query_Search  search_req='+search_req.inspect
-                    if (search_req.is_a? Array) and (search_req.size>=2)
-                      abase_id = search_req[SR_BaseId]
-                      abase_id ||= @to_base_id
-                      if abase_id != pool.base_id
-                        p log_mes+'ADD search req to pool list'
-                        pool.add_mass_record(MK_Search, search_req[SR_Kind], \
-                          search_req[SR_Request], nil, nil, nil, nil, \
-                          nil, nil, @to_node, nil, @recv_models)
-                      end
-                    end
                   when ECC_Query_Fragment
                     # запрос фрагмента для корзины
                     p log_mes+'==ECC_Query_Fragment'
@@ -3367,7 +3348,7 @@ module PandoraNet
                     hook = rdata[0].ord
                     line_raw = rdata[1..-1]
                     line, len = PandoraUtils.pson_to_rubyobj(line_raw)
-                    if (len>0) and line.is_a?(Array) and (line.size>=6)
+                    if (len>0) and line.is_a?(Array) and (line.size==6)
                       # данные корректны
                       fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid = line
                       p log_mes+'--ECC_News_Hook line='+line.inspect
@@ -3383,7 +3364,7 @@ module PandoraNet
                           sessions.each do |session|
                             p 'Подсоединяюсь к сессии: session.id='+session.object_id.to_s
                             sess_hook, rec = reg_line(line, session)
-                            if not pool.connect_sessions_to_hook(session, self, hook, true)
+                            if not self.connect_session_to_hook([session], hook, true)
                               p 'Не могу прицепить сессию'
                             end
                           end
@@ -3403,7 +3384,7 @@ module PandoraNet
                           sessions = pool.sessions_of_personkeybase(fish, fish_key, nil)
                           p 'sessions2 size='+sessions.size.to_s
                         end
-                        if not pool.connect_sessions_to_hook(sessions, self, hook, true, line)
+                        if not self.connect_session_to_hook(sessions, hook, true, line)
                           #(line, session, far_hook, hook, sess_hook)
                           sess_hook, rec = reg_line(line, nil, hook)
                           session = Session.new(self, sess_hook, nil, nil, nil, \
@@ -3461,9 +3442,9 @@ module PandoraNet
                     p log_mes+'==ECC_News_Notice [rdata, notic, len]='+[rdata, nick, len].inspect
                     if (notic.is_a? Array) and (notic.size==5)
                       #pool.add_notice_order(self, *notic)
-                      pool.add_mass_record(MK_Presence, nick, nil, nil, \
-                        nil, nil, nil, nil, \
-                        nil, @to_node, nil, @recv_models)
+                      #pool.add_mass_record(MK_Presence, nick, nil, nil, \
+                      #  nil, nil, nil, nil, \
+                      #  nil, @to_node, nil, @recv_models)
                     end
                   when ECC_News_SessMode
                     p log_mes + 'ECC_News_SessMode'
@@ -3569,15 +3550,25 @@ module PandoraNet
                 if (params.is_a? Array) and (params.size>=6)
                   src_node, src_ind, atime, atrust, adepth, param1, \
                     param2, param3 = params
+                  src_key = nil
+                  scr_baseid = nil
+                  scr_person = nil
+                  nl = pool.get_node_params(src_node)
+                  if nl
+                    src_key = nl[NL_Key]
+                    scr_baseid = nl[NL_BaseId]
+                    scr_person = nl[NL_Person]
+                  end
                   if not pool.find_mass_record_by_params(src_node, kind, param1, param2, param3)
                   #if not pool.find_mass_record_by_index(src_node, src_ind)
                     keep_node = @to_node
+                    resend = true
                     case kind
                       when MK_Presence
                       when MK_Chat
                         destination  = AsciiString.new(params[MRC_Dest])
                         row, len = PandoraUtils.pson_to_rubyobj(params[MRC_MesRow])
-                        p 'MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
+                        p '---MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
                           MRC_MesRow, params[MRC_MesRow], row].inspect
                         creator  = row[MCM_Creator]
                         created  = row[MCM_Created]
@@ -3595,31 +3586,58 @@ module PandoraNet
                         model = PandoraUtils.get_model('Message', @recv_models)
                         panhash = model.calc_panhash(values)
                         values['panhash'] = panhash
+                        chat_dialog = PandoraGtk.show_cabinet(destination, nil, \
+                          nil, nil, nil, PandoraGtk::CPI_Chat)
+                          #@conn_type, nil, nil, PandoraGtk::CPI_Chat)
                         res = model.update(values, nil, nil)
-                        chat_dialog = PandoraGtk.show_cabinet(destination, self, \
-                          @conn_type, nil, nil, PandoraGtk::CPI_Chat)
                         Thread.pass
                         sleep(0.05)
                         Thread.pass
                         talkview = nil
-                        talkview = dialog.chat_talkview if dialog
+                        talkview = chat_dialog.chat_talkview if chat_dialog
                         if talkview
                           myname = PandoraCrypto.short_name_of_person(pool.current_key)
                           sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
                           id = nil
                           id = sel[0][0] if sel and (sel.size > 0)
-                          dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
+                          chat_dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
                             myname, time_now, created)
                         else
                           PandoraUtils.log_message(LM_Error, 'Пришло чат-сообщение, но лоток чата не найден!')
                         end
                       when MK_Search
+                        # пришёл поисковый запрос (ECC_Query_Search)
+                        #MRS_Kind       = MR_Param1    #1
+                        #MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
+                        #MRA_Answer     = MR_Param3    #~22
+                        scr_baseid ||= @to_base_id
+                        resend = ((scr_baseid.nil?) or (scr_baseid != pool.base_id))
+                        #  p log_mes+'ADD search req to pool list'
+                        #  pool.add_mass_record(MK_Search, params[MRS_Kind], \
+                        #    params[MRS_Request], params[MRA_Answer], nil, nil, nil, \
+                        #    nil, nil, @to_node, nil, @recv_models)
+                        #end
                       when MK_Fishing
+                        # пришла заявка на рыбалку (ECC_Query_Fish)
+                        #params[MRF_Fish]            = MR_Param1   #22
+                        #params[MRF_Fish_key]        = MR_Param2   #22    #sum: 33+44=  77
+                        #params[MRL_Fish_Baseid]     = MR_Param3   #16
+                        if nl
+                          fisher = scr_person
+                          fisher_key = src_key
+                          fisher_baseid = scr_baseid
+                          fish = params[MRF_Fish]
+                          fish_key = params[MRF_Fish_key]
+                          resend = (init_line([fisher, fisher_key, fisher_baseid, \
+                            fish, fish_key], pool.key_hash) == false)
+                        end
                       when MK_Cascade
                       when MK_CiferBox
                     end
-                    pool.add_mass_record(kind, param1, param2, param3, src_node, \
-                      src_ind, atime, atrust, adepth, keep_node, nil, @recv_models)
+                    if resend
+                      pool.add_mass_record(kind, param1, param2, param3, src_node, \
+                        src_ind, atime, atrust, adepth, keep_node, nil, @recv_models)
+                    end
                   end
                 end
               else
@@ -3687,9 +3705,12 @@ module PandoraNet
     # Number of requests per cicle
     # RU: Число запросов за цикл
     $inquire_block_count = 1
+    # Max count of mass send
+    # RU: Максимальное число массовых рассылок
+    $max_mass_count = 200
     # Number of mass send per cicle
     # RU: Число массовых рассылок за цикл
-    $mass_block_count = 2
+    $mass_per_cicle = 2
     # Search request live time (sec)
     # RU: Время жизни поискового запроса
     $search_live_time = 10*60
@@ -3724,7 +3745,7 @@ module PandoraNet
       @read_state  = 0
       send_state_add  ||= 0
       @send_state     = send_state_add
-      @mass_ind     = 0
+      @mr_ind     = 0
       @punnet_ind   = 0
       @frag_ind     = 0
       #@fishes         = Array.new
@@ -3851,7 +3872,7 @@ module PandoraNet
               if to_person or to_key
                 #pool.add_fish_order(self, pool.person, pool.key_hash, pool.base_id, \
                 #  to_person, to_key, @recv_models)
-                fish_trust = 0.0
+                fish_trust = 0
                 fish_dep = 2
                 pool.add_mass_record(MK_Fishing, to_person, to_key, nil, \
                    nil, nil, nil, fish_trust, fish_dep, nil, nil, @recv_models)
@@ -4451,17 +4472,21 @@ module PandoraNet
               end
 
               # рассылка массовых записей
-              if (@sess_mode.is_a? Integer) and ((@sess_mode & CM_GetNotice)>0) \
+              if (@sess_mode.is_a? Integer) and ((@sess_mode & CM_MassExch)>0) \
               and @to_key and @to_person and @to_base_id and @sess_trust \
               and (questioner_step>QS_ResetMessage)
                 processed = 0
+                if @mr_ind+$max_mass_count < pool.mass_records.size
+                  @mr_ind = pool.mass_records.size - $max_mass_count
+                end
                 while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
-                and (@mass_ind <= pool.mass_ind) \
-                and (processed<$mass_block_count)
+                and (@mr_ind < pool.mass_records.size) \
+                and (processed<$mass_per_cicle)
                 #and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
-                  mass_rec = pool.mass_records[@mass_ind]
-                  p log_mes+'FOUND [mass_rec, @to_node]='+[mass_rec, @to_node].inspect
-                  if (mass_rec and (not mass_rec[MR_Node].nil?) \
+                  mass_rec = pool.mass_records[@mr_ind]
+                  p log_mes+'->>>MASSREC [@mr_ind, pool.mass_records.size, @sess_trust, mass_rec[MR_Trust], mass_rec, @to_node]=' \
+                    +[@mr_ind, pool.mass_records.size, @sess_trust, PandoraModel.transform_trust(mass_rec[MR_Trust]), mass_rec, @to_node].inspect
+                  if (mass_rec and mass_rec[MR_Node] \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], \
                   :auto_to_float)) and (mass_rec[MR_Node] != @to_node) and (mass_rec[MR_Depth]>0))
                   #and (mass_rec[MR_Node] != pool.self_node) \
@@ -4486,13 +4511,13 @@ module PandoraNet
                       when MK_Chat
                     end
                     if params
-                      p log_mes+'Mass rec send [kind, params]'+[kind, params].inspect
+                      p log_mes+'-->>>> MR SEND [kind, params]'+[kind, params].inspect
                       params_pson = PandoraUtils.rubyobj_to_pson(params)
                       add_send_segment(EC_Mass, true, params_pson, kind)
                     end
                     processed += 1
                   end
-                  @mass_ind += 1
+                  @mr_ind += 1
                 end
               end
 
@@ -4666,16 +4691,16 @@ module PandoraNet
     client
   end
 
-  # Get notice parameters
-  # RU: Взять параметры уведомления
-  def self.get_notice_params
-    $get_notice           = PandoraUtils.get_param('get_notice')
-    $notice_trust         = PandoraUtils.get_param('notice_trust')
-    $notice_depth         = PandoraUtils.get_param('notice_depth')
-    $max_notice_depth     = PandoraUtils.get_param('max_notice_depth')
-    $notice_trust        ||= 12
-    $notice_depth        ||= 2
-    $max_notice_depth    ||= 5
+  # Get mass records parameters
+  # RU: Взять параметры массовых сообщений
+  def self.get_mass_params
+    $mass_exchange      = PandoraUtils.get_param('mass_exchange')
+    $mass_trust         = PandoraUtils.get_param('mass_trust')
+    $mass_depth         = PandoraUtils.get_param('mass_depth')
+    $max_mass_depth     = PandoraUtils.get_param('max_mass_depth')
+    $mass_trust       ||= 12
+    $mass_depth       ||= 2
+    $max_mass_depth   ||= 5
   end
 
   $max_session_count   = 300
@@ -4703,7 +4728,7 @@ module PandoraNet
     $dialog_timeout      = PandoraUtils.get_param('dialog_timeout')
     $captcha_timeout     = PandoraUtils.get_param('captcha_timeout')
     $low_conn_trust     ||= 0.0
-    get_notice_params
+    get_mass_params
   end
 
   $tcp_listen_thread = nil

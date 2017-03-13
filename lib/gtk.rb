@@ -6714,8 +6714,8 @@ module PandoraGtk
       grab_def_widget
     end
 
-    # Show cabinet
-    # RU: Показать кабинет
+    # Create cabinet
+    # RU: Создать кабинет
     def initialize(a_panhash, a_room_id, a_page=nil, a_fields=nil, an_id=nil, \
     an_edit=nil, a_session=nil)
       super(nil, nil)
@@ -8888,16 +8888,26 @@ module PandoraGtk
 
       #mass_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
-      list_store = Gtk::ListStore.new(Integer, String, String, String, String, String, \
-        String, String)
+      list_store = Gtk::ListStore.new(Integer, String, Integer, String, String, \
+        String, String, String, String, String, String)
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
         $window.pool.mass_records.each do |mr|
-          sess_iter = list_store.append
-          sess_iter[0] = mr[PandoraNet::MR_Index]
-          sess_iter[1] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Node])
-          sess_iter[2] = PandoraUtils.time_to_str(mr[PandoraNet::MR_CrtTime])
+          if mr
+            sess_iter = list_store.append
+            sess_iter[0] = mr[PandoraNet::MR_Kind]
+            sess_iter[1] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Node])
+            sess_iter[2] = mr[PandoraNet::MR_Index]
+            sess_iter[3] = PandoraUtils.time_to_str(mr[PandoraNet::MR_CrtTime])
+            sess_iter[4] = mr[PandoraNet::MR_Trust].inspect
+            sess_iter[5] = mr[PandoraNet::MR_Depth].inspect
+            sess_iter[6] = mr[PandoraNet::MR_Param1].inspect
+            sess_iter[7] = mr[PandoraNet::MR_Param2].inspect
+            sess_iter[8] = mr[PandoraNet::MR_Param3].inspect
+            sess_iter[9] = mr[PandoraNet::MR_KeepNodes].inspect
+            sess_iter[10] = mr[PandoraNet::MR_Requests].inspect
+          end
         end
       end
 
@@ -8909,43 +8919,58 @@ module PandoraGtk
       #mass_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 0)
+      column = Gtk::TreeViewColumn.new(_('Kind'), renderer, 'text' => 0)
       column.set_sort_column_id(0)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Session'), renderer, 'text' => 1)
+      column = Gtk::TreeViewColumn.new(_('Node'), renderer, 'text' => 1)
       column.set_sort_column_id(1)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Fisher'), renderer, 'text' => 2)
+      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 2)
       column.set_sort_column_id(2)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Fisher key'), renderer, 'text' => 3)
+      column = Gtk::TreeViewColumn.new(_('CrtTime'), renderer, 'text' => 3)
       column.set_sort_column_id(3)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Fisher BaseID'), renderer, 'text' => 4)
+      column = Gtk::TreeViewColumn.new(_('Trust'), renderer, 'text' => 4)
       column.set_sort_column_id(4)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Fish'), renderer, 'text' => 5)
+      column = Gtk::TreeViewColumn.new(_('Depth'), renderer, 'text' => 5)
       column.set_sort_column_id(5)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Fish key'), renderer, 'text' => 6)
+      column = Gtk::TreeViewColumn.new(_('Param1'), renderer, 'text' => 6)
       column.set_sort_column_id(6)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 7)
+      column = Gtk::TreeViewColumn.new(_('Param2'), renderer, 'text' => 7)
       column.set_sort_column_id(7)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Param3'), renderer, 'text' => 8)
+      column.set_sort_column_id(8)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('KeepNodes'), renderer, 'text' => 9)
+      column.set_sort_column_id(9)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('Requests'), renderer, 'text' => 10)
+      column.set_sort_column_id(10)
       list_tree.append_column(column)
 
       list_tree.signal_connect('row_activated') do |tree_view, path, column|
@@ -10110,15 +10135,15 @@ module PandoraGtk
     end
 
     treeview.signal_connect('row_activated') do |tree_view, path, column|
-      if single
+      dialog = page_sw.parent.parent.parent
+      if dialog and (dialog.is_a? AdvancedDialog) and dialog.okbutton
+        dialog.okbutton.activate
+      else
         if (panobject.is_a? PandoraModel::Person)
           act_panobject(tree_view, 'Dialog')
         else
           act_panobject(tree_view, 'Edit')
         end
-      else
-        dialog = page_sw.parent.parent.parent
-        dialog.okbutton.activate
       end
     end
 
@@ -10504,15 +10529,6 @@ module PandoraGtk
     targets
   end
 
-  # Construct room id
-  # RU: Создать идентификатор комнаты
-  def self.construct_room_id(panhash, session=nil)
-    res = nil
-    res = panhash.dup if panhash
-    res ||= session.object_id if session
-    res
-  end
-
   # Find active sender
   # RU: Найти активного отправителя
   def self.find_another_active_sender(not_this=nil)
@@ -10692,15 +10708,18 @@ module PandoraGtk
     p '---show_cabinet(panhash, session.id, conntype, node_id, models, page, fields, obj_id, edit)=' \
       +[panhash, session.object_id, conntype, node_id, models, page, fields, obj_id, edit].inspect
 
-    room_id = construct_room_id(panhash, session)
+    room_id = AsciiString.new(PandoraUtils.fill_zeros_from_right(panhash, \
+      PandoraModel::PanhashSize)).dup if panhash
+    #room_id ||= session.object_id if session
+
     if conntype.nil? or (conntype==PandoraNet::ST_Hunter)
       creator = PandoraCrypto.current_user_or_key(true)
-      room_id[-1] = (room_id[-1].ord ^ 1).chr if panhash==creator
+      #room_id[-1] = (room_id[-1].ord ^ 1).chr if panhash==creator
     end
     p 'room_id='+room_id.inspect
     $window.notebook.children.each do |child|
-      if (child.is_a? CabinetBox) and ((child.room_id==room_id) \
-      or (not session.nil?) and (child.session==session))
+      if ((child.is_a? CabinetBox) and ((child.room_id==room_id) \
+      or (session and (child.session==session))))
         #child.targets = targets
         #child.online_btn.safe_set_active(nodehash != nil)
         #child.online_btn.inconsistent = false
@@ -12325,7 +12344,7 @@ module PandoraGtk
 
             # Mass record garbager
             # RU: Чистильщик массовых сообщений
-            if @mass_garb_offset >= MassGarbStep
+            if false #!!!! (@mass_garb_offset >= MassGarbStep)
               @mass_garb_offset = 0.0
               cur_time = Time.now.to_i
               processed = MassGarbTrain
@@ -12345,7 +12364,7 @@ module PandoraGtk
                   processed = 0
                 end
               end
-              pool.mass_records.compact!
+              #pool.mass_records.compact!
             end
             @mass_garb_offset += @scheduler_step
 

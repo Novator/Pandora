@@ -405,10 +405,10 @@
     <captcha_attempts desc="Captcha attempts count" type="Byte" section="net" setting="2" />
     <trust_captchaed desc="Trust captchaed" type="Boolean" section="net" setting="true" />
     <trust_listener desc="Trust listener" type="Boolean" section="net" setting="true" />
-    <get_notice desc="Get notice" type="Boolean" section="net" setting="true" />
-    <notice_trust desc="Notice send trust" type="Byte" section="net" setting="0" />
-    <notice_depth desc="Notice send depth" type="Byte" section="net" setting="2" />
-    <max_notice_depth desc="Max broadcast depth" type="Byte" section="net" setting="2" />
+    <mass_exchange desc="Mass records exchange" type="Boolean" section="net" setting="true" />
+    <mass_trust desc="Mass send trust" type="Byte" section="net" setting="0" />
+    <mass_depth desc="Mass send depth" type="Byte" section="net" setting="2" />
+    <max_mass_depth desc="Max broadcast depth" type="Byte" section="net" setting="2" />
     <low_conn_trust desc="Low allowed trust to connection for key" type="Real" section="net" setting="0.0" />
     <max_opened_keys desc="Max opened keys" type="Integer" section="net" setting="1000" />
     <max_session_count desc="Max session count" type="Integer" section="net" setting="400" />
