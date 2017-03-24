@@ -14,20 +14,22 @@ require 'fileutils'
 require File.expand_path('../crypto.rb',  __FILE__)
 require File.expand_path('../net.rb',  __FILE__)
 
+# GTK is cross platform graphical user interface
+# RU: Кроссплатформенный оконный интерфейс
+begin
+  require 'gtk2'
+  Gtk.init
+  $gtk_is_active = true
+rescue Exception
+  Kernel.abort("Gtk cannot be activated.\nInstall packet 'ruby-gtk'")
+end
+
+
 module PandoraGtk
 
   # Version of GUI application
   # RU: Версия GUI приложения
   PandoraVersion  = '0.69'
-
-  # GTK is cross platform graphical user interface
-  # RU: Кроссплатформенный оконный интерфейс
-  begin
-    require 'gtk2'
-    Gtk.init
-  rescue Exception
-    Kernel.abort("Gtk is not installed.\nInstall packet 'ruby-gtk'")
-  end
 
   include PandoraUtils
   include PandoraModel
@@ -3474,7 +3476,7 @@ module PandoraGtk
   # Editor TextView
   # RU: TextView редактора
   class EditorTextView < SuperTextView
-    attr_accessor :view_border, :raw_border
+    attr_accessor :body_win, :view_border, :raw_border
 
     def set_left_border_width(left_border=nil)
       if (not left_border) or (left_border<0)
@@ -3496,7 +3498,8 @@ module PandoraGtk
       set_border_window_size(Gtk::TextView::WINDOW_LEFT, left_border)
     end
 
-    def initialize(aview_border=nil, araw_border=nil)
+    def initialize(abody_win, aview_border=nil, araw_border=nil)
+      @body_win = abody_win
       @view_border = aview_border
       @raw_border = araw_border
       super(aview_border)
@@ -3854,7 +3857,7 @@ module PandoraGtk
             link_name = nil
           end
 
-          bodywid ||= PandoraGtk::EditorTextView.new(0, nil)
+          bodywid ||= PandoraGtk::EditorTextView.new(bodywin, 0, nil)
 
           if not bodywin.child
             if bodywid.is_a? PandoraGtk::SuperTextView
@@ -5127,7 +5130,9 @@ module PandoraGtk
       end
     end
 
-    def accept_hash_flds(flds_hash, lang=nil, created0=nil)
+    # Save raw fields with form flags, sign and relations
+    # RU: Сохранить сырые поля с флагами формы, подписью и связями
+    def save_flds_with_form_flags(flds_hash, lang=nil, created0=nil)
       time_now = Time.now.to_i
       if (panobject.is_a? PandoraModel::Created)
         if created0 and flds_hash['created'] \
@@ -5259,7 +5264,9 @@ module PandoraGtk
       end
     end
 
-    def save_fields_with_flags(created0=nil, row=nil)
+    # Save entered fields and flags to database
+    # RU: Сохранить введённые поля и флаги в базу данных
+    def save_form_fields_with_flags_to_database(created0=nil, row=nil)
       # view_fields to raw_fields and hash
       flds_hash = {}
       file_way = nil
@@ -5313,6 +5320,8 @@ module PandoraGtk
             flds_hash[field[FI_Id]] = val
             field[FI_Value] = val
             #p '----TEXT ENTR!!!!!!!!!!!'
+          else
+            flds_hash[field[FI_Id]] = field[FI_Value]
           end
         else
           flds_hash[field[FI_Id]] = val
@@ -5324,26 +5333,25 @@ module PandoraGtk
       text_fields.each do |field|
         entry = field[FI_Widget]
         if entry.text == ''
-          textview = field[FI_Widget2].child
-          body_win = nil
-          body_win = textview.parent if textview and (not textview.destroyed?)
-          text = nil
-          if body_win and (not body_win.destroyed?) \
-          and (body_win.is_a? PandoraGtk::BodyScrolledWindow) and body_win.raw_buffer
+          body_win = field[FI_Widget2]
+          text = flds_hash[field[FI_Id]]
+          #p '====(entry.text == '')  body_win, body_win.destroyed?, body_win.raw_buffer, text='+\
+            [body_win, body_win.destroyed?, body_win.raw_buffer, text].inspect
+          if (body_win.is_a? BodyScrolledWindow) \
+          and (not body_win.destroyed?) and body_win.raw_buffer
             #text = textview.buffer.text
             text = body_win.raw_buffer.text
+            #p '---text='+text.inspect
             if text and (text.size>0)
-              #p '===TEXT BUF!!!!!!!!!!!'
-              field[FI_Value] = text
-              flds_hash[field[FI_Id]] = text
               type_fld = panobject.field_des('type')
               flds_hash['type'] = body_win.property_box.format_btn.label.upcase if type_fld
             else
               text = nil
             end
           end
-          text ||= field[FI_Value]
           text ||= ''
+          field[FI_Value] = text
+          flds_hash[field[FI_Id]] = text
           sha1_fld = panobject.field_des('sha1')
           flds_hash['sha1'] = Digest::SHA1.digest(text) if sha1_fld
           md5_fld = panobject.field_des('md5')
@@ -5362,7 +5370,7 @@ module PandoraGtk
       lang = lg if lg
       lang = 5 if (not lang.is_a? Integer) or (lang<0) or (lang>255)
 
-      self.accept_hash_flds(flds_hash, lang, created0)
+      self.save_flds_with_form_flags(flds_hash, lang, created0)
     end
 
   end
@@ -5850,10 +5858,10 @@ module PandoraGtk
       add_btn_to_toolbar
 
       add_btn_to_toolbar(Gtk::Stock::SAVE) do |btn|
-        pb.save_fields_with_flags
+        pb.save_form_fields_with_flags_to_database
       end
       add_btn_to_toolbar(Gtk::Stock::OK) do |btn|
-        pb.save_fields_with_flags
+        pb.save_form_fields_with_flags_to_database
         self.destroy
       end
 
@@ -6274,10 +6282,10 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(toolbar)
 
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE) do
-        pb.save_fields_with_flags
+        pb.save_form_fields_with_flags_to_database
       end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) do
-        pb.save_fields_with_flags
+        pb.save_form_fields_with_flags_to_database
         self.destroy
       end
 
@@ -6455,7 +6463,7 @@ module PandoraGtk
             @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
             fill_edit_toolbar
             if property_box.text_fields.size>0
-              p property_box.text_fields
+              #p property_box.text_fields
               first_body_fld = property_box.text_fields[0]
               if first_body_fld
                 bodywin = first_body_fld[FI_Widget2]
@@ -6483,7 +6491,7 @@ module PandoraGtk
               @dlg_talkview = atalkview
             end
             atalkview.set_readonly(true)
-            atalkview.set_size_request(200, 200)
+            #atalkview.set_size_request(200, 200)
             atalkview.wrap_mode = Gtk::TextTag::WRAP_WORD
 
             atalkview.buffer.create_tag('you', 'foreground' => $you_color)
@@ -6504,7 +6512,7 @@ module PandoraGtk
             edit_box = PandoraGtk::SuperTextView.new
             atalkview.edit_box = edit_box
             edit_box.wrap_mode = Gtk::TextTag::WRAP_WORD
-            edit_box.set_size_request(200, 70)
+            #edit_box.set_size_request(200, 70)
 
             @edit_sw = Gtk::ScrolledWindow.new(nil, nil)
             edit_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
@@ -6670,9 +6678,10 @@ module PandoraGtk
             end
 
             chat_mode = ((page==CPI_Chat) or (kind != PandoraModel::PK_Person))
-            fill_dlg_toolbar(page, atalkview, chat_mode)
 
+            fill_dlg_toolbar(page, atalkview, chat_mode)
             load_history($load_history_count, $sort_history_mode, chat_mode)
+
             container.add(main_hpaned)
             container.def_widget = edit_box
           when CPI_Opinions
@@ -6813,7 +6822,16 @@ module PandoraGtk
       #toolbar_box.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
       #toolbar_box.add(Gtk::SeparatorToolItem.new)
       add_btn_to_toolbar(nil, nil, nil, opt_btns)
-      main_vbox.pack_start(toolbar_box, false, false, 0)
+
+      toolbar_sw = Gtk::ScrolledWindow.new(nil, nil)
+      toolbar_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_NEVER)
+      toolbar_sw.border_width = 0
+      iw, iy = Gtk::IconSize.lookup(Gtk::IconSize::LARGE_TOOLBAR)
+      toolbar_sw.height_request = iy+9
+      toolbar_sw.add(toolbar_box)
+
+      #main_vbox.pack_start(toolbar_box, false, false, 0)
+      main_vbox.pack_start(toolbar_sw, false, false, 0)
 
       dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, its_blob, \
         Gtk::IconSize.lookup(Gtk::IconSize::SMALL_TOOLBAR)[0])
@@ -7155,8 +7173,8 @@ module PandoraGtk
       if active
         #online_btn.inconsistent = false if (not online_btn.destroyed?)
       else
-        mic_btn.active = false if (not mic_btn.destroyed?) and mic_btn.active?
-        webcam_btn.active = false if (not webcam_btn.destroyed?) and webcam_btn.active?
+        mic_btn.active = false if mic_btn and (not mic_btn.destroyed?) and mic_btn.active?
+        webcam_btn.active = false if webcam_btn and (not webcam_btn.destroyed?) and webcam_btn.active?
         #mic_btn.safe_set_active(false) if (not mic_btn.destroyed?)
         #webcam_btn.safe_set_active(false) if (not webcam_btn.destroyed?)
       end
@@ -9632,7 +9650,7 @@ module PandoraGtk
           dialog.title += ' ('+titadd+')' if titadd and (titadd != '')
 
           dialog.run2 do
-            dialog.property_box.save_fields_with_flags(created0, row)
+            dialog.property_box.save_form_fields_with_flags_to_database(created0, row)
           end
         end
       end
@@ -12840,7 +12858,10 @@ module PandoraGtk
 
       @pool = PandoraNet::Pool.new($window)
 
-      $window.set_default_size(640, 420)
+      scr = Gdk::Screen.default
+      $window.set_default_size(scr.width-100, scr.height-100)
+      $window.window_position = Gtk::Window::POS_CENTER
+
       $window.maximize
       $window.show_all
 

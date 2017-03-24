@@ -899,7 +899,21 @@ module PandoraUtils
     val = nil if val==''
     if val and view
       case view
-        when 'byte', 'word', 'integer', 'coord', 'bytelist'
+        when 'byte'
+          val = val.to_i
+          if val>255
+            val = 255
+          elsif val<0
+            val = 0
+          end
+        when 'word'
+          val = val.to_i
+          if val>65535
+            val = 65535
+          elsif val<0
+            val = 0
+          end
+        when 'integer', 'coord', 'bytelist'
           val = val.to_i
         when 'real'
           val = val.to_f
@@ -2656,9 +2670,9 @@ module PandoraUtils
     def calc_hash(hfor, hlen, fval)
       res = nil
       #fval = [fval].pack('C*') if fval.is_a? Fixnum
-      #p 'fval='+fval.inspect+'  hfor='+hfor.inspect
+      #p '-1--fval='+fval.inspect+'  hfor='+hfor.inspect
       if fval and ((not (fval.is_a? String)) or (fval.bytesize>0))
-        #p 'fval='+fval.inspect+'  hfor='+hfor.inspect
+        #p '-2--fval='+fval.inspect+'  hfor='+hfor.inspect
         hfor = 'integer' if (not hfor or hfor=='') and (fval.is_a? Integer)
         hfor = 'hash' if ((hfor=='') or (hfor=='text')) and (fval.is_a? String) and (fval.size>20)
         if ['integer', 'word', 'byte', 'lang', 'coord', 'bytelist'].include? hfor
@@ -2792,7 +2806,7 @@ module PandoraUtils
         end
         hfor  = pat[1]
         hlen  = pat[2]
-        #p '[fval, fname, values]='+[fval, fname, values].inspect
+        #p '++++[fval, fname, values]='+[fval, fname, values].inspect
         #p '[hfor, hlen, fval]='+[hfor, hlen, fval].inspect
         #res.force_encoding('ASCII-8BIT')
         res << AsciiString.new(calc_hash(hfor, hlen, fval))

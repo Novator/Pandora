@@ -93,9 +93,11 @@
     <Message name="Message" parent="Created" kind="227">
       <creator hash="1:phash(12)" />
       <created hash="2:integer(4)" />
-      <destination name="Destination" type="Panhash(Person)" />
+      <destination name="Destination" type="Panhash" />
+      <message name="Message" type="Panhash(Message)" />
       <state name="State" type="Word" />
       <text name="Text" type="Text" hash="3:crc32(4)" />
+      <eval name="Eval" type="Byte" />
     </Message>
 
     <Task parent="Created" kind="90">

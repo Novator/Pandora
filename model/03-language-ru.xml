@@ -88,8 +88,10 @@
 
     <Message name.ru="Сообщение|Сообщения">
       <destination name.ru="Получатель" />
+      <message name.ru="Сообщение" />
       <state name.ru="Состояние" />
       <text name.ru="Текст" />
+      <eval name.ru="Оценка" />
     </Message>
 
   </World>

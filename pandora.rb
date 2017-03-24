@@ -13,7 +13,6 @@
 require 'socket'
 require './lib/utils.rb'
 require './lib/model.rb'
-require './lib/gtk.rb'
 
 # Default values of variables
 # RU: Значения переменных по умолчанию
@@ -23,6 +22,8 @@ $country = 'US'
 $lang = 'en'
 $autodetect_lang = true
 $pandora_parameters = []
+$gtk_is_active = false
+$cui_mode = false
 
 # Paths and files
 # RU: Пути и файлы
@@ -115,6 +116,8 @@ while (ARGVdup.size>0) or next_arg
       Kernel.exit(0)
     when '-pl', '--poly', '--poly-launch'
       $poly_launch = true
+    when '-c','--cui', '--console'
+      $cui_mode = true
     when '--shell', '--help', '/?', '-?'
       runit = '  '
       if arg=='--shell' then
@@ -424,7 +427,14 @@ PandoraUtils.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
 PandoraUtils.detect_mp3_player
 $base_id = PandoraUtils.get_param('base_id')
-PandoraGtk::MainWindow.new(MAIN_WINDOW_TITLE)
+
+if $cui_mode
+  require './lib/cui.rb'
+  PandoraCui.show_window
+else
+  require './lib/gtk.rb'
+  PandoraGtk::MainWindow.new(MAIN_WINDOW_TITLE)
+end
 
 # Free unix-socket on exit
 # Освободить unix-сокет при выходе
