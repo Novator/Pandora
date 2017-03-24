@@ -23,7 +23,20 @@ $lang = 'en'
 $autodetect_lang = true
 $pandora_parameters = []
 $gtk_is_active = false
+$cui_is_active = false
 $cui_mode = false
+
+def require_gtk
+  res = $gtk_is_active
+  require './lib/gtk.rb' if not res
+  res = $gtk_is_active
+end
+
+def require_cui
+  res = $cui_is_active
+  require './lib/cui.rb' if not res
+  res = $cui_is_active
+end
 
 # Paths and files
 # RU: Пути и файлы
@@ -112,6 +125,7 @@ while (ARGVdup.size>0) or next_arg
       $pandora_sqlite_db = val if val
       p 'base='+$pandora_sqlite_db.inspect
     when '-m', '--md5'
+      require_gtk
       puts PandoraGtk.pandora_md5_sum
       Kernel.exit(0)
     when '-pl', '--poly', '--poly-launch'
@@ -429,10 +443,10 @@ PandoraUtils.detect_mp3_player
 $base_id = PandoraUtils.get_param('base_id')
 
 if $cui_mode
-  require './lib/cui.rb'
+  require_cui
   PandoraCui.show_window
 else
-  require './lib/gtk.rb'
+  require_gtk
   PandoraGtk::MainWindow.new(MAIN_WINDOW_TITLE)
 end
 

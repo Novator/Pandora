@@ -11,13 +11,13 @@
 # RU: 2017 (c) Михаил Галюк
 
 
-# Init Curses
-# RU: Инициализировать Curses
+# Init NCurses
+# RU: Инициализировать NCurses
 begin
-  require 'curses'
-  include Curses
+  require 'ncurses'
+  $cui_is_active = true
 rescue Exception
-  Kernel.abort('Curses cannot be activated')
+  Kernel.abort('NCurses cannot be activated')
 end
 
 
@@ -38,58 +38,44 @@ module PandoraCui
   end
 
   def self.show_window
-    Curses.init_screen
+    Ncurses.initscr
     begin
-      Curses.nonl
-      Curses.cbreak
-      Curses.noecho
-      Curses.stdscr.scrollok(true)
-      Curses.start_color
-      Curses.init_pair(Curses::COLOR_BLUE, Curses::COLOR_BLUE, Curses::COLOR_WHITE)
-      Curses.init_pair(Curses::COLOR_RED, Curses::COLOR_RED, Curses::COLOR_WHITE)
-      #Curses.crmode
-      Curses.stdscr.keypad(true)
-      Curses.mousemask((Curses::BUTTON1_CLICKED | Curses::BUTTON2_CLICKED | \
-        Curses::BUTTON3_CLICKED | Curses::BUTTON4_CLICKED))
-      mes = "The CUI is under construstion. The CUI is under construstion.\n"
-      setpos((Curses.lines - 1) / 2, (Curses.cols - mes.size) / 2)
-      attron((Curses.color_pair(Curses::COLOR_BLUE) | Curses::A_BOLD)) do
-        addstr(mes)
-        addstr(mes)
-        addstr(mes)
-      end
-      Curses.refresh
-      char = nil
+      Ncurses.cbreak                     # provide unbuffered input
+      Ncurses.noecho                     # turn off input echoing
+      Ncurses.nonl                       # turn off newline translation
+      Ncurses.stdscr.intrflush(false)   # turn off flush-on-interrupt
+      Ncurses.stdscr.keypad(true)       # turn on keypad mode
       while true
-        win = show_message('Press Q or click mouse')
-        if win
-          char = win.getch
-          win.close
-          win = nil
-        else
-          char = getch
-        end
-        case char
-          when Curses::KEY_MOUSE
-            m = Curses.getmouse
-            if m
-              win = show_message('getch='+char.inspect + ' mouse event='+\
-                m.bstate.inspect+' axis='+[m.x, m.y, m.z].inspect)
-              win.getch
-              win.close
-            end
-            break
-          when 'q'
-            break
-          else
-            setpos(0, 0)
-            addstr('pressed key '+Curses.keyname(char)+' char='+char.inspect)
-            refresh
-        end
+        scr = Ncurses.stdscr
+        scr.clear()
+        scr.move(Ncurses.LINES()-1, 0)
+        scr.addstr('Ctrl[Radar]R [Log]L')
+        scr.refresh() # update screen
+
+        one = Ncurses::WINDOW.new(Ncurses.LINES()-1, Ncurses.COLS() / 3, 0, 0)
+        two = Ncurses::WINDOW.new(Ncurses.LINES()-1, Ncurses.COLS() - (Ncurses.COLS() / 3), \
+          0, Ncurses.COLS() / 3)
+        one.border(*([0]*8))
+        two.border(*([0]*8))
+
+        one.move(0, 2)
+        one.addstr('Radar')
+        two.move(0, 2)
+        two.addstr('Log')
+
+        two.move(5,3)
+        two.addstr("Press a key to continue")
+        one.noutrefresh()   # copy window to virtual screen, don't update real screen
+        two.noutrefresh()
+        Ncurses.doupdate()  # update real screen
+        two.getch()
+        break
       end
-      Curses.refresh
     ensure
-      Curses.close_screen
+      Ncurses.echo
+      Ncurses.nocbreak
+      Ncurses.nl
+      Ncurses.endwin
     end
   end
 
