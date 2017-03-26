@@ -125,8 +125,7 @@ while (ARGVdup.size>0) or next_arg
       $pandora_sqlite_db = val if val
       p 'base='+$pandora_sqlite_db.inspect
     when '-m', '--md5'
-      require_gtk
-      puts PandoraGtk.pandora_md5_sum
+      puts PandoraUtils.pandora_md5_sum
       Kernel.exit(0)
     when '-pl', '--poly', '--poly-launch'
       $poly_launch = true

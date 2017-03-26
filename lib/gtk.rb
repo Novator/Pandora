@@ -10582,35 +10582,6 @@ module PandoraGtk
     PandoraUtils.external_open(link)
   end
 
-  # Calc hex md5 of Pandora files
-  # RU: Вычисляет шестнадцатиричный md5 файлов Пандоры
-  def self.pandora_md5_sum
-    res = nil
-    begin
-      md5 = Digest::MD5.file(PandoraUtils.main_script)
-      res = md5.digest
-    rescue
-    end
-    ['crypto', 'gtk', 'model', 'net', 'utils'].each do |alib|
-      begin
-        md5 = Digest::MD5.file(File.join($pandora_lib_dir, alib+'.rb'))
-        res2 = md5.digest
-        i = 0
-        res2.each_byte do |c|
-          res[i] = (c ^ res[i].ord).chr
-          i += 1
-        end
-      rescue
-      end
-    end
-    if (res.is_a? String)
-      res = PandoraUtils.bytes_to_hex(res)
-    else
-      res = 'fail'
-    end
-    res
-  end
-
   # Show About dialog
   # RU: Показ окна "О программе"
   def self.show_about
@@ -10618,7 +10589,7 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
-    dlg.version = PandoraVersion + ' [' + pandora_md5_sum[0, 6] + ']'
+    dlg.version = PandoraVersion + ' [' + PandoraUtils.pandora_md5_sum[0, 6] + ']'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
     dlg.authors = ['© '+_('Michael Galyuk')+' <robux@mail.ru>']
     #dlg.documenters = dlg.authors
