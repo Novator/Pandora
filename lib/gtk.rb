@@ -7227,16 +7227,16 @@ module PandoraGtk
               if not PandoraCrypto.sign_panobject(model, sign_trust)
                 panstate = panstate & (~ PandoraModel::PSF_Verified)
                 res = model.update(filter, nil, {:panstate=>panstate})
-                PandoraUtils.log_message(LM_Warning, _('Cannot create sign')+' ['+text+']')
+                PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot create sign')+' ['+text+']')
               end
             end
             id = sel[0][0]
             add_mes_to_view(crypt_text, id, panstate, true)
           else
-            PandoraUtils.log_message(LM_Error, _('Cannot read message')+' ['+text+']')
+            PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot read message')+' ['+text+']')
           end
         else
-          PandoraUtils.log_message(LM_Error, _('Cannot insert message')+' ['+text+']')
+          PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot insert message')+' ['+text+']')
         end
         if chat_mode
           $window.pool.send_chat_messages
@@ -7730,7 +7730,7 @@ module PandoraGtk
           rescue => err
             $send_media_pipelines['video'] = nil
             mes = 'Camera init exception'
-            PandoraUtils.log_message(LM_Warning, _(mes))
+            PandoraUI.log_message(PandoraUI::LM_Warning, _(mes))
             puts mes+': '+Utf8String.new(err.message)
             webcam_btn.active = false
           end
@@ -7866,7 +7866,7 @@ module PandoraGtk
           rescue => err
             @recv_media_pipeline[1] = nil
             mes = 'Video receiver init exception'
-            PandoraUtils.log_message(LM_Warning, _(mes))
+            PandoraUI.log_message(PandoraUI::LM_Warning, _(mes))
             puts mes+': '+Utf8String.new(err.message)
             webcam_btn.active = false
           end
@@ -8002,7 +8002,7 @@ module PandoraGtk
           rescue => err
             $send_media_pipelines['audio'] = nil
             mes = 'Microphone init exception'
-            PandoraUtils.log_message(LM_Warning, _(mes))
+            PandoraUI.log_message(PandoraUI::LM_Warning, _(mes))
             puts mes+': '+Utf8String.new(err.message)
             mic_btn.active = false
           end
@@ -8100,7 +8100,7 @@ module PandoraGtk
           rescue => err
             @recv_media_pipeline[0] = nil
             mes = 'Audio receiver init exception'
-            PandoraUtils.log_message(LM_Warning, _(mes))
+            PandoraUI.log_message(PandoraUI::LM_Warning, _(mes))
             puts mes+': '+Utf8String.new(err.message)
             mic_btn.active = false
           end
@@ -9105,7 +9105,7 @@ module PandoraGtk
       end
       if not http
         $window.set_status_field(SF_Update, 'Connection error')
-        PandoraUtils.log_message(LM_Info, _('Cannot connect to repo to check update')+\
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Cannot connect to repo to check update')+\
           ' '+[host, path].inspect)
       end
       [http, time, step, host, path]
@@ -9115,7 +9115,7 @@ module PandoraGtk
       http = PandoraNet.http_reconnect_if_need(http, time, url)
       if not http
         $window.set_status_field(SF_Update, 'Connection error')
-        PandoraUtils.log_message(LM_Warning, _('Cannot reconnect to repo to update'))
+        PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot reconnect to repo to update'))
       end
       http
     end
@@ -9133,16 +9133,16 @@ module PandoraGtk
             File.open(pfn, 'wb+') do |file|
               file.write(filebody)
               res = true
-              PandoraUtils.log_message(LM_Info, _('File updated')+': '+pfn)
+              PandoraUI.log_message(PandoraUI::LM_Info, _('File updated')+': '+pfn)
             end
           rescue => err
-            PandoraUtils.log_message(LM_Warning, _('Update error')+': '+Utf8String.new(err.message))
+            PandoraUI.log_message(PandoraUI::LM_Warning, _('Update error')+': '+Utf8String.new(err.message))
           end
         else
-          PandoraUtils.log_message(LM_Warning, _('Empty downloaded body'))
+          PandoraUI.log_message(PandoraUI::LM_Warning, _('Empty downloaded body'))
         end
       else
-        PandoraUtils.log_message(LM_Warning, _('Cannot create directory')+': '+dir)
+        PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot create directory')+': '+dir)
       end
       res
     end
@@ -9189,7 +9189,7 @@ module PandoraGtk
                       http, time, step, host, path = connect_http_and_check_size(zip_url, \
                         zip_size, step)
                       if http
-                        PandoraUtils.log_message(LM_Info, _('Need update'))
+                        PandoraUI.log_message(PandoraUI::LM_Info, _('Need update'))
                         $window.set_status_field(SF_Update, 'Need update')
                         Thread.stop
                         http = reconnect_if_need(http, time, zip_url)
@@ -9210,17 +9210,17 @@ module PandoraGtk
                             res = PandoraUtils.unzip_via_lib(zip_local, $pandora_base_dir)
                             p 'unzip_file1 res='+res.inspect
                             if not res
-                              PandoraUtils.log_message(LM_Trace, _('Was not unziped with method')+': lib')
+                              PandoraUI.log_message(PandoraUI::LM_Trace, _('Was not unziped with method')+': lib')
                               unzip_meth = 'util'
                               res = PandoraUtils.unzip_via_util(zip_local, $pandora_base_dir)
                               p 'unzip_file2 res='+res.inspect
                               if not res
-                                PandoraUtils.log_message(LM_Warning, _('Was not unziped with method')+': util')
+                                PandoraUI.log_message(PandoraUI::LM_Warning, _('Was not unziped with method')+': util')
                               end
                             end
                             # Copy files to work dir
                             if res
-                              PandoraUtils.log_message(LM_Info, _('Arch is unzipped with method')+': '+unzip_meth)
+                              PandoraUI.log_message(PandoraUI::LM_Info, _('Arch is unzipped with method')+': '+unzip_meth)
                               #unzip_path = File.join($pandora_base_dir, 'Pandora-master')
                               unzip_path = nil
                               p 'unzip_mask='+unzip_mask.inspect
@@ -9236,36 +9236,36 @@ module PandoraGtk
                                   p 'Copy '+unzip_path+' to '+$pandora_app_dir
                                   #FileUtils.copy_entry(unzip_path, $pandora_app_dir, true)
                                   FileUtils.cp_r(unzip_path+'/.', $pandora_app_dir)
-                                  PandoraUtils.log_message(LM_Info, _('Files are updated'))
+                                  PandoraUI.log_message(PandoraUI::LM_Info, _('Files are updated'))
                                 rescue => err
                                   res = false
-                                  PandoraUtils.log_message(LM_Warning, _('Cannot copy files from zip arch')+': '+Utf8String.new(err.message))
+                                  PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot copy files from zip arch')+': '+Utf8String.new(err.message))
                                 end
                                 # Remove used arch dir
                                 begin
                                   FileUtils.remove_dir(unzip_path)
                                 rescue => err
-                                  PandoraUtils.log_message(LM_Warning, _('Cannot remove arch dir')+' ['+unzip_path+']: '+Utf8String.new(err.message))
+                                  PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot remove arch dir')+' ['+unzip_path+']: '+Utf8String.new(err.message))
                                 end
                                 step = 255 if res
                               else
-                                PandoraUtils.log_message(LM_Warning, _('Unzipped directory does not exist'))
+                                PandoraUI.log_message(PandoraUI::LM_Warning, _('Unzipped directory does not exist'))
                               end
                             else
-                              PandoraUtils.log_message(LM_Warning, _('Arch was not unzipped'))
+                              PandoraUI.log_message(PandoraUI::LM_Warning, _('Arch was not unzipped'))
                             end
                           else
-                            PandoraUtils.log_message(LM_Warning, _('Cannot download arch'))
+                            PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot download arch'))
                           end
                         end
                       end
                     else
                       $window.set_status_field(SF_Update, 'Read only')
-                      PandoraUtils.log_message(LM_Warning, _('Zip is unrewritable'))
+                      PandoraUI.log_message(PandoraUI::LM_Warning, _('Zip is unrewritable'))
                     end
                   else
                     $window.set_status_field(SF_Update, 'Size error')
-                    PandoraUtils.log_message(LM_Warning, _('Zip size error'))
+                    PandoraUI.log_message(PandoraUI::LM_Warning, _('Zip size error'))
                   end
                 end
                 update_zip = false
@@ -9274,7 +9274,7 @@ module PandoraGtk
                 http, time, step, host, path = connect_http_and_check_size(url, \
                   curr_size, step)
                 if http
-                  PandoraUtils.log_message(LM_Info, _('Need update'))
+                  PandoraUI.log_message(PandoraUI::LM_Info, _('Need update'))
                   $window.set_status_field(SF_Update, 'Need update')
                   Thread.stop
                   http = reconnect_if_need(http, time, url)
@@ -9287,7 +9287,7 @@ module PandoraGtk
                       pfn = File.join($pandora_app_dir, fn)
                       if File.exist?(pfn) and (not File.stat(pfn).writable?)
                         downloaded = false
-                        PandoraUtils.log_message(LM_Warning, \
+                        PandoraUI.log_message(PandoraUI::LM_Warning, \
                           _('Not exist or read only')+': '+pfn)
                       else
                         downloaded = downloaded and \
@@ -9297,7 +9297,7 @@ module PandoraGtk
                     if downloaded
                       step = 255
                     else
-                      PandoraUtils.log_message(LM_Warning, _('Direct download error'))
+                      PandoraUI.log_message(PandoraUI::LM_Warning, _('Direct download error'))
                     end
                   end
                 end
@@ -11802,7 +11802,7 @@ module PandoraGtk
         end
       end
 
-      PandoraUtils.log_message(LM_Info, _('Table exported')+': '+filename)
+      PandoraUI.log_message(PandoraUI::LM_Info, _('Table exported')+': '+filename)
     end
 
     def mutex
@@ -11948,7 +11948,7 @@ module PandoraGtk
             panobject_class = PandoraModel.const_get(panobj_id)
             PandoraGtk.show_panobject_list(panobject_class, widget)
           else
-            PandoraUtils.log_message(LM_Warning, _('Menu handler is not defined yet') + \
+            PandoraUI.log_message(PandoraUI::LM_Warning, _('Menu handler is not defined yet') + \
               ' "'+panobj_id+'"')
           end
       end
@@ -12204,7 +12204,7 @@ module PandoraGtk
                     end
                   end
 
-                  PandoraUtils.log_message(LM_Warning, message)
+                  PandoraUI.log_message(PandoraUI::LM_Warning, message)
                   PandoraUtils.play_mp3('message')
                   if $statusicon.message.nil?
                     $statusicon.set_message(message)

@@ -364,10 +364,10 @@ module PandoraNet
           begin
             server = TCPServer.open(host, port)
             addr_str = server.addr[3].to_s+(' tcp')+server.addr[1].to_s
-            PandoraUtils.log_message(LM_Info, _('Tunnel listen')+': '+addr_str)
+            PandoraUI.log_message(PandoraUI::LM_Info, _('Tunnel listen')+': '+addr_str)
           rescue
             server = nil
-            PandoraUtils.log_message(LM_Warning, _('Cannot open port')+' TCP '+host.to_s+':'+tcp_port.to_s)
+            PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot open port')+' TCP '+host.to_s+':'+tcp_port.to_s)
           end
           thread = Thread.current
           thread[:tcp_server] = server
@@ -389,12 +389,12 @@ module PandoraNet
                 session = Session.new(socket, host_name, host_ip, port, proto, \
                   0, nil, nil, nil, nil)
               else
-                PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
+                PandoraUI.log_message(PandoraUI::LM_Info, _('IP is banned')+': '+host_ip.to_s)
               end
             end
           end
           server.close if server and (not server.closed?)
-          PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_str) if server
+          PandoraUI.log_message(PandoraUI::LM_Info, _('Listener stops')+' '+addr_str) if server
           #$window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
           #$tcp_listen_thread = nil
           #$window.correct_lis_btn_state
@@ -1059,7 +1059,7 @@ module PandoraNet
                 fish_key = param2
                 info << PandoraUtils.bytes_to_hex(fish) if fish
                 info << ', '+PandoraUtils.bytes_to_hex(fish_key) if fish_key.is_a? String
-                PandoraUtils.log_message(PandoraUtils::LM_Trace, _('Bob is generated')+ \
+                PandoraUI.log_message(PandoraUI::LM_Trace, _('Bob is generated')+ \
                   ' '+@mass_ind.to_s+':['+info+']')
               when MK_Search
                 $window.set_status_field(PandoraGtk::SF_Search, @mass_records.size.to_s)
@@ -1180,10 +1180,10 @@ module PandoraNet
             if res
               ids << id if ids
             else
-              PandoraUtils.log_message(LM_Error, _('Updating state of sent message')+' id='+id.to_s)
+              PandoraUI.log_message(PandoraUI::LM_Error, _('Updating state of sent message')+' id='+id.to_s)
             end
           else
-            PandoraUtils.log_message(LM_Error, _('Adding message to send queue')+' id='+id.to_s)
+            PandoraUI.log_message(PandoraUI::LM_Error, _('Adding message to send queue')+' id='+id.to_s)
           end
           i += 1
           #if (i>=sel.size) and (processed<$mes_block_count) and (@conn_state == CS_Connected)
@@ -1464,7 +1464,7 @@ module PandoraNet
       if comm.bytesize == CommExtSize
         datasize, fullcrc32, segsize = comm.unpack('NNn')
       else
-        PandoraUtils.log_message(LM_Error, _('Wrong length of command extention'))
+        PandoraUI.log_message(PandoraUI::LM_Error, _('Wrong length of command extention'))
       end
       [datasize, fullcrc32, segsize]
     end
@@ -1621,7 +1621,7 @@ module PandoraNet
         else
           res = nil
           if sended != -1
-            PandoraUtils.log_message(LM_Error, _('Not all data was sent')+' '+sended.to_s)
+            PandoraUI.log_message(PandoraUI::LM_Error, _('Not all data was sent')+' '+sended.to_s)
           end
         end
         segindex = 0
@@ -1667,7 +1667,7 @@ module PandoraNet
           else
             res = nil
             if sended != -1
-              PandoraUtils.log_message(LM_Error, _('Not all data was sent')+'2 '+sended.to_s)
+              PandoraUI.log_message(PandoraUI::LM_Error, _('Not all data was sent')+'2 '+sended.to_s)
             end
           end
           i += segdata
@@ -1733,7 +1733,7 @@ module PandoraNet
         mesadd = ' err=' + code.to_s if code
         mes = _(mes)
         logmes = mes + ' ' + logmes0 if mes and (mes.bytesize>0)
-        PandoraUtils.log_message(LM_Warning, logmes+mesadd)
+        PandoraUI.log_message(PandoraUI::LM_Warning, logmes+mesadd)
       end
     end
 
@@ -1807,7 +1807,7 @@ module PandoraNet
         p log_mes+'add_send_segment2: asbuf='+asbuf.inspect if sbuf
       end
       if not res
-        PandoraUtils.log_message(LM_Error, _('Cannot add segment to send queue'))
+        PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot add segment to send queue'))
         @conn_state = CS_Stoping
       end
       res
@@ -1829,7 +1829,7 @@ module PandoraNet
       end
       if send_now
         if not add_send_segment(ascmd, true, asbuf, ascode)
-          PandoraUtils.log_message(LM_Error, _('Cannot add request'))
+          PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot add request'))
         end
       else
         @scmd = ascmd
@@ -1846,7 +1846,7 @@ module PandoraNet
       asbuf = [time].pack('N') + list
       if send_now
         if not add_send_segment(ascmd, true, asbuf, ascode)
-          PandoraUtils.log_message(LM_Error, _('Cannot add query'))
+          PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot add query'))
         end
       else
         @scmd = ascmd
@@ -2305,7 +2305,7 @@ module PandoraNet
               sess_hook, rec = self.reg_line(line, nil, hook)
               fhook, rec = session.reg_line(nil, self, nil, nil, sess_hook)
               sess_hook2, rec2 = self.reg_line(nil, session, nil, sess_hook, fhook)
-              PandoraUtils.log_message(PandoraUtils::LM_Info, _('Unfreeze fisher')+\
+              PandoraUI.log_message(PandoraUI::LM_Info, _('Unfreeze fisher')+\
                 ': [session, hook]='+[session.object_id, sess_hook].inspect)
               sthread.run
               res = true
@@ -2324,7 +2324,7 @@ module PandoraNet
         if fisher_key and fisher_baseid and (fish or fish_key)
           if akey_hash and (fisher_key == akey_hash) and (fisher_baseid == pool.base_id)
             # fishing from me
-            PandoraUtils.log_message(LM_Warning, _('Somebody uses your ID'))
+            PandoraUI.log_message(PandoraUI::LM_Warning, _('Somebody uses your ID'))
           else
             res = false
             # check fishing to me (not using!!!)
@@ -2993,9 +2993,9 @@ module PandoraNet
                   init_skey_or_error(false)
                 end
               elsif res==false
-                PandoraUtils.log_message(LM_Warning, _('Record came with wrong panhash'))
+                PandoraUI.log_message(PandoraUI::LM_Warning, _('Record came with wrong panhash'))
               else
-                PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 1')
+                PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot write a record')+' 1')
               end
             else
               err_scmd('Record ('+kind.to_s+') came on wrong stage')
@@ -3034,7 +3034,7 @@ module PandoraNet
                     talkview = @dialog.dlg_talkview if @dialog
                     talkview.update_lines_with_id(id) if talkview
                   else
-                    PandoraUtils.log_message(LM_Warning, _('Cannot update record of confirm')+' kind,id='+[kind,id].inspect)
+                    PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot update record of confirm')+' kind,id='+[kind,id].inspect)
                   end
                   i += 5
                 end
@@ -3043,10 +3043,10 @@ module PandoraNet
         when EC_Wait
           case rcode
             when EC_Wait2_NoFarHook..EC_Wait5_NoNeighborRec
-              PandoraUtils.log_message(LM_Error, _('Error at other side')+': '+ \
+              PandoraUI.log_message(PandoraUI::LM_Error, _('Error at other side')+': '+ \
                 _('cannot find a fish'))
             else
-              PandoraUtils.log_message(LM_Error, _('Error at other side')+': '+ \
+              PandoraUI.log_message(PandoraUI::LM_Error, _('Error at other side')+': '+ \
                 _('unknown'))
           end
         when EC_Bye
@@ -3058,7 +3058,7 @@ module PandoraNet
             mes ||= ''
             i = mes.index(' (') if mes
             mes = _(mes[0, i])+mes[i..-1] if i
-            PandoraUtils.log_message(LM_Error, _('Error at other side')+' ErrCode='+rcode.to_s+' "'+mes+'"')
+            PandoraUI.log_message(PandoraUI::LM_Error, _('Error at other side')+' ErrCode='+rcode.to_s+' "'+mes+'"')
           end
           err_scmd(nil, errcode, false)
           @conn_state = CS_Stoping
@@ -3127,7 +3127,7 @@ module PandoraNet
                         myname, time_now, created)
                       @dialog.show_page(PandoraGtk::CPI_Dialog)
                     else
-                      PandoraUtils.log_message(LM_Error, 'Пришло сообщение, но лоток чата не найден!')
+                      PandoraUI.log_message(PandoraUI::LM_Error, 'Пришло сообщение, но лоток чата не найден!')
                     end
 
                     # This is a chat "!command"
@@ -3145,7 +3145,7 @@ module PandoraNet
                       if skey_trust >= trust_level
                         if chat_par and ($prev_chat_com_par != chat_com_par)
                           $prev_chat_com_par = chat_com_par
-                          PandoraUtils.log_message(LM_Info, _('Run chat command')+\
+                          PandoraUI.log_message(PandoraUI::LM_Info, _('Run chat command')+\
                             ' ['+Utf8String.new(chat_com_par)+']')
                           case chat_com
                             when 'echo'
@@ -3159,7 +3159,7 @@ module PandoraNet
                             when 'exec'
                               res = PandoraUtils.exec_cmd(chat_par)
                               if not res
-                                PandoraUtils.log_message(LM_Warning, _('Command fails')+\
+                                PandoraUI.log_message(PandoraUI::LM_Warning, _('Command fails')+\
                                   ' ['+Utf8String.new(chat_par)+']')
                               end
                             when 'sound'
@@ -3180,11 +3180,11 @@ module PandoraNet
                                 control_tunnel(direct, add, from, params[:to], params[:proto])
                               end
                             else
-                              PandoraUtils.log_message(LM_Info, _('Unknown chat command')+': '+chat_com)
+                              PandoraUI.log_message(PandoraUI::LM_Info, _('Unknown chat command')+': '+chat_com)
                           end
                         end
                       else
-                        PandoraUtils.log_message(LM_Info, _('Chat command is denied')+ \
+                        PandoraUI.log_message(PandoraUI::LM_Info, _('Chat command is denied')+ \
                           ' ['+Utf8String.new(chat_com_par)+'] '+_('trust')+'='+ \
                           PandoraModel.trust_to_str(skey_trust)+' '+_('need')+\
                           '='+trust_level.to_s)
@@ -3198,7 +3198,7 @@ module PandoraNet
                     when ECC_Channel2_Close
                       p 'ECC_Channel2_Close'
                   else
-                    PandoraUtils.log_message(LM_Error, 'Неизвестный код управления каналом: '+rcode.to_s)
+                    PandoraUI.log_message(PandoraUI::LM_Error, 'Неизвестный код управления каналом: '+rcode.to_s)
                   end
                 end
               when EC_Media
@@ -3456,7 +3456,7 @@ module PandoraNet
                     p log_mes+'req,answ='+[req,answ].inspect
                     request,kind,base_id = req
                     if kind==PandoraModel::PK_BlobBody
-                      PandoraUtils.log_message(LM_Trace, _('Answer: blob is found'))
+                      PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: blob is found'))
                       sha1 = request
                       fn_fsize = pool.blob_exists?(sha1, @send_models, true)
                       fn, fsize = fn_fsize if fn_fsize
@@ -3481,7 +3481,7 @@ module PandoraNet
                         end
                       end
                     else
-                      PandoraUtils.log_message(LM_Trace, _('Answer: rec is found'))
+                      PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: rec is found'))
                       reqs = find_search_request(req[0], req[1])
                       reqs.each do |sr|
                         sr[SA_Answer] = answ
@@ -3603,7 +3603,7 @@ module PandoraNet
                           chat_dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
                             myname, time_now, created)
                         else
-                          PandoraUtils.log_message(LM_Error, 'Пришло чат-сообщение, но лоток чата не найден!')
+                          PandoraUI.log_message(PandoraUI::LM_Error, 'Пришло чат-сообщение, но лоток чата не найден!')
                         end
                       when MK_Search
                         # пришёл поисковый запрос (ECC_Query_Search)
@@ -3795,11 +3795,11 @@ module PandoraNet
               #add_hook(asocket, ahost_name)
               if hunter?
                 p 'крючок рыбака '+sess_hook.inspect
-                PandoraUtils.log_message(LM_Info, _('Active fisher')+': [sess, hook]='+\
+                PandoraUI.log_message(PandoraUI::LM_Info, _('Active fisher')+': [sess, hook]='+\
                   [sess.object_id, sess_hook].inspect)
               else
                 p 'крючок рыбки '+sess_hook.inspect
-                PandoraUtils.log_message(LM_Info, _('Passive fisher')+': [sess, hook]='+\
+                PandoraUI.log_message(PandoraUI::LM_Info, _('Passive fisher')+': [sess, hook]='+\
                   [sess.object_id, sess_hook].inspect)
               end
             else
@@ -3842,7 +3842,7 @@ module PandoraNet
                   asocket = nil
                   @socket = asocket
                   if (not work_time) or ((Time.now.to_i - work_time.to_i)>15)
-                    PandoraUtils.log_message(LM_Warning, _('Fail connect to')+': '+server)
+                    PandoraUI.log_message(PandoraUI::LM_Warning, _('Fail connect to')+': '+server)
                     conn_period = 15
                   else
                     sleep(conn_period-1)
@@ -3860,7 +3860,7 @@ module PandoraNet
                 @conn_thread.exit if @conn_thread.alive?
                 @conn_thread = nil
                 if not @socket
-                  PandoraUtils.log_message(LM_Trace, _('Timeout connect to')+': '+server)
+                  PandoraUI.log_message(PandoraUI::LM_Trace, _('Timeout connect to')+': '+server)
                 end
               end
             else
@@ -3884,7 +3884,7 @@ module PandoraNet
                 @socket = false   #Exit session
               else
                 @socket = false
-                PandoraUtils.log_message(LM_Trace, \
+                PandoraUI.log_message(PandoraUI::LM_Trace, \
                   _('Session breaks bz of no person and key panhashes'))
               end
             end
@@ -3899,9 +3899,9 @@ module PandoraNet
 
           if @socket
             if not hunter?
-              PandoraUtils.log_message(LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
+              PandoraUI.log_message(PandoraUI::LM_Info, _('Hunter connects')+': '+socket.peeraddr.inspect)
             else
-              PandoraUtils.log_message(LM_Info, _('Connected to listener')+': '+server)
+              PandoraUI.log_message(PandoraUI::LM_Info, _('Connected to listener')+': '+server)
             end
             @host_name    = ahost_name
             @host_ip      = ahost_ip
@@ -4078,7 +4078,7 @@ module PandoraNet
                       if ok1comm
                         res = @send_queue.add_block_to_queue([EC_Bye, serrcode, serrbuf])
                         if not res
-                          PandoraUtils.log_message(LM_Error, _('Cannot add error segment to send queue'))
+                          PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot add error segment to send queue'))
                         end
                       end
                       @conn_state = CS_Stoping
@@ -4103,7 +4103,7 @@ module PandoraNet
                           rkcmd = (rkcmd & (~CipherCmdBit))
                           rkdata = cipher_buf(rkdata, false)
                           if @ciphering.nil?
-                            PandoraUtils.log_message(LM_Error, _('No cipher for decrypt data'))
+                            PandoraUI.log_message(PandoraUI::LM_Error, _('No cipher for decrypt data'))
                             @conn_state = CS_Stoping
                           end
                         end
@@ -4112,7 +4112,7 @@ module PandoraNet
                         p log_mes+'<<-RECV [rkcmd/rkcode, rkdata.size] stage='+[rkcmd, rkcode, rkdata_size].inspect+' '+@stage.to_s
                         res = @read_queue.add_block_to_queue([rkcmd, rkcode, rkdata])
                         if not res
-                          PandoraUtils.log_message(LM_Error, _('Cannot add socket segment to read queue'))
+                          PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot add socket segment to read queue'))
                           @conn_state = CS_Stoping
                         end
                       end
@@ -4120,7 +4120,7 @@ module PandoraNet
                     end
 
                     if not ok1comm
-                      PandoraUtils.log_message(LM_Error, _('Bad first command'))
+                      PandoraUI.log_message(PandoraUI::LM_Error, _('Bad first command'))
                       @conn_state = CS_Stoping
                     end
                   end
@@ -4168,7 +4168,7 @@ module PandoraNet
                     res = @send_queue.add_block_to_queue([@scmd, @scode, @sbuf])
                     @scmd = EC_Data
                     if not res
-                      PandoraUtils.log_message(LM_Error, 'Error while adding segment to queue')
+                      PandoraUI.log_message(PandoraUI::LM_Error, 'Error while adding segment to queue')
                       @conn_state = CS_Stoping
                     end
                   end
@@ -4407,10 +4407,10 @@ module PandoraNet
                         if res
                           ids << id if ids
                         else
-                          PandoraUtils.log_message(LM_Error, _('Updating state of sent message')+' id='+id.to_s)
+                          PandoraUI.log_message(PandoraUI::LM_Error, _('Updating state of sent message')+' id='+id.to_s)
                         end
                       else
-                        PandoraUtils.log_message(LM_Error, _('Adding message to send queue')+' id='+id.to_s)
+                        PandoraUI.log_message(PandoraUI::LM_Error, _('Adding message to send queue')+' id='+id.to_s)
                       end
                       i += 1
                       #if (i>=sel.size) and (processed<$mes_block_count) and (@conn_state == CS_Connected)
@@ -4497,7 +4497,7 @@ module PandoraNet
                         #line = fish_order[MR_Fisher..MR_Fish_key]
                         #if init_line(line) == false
                         #  p log_mes+'Fish order to send: '+line.inspect
-                        #  PandoraUtils.log_message(LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
+                        #  PandoraUI.log_message(PandoraUI::LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
                         #    +[PandoraUtils.bytes_to_hex(fish_order[MR_Fish]), \
                         #    PandoraUtils.bytes_to_hex(fish_order[MR_Fish_key]), \
                         #    @host_ip, @port].inspect)
@@ -4567,7 +4567,7 @@ module PandoraNet
                 end
                 if ito
                   add_send_segment(EC_Bye, true, nil, ECC_Bye_TimeOut)
-                  PandoraUtils.log_message(LM_Trace, _('Idle timeout')+': '+@host_ip.inspect)
+                  PandoraUI.log_message(PandoraUI::LM_Trace, _('Idle timeout')+': '+@host_ip.inspect)
                 else
                   sleep(0.08)
                 end
@@ -4598,9 +4598,9 @@ module PandoraNet
             end
             if socket.is_a? IPSocket
               if not hunter?
-                PandoraUtils.log_message(LM_Info, _('Hunter disconnects')+': '+@host_ip.inspect)
+                PandoraUI.log_message(PandoraUI::LM_Info, _('Hunter disconnects')+': '+@host_ip.inspect)
               else
-                PandoraUtils.log_message(LM_Info, _('Disconnected from listener')+': '+@host_ip.inspect)
+                PandoraUI.log_message(PandoraUI::LM_Info, _('Disconnected from listener')+': '+@host_ip.inspect)
               end
             end
             @socket_thread.exit if @socket_thread
@@ -4763,7 +4763,7 @@ module PandoraNet
     if socket
       host_ip = socket.peeraddr[2]
       if $window.pool.is_black?(host_ip)
-        PandoraUtils.log_message(LM_Info, _('IP is banned')+': '+host_ip.to_s)
+        PandoraUI.log_message(PandoraUI::LM_Info, _('IP is banned')+': '+host_ip.to_s)
       else
         host_name = socket.peeraddr[3]
         port = socket.peeraddr[1]
@@ -4811,11 +4811,11 @@ module PandoraNet
                     servers << server
                     addr_str = 'TCP ['+server.addr[3].to_s+']:'+server.addr[1].to_s
                     addr_strs << addr_str
-                    PandoraUtils.log_message(LM_Info, _('Listening')+' '+addr_str)
+                    PandoraUI.log_message(PandoraUI::LM_Info, _('Listening')+' '+addr_str)
                   end
                 rescue => err
                   str = 'TCP ['+host.to_s+']:'+tcp_port.to_s
-                  PandoraUtils.log_message(LM_Warning, _('Cannot open')+' '+str+' ' \
+                  PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot open')+' '+str+' ' \
                     +Utf8String.new(err.message))
                 end
               end
@@ -4844,7 +4844,7 @@ module PandoraNet
               end
               servers.each_with_index do |server,i|
                 server.close if (server and (not server.closed?))
-                PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+addr_strs[i])
+                PandoraUI.log_message(PandoraUI::LM_Info, _('Listener stops')+' '+addr_strs[i])
               end
             end
             $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
@@ -4877,12 +4877,12 @@ module PandoraNet
               udp_server.bind(host, udp_port)
               #addr_str = server.addr.to_s
               udp_addr_str = 'UDP ['+udp_server.addr[3].to_s+']:'+udp_server.addr[1].to_s
-              PandoraUtils.log_message(LM_Info, _('Listening')+' '+udp_addr_str)
+              PandoraUI.log_message(PandoraUI::LM_Info, _('Listening')+' '+udp_addr_str)
             rescue => err
               udp_server = nil
               if host != '::'
                 str = 'UDP ['+host.to_s+']:'+tcp_port.to_s+' '+Utf8String.new(err.message)
-                PandoraUtils.log_message(LM_Warning, _('Cannot open')+' '+str)
+                PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot open')+' '+str)
               end
             end
             Thread.current[:udp_server] = udp_server
@@ -4904,10 +4904,10 @@ module PandoraNet
                       rcv_udp_port = PandoraNet::DefUdpPort
                       begin
                         udp_server.send(hello, 0, '<broadcast>', rcv_udp_port)
-                        PandoraUtils.log_message(LM_Trace, \
+                        PandoraUI.log_message(PandoraUI::LM_Trace, \
                           'UDP '+_('broadcast to ports')+' '+rcv_udp_port.to_s)
                       rescue => err
-                        PandoraUtils.log_message(LM_Trace, \
+                        PandoraUI.log_message(PandoraUI::LM_Trace, \
                           _('Cannot send')+' UDP '+_('broadcast to ports')+' '\
                           +rcv_udp_port.to_s+' ('+Utf8String.new(err.message)+')')
                       end
@@ -4956,7 +4956,7 @@ module PandoraNet
               end
             end
             #udp_server.close if udp_server and (not udp_server.closed?)
-            PandoraUtils.log_message(LM_Info, _('Listener stops')+' '+udp_addr_str) if udp_server
+            PandoraUI.log_message(PandoraUI::LM_Info, _('Listener stops')+' '+udp_addr_str) if udp_server
             #$window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
             $udp_listen_thread = nil
             $window.correct_lis_btn_state
@@ -5073,13 +5073,13 @@ module PandoraNet
       if ($last_ip4_show.nil? and ip4) or ip4n
         $last_ip4_show = ip4
         ip4_list.each do |addr_info|
-          PandoraUtils.log_message(LM_Warning, _('Global IP')+'v4: '+addr_info.ip_address)
+          PandoraUI.log_message(PandoraUI::LM_Warning, _('Global IP')+'v4: '+addr_info.ip_address)
         end
       end
       if ($last_ip6_show.nil? and ip6) or ip6n
         $last_ip6_show = ip6
         ip6_list.each do |addr_info|
-          PandoraUtils.log_message(LM_Warning, _('Global IP')+'v6: '+addr_info.ip_address)
+          PandoraUI.log_message(PandoraUI::LM_Warning, _('Global IP')+'v6: '+addr_info.ip_address)
         end
       end
       panreg_url = get_update_url('panreg_url', true)
@@ -5318,7 +5318,7 @@ module PandoraNet
       proxy[1] = proxy[1].to_i if (proxy.size>1)
       proxy[2] = nil if (proxy.size>2) and (proxy[2]=='')
       proxy[3] = nil if (proxy.size>3) and (proxy[3]=='')
-      PandoraUtils.log_message(LM_Trace, _('Proxy is used')+' '+proxy.inspect)
+      PandoraUI.log_message(PandoraUI::LM_Trace, _('Proxy is used')+' '+proxy.inspect)
     else
       proxy = []
     end
@@ -5339,7 +5339,7 @@ module PandoraNet
       scheme = uri.scheme
       simpe = false
     rescue => err
-      PandoraUtils.log_message(LM_Warning, _('URI parse fails')+' ['+url+'] '+\
+      PandoraUI.log_message(PandoraUI::LM_Warning, _('URI parse fails')+' ['+url+'] '+\
         Utf8String.new(err.message))
     end
     [host, path, port, scheme]
@@ -5353,7 +5353,7 @@ module PandoraNet
     host, path, port, scheme = parse_url(url)
     port_str = ''
     port_str = ':'+port.to_s if port
-    PandoraUtils.log_message(LM_Info, _('Connect to')+': '+host+path+port_str+'..')
+    PandoraUI.log_message(PandoraUI::LM_Info, _('Connect to')+': '+host+path+port_str+'..')
     begin
       proxy = PandoraNet.detect_proxy
       http = Net::HTTP.new(host, port, *proxy)
@@ -5364,7 +5364,7 @@ module PandoraNet
       http.open_timeout = HTTP_TIMEOUT
     rescue => err
       http = nil
-      PandoraUtils.log_message(LM_Trace, _('Connection error')+\
+      PandoraUI.log_message(PandoraUI::LM_Trace, _('Connection error')+\
         [host, port].inspect+' '+Utf8String.new(err.message))
       puts Utf8String.new(err.message)
     end
@@ -5384,7 +5384,7 @@ module PandoraNet
         http.open_timeout = HTTP_TIMEOUT
       rescue => err
         http = nil
-        PandoraUtils.log_message(LM_Trace, _('Connection error')+\
+        PandoraUI.log_message(PandoraUI::LM_Trace, _('Connection error')+\
           [host, port].inspect+' '+Utf8String.new(err.message))
         puts Utf8String.new(err.message)
       end
@@ -5415,13 +5415,13 @@ module PandoraNet
   def self.http_get_body_from_path(http, path, host='')
     body = nil
     if http and path
-      PandoraUtils.log_message(LM_Trace, _('Download from') + ': ' + \
+      PandoraUI.log_message(PandoraUI::LM_Trace, _('Download from') + ': ' + \
         host + path + '..')
       begin
         response = http.request_get(path)
         body = response.body if response.is_a?(Net::HTTPSuccess)
       rescue => err
-        PandoraUtils.log_message(LM_Info, _('Http download fails')+': '+Utf8String.new(err.message))
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Http download fails')+': '+Utf8String.new(err.message))
       end
     end
     body
@@ -5431,13 +5431,13 @@ module PandoraNet
     body = nil
     if url.is_a?(String) and (url.size>0)
       if show_log
-        PandoraUtils.log_message(LM_Trace, _('Download from') + ': ' + url + '..')
+        PandoraUI.log_message(PandoraUI::LM_Trace, _('Download from') + ': ' + url + '..')
       end
       begin
         uri = URI.parse(url)
         body = Net::HTTP.get(uri)
       rescue => err
-        PandoraUtils.log_message(LM_Info, _('Http download fails')+': '+Utf8String.new(err.message))
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Http download fails')+': '+Utf8String.new(err.message))
       end
     end
     body
@@ -5538,10 +5538,10 @@ module PandoraNet
       if body and err.nil?
         res = true
         mes ||= 'DDNS updated'
-        PandoraUtils.log_message(LM_Info, _(mes)+suffix)
+        PandoraUI.log_message(PandoraUI::LM_Info, _(mes)+suffix)
       else
         err ||= ''
-        PandoraUtils.log_message(LM_Info, _('Registrator fails')+suffix+err)
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Registrator fails')+suffix+err)
       end
     end
     res
