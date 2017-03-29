@@ -647,7 +647,7 @@ module PandoraCrypto
       $open_keys[panhash] = nil
       self.the_current_key = deactivate_key(self.the_current_key)
     end
-    $window.set_status_field(PandoraGtk::SF_Auth, 'Not logged', nil, false)
+    PandoraUI.set_status_field(PandoraUI::SF_Auth, 'Not logged', nil, false)
     self.the_current_key
   end
 
@@ -976,7 +976,7 @@ module PandoraCrypto
             if not (text and (text.size>0))
               text = 'Logged'
             end
-            $window.set_status_field(PandoraGtk::SF_Auth, text, nil, true)
+            PandoraUI.set_status_field(PandoraUI::SF_Auth, text, nil, true)
             if last_auth_key0 != last_auth_key
               PandoraUtils.set_param('last_auth_key', last_auth_key)
             end

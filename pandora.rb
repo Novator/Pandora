@@ -2,8 +2,8 @@
 # encoding: UTF-8
 # coding: UTF-8
 
-# P2P folk network Pandora (main script)
-# RU: P2P народная сеть Пандора (основной скрипт)
+# P2P planetary network Pandora (main script)
+# RU: P2P планетарная сеть Пандора (основной скрипт)
 #
 # This program is free software and distributed under the GNU GPLv2
 # RU: Это свободное программное обеспечение распространяется под GNU GPLv2

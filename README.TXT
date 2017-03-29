@@ -113,8 +113,8 @@ Download and unpack master.zip (see the next chapter), run pandora.sh.
 
 7.2. Install needed packages if they still are not installed:
 
-  ruby, ruby-sqlite3, ruby-gtk2, ruby-gstreamer, openssl, gstreamer0.10-x,
-  gstreamer0.10-ffmpeg, gstreamer0.10-plugins-good, gstreamer0.10-plugins-bad
+  ruby, ruby-sqlite3, ruby-gtk2, openssl, unzip, ruby-ncurses, ruby-gstreamer,
+  gstreamer0.10-x, gstreamer0.10-ffmpeg, gstreamer0.10-plugins-good, gstreamer0.10-plugins-bad
 
 7.3. Set executable rights:
 

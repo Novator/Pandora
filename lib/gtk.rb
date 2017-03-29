@@ -82,21 +82,6 @@ module PandoraGtk
     res
   end
 
-  # Statusbar fields
-  # RU: Поля в статусбаре
-  SF_Log     = 0
-  SF_FullScr = 1
-  SF_Update  = 2
-  SF_Lang    = 3
-  SF_Auth    = 4
-  SF_Listen  = 5
-  SF_Hunt    = 6
-  SF_Conn    = 7
-  SF_Radar   = 8
-  SF_Fisher  = 9
-  SF_Search  = 10
-  SF_Harvest = 11
-
   # Good and simle MessageDialog
   # RU: Хороший и простой MessageDialog
   class GoodMessageDialog < Gtk::MessageDialog
@@ -5566,24 +5551,6 @@ module PandoraGtk
 
   end
 
-  CSI_Persons = 0
-  CSI_Keys    = 1
-  CSI_Nodes   = 2
-  CSI_PersonRecs = 3
-
-  CPI_Property  = 0
-  CPI_Profile   = 1
-  CPI_Opinions  = 2
-  CPI_Relations = 3
-  CPI_Signs     = 4
-  CPI_Chat      = 5
-  CPI_Dialog    = 6
-  CPI_Editor    = 7
-
-  CPI_Sub       = 1
-  CPI_Last_Sub  = 4
-  CPI_Last      = 7
-
   CabPageInfo = [[Gtk::Stock::PROPERTIES, 'Basic'], \
     [Gtk::Stock::HOME, 'Profile'], \
     [:opinion, 'Opinions'], \
@@ -5872,7 +5839,9 @@ module PandoraGtk
     end
 
     def fill_dlg_toolbar(page, talkview, chat_mode=false)
-      crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', false) if (page==CPI_Dialog)
+      if (page==PandoraUI::CPI_Dialog)
+        crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', false)
+      end
 
       sign_scale = nil
       sign_btn = add_btn_to_toolbar(:sign, 'Vouch|(Ctrl+G)', false) do |widget|
@@ -5956,7 +5925,7 @@ module PandoraGtk
       smile_btn.tooltip_text = _('Smile')+' (Alt+Down)'
       add_btn_to_toolbar(smile_btn)
 
-      if page==CPI_Dialog
+      if page==PandoraUI::CPI_Dialog
         game_btn = add_btn_to_toolbar(:game, 'Game')
         game_btn = add_btn_to_toolbar(:box, 'Box')
         add_btn_to_toolbar
@@ -6101,7 +6070,7 @@ module PandoraGtk
       add_menu_item(btn, menu, Gtk::Stock::SELECT_FONT) do
         dialog = Gtk::FontSelectionDialog.new
         dialog.font_name = @selected_font
-        #dialog.preview_text = 'P2P folk network Pandora'
+        #dialog.preview_text = 'P2P planetary network Pandora'
         if dialog.run == Gtk::Dialog::RESPONSE_OK
           @selected_font = dialog.font_name
           desc = Pango::FontDescription.new(@selected_font)
@@ -6324,30 +6293,32 @@ module PandoraGtk
       container.grab_def_widget if container.is_a? CabViewport
     end
 
-    def show_page(page=CPI_Dialog, tab_signal=nil)
+    def show_page(page=PandoraUI::CPI_Dialog, tab_signal=nil)
       p '---show_page [page, tab_signal]='+[page, tab_signal].inspect
-      page = CPI_Chat if ((page == CPI_Dialog) and (kind != PandoraModel::PK_Person))
+      if ((page == PandoraUI::CPI_Dialog) and (kind != PandoraModel::PK_Person))
+        page = PandoraUI::CPI_Chat
+      end
       hide_toolbar_btns
       opt_btns.each do |opt_btn|
         opt_btn.safe_set_active(false) if (opt_btn.is_a?(SafeToggleToolButton))
       end
       cab_notebook.page = page if not tab_signal
       container = cab_notebook.get_nth_page(page)
-      sub_btn = opt_btns[CPI_Sub]
-      sub_stock = CabPageInfo[CPI_Sub][0]
+      sub_btn = opt_btns[PandoraUI::CPI_Sub]
+      sub_stock = CabPageInfo[PandoraUI::CPI_Sub][0]
       stock_id = CabPageInfo[page][0]
       if label_box.stock
-        if page==CPI_Property
+        if page==PandoraUI::CPI_Property
           label_box.set_stock(opt_btns[page].stock_id)
         else
           label_box.set_stock(stock_id)
         end
       end
-      if page<=CPI_Sub
+      if page<=PandoraUI::CPI_Sub
         opt_btns[page].safe_set_active(true)
         sub_btn.stock_id = sub_stock if (sub_btn.stock_id != sub_stock)
-      elsif page>CPI_Last_Sub
-        opt_btns[page-CPI_Last_Sub+CPI_Sub+1].safe_set_active(true)
+      elsif page>PandoraUI::CPI_Last_Sub
+        opt_btns[page-PandoraUI::CPI_Last_Sub+PandoraUI::CPI_Sub+1].safe_set_active(true)
         sub_btn.stock_id = sub_stock if (sub_btn.stock_id != sub_stock)
       else
         sub_btn.safe_set_active(true)
@@ -6357,12 +6328,12 @@ module PandoraGtk
       @active_page = page
       need_init = true
       if container
-        container = container.child if page==CPI_Property
+        container = container.child if page==PandoraUI::CPI_Property
         need_init = false if (container.children.size>0)
       end
       if need_init
         case page
-          when CPI_Property
+          when PandoraUI::CPI_Property
             @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
             fill_property_toolbar(property_box)
             property_box.set_status_icons
@@ -6375,7 +6346,7 @@ module PandoraGtk
             #  false
             #end
             container.add(property_box)
-          when CPI_Profile
+          when PandoraUI::CPI_Profile
             short_name = ''
 
             hpaned = Gtk::HPaned.new
@@ -6457,7 +6428,7 @@ module PandoraGtk
 
             fill_view_toolbar
             container.add(hpaned)
-          when CPI_Editor
+          when PandoraUI::CPI_Editor
             #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
             #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
             @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
@@ -6472,7 +6443,7 @@ module PandoraGtk
                 bodywin.edit_btn.safe_set_active((not bodywin.view_mode)) if bodywin.edit_btn
               end
             end
-          when CPI_Dialog, CPI_Chat
+          when PandoraUI::CPI_Dialog, PandoraUI::CPI_Chat
             listsend_vpaned = Gtk::VPaned.new
 
             @area_recv = ViewDrawingArea.new(self)
@@ -6485,7 +6456,7 @@ module PandoraGtk
             end
 
             atalkview = PandoraGtk::ChatTextView.new(54)
-            if page==CPI_Chat
+            if page==PandoraUI::CPI_Chat
               @chat_talkview = atalkview
             else
               @dlg_talkview = atalkview
@@ -6677,26 +6648,26 @@ module PandoraGtk
               init_video_receiver(false, false)
             end
 
-            chat_mode = ((page==CPI_Chat) or (kind != PandoraModel::PK_Person))
+            chat_mode = ((page==PandoraUI::CPI_Chat) or (kind != PandoraModel::PK_Person))
 
             fill_dlg_toolbar(page, atalkview, chat_mode)
             load_history($load_history_count, $sort_history_mode, chat_mode)
 
             container.add(main_hpaned)
             container.def_widget = edit_box
-          when CPI_Opinions
+          when PandoraUI::CPI_Opinions
             pbox = PandoraGtk::PanobjScrolledWindow.new
             panhash = PandoraUtils.bytes_to_hex(cab_panhash)
             PandoraGtk.show_panobject_list(PandoraModel::Message, nil, pbox, false, \
               'destination='+panhash)
             container.add(pbox)
-          when CPI_Relations
+          when PandoraUI::CPI_Relations
             pbox = PandoraGtk::PanobjScrolledWindow.new
             panhash = PandoraUtils.bytes_to_hex(cab_panhash)
             PandoraGtk.show_panobject_list(PandoraModel::Relation, nil, pbox, false, \
               'first='+panhash+' OR second='+panhash)
             container.add(pbox)
-          when CPI_Signs
+          when PandoraUI::CPI_Signs
             pbox = PandoraGtk::PanobjScrolledWindow.new
             panhash = PandoraUtils.bytes_to_hex(cab_panhash)
             PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox, false, \
@@ -6705,7 +6676,7 @@ module PandoraGtk
         end
       else
         case page
-          when CPI_Editor
+          when PandoraUI::CPI_Editor
             if (prev_page == @active_page) and property_box \
             and property_box.text_fields and (property_box.text_fields.size>0)
               first_body_fld = property_box.text_fields[0]
@@ -6772,9 +6743,9 @@ module PandoraGtk
 
       @opt_btns = []
       btn_down = nil
-      (CPI_Property..CPI_Last).each do |index|
+      (PandoraUI::CPI_Property..PandoraUI::CPI_Last).each do |index|
         container = nil
-        if index==CPI_Property
+        if index==PandoraUI::CPI_Property
           stock = dlg_stock
           stock ||= CabPageInfo[index][0]
           text = CabPageInfo[index][1]
@@ -6787,7 +6758,7 @@ module PandoraGtk
         else
           stock = CabPageInfo[index][0]
           text = CabPageInfo[index][1]
-          if index==CPI_Last_Sub+1
+          if index==PandoraUI::CPI_Last_Sub+1
             btn_down.menu.show_all
             btn_down = nil
           end
@@ -6801,7 +6772,7 @@ module PandoraGtk
           opt_btn = add_btn_to_toolbar(stock, text, false, opt_btns) do
             show_page(index)
           end
-          if index==CPI_Sub
+          if index==PandoraUI::CPI_Sub
             btn_down = add_btn_to_toolbar(nil, nil, 0, opt_btns)
             btn_down.menu = Gtk::Menu.new
           end
@@ -6858,13 +6829,13 @@ module PandoraGtk
       end
 
       show_all
-      a_page ||= CPI_Dialog
-      opt_btns[CPI_Sub+1].children[0].children[0].hide
-      btn_offset = CPI_Last_Sub-CPI_Sub-1
-      opt_btns[CPI_Editor-btn_offset].hide if (not its_blob)
+      a_page ||= PandoraUI::CPI_Dialog
+      opt_btns[PandoraUI::CPI_Sub+1].children[0].children[0].hide
+      btn_offset = PandoraUI::CPI_Last_Sub-PandoraUI::CPI_Sub-1
+      opt_btns[PandoraUI::CPI_Editor-btn_offset].hide if (not its_blob)
       if (kind != PandoraModel::PK_Person)
-        opt_btns[CPI_Dialog-btn_offset].hide
-        a_page = CPI_Chat if a_page == CPI_Dialog
+        opt_btns[PandoraUI::CPI_Dialog-btn_offset].hide
+        a_page = PandoraUI::CPI_Chat if a_page == PandoraUI::CPI_Dialog
       end
       show_page(a_page)
 
@@ -9094,7 +9065,7 @@ module PandoraGtk
           if (new_size == curr_size)
             http = nil
             step = 254
-            $window.set_status_field(SF_Update, 'Ok', false)
+            PandoraUI.set_status_field(PandoraUI::SF_Update, 'Ok', false)
             PandoraUtils.set_param('last_update', Time.now)
           else
             time = Time.now.to_i
@@ -9104,7 +9075,7 @@ module PandoraGtk
         end
       end
       if not http
-        $window.set_status_field(SF_Update, 'Connection error')
+        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Connection error')
         PandoraUI.log_message(PandoraUI::LM_Info, _('Cannot connect to repo to check update')+\
           ' '+[host, path].inspect)
       end
@@ -9114,7 +9085,7 @@ module PandoraGtk
     def self.reconnect_if_need(http, time, url)
       http = PandoraNet.http_reconnect_if_need(http, time, url)
       if not http
-        $window.set_status_field(SF_Update, 'Connection error')
+        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Connection error')
         PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot reconnect to repo to update'))
       end
       http
@@ -9154,9 +9125,9 @@ module PandoraGtk
       $download_thread = Thread.new do
         Thread.current[:all_step] = all_step
         downloaded = false
-        $window.set_status_field(SF_Update, 'Need check')
+        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need check')
         sleep($update_lag) if not Thread.current[:all_step]
-        $window.set_status_field(SF_Update, 'Checking')
+        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Checking')
 
         main_script = File.join($pandora_app_dir, 'pandora.rb')
         curr_size = File.size?(main_script)
@@ -9190,11 +9161,11 @@ module PandoraGtk
                         zip_size, step)
                       if http
                         PandoraUI.log_message(PandoraUI::LM_Info, _('Need update'))
-                        $window.set_status_field(SF_Update, 'Need update')
+                        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need update')
                         Thread.stop
                         http = reconnect_if_need(http, time, zip_url)
                         if http
-                          $window.set_status_field(SF_Update, 'Doing')
+                          PandoraUI.set_status_field(PandoraUI::SF_Update, 'Doing')
                           res = update_file(http, path, zip_local, host)
                           #res = true
                           if res
@@ -9260,11 +9231,11 @@ module PandoraGtk
                         end
                       end
                     else
-                      $window.set_status_field(SF_Update, 'Read only')
+                      PandoraUI.set_status_field(PandoraUI::SF_Update, 'Read only')
                       PandoraUI.log_message(PandoraUI::LM_Warning, _('Zip is unrewritable'))
                     end
                   else
-                    $window.set_status_field(SF_Update, 'Size error')
+                    PandoraUI.set_status_field(PandoraUI::SF_Update, 'Size error')
                     PandoraUI.log_message(PandoraUI::LM_Warning, _('Zip size error'))
                   end
                 end
@@ -9275,11 +9246,11 @@ module PandoraGtk
                   curr_size, step)
                 if http
                   PandoraUI.log_message(PandoraUI::LM_Info, _('Need update'))
-                  $window.set_status_field(SF_Update, 'Need update')
+                  PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need update')
                   Thread.stop
                   http = reconnect_if_need(http, time, url)
                   if http
-                    $window.set_status_field(SF_Update, 'Doing')
+                    PandoraUI.set_status_field(PandoraUI::SF_Update, 'Doing')
                     # updating pandora.rb
                     downloaded = update_file(http, path, main_script, host)
                     # updating other files
@@ -9306,7 +9277,7 @@ module PandoraGtk
             end
             if step == 255
               PandoraUtils.set_param('last_update', Time.now)
-              $window.set_status_field(SF_Update, 'Need restart')
+              PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need restart')
               Thread.stop
               #Kernel.abort('Pandora is updated. Run it again')
               puts 'Pandora is updated. Restarting..'
@@ -9315,13 +9286,13 @@ module PandoraGtk
               $window.pool.close_all_session
               PandoraUtils.restart_app
             elsif step<250
-              $window.set_status_field(SF_Update, 'Load error')
+              PandoraUI.set_status_field(PandoraUI::SF_Update, 'Load error')
             end
           else
-            $window.set_status_field(SF_Update, 'Read only')
+            PandoraUI.set_status_field(PandoraUI::SF_Update, 'Read only')
           end
         else
-          $window.set_status_field(SF_Update, 'Size error')
+          PandoraUI.set_status_field(PandoraUI::SF_Update, 'Size error')
         end
         $download_thread = nil
       end
@@ -9563,11 +9534,11 @@ module PandoraGtk
         end
 
         if panhash0
-          page = CPI_Property
-          page = CPI_Profile if (action=='Profile')
-          page = CPI_Chat if (action=='Chat')
-          page = CPI_Dialog if (action=='Dialog')
-          page = CPI_Opinions if (action=='Opinion')
+          page = PandoraUI::CPI_Property
+          page = PandoraUI::CPI_Profile if (action=='Profile')
+          page = PandoraUI::CPI_Chat if (action=='Chat')
+          page = PandoraUI::CPI_Dialog if (action=='Dialog')
+          page = PandoraUI::CPI_Opinions if (action=='Opinion')
           show_cabinet(panhash0, nil, nil, nil, nil, page, formfields, id, edit)
         else
           dialog = FieldsDialog.new(panobject, tree_view, formfields, panhash0, id, \
@@ -9686,7 +9657,7 @@ module PandoraGtk
       store = treeview.model
       Gdk::Threads.synchronize do
         Gdk::Display.default.sync
-        $window.mutex.synchronize do
+        $pool.mutex.synchronize do
           path, column = treeview.cursor
           id0 = nil
           if path
@@ -10595,7 +10566,7 @@ module PandoraGtk
     #dlg.documenters = dlg.authors
     #dlg.translator_credits = dlg.authors.join("\n")
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
-    dlg.comments = _('P2P folk network')
+    dlg.comments = _('P2P planetary network')
     dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
     begin
       file = File.open(File.join($pandora_app_dir, 'LICENSE.TXT'), 'r')
@@ -10649,7 +10620,7 @@ module PandoraGtk
       [captcha_buf.size, clue_text, node, node_id, models].inspect
     if captcha_buf
       sw = PandoraGtk.show_cabinet(panhashes, session, conntype, node_id, \
-        models, CPI_Dialog)
+        models, PandoraUI::CPI_Dialog)
       if sw
         clue_text ||= ''
         clue, length, symbols = clue_text.split('|')
@@ -10847,7 +10818,7 @@ module PandoraGtk
         end
       end
     end
-    $window.set_status_field(PandoraGtk::SF_FullScr, nil, nil, (not need_show))
+    PandoraUI.set_status_field(PandoraUI::SF_FullScr, nil, nil, (not need_show))
   end
 
   # Show log bar
@@ -11332,7 +11303,7 @@ module PandoraGtk
       #else
       #  @fisher_count += diff_count
       #end
-      set_status_field(SF_Conn, (hunter_count + listener_count + fisher_count).to_s)
+      PandoraUI.set_status_field(PandoraUI::SF_Conn, (hunter_count + listener_count + fisher_count).to_s)
       online = ((@hunter_count>0) or (@listener_count>0) or (@fisher_count>0))
       $statusicon.set_online(online)
     end
@@ -11342,7 +11313,7 @@ module PandoraGtk
     # Change listener button state
     # RU: Изменить состояние кнопки слушателя
     def correct_lis_btn_state
-      tool_btn = $toggle_buttons[PandoraGtk::SF_Listen]
+      tool_btn = $toggle_buttons[PandoraUI::SF_Listen]
       if tool_btn
         lis_act = PandoraNet.listen?
         tool_btn.safe_set_active(lis_act) if tool_btn.is_a? SafeToggleToolButton
@@ -11352,14 +11323,14 @@ module PandoraGtk
     # Change hunter button state
     # RU: Изменить состояние кнопки охотника
     def correct_hunt_btn_state
-      tool_btn = $toggle_buttons[PandoraGtk::SF_Hunt]
+      tool_btn = $toggle_buttons[PandoraUI::SF_Hunt]
       #pushed = ((not $hunter_thread.nil?) and $hunter_thread[:active] \
       #  and (not $hunter_thread[:paused]))
       pushed = PandoraNet.is_hunting?
       #p 'correct_hunt_btn_state: pushed='+[tool_btn, pushed, $hunter_thread, \
       #  $hunter_thread[:active], $hunter_thread[:paused]].inspect
       tool_btn.safe_set_active(pushed) if tool_btn.is_a? SafeToggleToolButton
-      $window.set_status_field(PandoraGtk::SF_Hunt, nil, nil, pushed)
+      PandoraUI.set_status_field(PandoraUI::SF_Hunt, nil, nil, pushed)
     end
 
     # Change listener button state
@@ -11370,8 +11341,8 @@ module PandoraGtk
       an_active = (hpaned.max_position - hpaned.position) > 24
       #(list_sw.allocation.width > 24)
       #($window.radar_hpaned.position > 24)
-      $window.set_status_field(PandoraGtk::SF_Radar, nil, nil, an_active)
-      #tool_btn = $toggle_buttons[PandoraGtk::SF_Radar]
+      PandoraUI.set_status_field(PandoraUI::SF_Radar, nil, nil, an_active)
+      #tool_btn = $toggle_buttons[PandoraUI::SF_Radar]
       #if tool_btn
       #  hpaned = $window.radar_hpaned
       #  list_sw = hpaned.children[0]
@@ -11382,7 +11353,7 @@ module PandoraGtk
     def correct_log_btn_state
       vpaned = $window.log_vpaned
       an_active = (vpaned.max_position - vpaned.position) > 24
-      $window.set_status_field(PandoraGtk::SF_Log, nil, nil, an_active)
+      PandoraUI.set_status_field(PandoraUI::SF_Log, nil, nil, an_active)
     end
 
     # Show notice status
@@ -11394,7 +11365,7 @@ module PandoraGtk
     #  PandoraNet.get_notice_params
     #  notice = PandoraModel.transform_trust($notice_trust, :auto_to_float)
     #  notice = notice.round(1).to_s + '/'+$notice_depth.to_s
-    #  set_status_field(PandoraGtk::SF_Notice, notice)
+    #  set_status_field(PandoraUI::SF_Notice, notice)
     #end
 
     $statusbar = nil
@@ -11428,7 +11399,7 @@ module PandoraGtk
       if fld
         if text
           str = _(text)
-          str = _('Version') + ': ' + str if (index==SF_Update)
+          str = _('Version') + ': ' + str if (index==PandoraUI::SF_Update)
           fld.set_label(str)
         end
         fld.sensitive = enabled if (enabled != nil)
@@ -11805,10 +11776,6 @@ module PandoraGtk
       PandoraUI.log_message(PandoraUI::LM_Info, _('Table exported')+': '+filename)
     end
 
-    def mutex
-      @mutex ||= Mutex.new
-    end
-
     # Menu event handler
     # RU: Обработчик события меню
     def do_menu_act(command, treeview=nil)
@@ -11927,7 +11894,7 @@ module PandoraGtk
         when 'Profile'
           current_user = PandoraCrypto.current_user_or_key(true, true)
           if current_user
-            PandoraGtk.show_cabinet(current_user, nil, nil, nil, nil, CPI_Profile)
+            PandoraUI.show_cabinet(current_user, nil, nil, nil, nil, PandoraUI::CPI_Profile)
           end
         when 'Search'
           PandoraGtk.show_search_panel
@@ -12095,13 +12062,13 @@ module PandoraGtk
               index = nil
               case command
                 when 'Authorize'
-                  index = SF_Auth
+                  index = PandoraUI::SF_Auth
                 when 'Listen'
-                  index = SF_Listen
+                  index = PandoraUI::SF_Listen
                 when 'Hunt'
-                  index = SF_Hunt
+                  index = PandoraUI::SF_Hunt
                 when 'Radar'
-                  index = SF_Radar
+                  index = PandoraUI::SF_Radar
               end
               $toggle_buttons[index] = btn if index
             end
@@ -12574,10 +12541,10 @@ module PandoraGtk
       #$statusbar = Gtk::Statusbar.new
       #PandoraGtk.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
 
-      add_status_field(SF_Log, nil, 'Logbar', :log, false, 0) do
+      add_status_field(PandoraUI::SF_Log, nil, 'Logbar', :log, false, 0) do
         do_menu_act('LogBar')
       end
-      add_status_field(SF_FullScr, nil, 'Full screen', Gtk::Stock::FULLSCREEN, false, 0) do
+      add_status_field(PandoraUI::SF_FullScr, nil, 'Full screen', Gtk::Stock::FULLSCREEN, false, 0) do
         do_menu_act('FullScr')
       end
 
@@ -12590,34 +12557,34 @@ module PandoraGtk
       pathlabel.set_alignment(0.0, 0.5)
       $statusbar.pack_start(pathlabel, true, true, 0)
 
-      add_status_field(SF_Update, _('Version') + ': ' + _('Not checked'), 'Update') do
+      add_status_field(PandoraUI::SF_Update, _('Version') + ': ' + _('Not checked'), 'Update') do
         PandoraGtk.start_updating(true)
       end
-      add_status_field(SF_Lang, $lang, 'Language') do
+      add_status_field(PandoraUI::SF_Lang, $lang, 'Language') do
         do_menu_act('Blob')
       end
-      add_status_field(SF_Auth, _('Not logged'), 'Authorize', :auth, false) do
+      add_status_field(PandoraUI::SF_Auth, _('Not logged'), 'Authorize', :auth, false) do
         do_menu_act('Authorize')          #Gtk::Stock::DIALOG_AUTHENTICATION
       end
-      add_status_field(SF_Listen, '0', 'Listen', :listen, false) do
+      add_status_field(PandoraUI::SF_Listen, '0', 'Listen', :listen, false) do
         do_menu_act('Listen')
       end
-      add_status_field(SF_Hunt, '0', 'Hunting', :hunt, false) do
+      add_status_field(PandoraUI::SF_Hunt, '0', 'Hunting', :hunt, false) do
         do_menu_act('Hunt')
       end
-      add_status_field(SF_Fisher, '0', 'Fishers', :fish) do
+      add_status_field(PandoraUI::SF_Fisher, '0', 'Fishers', :fish) do
         do_menu_act('Fisher')
       end
-      add_status_field(SF_Conn, '0', 'Sessions', :session) do
+      add_status_field(PandoraUI::SF_Conn, '0', 'Sessions', :session) do
         do_menu_act('Session')
       end
-      add_status_field(SF_Radar, '0', 'Radar', :radar, false) do
+      add_status_field(PandoraUI::SF_Radar, '0', 'Radar', :radar, false) do
         do_menu_act('Radar')
       end
-      add_status_field(SF_Harvest, '0', 'Files', :blob) do
+      add_status_field(PandoraUI::SF_Harvest, '0', 'Files', :blob) do
         do_menu_act('Blob')
       end
-      add_status_field(SF_Search, '0', 'Search', Gtk::Stock::FIND) do
+      add_status_field(PandoraUI::SF_Search, '0', 'Search', Gtk::Stock::FIND) do
         do_menu_act('Search')
       end
       resize_eb = Gtk::EventBox.new
@@ -12828,6 +12795,7 @@ module PandoraGtk
       #end
 
       @pool = PandoraNet::Pool.new($window)
+      $pool = @pool
 
       scr = Gdk::Screen.default
       $window.set_default_size(scr.width-100, scr.height-100)
@@ -12911,7 +12879,7 @@ module PandoraGtk
         ok_version = (time_now - last_update.to_i) < update_period*24*3600
         need_check = ((time_now - last_check.to_i) >= check_interval*24*3600)
         if ok_version
-          set_status_field(SF_Update, 'Ok', need_check)
+          PandoraUI.set_status_field(PandoraUI::SF_Update, 'Ok', need_check)
         elsif need_check
           PandoraGtk.start_updating(false)
         end

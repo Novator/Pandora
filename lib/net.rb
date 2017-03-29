@@ -13,6 +13,8 @@
 require 'socket'
 require File.expand_path('../utils.rb',  __FILE__)
 
+$pool = nil
+
 module PandoraNet
 
   include PandoraUtils
@@ -300,6 +302,10 @@ module PandoraNet
       @punnets = Hash.new
     end
 
+    def mutex
+      @mutex ||= Mutex.new
+    end
+
     def base_id
       $base_id
     end
@@ -381,7 +387,7 @@ module PandoraNet
 
             if Thread.current[:listen_tcp] and (not server.closed?) and socket
               host_ip = socket.peeraddr[2]
-              unless $window.pool.is_black?(host_ip)
+              unless $pool.is_black?(host_ip)
                 host_name = socket.peeraddr[3]
                 port = socket.peeraddr[1]
                 proto = 'tcp'
@@ -395,9 +401,9 @@ module PandoraNet
           end
           server.close if server and (not server.closed?)
           PandoraUI.log_message(PandoraUI::LM_Info, _('Listener stops')+' '+addr_str) if server
-          #$window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
+          #PandoraUI.set_status_field(PandoraUI::SF_Listen, nil, nil, false)
           #$tcp_listen_thread = nil
-          #$window.correct_lis_btn_state
+          #PandoraUI.correct_lis_btn_state
         end
       end
     end
@@ -698,7 +704,7 @@ module PandoraNet
         i = 0
         sym_count = frags.bytesize
 
-        $window.mutex.synchronize do
+        $pool.mutex.synchronize do
           while i<sym_count
             byte = frags[i].ord
             if byte != 255
@@ -1044,16 +1050,10 @@ module PandoraNet
           if mr
             case akind
               when MK_Presence
-                $window.set_status_field(PandoraGtk::SF_Radar, @mass_records.size.to_s)
-                hpaned = $window.radar_hpaned
-                if (hpaned.max_position - hpaned.position) > 24
-                  radar_sw = $window.radar_sw
-                  radar_sw.update_btn.clicked
-                else
-                  PandoraGtk.show_radar_panel
-                end
+                PandoraUI.set_status_field(PandoraUI::SF_Radar, @mass_records.size.to_s)
+                PandoraUI.update_or_show_radar_panel
               when MK_Fishing
-                $window.set_status_field(PandoraGtk::SF_Fisher, @mass_records.size.to_s)
+                PandoraUI.set_status_field(PandoraUI::SF_Fisher, @mass_records.size.to_s)
                 info = ''
                 fish = param1
                 fish_key = param2
@@ -1062,7 +1062,7 @@ module PandoraNet
                 PandoraUI.log_message(PandoraUI::LM_Trace, _('Bob is generated')+ \
                   ' '+@mass_ind.to_s+':['+info+']')
               when MK_Search
-                $window.set_status_field(PandoraGtk::SF_Search, @mass_records.size.to_s)
+                PandoraUI.set_status_field(PandoraUI::SF_Search, @mass_records.size.to_s)
                 PandoraNet.start_hunt if hunt
               when MK_Chat
                 #
@@ -1276,7 +1276,7 @@ module PandoraNet
               node_id_i = row[4]
               node_id_i ||= node_id
               aconn_mode ||= 0
-              if $window.visible? #and $window.has_toplevel_focus?
+              if PandoraUI.captcha_win_available?
                 aconn_mode = (aconn_mode | PandoraNet::CM_Captcha)
               end
               aconn_mode = (CM_Hunter | aconn_mode)
@@ -1413,9 +1413,7 @@ module PandoraNet
     # Link to parent pool
     # RU: Ссылка на родительский пул
     def pool
-      res = nil
-      res = $window.pool if $window
-      res
+      $pool
     end
 
     LHI_Line       = 0
@@ -2020,7 +2018,8 @@ module PandoraNet
           @scode = ECC_Auth_Captcha
           text, buf = PandoraUtils.generate_captcha(nil, $captcha_length)
           params['captcha'] = text.downcase
-          clue_text = 'You may enter small letters|'+$captcha_length.to_s+'|'+PandoraGtk::CapSymbols
+          clue_text = 'You may enter small letters|'+$captcha_length.to_s+'|'+\
+            PandoraGtk::CapSymbols
           clue_text = clue_text[0,255]
           @sbuf = [clue_text.bytesize].pack('C')+clue_text+buf
           @stage = ES_Captcha
@@ -2199,7 +2198,7 @@ module PandoraNet
           @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
           #node = PandoraNet.encode_addr(host_ip, port, proto)
           panhash = @skey[PandoraCrypto::KV_Creator]
-          @dialog = PandoraGtk.show_cabinet(panhash, self, conn_type)
+          @dialog = PandoraUI.show_cabinet(panhash, self, conn_type)
           dialog.update_state(true)
           Thread.pass
           #PandoraUtils.play_mp3('online')
@@ -2873,7 +2872,7 @@ module PandoraNet
                   clue_length = rdata[0].ord
                   clue_text = rdata[1,clue_length]
                   captcha_buf = rdata[clue_length+1..-1]
-                  if $window.visible? #and $window.has_toplevel_focus?
+                  if PandoraUI.captcha_win_available?
                     dstkey = nil
                     dstkey = @skey[PandoraCrypto::KV_Creator] if @skey
                     dstkey ||= params['dstkey']
@@ -2956,7 +2955,7 @@ module PandoraNet
                 rec_array << record if record
               end
               if rec_array.size>0
-                records = PandoraGtk.rubyobj_to_pson(rec_array)
+                records = PandoraUtils.rubyobj_to_pson(rec_array)
                 @scmd = EC_Record
                 @scode = 0
                 @sbuf = records
@@ -3071,7 +3070,7 @@ module PandoraNet
                   @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
                   #panhashes = [@skey[PandoraCrypto::KV_Panhash], @skey[PandoraCrypto::KV_Creator]]
                   panhash = @skey[PandoraCrypto::KV_Creator]
-                  @dialog = PandoraGtk.show_cabinet(panhash, self, conn_type)
+                  @dialog = PandoraUI.show_cabinet(panhash, self, conn_type)
                   Thread.pass
                   #PandoraUtils.play_mp3('online')
                 end
@@ -3125,7 +3124,7 @@ module PandoraNet
                       id = sel[0][0] if sel and (sel.size > 0)
                       @dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
                         myname, time_now, created)
-                      @dialog.show_page(PandoraGtk::CPI_Dialog)
+                      @dialog.show_page(PandoraUI::CPI_Dialog)
                     else
                       PandoraUI.log_message(PandoraUI::LM_Error, 'Пришло сообщение, но лоток чата не найден!')
                     end
@@ -3155,7 +3154,7 @@ module PandoraNet
                                 add_send_segment(EC_Message, true, chat_par)
                               end
                             when 'menu'
-                              $window.do_menu_act(chat_par)
+                              PandoraUI.do_menu_act(chat_par)
                             when 'exec'
                               res = PandoraUtils.exec_cmd(chat_par)
                               if not res
@@ -3586,9 +3585,9 @@ module PandoraNet
                         model = PandoraUtils.get_model('Message', @recv_models)
                         panhash = model.calc_panhash(values)
                         values['panhash'] = panhash
-                        chat_dialog = PandoraGtk.show_cabinet(destination, nil, \
-                          nil, nil, nil, PandoraGtk::CPI_Chat)
-                          #@conn_type, nil, nil, PandoraGtk::CPI_Chat)
+                        chat_dialog = PandoraUI.show_cabinet(destination, nil, \
+                          nil, nil, nil, PandoraUI::CPI_Chat)
+                          #@conn_type, nil, nil, CPI_Chat)
                         res = model.update(values, nil, nil)
                         Thread.pass
                         sleep(0.05)
@@ -4085,7 +4084,7 @@ module PandoraNet
                     elsif (readmode == RM_Comm)
                       #p log_mes+'-- from socket to read queue: [rkcmd, rcode, rkdata.size]='+[rkcmd, rkcode, rkdata.size].inspect
                       if @r_encode and rkdata and (rkdata.bytesize>0)
-                        #@rkdata = PandoraGtk.recrypt(@rkey, @rkdata, false, true)
+                        #@rkdata = PandoraCrypto.recrypt(@rkey, @rkdata, false, true)
                         #@rkdata = Base64.strict_decode64(@rkdata)
                         #p log_mes+'::: decode rkdata.size='+rkdata.size.to_s
                       end
@@ -4219,7 +4218,7 @@ module PandoraNet
                   #p log_mes+' send_segment='+send_segment.inspect
                   sscmd, sscode, ssbuf = send_segment
                   if ssbuf and (ssbuf.bytesize>0) and @s_encode
-                    #ssbuf = PandoraGtk.recrypt(@skey, ssbuf, true, false)
+                    #ssbuf = PandoraCrypto.recrypt(@skey, ssbuf, true, false)
                     #ssbuf = Base64.strict_encode64(@sbuf)
                   end
                   #p log_mes+'MAIN SEND: '+[@sindex, sscmd, sscode, ssbuf].inspect
@@ -4762,7 +4761,7 @@ module PandoraNet
   def self.create_session_for_socket(socket)
     if socket
       host_ip = socket.peeraddr[2]
-      if $window.pool.is_black?(host_ip)
+      if $pool.is_black?(host_ip)
         PandoraUI.log_message(PandoraUI::LM_Info, _('IP is banned')+': '+host_ip.to_s)
       else
         host_name = socket.peeraddr[3]
@@ -4785,10 +4784,9 @@ module PandoraNet
     must_listen = (not listen?) if must_listen.nil?
     if must_listen
       # Need to start
-      #$window.show_notice(false)
       user = PandoraCrypto.current_user_or_key(true)
       if user
-        $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, true)
+        PandoraUI.set_status_field(PandoraUI::SF_Listen, nil, nil, true)
         hosts = $host
         hosts ||= PandoraUtils.get_param('listen_host')
         hosts = hosts.split(',') if hosts
@@ -4847,9 +4845,9 @@ module PandoraNet
                 PandoraUI.log_message(PandoraUI::LM_Info, _('Listener stops')+' '+addr_strs[i])
               end
             end
-            $window.set_status_field(PandoraGtk::SF_Listen, nil, nil, false)
+            PandoraUI.set_status_field(PandoraUI::SF_Listen, nil, nil, false)
             $tcp_listen_thread = nil
-            $window.correct_lis_btn_state
+            PandoraUI.correct_lis_btn_state
             PandoraNet.register_node_ips(false)
           end
         end
@@ -4947,8 +4945,8 @@ module PandoraNet
                       ((far_person_hash != person_hash) or (far_key_hash != key_hash) or \
                       (far_base_id != $base_id)) # or true)
                     then
-                      addr = $window.pool.encode_addr(far_ip, far_port, 'tcp')
-                      $window.pool.init_session(addr, nil, 0, nil, nil, far_person_hash, \
+                      addr = $pool.encode_addr(far_ip, far_port, 'tcp')
+                      $pool.init_session(addr, nil, 0, nil, nil, far_person_hash, \
                         far_key_hash, far_base_id)
                     end
                   end
@@ -4957,16 +4955,16 @@ module PandoraNet
             end
             #udp_server.close if udp_server and (not udp_server.closed?)
             PandoraUI.log_message(PandoraUI::LM_Info, _('Listener stops')+' '+udp_addr_str) if udp_server
-            #$window.set_status_field(PandoraGtk::SF_Listen, 'Not listen', nil, false)
+            #PandoraUI.set_status_field(PandoraUI::SF_Listen, 'Not listen', nil, false)
             $udp_listen_thread = nil
-            $window.correct_lis_btn_state
+            PandoraUI.correct_lis_btn_state
           end
         end
 
         #p loc_hst = Socket.gethostname
         #p Socket.gethostbyname(loc_hst)[3]
       end
-      $window.correct_lis_btn_state
+      PandoraUI.correct_lis_btn_state
     else
       # Need to stop
       if $tcp_listen_thread
@@ -4980,7 +4978,7 @@ module PandoraNet
             if tcp_lis_th0 == $tcp_listen_thread
               $tcp_listen_thread.exit if $tcp_listen_thread and $tcp_listen_thread.alive?
               $tcp_listen_thread = nil
-              $window.correct_lis_btn_state
+              PandoraUI.correct_lis_btn_state
             end
             false
           end
@@ -5000,13 +4998,13 @@ module PandoraNet
             if udp_lis_th0 == $udp_listen_thread
               $udp_listen_thread.exit if $udp_listen_thread and $udp_listen_thread.alive?
               $udp_listen_thread = nil
-              $window.correct_lis_btn_state
+              PandoraUI.correct_lis_btn_state
             end
             false
           end
         end
       end
-      $window.correct_lis_btn_state
+      PandoraUI.correct_lis_btn_state
     end
     if quit_programm
       PandoraNet.register_node_ips(false, quit_programm)
@@ -5128,8 +5126,8 @@ module PandoraNet
             else
               del = '&del=1'
             end
-            node = PandoraUtils.bytes_to_hex($window.pool.self_node)
-            #node = Base64.strict_encode64($window.pool.self_node)
+            node = PandoraUtils.bytes_to_hex($pool.self_node)
+            #node = Base64.strict_encode64($pool.self_node)
             if panreg_url==WrongUrl  #Hack to change old parameter
               PandoraUtils.set_param('panreg_url', nil)
               panreg_url = PandoraUtils.get_param('panreg_url')
@@ -5206,7 +5204,7 @@ module PandoraNet
         $hunter_thread.exit if $hunter_thread.alive?
         $hunter_thread = nil
       end
-      $window.correct_hunt_btn_state
+      PandoraUI.correct_hunt_btn_state
     else
       user = PandoraCrypto.current_user_or_key(true)
       if user
@@ -5219,7 +5217,7 @@ module PandoraNet
             sleep(0.1) if delay>0
             Thread.current[:active] = true
             Thread.current[:paused] = false
-            $window.correct_hunt_btn_state
+            PandoraUI.correct_hunt_btn_state
             sleep(delay) if delay>0
             while (Thread.current[:active] != false) and sel and (sel.size>0)
               start_time = Time.now.to_i
@@ -5229,7 +5227,7 @@ module PandoraNet
                 domain = row[2]
                 key_hash = row[3]
                 if (addr and (addr.size>0)) or (domain and (domain.size>0)) \
-                or ($window.pool.active_socket? and key_hash and (key_hash.size>0))
+                or ($pool.active_socket? and key_hash and (key_hash.size>0))
                   tport = 0
                   begin
                     tport = row[4].to_i
@@ -5240,16 +5238,16 @@ module PandoraNet
                   base_id = row[5]
                   tport = PandoraNet::DefTcpPort if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
-                  addr = $window.pool.encode_addr(domain, tport, 'tcp')
+                  addr = $pool.encode_addr(domain, tport, 'tcp')
                   if Thread.current[:active]
-                    $window.pool.init_session(addr, panhash, 0, nil, node_id, person, \
+                    $pool.init_session(addr, panhash, 0, nil, node_id, person, \
                       key_hash, base_id)
                     if Thread.current[:active]
-                      if $window.pool.sessions.size<$max_session_count
+                      if $pool.sessions.size<$max_session_count
                         sleep($hunt_step_pause)
                       else
                         while Thread.current[:active] \
-                        and ($window.pool.sessions.size>=$max_session_count)
+                        and ($pool.sessions.size>=$max_session_count)
                           sleep($hunt_overflow_pause)
                           Thread.stop if Thread.current[:paused]
                         end
@@ -5273,17 +5271,17 @@ module PandoraNet
               end
             end
             $hunter_thread = nil
-            $window.correct_hunt_btn_state
+            PandoraUI.correct_hunt_btn_state
           end
         else
-          $window.correct_hunt_btn_state
+          PandoraUI.correct_hunt_btn_state
           dialog = PandoraGtk::GoodMessageDialog.new(_('Enter at least one node'))
           dialog.run_and_do do
-            PandoraGtk.show_panobject_list(PandoraModel::Node, nil, nil, true)
+            PandoraUI.show_panobject_list(PandoraModel::Node, nil, nil, true)
           end
         end
       else
-        $window.correct_hunt_btn_state
+        PandoraUI.correct_hunt_btn_state
       end
     end
     if (not $resume_harvest_time) \
@@ -5291,7 +5289,7 @@ module PandoraNet
       GLib::Timeout.add(900) do
         if is_hunting?
           $resume_harvest_time = Time.now.to_i
-          $window.pool.resume_harvest
+          $pool.resume_harvest
         end
         false
       end
@@ -5461,7 +5459,7 @@ module PandoraNet
         node_model = PandoraUtils.get_model('Node')
         node_kind = node_model.kind
         if node_model
-          self_node = $window.pool.self_node
+          self_node = $pool.self_node
           list.each_with_index do |line, row|
             if line.include?('|')
               nfs = line.split('|')
