@@ -564,7 +564,7 @@ module PandoraModel
         need_list << panhash if (not res)  #add if record was not found
       end
     end
-    p 'needed_records='+need_list.inspect
+    #p 'needed_records='+need_list.inspect
     need_list
   end
 
@@ -667,16 +667,16 @@ module PandoraModel
           pankinds = nil
         end
         sel = relation_model.select(filter, false, 'obj_hash', 'modified DESC', nil)
-        p 'signed_records sel1='+sel.inspect
+        #p 'signed_records sel1='+sel.inspect
         sel.flatten!
         sel.uniq!
         sel.compact!
         sel.sort! {|a,b| a[0]<=>b[0] }
-        p 'pankinds='+pankinds.inspect
+        #p 'pankinds='+pankinds.inspect
         if pankinds
           sel.delete_if { |panhash| (not (pankinds.include? panhash[0].ord)) }
         end
-        p 'signed_records sel2='+sel.inspect
+        #p 'signed_records sel2='+sel.inspect
       end
     end
     sel
@@ -702,16 +702,16 @@ module PandoraModel
           pankinds = nil
         end
         sel = relation_model.select(filter, false, 'second', 'modified DESC', nil)
-        p 'public_records sel1='+sel.inspect
+        #p 'public_records sel1='+sel.inspect
         sel.flatten!
         sel.uniq!
         sel.compact!
         sel.sort! {|a,b| a[0]<=>b[0] }
-        p 'pankinds='+pankinds.inspect
+        #p 'pankinds='+pankinds.inspect
         if (pankinds.is_a? Array) and (pankinds.size>0)
           sel.delete_if { |panhash| (not (pankinds.include? panhash[0].ord)) }
         end
-        p 'public_records sel2='+sel.inspect
+        #p 'public_records sel2='+sel.inspect
       end
     end
     sel
@@ -733,16 +733,16 @@ module PandoraModel
         #  pankinds = nil
         #end
         sel = relation_model.select(filter, false, 'second', 'modified DESC', nil, true)
-        p 'follow_records sel1='+sel.inspect
+        #p 'follow_records sel1='+sel.inspect
         sel.flatten!
         sel.uniq!
         sel.compact!
         sel.sort! {|a,b| a[0]<=>b[0] }
-        p 'pankinds='+pankinds.inspect
+        #p 'pankinds='+pankinds.inspect
         if pankinds
           sel.delete_if { |panhash| (not (pankinds.include? panhash[0].ord)) }
         end
-        p 'follow_records sel2='+sel.inspect
+        #p 'follow_records sel2='+sel.inspect
       end
     end
     sel

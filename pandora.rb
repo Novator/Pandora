@@ -428,7 +428,7 @@ PandoraModel.load_model_from_xml($lang)
 PandoraUtils.detect_mp3_player
 $base_id = PandoraUtils.get_param('base_id')
 
-PandoraUI.init($cui_mode)
+PandoraUI.init_user_interface_and_network($cui_mode)
 
 # Free unix-socket on exit
 # Освободить unix-сокет при выходе

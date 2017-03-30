@@ -107,7 +107,7 @@ module PandoraGtk
           Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
           and event.state.control_mask?) #q, Q, й, Й, x, X, ч, Ч
         then
-          $window.do_menu_act('Quit')
+          PandoraUI.do_menu_act('Quit')
           false
         else
           false
@@ -234,7 +234,7 @@ module PandoraGtk
         elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) and event.state.mod1_mask?) or
           ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
         then
-          $window.do_menu_act('Quit')
+          PandoraUI.do_menu_act('Quit')
           @response=1
           false
         else
@@ -588,7 +588,7 @@ module PandoraGtk
           then
             @popwin.destroy
             @popwin = nil
-            $window.do_menu_act('Quit')
+            PandoraUI.do_menu_act('Quit')
             false
           else
             false
@@ -697,7 +697,7 @@ module PandoraGtk
           and event.state.control_mask?) #q, Q, й, Й
         then
           destroy
-          $window.do_menu_act('Quit')
+          PandoraUI.do_menu_act('Quit')
           false
         else
           false
@@ -1953,7 +1953,7 @@ module PandoraGtk
           and event.state.control_mask?) #q, Q, й, Й
         then
           dialog.destroy
-          $window.do_menu_act('Quit')
+          PandoraUI.do_menu_act('Quit')
           false
         else
           false
@@ -5560,12 +5560,6 @@ module PandoraGtk
     [:dialog, 'Dialog'], \
     [:editor, 'Editor']]
 
-  # Tab view of person
-  TV_Name    = 0   # Name only
-  TV_Family  = 1   # Family only
-  TV_NameFam   = 2   # Name and family
-  TV_NameN   = 3   # Name with number
-
   # Panobject cabinet page
   # RU: Страница кабинета панобъекта
   class CabinetBox < Gtk::VBox
@@ -5864,18 +5858,18 @@ module PandoraGtk
             persons, keys, nodes = PandoraGtk.extract_from_panhash(cab_panhash)
             if nodes and (nodes.size>0)
               nodes.each do |nodehash|
-                $window.pool.init_session(nil, nodehash, 0, self, nil, \
+                $pool.init_session(nil, nodehash, 0, self, nil, \
                   persons, keys, nil, PandoraNet::CM_Captcha)
               end
             elsif persons
               persons.each do |person|
-                $window.pool.init_session(nil, nil, 0, self, nil, \
+                $pool.init_session(nil, nil, 0, self, nil, \
                   person, keys, nil, PandoraNet::CM_Captcha)
               end
             end
           else
             widget.safe_set_active(false)
-            $window.pool.stop_session(nil, cab_panhash, \
+            $pool.stop_session(nil, cab_panhash, \
               nil, false, self.session)
           end
         end
@@ -6815,7 +6809,7 @@ module PandoraGtk
       @label_box = TabLabelBox.new(dlg_image, 'unknown', self) do
         area_send.destroy if area_send and (not area_send.destroyed?)
         area_recv.destroy if area_recv and (not area_recv.destroyed?)
-        $window.pool.stop_session(nil, cab_panhash, nil, false, self.session)
+        $pool.stop_session(nil, cab_panhash, nil, false, self.session)
       end
 
       page = $window.notebook.append_page(self, label_box)
@@ -6864,27 +6858,27 @@ module PandoraGtk
       res = 'unknown'
       if (kind==PandoraModel::PK_Person)
         title_view = atitle_view
-        title_view ||= $window.title_view
-        title_view ||= TV_Name
+        title_view ||= PandoraUI.title_view
+        title_view ||= PandoraUI::TV_Name
         res = ''
         aname, afamily = PandoraCrypto.name_and_family_of_person(nil, cab_panhash)
         #p '------------[aname, afamily, cab_panhash]='+[aname, afamily, cab_panhash, \
         #  PandoraUtils.bytes_to_hex(cab_panhash)].inspect
         addname = ''
         case title_view
-          when TV_Name, TV_NameN
+          when PandoraUI::TV_Name, PandoraUI::TV_NameN
             if (aname.size==0)
               addname << afamily
             else
               addname << aname
             end
-          when TV_Family
+          when PandoraUI::TV_Family
             if (afamily.size==0)
               addname << aname
             else
               addname << afamily
             end
-          when TV_NameFam
+          when PandoraUI::TV_NameFam
             if (aname.size==0)
               addname << afamily
             else
@@ -6902,9 +6896,9 @@ module PandoraGtk
         tab_widget.label.text = res if tab_widget
         #p '$window.title_view, res='+[@$window.title_view, res].inspect
         if check_all
-          title_view=TV_Name if (title_view==TV_NameN)
+          title_view=PandoraUI::TV_Name if (title_view==PandoraUI::TV_NameN)
           has_conflict = true
-          while has_conflict and (title_view < TV_NameN)
+          while has_conflict and (title_view < PandoraUI::TV_NameN)
             has_conflict = false
             names = Array.new
             $window.notebook.children.each do |child|
@@ -6922,7 +6916,7 @@ module PandoraGtk
               end
             end
             if has_conflict
-              if (title_view < TV_NameN)
+              if (title_view < PandoraUI::TV_NameN)
                 title_view += 1
               end
               #p '@$window.title_view='+@$window.title_view.inspect
@@ -6930,7 +6924,7 @@ module PandoraGtk
               $window.notebook.children.each do |child|
                 if (child.is_a? CabinetBox)
                   sn = child.construct_cab_title(false, title_view)
-                  if (title_view == TV_NameN)
+                  if (title_view == PandoraUI::TV_NameN)
                     names << sn
                     c = names.count(sn)
                     sn = sn+c.to_s if c>1
@@ -7210,9 +7204,9 @@ module PandoraGtk
           PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot insert message')+' ['+text+']')
         end
         if chat_mode
-          $window.pool.send_chat_messages
+          $pool.send_chat_messages
         else
-          sessions = $window.pool.sessions_on_dialog(self)
+          sessions = $pool.sessions_on_dialog(self)
           sessions.each do |session|
             session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep)
             session.send_state = (session.send_state | PandoraNet::CSF_Message)
@@ -8092,7 +8086,7 @@ module PandoraGtk
     include PandoraGtk
 
     def show_all_reqs(reqs=nil)
-      pool = $window.pool
+      pool = $pool
       if reqs or (not @last_mass_ind) or (@last_mass_ind < pool.mass_ind)
         @list_store.clear
         reqs ||= pool.mass_records
@@ -8287,8 +8281,8 @@ module PandoraGtk
             request = PandoraUtils.hex_to_bytes(request)
             p 'Search: Detect blob search  kind,sha1='+[kind,request].inspect
           end
-          #reqs = $window.pool.add_search_request(request, kind, nil, nil, true)
-          reqs = $window.pool.add_mass_record(PandoraNet::MK_Search, kind, request)
+          #reqs = $pool.add_search_request(request, kind, nil, nil, true)
+          reqs = $pool.add_mass_record(PandoraNet::MK_Search, kind, request)
           show_all_reqs(reqs)
           PandoraGtk.set_readonly(stop_btn, true)
           PandoraGtk.set_readonly(widget, false)
@@ -8435,13 +8429,13 @@ module PandoraGtk
         Integer, Integer, Integer)
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
-        $window.pool.sessions.each do |session|
+        $pool.sessions.each do |session|
           hunter = session.hunter?
           if ((hunted_btn.active? and (not hunter)) \
           or (hunters_btn.active? and hunter) \
           or (fishers_btn.active? and session.active_hook))
             sess_iter = list_store.append
-            sess_iter[0] = $window.pool.sessions.index(session).to_s
+            sess_iter[0] = $pool.sessions.index(session).to_s
             sess_iter[1] = session.host_ip.to_s
             sess_iter[2] = session.port.to_s
             sess_iter[3] = PandoraUtils.bytes_to_hex(session.node_panhash)
@@ -8566,7 +8560,7 @@ module PandoraGtk
         #menuitem.name = mi[0]
         PandoraUtils.set_obj_property(menuitem, 'command', command)
         PandoraGtk.set_bold_to_menuitem(menuitem) if opts and opts.index('b')
-        menuitem.signal_connect('activate') { |widget| $window.do_menu_act(widget, treeview) }
+        menuitem.signal_connect('activate') { |widget| PandoraUI.do_menu_act(widget, treeview) }
       end
     end
     menuitem
@@ -8644,12 +8638,12 @@ module PandoraGtk
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
-        if $window.pool
-          $window.pool.mass_records.each do |mr|
+        if $pool
+          $pool.mass_records.each do |mr|
             p '---mr:'
             p mr[0..6]
             anode = mr[PandoraNet::MR_Node]
-            akey, abaseid, aperson = $window.pool.get_node_params(anode)
+            akey, abaseid, aperson = $pool.get_node_params(anode)
             if aperson or akey
               sess_iter = list_store.append
               akind = mr[PandoraNet::MR_Kind]
@@ -8882,7 +8876,7 @@ module PandoraGtk
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
-        $window.pool.mass_records.each do |mr|
+        $pool.mass_records.each do |mr|
           if mr
             sess_iter = list_store.append
             sess_iter[0] = mr[PandoraNet::MR_Kind]
@@ -9038,265 +9032,6 @@ module PandoraGtk
       end
     end
     res
-  end
-
-  $update_lag = 30    #time lag (sec) for update after run the programm
-  $download_thread = nil
-
-  UPD_FileList = ['model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'pandora.bat']
-  UPD_FileList.concat(['model/03-language-'+$lang+'.xml', 'lang/'+$lang+'.txt']) if ($lang and ($lang != 'en'))
-
-  # Check updated files and download them
-  # RU: Проверить обновления и скачать их
-  def self.start_updating(all_step=true)
-
-    def self.connect_http_and_check_size(url, curr_size, step)
-      time = nil
-      http, host, path = PandoraNet.http_connect(url)
-      if http
-        new_size = PandoraNet.http_size_from_header(http, path, false)
-        if not new_size
-          sleep(0.5)
-          new_size = PandoraNet.http_size_from_header(http, path, false)
-        end
-        if new_size
-          PandoraUtils.set_param('last_check', Time.now)
-          p 'Size diff: '+[new_size, curr_size].inspect
-          if (new_size == curr_size)
-            http = nil
-            step = 254
-            PandoraUI.set_status_field(PandoraUI::SF_Update, 'Ok', false)
-            PandoraUtils.set_param('last_update', Time.now)
-          else
-            time = Time.now.to_i
-          end
-        else
-          http = nil
-        end
-      end
-      if not http
-        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Connection error')
-        PandoraUI.log_message(PandoraUI::LM_Info, _('Cannot connect to repo to check update')+\
-          ' '+[host, path].inspect)
-      end
-      [http, time, step, host, path]
-    end
-
-    def self.reconnect_if_need(http, time, url)
-      http = PandoraNet.http_reconnect_if_need(http, time, url)
-      if not http
-        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Connection error')
-        PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot reconnect to repo to update'))
-      end
-      http
-    end
-
-    # Update file
-    # RU: Обновить файл
-    def self.update_file(http, path, pfn, host='')
-      res = false
-      dir = File.dirname(pfn)
-      FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
-      if Dir.exists?(dir)
-        filebody = PandoraNet.http_get_body_from_path(http, path, host)
-        if filebody and (filebody.size>0)
-          begin
-            File.open(pfn, 'wb+') do |file|
-              file.write(filebody)
-              res = true
-              PandoraUI.log_message(PandoraUI::LM_Info, _('File updated')+': '+pfn)
-            end
-          rescue => err
-            PandoraUI.log_message(PandoraUI::LM_Warning, _('Update error')+': '+Utf8String.new(err.message))
-          end
-        else
-          PandoraUI.log_message(PandoraUI::LM_Warning, _('Empty downloaded body'))
-        end
-      else
-        PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot create directory')+': '+dir)
-      end
-      res
-    end
-
-    if $download_thread and $download_thread.alive?
-      $download_thread[:all_step] = all_step
-      $download_thread.run if $download_thread.stop?
-    else
-      $download_thread = Thread.new do
-        Thread.current[:all_step] = all_step
-        downloaded = false
-        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need check')
-        sleep($update_lag) if not Thread.current[:all_step]
-        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Checking')
-
-        main_script = File.join($pandora_app_dir, 'pandora.rb')
-        curr_size = File.size?(main_script)
-        if curr_size
-          if File.stat(main_script).writable?
-            update_zip = PandoraUtils.get_param('update_zip_first')
-            update_zip = true if update_zip.nil?
-
-            step = 0
-            while (step<2) do
-              step += 1
-              if update_zip
-                zip_local = File.join($pandora_base_dir, 'Pandora-master.zip')
-                zip_exists = File.exist?(zip_local)
-                p [zip_exists, zip_local]
-                if not zip_exists
-                  File.open(zip_local, 'wb+') do |file|
-                    file.write('0')  #empty file
-                  end
-                  zip_exists = File.exist?(zip_local)
-                end
-                if zip_exists
-                  zip_size = File.size?(zip_local)
-                  if zip_size
-                    if File.stat(zip_local).writable?
-                      #zip_on_repo = 'https://codeload.github.com/Novator/Pandora/zip/master'
-                      #dir_in_zip = 'Pandora-maste'
-                      zip_url = 'https://bitbucket.org/robux/pandora/get/master.zip'
-                      dir_in_zip = 'robux-pandora'
-                      http, time, step, host, path = connect_http_and_check_size(zip_url, \
-                        zip_size, step)
-                      if http
-                        PandoraUI.log_message(PandoraUI::LM_Info, _('Need update'))
-                        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need update')
-                        Thread.stop
-                        http = reconnect_if_need(http, time, zip_url)
-                        if http
-                          PandoraUI.set_status_field(PandoraUI::SF_Update, 'Doing')
-                          res = update_file(http, path, zip_local, host)
-                          #res = true
-                          if res
-                            # Delete old arch paths
-                            unzip_mask = File.join($pandora_base_dir, dir_in_zip+'*')
-                            p unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
-                            unzip_paths.each do |pathfilename|
-                              p 'Remove dir: '+pathfilename
-                              FileUtils.remove_dir(pathfilename) if File.directory?(pathfilename)
-                            end
-                            # Unzip arch
-                            unzip_meth = 'lib'
-                            res = PandoraUtils.unzip_via_lib(zip_local, $pandora_base_dir)
-                            p 'unzip_file1 res='+res.inspect
-                            if not res
-                              PandoraUI.log_message(PandoraUI::LM_Trace, _('Was not unziped with method')+': lib')
-                              unzip_meth = 'util'
-                              res = PandoraUtils.unzip_via_util(zip_local, $pandora_base_dir)
-                              p 'unzip_file2 res='+res.inspect
-                              if not res
-                                PandoraUI.log_message(PandoraUI::LM_Warning, _('Was not unziped with method')+': util')
-                              end
-                            end
-                            # Copy files to work dir
-                            if res
-                              PandoraUI.log_message(PandoraUI::LM_Info, _('Arch is unzipped with method')+': '+unzip_meth)
-                              #unzip_path = File.join($pandora_base_dir, 'Pandora-master')
-                              unzip_path = nil
-                              p 'unzip_mask='+unzip_mask.inspect
-                              p unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
-                              unzip_paths.each do |pathfilename|
-                                if File.directory?(pathfilename)
-                                  unzip_path = pathfilename
-                                  break
-                                end
-                              end
-                              if unzip_path and Dir.exist?(unzip_path)
-                                begin
-                                  p 'Copy '+unzip_path+' to '+$pandora_app_dir
-                                  #FileUtils.copy_entry(unzip_path, $pandora_app_dir, true)
-                                  FileUtils.cp_r(unzip_path+'/.', $pandora_app_dir)
-                                  PandoraUI.log_message(PandoraUI::LM_Info, _('Files are updated'))
-                                rescue => err
-                                  res = false
-                                  PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot copy files from zip arch')+': '+Utf8String.new(err.message))
-                                end
-                                # Remove used arch dir
-                                begin
-                                  FileUtils.remove_dir(unzip_path)
-                                rescue => err
-                                  PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot remove arch dir')+' ['+unzip_path+']: '+Utf8String.new(err.message))
-                                end
-                                step = 255 if res
-                              else
-                                PandoraUI.log_message(PandoraUI::LM_Warning, _('Unzipped directory does not exist'))
-                              end
-                            else
-                              PandoraUI.log_message(PandoraUI::LM_Warning, _('Arch was not unzipped'))
-                            end
-                          else
-                            PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot download arch'))
-                          end
-                        end
-                      end
-                    else
-                      PandoraUI.set_status_field(PandoraUI::SF_Update, 'Read only')
-                      PandoraUI.log_message(PandoraUI::LM_Warning, _('Zip is unrewritable'))
-                    end
-                  else
-                    PandoraUI.set_status_field(PandoraUI::SF_Update, 'Size error')
-                    PandoraUI.log_message(PandoraUI::LM_Warning, _('Zip size error'))
-                  end
-                end
-                update_zip = false
-              else   # update with https from sources
-                url = 'https://raw.githubusercontent.com/Novator/Pandora/master/pandora.rb'
-                http, time, step, host, path = connect_http_and_check_size(url, \
-                  curr_size, step)
-                if http
-                  PandoraUI.log_message(PandoraUI::LM_Info, _('Need update'))
-                  PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need update')
-                  Thread.stop
-                  http = reconnect_if_need(http, time, url)
-                  if http
-                    PandoraUI.set_status_field(PandoraUI::SF_Update, 'Doing')
-                    # updating pandora.rb
-                    downloaded = update_file(http, path, main_script, host)
-                    # updating other files
-                    UPD_FileList.each do |fn|
-                      pfn = File.join($pandora_app_dir, fn)
-                      if File.exist?(pfn) and (not File.stat(pfn).writable?)
-                        downloaded = false
-                        PandoraUI.log_message(PandoraUI::LM_Warning, \
-                          _('Not exist or read only')+': '+pfn)
-                      else
-                        downloaded = downloaded and \
-                          update_file(http, '/Novator/Pandora/master/'+fn, pfn)
-                      end
-                    end
-                    if downloaded
-                      step = 255
-                    else
-                      PandoraUI.log_message(PandoraUI::LM_Warning, _('Direct download error'))
-                    end
-                  end
-                end
-                update_zip = true
-              end
-            end
-            if step == 255
-              PandoraUtils.set_param('last_update', Time.now)
-              PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need restart')
-              Thread.stop
-              #Kernel.abort('Pandora is updated. Run it again')
-              puts 'Pandora is updated. Restarting..'
-              PandoraNet.start_or_stop_listen(false, true)
-              PandoraNet.start_or_stop_hunt(false) if $hunter_thread
-              $window.pool.close_all_session
-              PandoraUtils.restart_app
-            elsif step<250
-              PandoraUI.set_status_field(PandoraUI::SF_Update, 'Load error')
-            end
-          else
-            PandoraUI.set_status_field(PandoraUI::SF_Update, 'Read only')
-          end
-        else
-          PandoraUI.set_status_field(PandoraUI::SF_Update, 'Size error')
-        end
-        $download_thread = nil
-      end
-    end
   end
 
   # Get icon associated with panobject
@@ -10157,7 +9892,7 @@ module PandoraGtk
     hbox = Gtk::HBox.new
 
     PandoraGtk.add_tool_btn(hbox, Gtk::Stock::ADD, 'Create') do |widget|  #:NEW
-      $window.do_menu_act('Create', treeview)
+      PandoraUI.do_menu_act('Create', treeview)
     end
     chat_stock = :chat
     chat_item = 'Chat'
@@ -10167,10 +9902,10 @@ module PandoraGtk
     end
     if single
       PandoraGtk.add_tool_btn(hbox, chat_stock, chat_item) do |widget|
-        $window.do_menu_act(chat_item, treeview)
+        PandoraUI.do_menu_act(chat_item, treeview)
       end
       PandoraGtk.add_tool_btn(hbox, :opinion, 'Opinions') do |widget|
-        $window.do_menu_act('Opinion', treeview)
+        PandoraUI.do_menu_act('Opinion', treeview)
       end
     end
     page_sw.update_btn = PandoraGtk.add_tool_btn(hbox, Gtk::Stock::REFRESH, 'Update') do |widget|
@@ -10328,10 +10063,6 @@ module PandoraGtk
       end
     end
   end
-
-  $media_buf_size = 50
-  $send_media_queues = []
-  $send_media_rooms = {}
 
   # Take pointer index for sending by room
   # RU: Взять индекс указателя для отправки по id комнаты
@@ -10597,7 +10328,7 @@ module PandoraGtk
         and event.state.control_mask?) #q, Q, й, Й
       then
         widget.destroy
-        $window.do_menu_act('Quit')
+        PandoraUI.do_menu_act('Quit')
         false
       else
         false
@@ -11092,10 +10823,10 @@ module PandoraGtk
         if (not top_sens) or ($window.has_toplevel_focus? or (PandoraUtils.os_family=='windows'))
           $window.hide
         else
-          $window.do_menu_act('Activate')
+          PandoraUI.do_menu_act('Activate')
         end
       else
-        $window.do_menu_act('Activate')
+        PandoraUI.do_menu_act('Activate')
         update_icon if @update_win_icon
         if @message and (not force_show)
           page = $window.notebook.page
@@ -11285,27 +11016,38 @@ module PandoraGtk
   # Main window
   # RU: Главное окно
   class MainWindow < Gtk::Window
-    attr_accessor :hunter_count, :listener_count, :fisher_count, :log_view, :notebook, \
-      :pool, :focus_timer, :title_view, :do_on_start, :radar_hpaned, :task_offset, \
-      :radar_sw, :log_vpaned, :log_sw, :accel_group, :node_reg_offset, :menubar, \
+    attr_accessor :log_view, :notebook, \
+      :pool, :focus_timer, :radar_hpaned, :task_offset, \
+      :radar_sw, :log_vpaned, :log_sw, :accel_group, :menubar, \
       :toolbar, :hand_cursor, :regular_cursor
 
 
     include PandoraUtils
 
-    # Update status of connections
-    # RU: Обновить состояние подключений
-    def update_conn_status(conn, session_type, diff_count)
-      #if session_type==0
-      @hunter_count += diff_count
-      #elsif session_type==1
-      #  @listener_count += diff_count
-      #else
-      #  @fisher_count += diff_count
-      #end
-      PandoraUI.set_status_field(PandoraUI::SF_Conn, (hunter_count + listener_count + fisher_count).to_s)
-      online = ((@hunter_count>0) or (@listener_count>0) or (@fisher_count>0))
-      $statusicon.set_online(online)
+    # Maximal lines in log textview
+    # RU: Максимум строк в лотке лога
+    MaxLogViewLineCount = 500
+
+    # Add message to log textview
+    # RU: Добавить сообщение в лоток лога
+    def add_mes_to_log_view(mes, time, level)
+      log_view = $window.log_view
+      if log_view
+        value = log_view.parent.vadjustment.value
+        log_view.before_addition(time, value)
+        log_view.buffer.insert(log_view.buffer.end_iter, mes+"\n")
+        aline_count = log_view.buffer.line_count
+        if aline_count>MaxLogViewLineCount
+          first = log_view.buffer.start_iter
+          last = log_view.buffer.get_iter_at_line_offset(aline_count-MaxLogViewLineCount-1, 0)
+          log_view.buffer.delete(first, last)
+        end
+        log_view.after_addition
+        if $show_logbar_level and (level<=$show_logbar_level)
+          $show_logbar_level = nil
+          PandoraGtk.show_log_bar(80)
+        end
+      end
     end
 
     $toggle_buttons = []
@@ -11776,151 +11518,6 @@ module PandoraGtk
       PandoraUI.log_message(PandoraUI::LM_Info, _('Table exported')+': '+filename)
     end
 
-    # Menu event handler
-    # RU: Обработчик события меню
-    def do_menu_act(command, treeview=nil)
-      widget = nil
-      if not (command.is_a? String)
-        widget = command
-        if widget.instance_variable_defined?('@command')
-          command = widget.command
-        else
-          command = widget.name
-        end
-      end
-      case command
-        when 'Quit'
-          PandoraNet.start_or_stop_listen(false, true)
-          PandoraNet.start_or_stop_hunt(false) if $hunter_thread
-          self.pool.close_all_session
-          self.destroy
-        when 'Activate'
-          self.deiconify
-          #self.visible = true if (not self.visible?)
-          self.present
-        when 'Hide'
-          #self.iconify
-          self.hide
-        when 'About'
-          PandoraGtk.show_about
-        when 'Guide'
-          guide_fn = File.join($pandora_doc_dir, 'guide.'+$lang+'.pdf')
-          if not File.exist?(guide_fn)
-            if ($lang == 'en')
-              guide_fn = File.join($pandora_doc_dir, 'guide.en.odt')
-            else
-              guide_fn = File.join($pandora_doc_dir, 'guide.en.pdf')
-            end
-          end
-          if guide_fn and File.exist?(guide_fn)
-            PandoraUtils.external_open(guide_fn, 'open')
-          else
-            PandoraUtils.external_open($pandora_doc_dir, 'open')
-          end
-        when 'Readme'
-          PandoraUtils.external_open(File.join($pandora_app_dir, 'README.TXT'), 'open')
-        when 'DocPath'
-          PandoraUtils.external_open($pandora_doc_dir, 'open')
-        when 'Close'
-          if notebook.page >= 0
-            page = notebook.get_nth_page(notebook.page)
-            tab = notebook.get_tab_label(page)
-            close_btn = tab.children[tab.children.size-1].children[0]
-            close_btn.clicked
-          end
-        when 'Create','Edit','Delete','Copy', 'Chat', 'Dialog', 'Opinion', \
-        'Convert', 'Import', 'Export'
-          p 'act_panobject()  treeview='+treeview.inspect
-          if (not treeview) and (notebook.page >= 0)
-            sw = notebook.get_nth_page(notebook.page)
-            treeview = sw.children[0]
-          end
-          if treeview.is_a? Gtk::TreeView # SubjTreeView
-            if command=='Convert'
-              panobject = treeview.panobject
-              panobject.update(nil, nil, nil)
-              panobject.class.tab_fields(true)
-            elsif command=='Import'
-              p 'import'
-            elsif command=='Export'
-              panobject = treeview.panobject
-              ider = panobject.ider
-              filename = File.join($pandora_files_dir, ider+'.csv')
-
-              dialog = GoodFileChooserDialog.new(filename, false, nil, $window)
-
-              filter = Gtk::FileFilter.new
-              filter.name = _('Text tables')+' (*.csv,*.txt)'
-              filter.add_pattern('*.csv')
-              filter.add_pattern('*.txt')
-              dialog.add_filter(filter)
-
-              dialog.filter = filter
-
-              filter = Gtk::FileFilter.new
-              filter.name = _('JavaScript Object Notation')+' (*.json)'
-              filter.add_pattern('*.json')
-              dialog.add_filter(filter)
-
-              filter = Gtk::FileFilter.new
-              filter.name = _('Pandora Simple Object Notation')+' (*.pson)'
-              filter.add_pattern('*.pson')
-              dialog.add_filter(filter)
-
-              if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
-                filename = dialog.filename
-                export_table(panobject, filename)
-              end
-              dialog.destroy if not dialog.destroyed?
-            else
-              PandoraGtk.act_panobject(treeview, command)
-            end
-          end
-        when 'Listen'
-          PandoraNet.start_or_stop_listen
-        when 'Hunt'
-          continue = PandoraGtk.is_ctrl_shift_alt?(true, true)
-          PandoraNet.start_or_stop_hunt(continue)
-        when 'Authorize'
-          key = PandoraCrypto.current_key(false, false)
-          if key
-            PandoraNet.start_or_stop_listen(false)
-            PandoraNet.start_or_stop_hunt(false) if $hunter_thread
-            self.pool.close_all_session
-          end
-          key = PandoraCrypto.current_key(true)
-        when 'Wizard'
-          PandoraGtk.show_log_bar(80)
-        when 'Profile'
-          current_user = PandoraCrypto.current_user_or_key(true, true)
-          if current_user
-            PandoraUI.show_cabinet(current_user, nil, nil, nil, nil, PandoraUI::CPI_Profile)
-          end
-        when 'Search'
-          PandoraGtk.show_search_panel
-        when 'Session'
-          PandoraGtk.show_session_panel
-        when 'Radar'
-          PandoraGtk.show_radar_panel
-        when 'FullScr'
-          PandoraGtk.full_screen_switch
-        when 'LogBar'
-          PandoraGtk.show_log_bar
-        when 'Fisher'
-          PandoraGtk.show_fisher_panel
-        else
-          panobj_id = command
-          if (panobj_id.is_a? String) and (panobj_id.size>0) \
-          and (panobj_id[0].upcase==panobj_id[0]) and PandoraModel.const_defined?(panobj_id)
-            panobject_class = PandoraModel.const_get(panobj_id)
-            PandoraGtk.show_panobject_list(panobject_class, widget)
-          else
-            PandoraUI.log_message(PandoraUI::LM_Warning, _('Menu handler is not defined yet') + \
-              ' "'+panobj_id+'"')
-          end
-      end
-    end
-
     # Menu structure
     # RU: Структура меню
     MENU_ITEMS =
@@ -12055,7 +11652,7 @@ module PandoraGtk
             toggle = nil
             toggle = false if mi[4]
             btn = PandoraGtk.add_tool_btn(toolbar, stock, label, toggle) do |widget, *args|
-              do_menu_act(widget)
+              PandoraUI.do_menu_act(widget)
             end
             btn.name = command
             if (toggle != nil)
@@ -12077,345 +11674,6 @@ module PandoraGtk
       end
     end
 
-    $show_task_notif = true
-
-    # Scheduler parameters (sec)
-    # RU: Параметры планировщика (сек)
-    CheckTaskPeriod  = 1*60   #5 min
-    MassGarbStep   = 30     #30 sec
-    CheckBaseStep    = 10     #10 sec
-    CheckBasePeriod  = 60*60  #60 min
-    # Size of bundle processed at one cycle
-    # RU: Размер пачки, обрабатываемой за цикл
-    HuntTrain         = 10     #nodes at a heat
-    BaseGarbTrain     = 3      #records at a heat
-    MassTrain       = 3      #request at a heat
-    MassGarbTrain   = 30     #request at a heat
-
-    # Initialize scheduler (tasks, hunter, base gabager, mem gabager)
-    # RU: Инициировать планировщик (задачи, охотник, мусорщики баз и памяти)
-    def init_scheduler(step=nil)
-      step ||= 1.0
-      p 'scheduler_step='+step.inspect
-      if (not @scheduler) and step
-        @scheduler_step = step
-        @base_garbage_term = PandoraUtils.get_param('base_garbage_term')
-        @base_purge_term = PandoraUtils.get_param('base_purge_term')
-        @base_garbage_term ||= 5   #day
-        @base_purge_term ||= 30    #day
-        @base_garbage_term = (@base_garbage_term * 24*60*60).round   #sec
-        @base_purge_term = (@base_purge_term * 24*60*60).round   #sec
-        @shed_models ||= {}
-        @task_offset = nil
-        @task_model = nil
-        @task_list = nil
-        @task_dialog = nil
-        @hunt_node_id = nil
-        @mass_garb_offset = 0.0
-        @mass_garb_ind = 0
-        @base_garb_mode = :arch
-        @base_garb_model = nil
-        @base_garb_kind = 0
-        @base_garb_offset = nil
-        @panreg_period = PandoraUtils.get_param('panreg_period')
-        if (not(@panreg_period.is_a? Numeric)) or (@panreg_period < 0)
-          @panreg_period = 30
-        end
-        @panreg_period = @panreg_period*60
-        @scheduler = Thread.new do
-          sleep 1
-          while @scheduler_step
-
-            # Update pool time_now
-            pool.time_now = Time.now.to_i
-
-            # Task executer
-            # RU: Запускальщик Заданий
-            if (not @task_dialog) and ((not @task_offset) \
-            or (@task_offset >= CheckTaskPeriod))
-              @task_offset = 0.0
-              user ||= PandoraCrypto.current_user_or_key(true, false)
-              if user
-                @task_model ||= PandoraUtils.get_model('Task', @shed_models)
-                cur_time = Time.now.to_i
-                filter = ["(executor=? OR IFNULL(executor,'')='' AND creator=?) AND mode>? AND time<=?", \
-                  user, user, 0, cur_time]
-                fields = 'id, time, mode, message'
-                @task_list = @task_model.select(filter, false, fields, 'time ASC')
-                Thread.pass
-                if @task_list and (@task_list.size>0)
-                  p 'TTTTTTTTTT @task_list='+@task_list.inspect
-
-                  message = ''
-                  store = nil
-                  if $show_task_notif and $window.visible? \
-                  and (PandoraUtils.os_family != 'windows')
-                  #and $window.has_toplevel_focus?
-                    store = Gtk::ListStore.new(String, String, String)
-                  end
-                  @task_list.each do |row|
-                    time = Time.at(row[1]).strftime('%d.%m.%Y %H:%M:%S')
-                    mode = row[2]
-                    text = Utf8String.new(row[3])
-                    if message.size>0
-                      message += '; '
-                    else
-                      message += _('Tasks')+'> '
-                    end
-                    message +=  '"' + text + '" ('+time+')'
-                    if store
-                      iter = store.append
-                      iter[0] = time
-                      iter[1] = mode.to_s
-                      iter[2] = text
-                    end
-                  end
-
-                  PandoraUI.log_message(PandoraUI::LM_Warning, message)
-                  PandoraUtils.play_mp3('message')
-                  if $statusicon.message.nil?
-                    $statusicon.set_message(message)
-                    Thread.new do
-                      sleep(10)
-                      $statusicon.set_message(nil)
-                    end
-                  end
-
-                  if store
-                    Thread.new do
-                      @task_dialog = PandoraGtk::AdvancedDialog.new(_('Tasks'))
-                      dialog = @task_dialog
-                      image = $window.get_preset_image('task')
-                      iconset = image.icon_set
-                      style = Gtk::Widget.default_style  #Gtk::Style.new
-                      task_icon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
-                        Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
-                      dialog.icon = task_icon
-
-                      dialog.set_default_size(500, 350)
-                      vbox = Gtk::VBox.new
-                      dialog.viewport.add(vbox)
-
-                      treeview = Gtk::TreeView.new(store)
-                      treeview.rules_hint = true
-                      treeview.search_column = 0
-                      treeview.border_width = 10
-
-                      renderer = Gtk::CellRendererText.new
-                      column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 0)
-                      column.set_sort_column_id(0)
-                      treeview.append_column(column)
-
-                      renderer = Gtk::CellRendererText.new
-                      column = Gtk::TreeViewColumn.new(_('Mode'), renderer, 'text' => 1)
-                      column.set_sort_column_id(1)
-                      treeview.append_column(column)
-
-                      renderer = Gtk::CellRendererText.new
-                      column = Gtk::TreeViewColumn.new(_('Text'), renderer, 'text' => 2)
-                      column.set_sort_column_id(2)
-                      treeview.append_column(column)
-
-                      vbox.pack_start(treeview, false, false, 2)
-
-                      dialog.def_widget = treeview
-
-                      dialog.run2(true) do
-                        @task_list.each do |row|
-                          id = row[0]
-                          @task_model.update({:mode=>0}, nil, {:id=>id})
-                        end
-                      end
-                      @task_dialog = nil
-                    end
-                  end
-                  Thread.pass
-                end
-              end
-            end
-            @task_offset += @scheduler_step if @task_offset
-
-            # Hunter
-            if false #$window.hunt
-              if not @hunt_node_id
-                @hunt_node_id = 0
-              end
-              Thread.pass
-              @hunt_node_id += HuntTrain
-            end
-
-            # Search robot
-            # RU: Поисковый робот
-            if (pool.found_ind <= pool.mass_ind) and false #OFFFFF !!!!!
-              processed = MassTrain
-              while (processed > 0) and (pool.found_ind <= pool.mass_ind)
-                search_req = pool.mass_records[pool.found_ind]
-                p '####  Search spider  [size, @found_ind, obj_id]='+[pool.mass_records.size, \
-                  pool.found_ind, search_req.object_id].inspect
-                if search_req and (not search_req[PandoraNet::SA_Answer])
-                  req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
-                  p 'search_req3='+req.inspect
-                  answ = nil
-                  if search_req[PandoraNet::SR_Kind]==PandoraModel::PK_BlobBody
-                    sha1 = search_req[PandoraNet::SR_Request]
-                    fn_fs = $window.pool.blob_exists?(sha1, @shed_models, true)
-                    if fn_fs.is_a? Array
-                      fn_fs[0] = PandoraUtils.relative_path(fn_fs[0])
-                      answ = fn_fs
-                    end
-                  else
-                    answ,kind = pool.search_in_local_bases(search_req[PandoraNet::SR_Request], \
-                      search_req[PandoraNet::SR_Kind])
-                  end
-                  p 'SEARCH answ='+answ.inspect
-                  if answ
-                    search_req[PandoraNet::SA_Answer] = answ
-                    answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
-                    session = search_req[PandoraNet::SR_Session]
-                    sessions = []
-                    if pool.sessions.include?(session)
-                      sessions << session
-                    end
-                    sessions.concat(pool.sessions_of_keybase(nil, \
-                      search_req[PandoraNet::SR_BaseId]))
-                    sessions.flatten!
-                    sessions.uniq!
-                    sessions.compact!
-                    sessions.each do |sess|
-                      if sess.active?
-                        sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
-                          PandoraNet::ECC_News_Answer)
-                      end
-                    end
-                  end
-                  #p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
-                  #if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
-                  processed -= 1
-                else
-                  processed = 0
-                end
-                pool.found_ind += 1
-              end
-            end
-
-            # Mass record garbager
-            # RU: Чистильщик массовых сообщений
-            if false #!!!! (@mass_garb_offset >= MassGarbStep)
-              @mass_garb_offset = 0.0
-              cur_time = Time.now.to_i
-              processed = MassGarbTrain
-              while (processed > 0)
-                if (@mass_garb_ind < pool.mass_records.size)
-                  search_req = pool.mass_records[@mass_garb_ind]
-                  if search_req
-                    time = search_req[PandoraNet::MR_CrtTime]
-                    if (not time.is_a? Integer) or (time+$search_live_time<cur_time)
-                      pool.mass_records[@mass_garb_ind] = nil
-                    end
-                  end
-                  @mass_garb_ind += 1
-                  processed -= 1
-                else
-                  @mass_garb_ind = 0
-                  processed = 0
-                end
-              end
-              #pool.mass_records.compact!
-            end
-            @mass_garb_offset += @scheduler_step
-
-            # Bases garbager
-            # RU: Чистильшик баз
-            if (not @base_garb_offset) \
-            or ((@base_garb_offset >= CheckBaseStep) and @base_garb_kind<255) \
-            or (@base_garb_offset >= CheckBasePeriod)
-              #p '@base_garb_offset='+@base_garb_offset.inspect
-              #p '@base_garb_kind='+@base_garb_kind.inspect
-              @base_garb_kind = 0 if @base_garb_offset \
-                and (@base_garb_offset >= CheckBasePeriod) and (@base_garb_kind >= 255)
-              @base_garb_offset = 0.0
-              train_tail = BaseGarbTrain
-              while train_tail>0
-                if (not @base_garb_model)
-                  @base_garb_id = 0
-                  while (@base_garb_kind<255) \
-                  and (not @base_garb_model.is_a? PandoraModel::Panobject)
-                    @base_garb_kind += 1
-                    panobjectclass = PandoraModel.panobjectclass_by_kind(@base_garb_kind)
-                    if panobjectclass
-                      @base_garb_model = PandoraUtils.get_model(panobjectclass.ider, @shed_models)
-                    end
-                  end
-                  if @base_garb_kind >= 255
-                    if @base_garb_mode == :arch
-                      @base_garb_mode = :purge
-                      @base_garb_kind = 0
-                    else
-                      @base_garb_mode = :arch
-                    end
-                  end
-                end
-
-                if @base_garb_model
-                  if @base_garb_mode == :arch
-                    arch_time = Time.now.to_i - @base_garbage_term
-                    filter = ['id>=? AND modified<? AND IFNULL(panstate,0)=0', \
-                      @base_garb_id, arch_time]
-                  else # :purge
-                    purge_time = Time.now.to_i - @base_purge_term
-                    filter = ['id>=? AND modified<? AND panstate>=?', @base_garb_id, \
-                      purge_time, PandoraModel::PSF_Archive]
-                  end
-                  #p 'Base garbager [ider,mode,filt]: '+[@base_garb_model.ider, @base_garb_mode, filter].inspect
-                  sel = @base_garb_model.select(filter, false, 'id', 'id ASC', train_tail)
-                  #p 'base_garb_sel='+sel.inspect
-                  if sel and (sel.size>0)
-                    sel.each do |row|
-                      id = row[0]
-                      @base_garb_id = id
-                      #p '@base_garb_id='+@base_garb_id.inspect
-                      values = nil
-                      if @base_garb_mode == :arch
-                        # mark the record as deleted, else purge it
-                        values = {:panstate=>PandoraModel::PSF_Archive}
-                      end
-                      @base_garb_model.update(values, nil, {:id=>id})
-                    end
-                    train_tail -= sel.size
-                    @base_garb_id += 1
-                  else
-                    @base_garb_model = nil
-                  end
-                  Thread.pass
-                else
-                  train_tail = 0
-                end
-              end
-            end
-            @base_garb_offset += @scheduler_step if @base_garb_offset
-
-            # GUI updater (list, traffic)
-
-            # PanReg node registration
-            # RU: Регистратор узлов PanReg
-            if (@node_reg_offset.nil? or (@node_reg_offset >= @panreg_period))
-              @node_reg_offset = 0.0
-              PandoraNet.register_node_ips
-            end
-            @node_reg_offset += @scheduler_step if @node_reg_offset
-
-
-            sleep(@scheduler_step)
-
-            #p 'Next scheduler step'
-
-            Thread.pass
-          end
-          @scheduler = nil
-        end
-      end
-    end
-
     $pointoff = nil
 
     # Show main Gtk window
@@ -12423,7 +11681,6 @@ module PandoraGtk
     def initialize(*args)
       super(*args)
       $window = self
-      @hunter_count = @listener_count = @fisher_count = @node_reg_offset = 0
 
       main_icon = nil
       begin
@@ -12542,10 +11799,10 @@ module PandoraGtk
       #PandoraGtk.set_statusbar_text($statusbar, _('Base directory: ')+$pandora_base_dir)
 
       add_status_field(PandoraUI::SF_Log, nil, 'Logbar', :log, false, 0) do
-        do_menu_act('LogBar')
+        PandoraUI.do_menu_act('LogBar')
       end
       add_status_field(PandoraUI::SF_FullScr, nil, 'Full screen', Gtk::Stock::FULLSCREEN, false, 0) do
-        do_menu_act('FullScr')
+        PandoraUI.do_menu_act('FullScr')
       end
 
       path = $pandora_app_dir
@@ -12561,31 +11818,31 @@ module PandoraGtk
         PandoraGtk.start_updating(true)
       end
       add_status_field(PandoraUI::SF_Lang, $lang, 'Language') do
-        do_menu_act('Blob')
+        PandoraUI.do_menu_act('Blob')
       end
       add_status_field(PandoraUI::SF_Auth, _('Not logged'), 'Authorize', :auth, false) do
-        do_menu_act('Authorize')          #Gtk::Stock::DIALOG_AUTHENTICATION
+        PandoraUI.do_menu_act('Authorize')          #Gtk::Stock::DIALOG_AUTHENTICATION
       end
       add_status_field(PandoraUI::SF_Listen, '0', 'Listen', :listen, false) do
-        do_menu_act('Listen')
+        PandoraUI.do_menu_act('Listen')
       end
       add_status_field(PandoraUI::SF_Hunt, '0', 'Hunting', :hunt, false) do
-        do_menu_act('Hunt')
+        PandoraUI.do_menu_act('Hunt')
       end
       add_status_field(PandoraUI::SF_Fisher, '0', 'Fishers', :fish) do
-        do_menu_act('Fisher')
+        PandoraUI.do_menu_act('Fisher')
       end
       add_status_field(PandoraUI::SF_Conn, '0', 'Sessions', :session) do
-        do_menu_act('Session')
+        PandoraUI.do_menu_act('Session')
       end
       add_status_field(PandoraUI::SF_Radar, '0', 'Radar', :radar, false) do
-        do_menu_act('Radar')
+        PandoraUI.do_menu_act('Radar')
       end
       add_status_field(PandoraUI::SF_Harvest, '0', 'Files', :blob) do
-        do_menu_act('Blob')
+        PandoraUI.do_menu_act('Blob')
       end
       add_status_field(PandoraUI::SF_Search, '0', 'Search', Gtk::Stock::FIND) do
-        do_menu_act('Search')
+        PandoraUI.do_menu_act('Search')
       end
       resize_eb = Gtk::EventBox.new
       resize_eb.events = Gdk::Event::BUTTON_PRESS_MASK | Gdk::Event::POINTER_MOTION_MASK \
@@ -12673,9 +11930,9 @@ module PandoraGtk
 
       $window.signal_connect('delete-event') do |*args|
         if hide_on_close
-          $window.do_menu_act('Hide')
+          PandoraUI.do_menu_act('Hide')
         else
-          $window.do_menu_act('Quit')
+          PandoraUI.do_menu_act('Quit')
         end
         true
       end
@@ -12695,9 +11952,9 @@ module PandoraGtk
         if ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?(event.keyval) \
         and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
         1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
-          $window.do_menu_act('Quit')
+          PandoraUI.do_menu_act('Quit')
         elsif event.keyval == Gdk::Keyval::GDK_F5
-          do_menu_act('Hunt')
+          PandoraUI.do_menu_act('Hunt')
         elsif event.state.shift_mask? \
         and (event.keyval == Gdk::Keyval::GDK_F11)
           PandoraGtk.full_screen_switch
@@ -12737,7 +11994,7 @@ module PandoraGtk
             continue = (not event.state.shift_mask?)
             PandoraNet.start_or_stop_hunt(continue)
           elsif [Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval)
-            $window.do_menu_act('Close')
+            PandoraUI.do_menu_act('Close')
           elsif [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
             curpage = nil
             if $window.notebook.n_pages>0
@@ -12782,21 +12039,6 @@ module PandoraGtk
 
       PandoraGtk.get_main_params
 
-      #$window.signal_connect('focus-out-event') do |window, event|
-      #  p 'focus-out-event: ' + $window.has_toplevel_focus?.inspect
-      #  false
-      #end
-      @do_on_start = PandoraUtils.get_param('do_on_start')
-      @title_view = PandoraUtils.get_param('title_view')
-      @title_view ||= TV_Name
-
-      #$window.signal_connect('show') do |window, event|
-      #  false
-      #end
-
-      @pool = PandoraNet::Pool.new($window)
-      $pool = @pool
-
       scr = Gdk::Screen.default
       $window.set_default_size(scr.width-100, scr.height-100)
       $window.window_position = Gtk::Window::POS_CENTER
@@ -12806,22 +12048,6 @@ module PandoraGtk
 
       @radar_hpaned.position = @radar_hpaned.max_position
       @log_vpaned.position = @log_vpaned.max_position
-      if $window.do_on_start and ($window.do_on_start > 0)
-        dialog_timer = GLib::Timeout.add(400) do
-          key = PandoraCrypto.current_key(false, true)
-          if (($window.do_on_start & 2) != 0) and key
-            PandoraNet.start_or_stop_listen(true)
-          end
-          if (($window.do_on_start & 4) != 0) and key and (not $hunter_thread)
-            PandoraNet.start_or_stop_hunt(true, 2)
-          end
-          $window.do_on_start = 0
-          false
-        end
-      end
-      scheduler_step = PandoraUtils.get_param('scheduler_step')
-      init_scheduler(scheduler_step)
-
 
       #------next must be after show main form ---->>>>
 
@@ -12833,7 +12059,7 @@ module PandoraGtk
           $window.focus_timer = nil if ($window.focus_timer == $window)
         else
           if (PandoraUtils.os_family=='windows') and (not $window.visible?)
-            $window.do_menu_act('Activate')
+            PandoraUI.do_menu_act('Activate')
           end
           $window.focus_timer = GLib::Timeout.add(500) do
             if (not $window.nil?) and (not $window.destroyed?)
@@ -12860,35 +12086,15 @@ module PandoraGtk
         end
         false
       end
-
-      check_update = PandoraUtils.get_param('check_update')
-      if (check_update==1) or (check_update==true)
-        last_check = PandoraUtils.get_param('last_check')
-        last_check ||= 0
-        last_update = PandoraUtils.get_param('last_update')
-        last_update ||= 0
-        check_interval = PandoraUtils.get_param('check_interval')
-        if (not(check_interval.is_a? Numeric)) or (check_interval <= 0)
-          check_interval = 1
-        end
-        update_period = PandoraUtils.get_param('update_period')
-        if (not(update_period.is_a? Numeric)) or (update_period < 0)
-          update_period = 1
-        end
-        time_now = Time.now.to_i
-        ok_version = (time_now - last_update.to_i) < update_period*24*3600
-        need_check = ((time_now - last_check.to_i) >= check_interval*24*3600)
-        if ok_version
-          PandoraUI.set_status_field(PandoraUI::SF_Update, 'Ok', need_check)
-        elsif need_check
-          PandoraGtk.start_updating(false)
-        end
-      end
-
-      Gtk.main
     end
 
   end  #--MainWindow
+
+  def self.do_main_loop
+    PandoraGtk::MainWindow.new(MAIN_WINDOW_TITLE)
+    yield if block_given?
+    Gtk.main
+  end
 
 end
 

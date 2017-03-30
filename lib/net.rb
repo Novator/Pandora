@@ -15,6 +15,10 @@ require File.expand_path('../utils.rb',  __FILE__)
 
 $pool = nil
 
+$media_buf_size = 50
+$send_media_queues = []
+$send_media_rooms = {}
+
 module PandoraNet
 
   include PandoraUtils
@@ -282,15 +286,14 @@ module PandoraNet
   # Pool
   # RU: Пул
   class Pool
-    attr_accessor :window, :sessions, :white_list, :time_now, \
+    attr_accessor :sessions, :white_list, :time_now, \
       :node_list, :mass_records, :mass_ind, :found_ind, :punnets, :ind_mutex
 
     MaxWhiteSize = 500
     FishQueueSize = 100
 
-    def initialize(main_window)
+    def initialize
       super()
-      @window = main_window
       @time_now = Time.now.to_i
       @sessions = Array.new
       @white_list = Array.new
@@ -391,7 +394,7 @@ module PandoraNet
                 host_name = socket.peeraddr[3]
                 port = socket.peeraddr[1]
                 proto = 'tcp'
-                p 'TUNNEL: '+[host_name, host_ip, port, proto].inspect
+                #p 'TUNNEL: '+[host_name, host_ip, port, proto].inspect
                 session = Session.new(socket, host_name, host_ip, port, proto, \
                   0, nil, nil, nil, nil)
               else
@@ -412,7 +415,7 @@ module PandoraNet
     # RU: Проверяет целый файл на существование
     def blob_exists?(sha1, models=nil, need_fn=nil)
       res = nil
-      p 'blob_exists1   sha1='+sha1.inspect
+      #p 'blob_exists1   sha1='+sha1.inspect
       if (sha1.is_a? String) and (sha1.bytesize>0)
         model = PandoraUtils.get_model('Blob', models)
         if model
@@ -422,7 +425,7 @@ module PandoraNet
           flds = 'id'
           flds << ', blob, size' if need_fn
           sel = model.select(filter, false, flds, nil, 1)
-          p 'blob_exists2   sel='+sel.inspect
+          #p 'blob_exists2   sel='+sel.inspect
           res = (sel and (sel.size>0))
           if res and need_fn
             res = false
@@ -480,7 +483,7 @@ module PandoraNet
         harbit = PandoraModel::PSF_Harvest.to_s
         filter = ['sha1=? AND IFNULL(panstate,0)&'+harbit+'='+harbit, sha1]
         sel = model.select(filter, false, 'id, panstate', nil, $max_harvesting_files)
-        p '--++--reset_harvest_bit   sel='+sel.inspect
+        #p '--++--reset_harvest_bit   sel='+sel.inspect
         if sel and (sel.size>0)
           res = sel.size
           sel.each do |rec|
@@ -517,8 +520,8 @@ module PandoraNet
             else
               bit_tail_sh = 8 - (frag_count - i*8)
               bit_tail = 255 >> bit_tail_sh
-              p '[bit_tail_sh, bit_tail, frag_count, frags[i].ord]='+[bit_tail_sh, \
-                bit_tail, frag_count, frags[i].ord].inspect
+              #p '[bit_tail_sh, bit_tail, frag_count, frags[i].ord]='+[bit_tail_sh, \
+              #  bit_tail, frag_count, frags[i].ord].inspect
               res = ((bit_tail & frags[i].ord) == bit_tail)
             end
           end
@@ -531,7 +534,7 @@ module PandoraNet
     # Initialize the punnet
     # RU: Инициализирует корзинку
     def init_punnet(sha1,filesize=nil,initfilename=nil)
-      p 'init_punnet(sha1,filesize,initfilename)='+[sha1,filesize,initfilename].inspect
+      #p 'init_punnet(sha1,filesize,initfilename)='+[sha1,filesize,initfilename].inspect
       punnet = @punnets[sha1]
       if not punnet.is_a? Array
         punnet = Array.new
@@ -544,7 +547,7 @@ module PandoraNet
         filename ||= initfilename
         if filename
           dir = File.dirname(filename)
-          p 'dir='+dir.inspect
+          #p 'dir='+dir.inspect
           if (not dir) or (dir=='.') or (dir=='/')
             filename = File.join($pandora_files_dir, filename)
           end
@@ -559,35 +562,35 @@ module PandoraNet
           end
         end
         filename = Utf8String.new(filename)
-        p 'filename='+filename.inspect
+        #p 'filename='+filename.inspect
 
         frag_fn = PandoraUtils.change_file_ext(filename, 'frs')
         frag_fn = Utf8String.new(frag_fn)
         punnet[PI_FragFN] = frag_fn
-        p 'frag_fn='+frag_fn.inspect
+        #p 'frag_fn='+frag_fn.inspect
 
         file_size = File.size?(filename)
-        p 'file_size='+file_size.inspect
+        #p 'file_size='+file_size.inspect
         filename_ex = (File.exist?(filename) and (not file_size.nil?) and (file_size>=0))
         filesize ||= file_size if filename_ex
         punnet[PI_FileSize] = filesize
-        p 'filename_ex='+filename_ex.inspect
+        #p 'filename_ex='+filename_ex.inspect
         frag_fn_ex = File.exist?(frag_fn)
-        p 'frag_fn_ex='+frag_fn_ex.inspect
+        #p 'frag_fn_ex='+frag_fn_ex.inspect
 
         fragfile = nil
         if frag_fn_ex
           fragfile = File.open(frag_fn, 'rb+')
-          p "fragfile = File.open(frag_fn, 'rb+')"
+          #p "fragfile = File.open(frag_fn, 'rb+')"
         elsif not filename_ex
           PandoraUtils.create_path(frag_fn)
           fragfile = File.new(frag_fn, 'wb+')
-          p "fragfile = File.new(frag_fn, 'wb+')"
+          #p "fragfile = File.new(frag_fn, 'wb+')"
         end
 
         frag_count = (filesize.fdiv($fragment_size)).ceil
         sym_count = (frag_count.fdiv(8)).ceil
-        p '[frag_count, sym_count]='+[frag_count, sym_count].inspect
+        #p '[frag_count, sym_count]='+[frag_count, sym_count].inspect
         punnet[PI_FragCount] = frag_count
         punnet[PI_SymCount] = sym_count
 
@@ -595,14 +598,14 @@ module PandoraNet
           punnet[PI_FragsFile] = fragfile
           frags = fragfile.read
           #frag_com = frags_complite?(frags)
-          p 'frags='+frags.inspect
+          #p 'frags='+frags.inspect
           sym_count = 1 if sym_count < 1
           if frags.bytesize != sym_count
             if sym_count>frags.bytesize
               frags += 0.chr * (sym_count-frags.bytesize)
               fragfile.seek(0)
               fragfile.write(frags)
-              p 'set frags='+frags.inspect
+              #p 'set frags='+frags.inspect
             end
             begin
               fragfile.truncate(frags.bytesize)
@@ -649,7 +652,7 @@ module PandoraNet
       datafile = punnet[PI_File]
       fragfile = punnet[PI_FragsFile]
       frags = punnet[PI_Frags]
-      p 'save_frag [datafile, fragfile, frags]='+[datafile, fragfile, frags].inspect
+      #p 'save_frag [datafile, fragfile, frags]='+[datafile, fragfile, frags].inspect
       if datafile and fragfile and frags
         datafile.seek(frag_number*$fragment_size)
         res = datafile.write(frag_data)
@@ -657,7 +660,7 @@ module PandoraNet
         bit_num = frag_number - sym_num*8
         bit_mask = 1
         bit_mask = 1 << bit_num if bit_num>0
-        p 'sf [sym_num, bit_num, bit_mask]='+[sym_num, bit_num, bit_mask].inspect
+        #p 'sf [sym_num, bit_num, bit_mask]='+[sym_num, bit_num, bit_mask].inspect
         frags[sym_num] = (frags[sym_num].ord | bit_mask).chr
         punnet[PI_Frags] = frags
         fragfile.seek(sym_num)
@@ -677,7 +680,7 @@ module PandoraNet
         bit_num = frag_number - sym_num*8
         bit_mask = 1
         bit_mask = 1 << bit_num if bit_num>0
-        p 'hold_frag_number [sym_num, bit_num, bit_mask]='+[sym_num, bit_num, bit_mask].inspect
+        #p 'hold_frag_number [sym_num, bit_num, bit_mask]='+[sym_num, bit_num, bit_mask].inspect
         byte = hold_frags[sym_num].ord
         if hold
           byte = byte | bit_mask
@@ -698,7 +701,7 @@ module PandoraNet
       frags = punnet[PI_Frags]
       hold_frags = punnet[PI_HoldFrags]
       frag_count = punnet[PI_FragCount]
-      p 'hold_next_frag  [fragfile, frags, frag_count]='+[fragfile, frags, frag_count].inspect
+      #p 'hold_next_frag  [fragfile, frags, frag_count]='+[fragfile, frags, frag_count].inspect
       if fragfile and (frags.is_a? String) and (frags.bytesize>0) \
       and (not frags_complite?(frags, frag_count))
         i = 0
@@ -709,7 +712,7 @@ module PandoraNet
             byte = frags[i].ord
             if byte != 255
               hold_byte = hold_frags[i].ord
-              p 'hold_byte='+hold_byte.inspect
+              #p 'hold_byte='+hold_byte.inspect
               j = 0
               while (byte>0) and (i*8+j<frag_count-1) \
               and (((byte & 1) == 1) or ((hold_byte & 1) == 1))
@@ -717,7 +720,7 @@ module PandoraNet
                 hold_byte = hold_byte >> 1
                 j += 1
               end
-              p 'hold [frags[i].ord, i, j]='+[frags[i].ord, i, j].inspect
+              #p 'hold [frags[i].ord, i, j]='+[frags[i].ord, i, j].inspect
               break
             end
             i += 1
@@ -746,8 +749,8 @@ module PandoraNet
         datafile.close if datafile
         frag_com = (fragfile.nil? or frags_complite?(frags, frag_count))
         file_size = File.size?(filename)
-        p 'closepun [frag_com, file_size, filesize]='+[frag_com, \
-          file_size, filesize].inspect
+        #p 'closepun [frag_com, file_size, filesize]='+[frag_com, \
+        #  file_size, filesize].inspect
         full_com = (frag_com and file_size and (filesize==file_size))
         File.delete(frag_fn) if full_com and File.exist?(frag_fn)
         sha1 ||= @punnets.key(punnet)
@@ -770,7 +773,7 @@ module PandoraNet
     def add_session(conn)
       if not sessions.include?(conn)
         sessions << conn
-        window.update_conn_status(conn, conn.conn_type, 1)
+        PandoraUI.update_conn_status(conn, conn.conn_type, 1)
       end
     end
 
@@ -778,7 +781,7 @@ module PandoraNet
     # RU: Удаляет сессию из списка
     def del_session(conn)
       if sessions.delete(conn)
-        window.update_conn_status(conn, conn.conn_type, -1)
+        PandoraUI.update_conn_status(conn, conn.conn_type, -1)
       end
     end
 
@@ -1029,7 +1032,7 @@ module PandoraNet
         atrust ||= 0
         adepth ||= 3
         adepth -= 1
-        p '------add_mass_rec1  adepth='+adepth.inspect
+        #p '------add_mass_rec1  adepth='+adepth.inspect
         if adepth >= 0
           cur_time = Time.now.to_i
           #delete_old_mass_records(cur_time)
@@ -1067,7 +1070,7 @@ module PandoraNet
               when MK_Chat
                 #
             end
-            p '=======add_mass_rec2  mr='+mr.inspect
+            #p '=======add_mass_rec2  mr='+mr.inspect
           end
         end
       end
@@ -1099,16 +1102,16 @@ module PandoraNet
         fields = 'first_name, last_name, birth_day'
         sort = 'first_name, last_name'
         word1, word2, word3, words = text.split
-        p [word1, word2, word3, words]
+        #p [word1, word2, word3, words]
         word1dup = word1.dup
         filter1, word1 = name_filter('first_name', word1)
         filter2, word2 = name_filter('last_name', word2) if word2
         word4 = nil
         if word3
           word3, word4 = word3.split('-')
-          p [word3, word4]
-          p word3 = PandoraUtils.str_to_date(word3).to_i
-          p word4 = PandoraUtils.str_to_date(word4).to_i if word4
+          #p [word3, word4]
+          word3 = PandoraUtils.str_to_date(word3).to_i
+          word4 = PandoraUtils.str_to_date(word4).to_i if word4
         end
       end
       limit ||= 100
@@ -1168,7 +1171,7 @@ module PandoraNet
           #  text = PandoraCrypto.recrypt_mes(text, nil, dest_key)
           #  row[4] = text
           #end
-          p '---Add MASS Mes: row='+row.inspect
+          #p '---Add MASS Mes: row='+row.inspect
           row_pson = PandoraUtils.rubyobj_to_pson(row[MCM_Creator..MCM_PanState])
           #p log_mes+'%%%Send EC_Message: [row_pson, row_pson.len]='+\
           #  [row_pson, row_pson.bytesize].inspect
@@ -1203,8 +1206,8 @@ module PandoraNet
     # RU: Находит или создает соединение с нужным узлом
     def init_session(addr=nil, nodehashs=nil, send_state_add=nil, dialog=nil, \
     node_id=nil, persons=nil, key_hashs=nil, base_id=nil, aconn_mode=nil)
-      p '-------init_session: '+[addr, nodehashs, send_state_add, dialog, node_id, \
-        persons, key_hashs, base_id].inspect
+      #p '-------init_session: '+[addr, nodehashs, send_state_add, dialog, node_id, \
+      #  persons, key_hashs, base_id].inspect
       person = PandoraUtils.first_array_element_or_val(persons)
       key_hash = PandoraUtils.first_array_element_or_val(key_hashs)
       nodehash = PandoraUtils.first_array_element_or_val(nodehashs)
@@ -1233,7 +1236,7 @@ module PandoraNet
         end
         res = true
       elsif (addr or nodehash or person)
-        p 'NEED connect: '+[addr, nodehash].inspect
+        #p 'NEED connect: '+[addr, nodehash].inspect
         node_model = PandoraUtils.get_model('Node')
         ni = 0
         while (not ni.nil?)
@@ -1301,7 +1304,7 @@ module PandoraNet
     def stop_session(node=nil, persons=nil, nodehashs=nil, disconnect=nil, \
     session=nil)  #, wait_disconnect=true)
       res = false
-      p 'stop_session1 nodehashs='+nodehashs.inspect
+      #p 'stop_session1 nodehashs='+nodehashs.inspect
       person = PandoraUtils.first_array_element_or_val(persons)
       nodehash = PandoraUtils.first_array_element_or_val(nodehashs)
       sessions = Array.new
@@ -1361,7 +1364,7 @@ module PandoraNet
         host = host_ip if (not host) or (host=='')
         #p 'check_incoming_addr  [host, port, proto]='+[host, port, proto].inspect
         if (host.is_a? String) and (host.size>0)
-          p 'check_incoming_addr DONE [host, port, proto]='+[host, port, proto].inspect
+          #p 'check_incoming_addr DONE [host, port, proto]='+[host, port, proto].inspect
           res = true
         end
       end
@@ -1499,7 +1502,7 @@ module PandoraNet
           #end
         end
       else
-        p log_mes+'####-=-=--=-=-=-=-==-NO CIPHER buf='+res.inspect
+        #p log_mes+'####-=-=--=-=-=-=-==-NO CIPHER buf='+res.inspect
         @ciphering = nil
       end
       res
@@ -1519,8 +1522,8 @@ module PandoraNet
       lengt = data.bytesize if data
       @last_send_time = pool.time_now
       if (cmd != EC_Media)
-        p log_mes+'->>SEND [cmd, code, lengt] [stage, ciphering]='+\
-          [cmd, code, lengt].inspect+' '+[@stage, @ciphering].inspect
+        #p log_mes+'->>SEND [cmd, code, lengt] [stage, ciphering]='+\
+        #  [cmd, code, lengt].inspect+' '+[@stage, @ciphering].inspect
         data = cipher_buf(data, true) if @ciphering
         cmd = (cmd | CipherCmdBit) if @ciphering
       end
@@ -1578,7 +1581,7 @@ module PandoraNet
             #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
             # usual: A0 - video, B8 - voice (higher)
             socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0xA0)  # QoS (VoIP пакет)
-            p '@media_send = true'
+            #p '@media_send = true'
           end
         else
           nodelay = nil
@@ -1586,7 +1589,7 @@ module PandoraNet
             socket.setsockopt(Socket::IPPROTO_IP, Socket::IP_TOS, 0)
             nodelay = 0
             @media_send = false
-            p '@media_send = false'
+            #p '@media_send = false'
           end
           #nodelay = 1 if (cmd == EC_Bye)
           #if nodelay
@@ -1681,30 +1684,30 @@ module PandoraNet
           sess_hook = rec[LHI_Sess_Hook]
           if not sess_hook
             sess_hook = sess.hooks.index {|rec| (rec[LHI_Sess_Hook]==hook) and (rec[LHI_Session]==self)}
-            p 'Add search sess_hook='+sess_hook.inspect
+            #p 'Add search sess_hook='+sess_hook.inspect
           end
           if sess_hook
             rec = sess.hooks[sess_hook]
-            p 'Fisher send  rec[hook, self, sess_id, fhook]='+[hook, self.object_id, \
-              sess.object_id, rec[LHI_Far_Hook], rec[LHI_Sess_Hook]].inspect
+            #p 'Fisher send  rec[hook, self, sess_id, fhook]='+[hook, self.object_id, \
+            #  sess.object_id, rec[LHI_Far_Hook], rec[LHI_Sess_Hook]].inspect
             segment = [cmd, code].pack('CC')
             segment << data if data
             far_hook = rec[LHI_Far_Hook]
             if far_hook
-              p 'EC_Bite [fhook, segment]='+ [far_hook, segment.bytesize].inspect
+              #p 'EC_Bite [fhook, segment]='+ [far_hook, segment.bytesize].inspect
               res = sess.send_queue.add_block_to_queue([EC_Bite, far_hook, segment])
             else
-              p 'EC_Lure [hook, segment]='+ [hook, segment.bytesize].inspect
+              #p 'EC_Lure [hook, segment]='+ [hook, segment.bytesize].inspect
               res = sess.send_queue.add_block_to_queue([EC_Lure, hook, segment])
             end
           else
-            p 'No sess_hook by hook='+hook.inspect
+            #p 'No sess_hook by hook='+hook.inspect
           end
         else
-          p 'No active hook: '+@hooks.size.to_s
+          #p 'No active hook: '+@hooks.size.to_s
         end
       else
-        p 'No socket. No hooks'
+        #p 'No socket. No hooks'
       end
       res
     end
@@ -1797,12 +1800,12 @@ module PandoraNet
       if (@send_queue.single_read_state != PandoraUtils::RoundQueue::SQS_Full)
         res = @send_queue.add_block_to_queue([ascmd, ascode, asbuf])
       else
-        p '--add_send_segment: @send_queue OVERFLOW !!!'
+        #p '--add_send_segment: @send_queue OVERFLOW !!!'
       end
       if ascmd != EC_Media
         asbuf ||= '';
-        p log_mes+'add_send_segment:  [ascmd, ascode, asbuf.bytesize]='+[ascmd, ascode, asbuf.bytesize].inspect
-        p log_mes+'add_send_segment2: asbuf='+asbuf.inspect if sbuf
+        #p log_mes+'add_send_segment:  [ascmd, ascode, asbuf.bytesize]='+[ascmd, ascode, asbuf.bytesize].inspect
+        #p log_mes+'add_send_segment2: asbuf='+asbuf.inspect if sbuf
       end
       if not res
         PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot add segment to send queue'))
@@ -1858,7 +1861,7 @@ module PandoraNet
     def send_conn_mode
       @conn_mode ||= 0
       buf = (@conn_mode & 255).chr
-      p 'send_conn_mode  buf='+buf.inspect
+      #p 'send_conn_mode  buf='+buf.inspect
       add_send_segment(EC_News, true, AsciiString.new(buf), ECC_News_SessMode)
     end
 
@@ -1892,7 +1895,7 @@ module PandoraNet
           params['notice']   = hash['notice']
           params['cipher']   = hash['cipher']
         end
-        p log_mes+'RECOGNIZE_params: '+hash.inspect
+        #p log_mes+'RECOGNIZE_params: '+hash.inspect
       end
 
       # Sel limit of allowed pack size
@@ -1976,7 +1979,7 @@ module PandoraNet
                 @scmd  = EC_Auth
                 set_max_pack_size(ES_Sign)
                 phrase, init = get_sphrase(false)
-                p log_mes+'send phrase len='+phrase.bytesize.to_s
+                #p log_mes+'send phrase len='+phrase.bytesize.to_s
                 if init
                   @sbuf = phrase
                 else
@@ -2011,7 +2014,7 @@ module PandoraNet
       # RU: Компоновать команду с капчой
       def send_captcha
         attempts = @skey[PandoraCrypto::KV_Trust]
-        p log_mes+'send_captcha:  attempts='+attempts.to_s
+        #p log_mes+'send_captcha:  attempts='+attempts.to_s
         if attempts<$captcha_attempts
           @skey[PandoraCrypto::KV_Trust] = attempts+1
           @scmd = EC_Auth
@@ -2048,8 +2051,8 @@ module PandoraNet
       # Update record about node
       # RU: Обновить запись об узле
       def update_node(skey_panhash=nil, sbase_id=nil, trust=nil, session_key=nil)
-        p log_mes + '++++++++update_node [skey_panhash, sbase_id, trust, session_key]=' \
-          +[skey_panhash, sbase_id, trust, session_key].inspect
+        #p log_mes + '++++++++update_node [skey_panhash, sbase_id, trust, session_key]=' \
+        #  +[skey_panhash, sbase_id, trust, session_key].inspect
 
         skey_creator = @skey[PandoraCrypto::KV_Creator]
         init_and_check_node(skey_creator, skey_panhash, sbase_id)
@@ -2247,8 +2250,8 @@ module PandoraNet
       # Get hook for line
       # RU: Взять крючок для лески
       def reg_line(line, session, far_hook=nil, hook=nil, sess_hook=nil, fo_ind=nil)
-        p '--reg_line  [far_hook, hook, sess_hook, self, session]='+\
-          [far_hook, hook, sess_hook, self.object_id, session.object_id].inspect
+        #p '--reg_line  [far_hook, hook, sess_hook, self, session]='+\
+        #  [far_hook, hook, sess_hook, self.object_id, session.object_id].inspect
         rec = nil
         # find existing rec
         if (not hook) and far_hook
@@ -2274,7 +2277,7 @@ module PandoraNet
             rec = @hooks[hook]
             rec.clear if rec
           end
-          p 'Register hook='+hook.inspect
+          #p 'Register hook='+hook.inspect
         end
         # fill rec
         if hook
@@ -2288,8 +2291,8 @@ module PandoraNet
           rec[LHI_Far_Hook] ||= far_hook if far_hook
           rec[LHI_Sess_Hook] ||= sess_hook if sess_hook
         end
-        p '=====reg_line  [session, far_hook, hook, sess_hook]='+[session.object_id, \
-          far_hook, hook, sess_hook].inspect
+        #p '=====reg_line  [session, far_hook, hook, sess_hook]='+[session.object_id, \
+        #  far_hook, hook, sess_hook].inspect
         [hook, rec]
       end
 
@@ -2328,7 +2331,7 @@ module PandoraNet
             res = false
             # check fishing to me (not using!!!)
             if false and ((fish == pool.person) or (fish_key == akey_hash))
-              p log_mes+'Fishing to me!='+session.to_key.inspect
+              #p log_mes+'Fishing to me!='+session.to_key.inspect
               # find existing (sleep) sessions
               sessions = sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
               if (not sessions.is_a? Array) or (sessions.size==0)
@@ -2338,7 +2341,7 @@ module PandoraNet
               line[MR_Fish] ||= pool.person
               line[MR_Fish_key] ||= pool.key_hash
               line[LN_Fish_Baseid] = pool.base_id
-              p log_mes+' line='+line.inspect
+              #p log_mes+' line='+line.inspect
               #session = self.connect_session_to_hook([session], hook)
               my_hook, rec = reg_line(line, session)
               if my_hook
@@ -2371,7 +2374,7 @@ module PandoraNet
             sessions.uniq!
             sessions.compact!
             if (sessions.is_a? Array) and (sessions.size>0)
-              p 'FOUND fishers/fishes: '+sessions.size.to_s
+              #p 'FOUND fishers/fishes: '+sessions.size.to_s
               line = line_order.dup
               if fisher_sess
                 line[MR_Fish] = @to_person if (not fish)
@@ -2379,13 +2382,13 @@ module PandoraNet
                 line[LN_Fish_Baseid] = @to_base_id
               end
               sessions.each do |session|
-                p log_mes+'--Fisher/Fish session='+[session.object_id, session.to_key].inspect
+                #p log_mes+'--Fisher/Fish session='+[session.object_id, session.to_key].inspect
                 if not fisher_sess
                   line[MR_Fish] = session.to_person if (not fish)
                   line[MR_Fish_key] = session.to_key if (not fish_key)
                   line[LN_Fish_Baseid] = session.to_base_id
                 end
-                p log_mes+' reg.line='+line.inspect
+                #p log_mes+' reg.line='+line.inspect
                 my_hook, rec = reg_line(line, session)
                 if my_hook
                   sess_hook, rec = session.reg_line(line, self, nil, nil, my_hook)
@@ -2412,9 +2415,9 @@ module PandoraNet
       # RU: Очистить исходящие наживки для рыбака и входящей наживки
       def free_out_lure_of_fisher(fisher, in_lure)
         val = [fisher, in_lure]
-        p '====//// free_out_lure_of_fisher(in_lure)='+in_lure.inspect
+        #p '====//// free_out_lure_of_fisher(in_lure)='+in_lure.inspect
         while out_lure = @fishers.index(val)
-          p '//// free_out_lure_of_fisher(in_lure), out_lure='+[in_lure, out_lure].inspect
+          #p '//// free_out_lure_of_fisher(in_lure), out_lure='+[in_lure, out_lure].inspect
           @fishers[out_lure] = nil
           if fisher #and (not fisher.destroyed?)
             if fisher.donor
@@ -2430,7 +2433,7 @@ module PandoraNet
       def free_fish_of_in_lure(in_lure)
         if in_lure.is_a? Integer
           fish = @fishes[in_lure]
-          p '//// free_fish_of_in_lure(in_lure)='+in_lure.inspect
+          #p '//// free_fish_of_in_lure(in_lure)='+in_lure.inspect
           @fishes[in_lure] = nil
           if fish #and (not fish.destroyed?)
             if fish.donor
@@ -2445,16 +2448,16 @@ module PandoraNet
       # RU: Отправляет сегмент от текущей рыбацкой сессии к сессии рыбки
       def send_segment_to_fish(hook, segment, lure=false)
         res = nil
-        p '=== send_segment_to_fish(hook, segment.size)='+[hook, segment.bytesize].inspect
+        #p '=== send_segment_to_fish(hook, segment.size)='+[hook, segment.bytesize].inspect
         if hook and segment and (segment.bytesize>1)
           rec = nil
           if lure
             hook = @hooks.index {|rec| (rec[LHI_Far_Hook]==hook) }
-            p 'lure hook='+hook.inspect
+            #p 'lure hook='+hook.inspect
           end
           if hook
             rec = @hooks[hook]
-            p 'Hook send: [hook, lure]'+[hook, lure].inspect
+            #p 'Hook send: [hook, lure]'+[hook, lure].inspect
             if rec
               sess = rec[LHI_Session]
               sess_hook = rec[LHI_Sess_Hook]
@@ -2462,7 +2465,7 @@ module PandoraNet
                 rec = sess.hooks[sess_hook]
                 if rec
                   if rec[LHI_Line]
-                    p 'Middle hook'
+                    #p 'Middle hook'
                     #hook = sess.hooks.index {|rec| (rec[LHI_Session]==self) and (rec[LHI_Sess_Hook]==hook) }
                     if rec[LHI_Far_Hook]
                       res = sess.send_queue.add_block_to_queue([EC_Bite, rec[LHI_Far_Hook], segment])
@@ -2471,7 +2474,7 @@ module PandoraNet
                     end
                     @last_send_time = pool.time_now
                   else
-                    p 'Terminal hook'
+                    #p 'Terminal hook'
                     cmd = segment[0].ord
                     code = segment[1].ord
                     data = nil
@@ -2479,31 +2482,31 @@ module PandoraNet
                     res = sess.read_queue.add_block_to_queue([cmd, code, data])
                   end
                 else
-                  p 'No neighbor rec'
+                  #p 'No neighbor rec'
                   @scmd = EC_Wait
                   @scode = EC_Wait5_NoNeighborRec
                   @scbuf = nil
                 end
               else
-                p 'No sess or sess_hook'
+                #p 'No sess or sess_hook'
                 @scmd = EC_Wait
                 @scode = EC_Wait4_NoSessOrSessHook
                 @scbuf = nil
               end
             else
-              p 'No hook rec'
+              #p 'No hook rec'
               @scmd = EC_Wait
               @scode = EC_Wait3_NoFishRec
               @scbuf = nil
             end
           else
-            p 'No far hook'
+            #p 'No far hook'
             @scmd = EC_Wait
             @scode = EC_Wait2_NoFarHook
             @scbuf = nil
           end
         else
-          p 'No hook or segment'
+          #p 'No hook or segment'
           @scmd = EC_Wait
           @scode = EC_Wait1_NoHookOrSeg
           @scbuf = nil
@@ -2537,11 +2540,11 @@ module PandoraNet
                   vers = params['version']
                   if vers==ProtocolVersion
                     addr = params['addr']
-                    p log_mes+'addr='+addr.inspect
+                    #p log_mes+'addr='+addr.inspect
                     # need to change an ip checking
                     pool.check_incoming_addr(addr, host_ip) if addr
                     @sess_mode = params['mode']
-                    p log_mes+'ECC_Auth_Hello @sess_mode='+@sess_mode.inspect
+                    #p log_mes+'ECC_Auth_Hello @sess_mode='+@sess_mode.inspect
                     @notice = params['notice']
                     init_skey_or_error(true)
                   else
@@ -2654,7 +2657,7 @@ module PandoraNet
                 else
                   rphrase = params['rphrase']
                 end
-                p log_mes+'recived phrase len='+rphrase.bytesize.to_s
+                #p log_mes+'recived phrase len='+rphrase.bytesize.to_s
                 if rphrase and (rphrase.bytesize>0)
                   if rcode==ECC_Auth_Puzzle  #phrase for puzzle
                     if (not hunter?)
@@ -2736,7 +2739,7 @@ module PandoraNet
               elsif (rcode==ECC_Auth_Answer) and (@stage==ES_Captcha)
               #ECC_Auth_Answer
                 captcha = rdata
-                p log_mes+'recived captcha='+captcha if captcha
+                #p log_mes+'recived captcha='+captcha if captcha
                 if captcha.downcase==params['captcha']
                   @stage = ES_Greeting
                   if not (@skey[PandoraCrypto::KV_Trust].is_a? Float)
@@ -2746,9 +2749,9 @@ module PandoraNet
                       @skey[PandoraCrypto::KV_Trust] = nil
                     end
                   end
-                  p log_mes+'Captcha is GONE!  '+@conn_mode.inspect
+                  #p log_mes+'Captcha is GONE!  '+@conn_mode.inspect
                   if not hunter?
-                    p log_mes+'Captcha add_send_segment params[srckey]='+params['srckey'].inspect
+                    #p log_mes+'Captcha add_send_segment params[srckey]='+params['srckey'].inspect
                     add_send_segment(EC_Auth, true, params['srckey'])
                   end
                   @scmd = EC_Data
@@ -2762,7 +2765,7 @@ module PandoraNet
                 rsign, sbase_id, acipher = nil
                 sig_bid_cip, len = PandoraUtils.pson_to_rubyobj(rdata)
                 rsign, sbase_id, acipher = sig_bid_cip if (sig_bid_cip.is_a? Array)
-                p log_mes+'recived [rsign, sbase_id, acipher] len='+[rsign, sbase_id, acipher].inspect
+                #p log_mes+'recived [rsign, sbase_id, acipher] len='+[rsign, sbase_id, acipher].inspect
                 @skey = PandoraCrypto.open_key(@skey, @recv_models, true)
                 if @skey and @skey[PandoraCrypto::KV_Obj]
                   if PandoraCrypto.verify_sign(@skey, \
@@ -2777,7 +2780,7 @@ module PandoraNet
                         trust = 0.01
                         @skey[PandoraCrypto::KV_Trust] = trust
                       end
-                      p log_mes+'ECC_Auth_Sign trust='+trust.inspect
+                      #p log_mes+'ECC_Auth_Sign trust='+trust.inspect
                       if ($captcha_length>0) and (trust.is_a? Integer) \
                       and (not hunter?) and ((@sess_mode & CM_Captcha)>0)
                         @skey[PandoraCrypto::KV_Trust] = 0
@@ -2799,8 +2802,8 @@ module PandoraNet
                             add_send_segment(EC_Auth, true, params['srckey'])
                           else
                             session_key = nil
-                            p log_mes+'ECC_Auth_Sign  acipher='+acipher.inspect
-                            p log_mes+'ECC_Auth_Sign  @cipher='+@cipher.inspect
+                            #p log_mes+'ECC_Auth_Sign  acipher='+acipher.inspect
+                            #p log_mes+'ECC_Auth_Sign  @cipher='+@cipher.inspect
                             if (acipher.is_a? Array) and @cipher.nil?
                               cip = Array.new
                               cip[PandoraCrypto::KV_Panhash] = acipher[0]
@@ -2846,7 +2849,7 @@ module PandoraNet
                 end
               elsif (rcode==ECC_Auth_Simple) and (@stage==ES_Protocol)
               #ECC_Auth_Simple
-                p 'ECC_Auth_Simple!'
+                #p 'ECC_Auth_Simple!'
                 rphrase = rdata
                 #p 'rphrase='+rphrase.inspect
                 password = get_simple_answer_to_node
@@ -2865,7 +2868,7 @@ module PandoraNet
               elsif (rcode==ECC_Auth_Captcha) and ((@stage==ES_Protocol) \
               or (@stage==ES_Greeting))
               #ECC_Auth_Captcha
-                p log_mes+'CAPTCHA!!!  ' #+params.inspect
+                #p log_mes+'CAPTCHA!!!  ' #+params.inspect
                 if not hunter?
                   err_scmd('Captcha for listener is denied')
                 else
@@ -2889,7 +2892,7 @@ module PandoraNet
                         @scmd = EC_Auth
                         @scode = ECC_Auth_Answer
                         @sbuf = entered_captcha
-                        p log_mes + 'CAPCHA ANSWER setted: '+entered_captcha.inspect
+                        #p log_mes + 'CAPCHA ANSWER setted: '+entered_captcha.inspect
                       elsif entered_captcha.nil?
                         err_scmd('Cannot open captcha dialog')
                       else
@@ -2914,11 +2917,11 @@ module PandoraNet
           end
         when EC_Request
           kind = rcode
-          p log_mes+'EC_Request  kind='+kind.to_s+'  stage='+@stage.to_s
+          #p log_mes+'EC_Request  kind='+kind.to_s+'  stage='+@stage.to_s
           panhash = nil
           if (kind==PandoraModel::PK_Key) and ((@stage==ES_Protocol) or (@stage==ES_Greeting))
             panhash = params['mykey']
-            p 'params[mykey]='+panhash
+            #p 'params[mykey]='+panhash
           end
           if (@stage==ES_Exchange) or (@stage==ES_Greeting) or panhash
             panhashes = nil
@@ -2928,7 +2931,7 @@ module PandoraNet
               panhash = [kind].pack('C')+rdata if (not panhash) and rdata
               panhashes = [panhash]
             end
-            p log_mes+'panhashes='+panhashes.inspect
+            #p log_mes+'panhashes='+panhashes.inspect
             if panhashes.size==1
               panhash = panhashes[0]
               kind = PandoraUtils.kind_from_panhash(panhash)
@@ -2939,9 +2942,9 @@ module PandoraNet
                 @sbuf = pson
                 lang = @sbuf[0].ord
                 values = PandoraUtils.namepson_to_hash(@sbuf[1..-1])
-                p log_mes+'SEND RECORD !!! [pson, values]='+[pson, values].inspect
+                #p log_mes+'SEND RECORD !!! [pson, values]='+[pson, values].inspect
               else
-                p log_mes+'NO RECORD panhash='+panhash.inspect
+                #p log_mes+'NO RECORD panhash='+panhash.inspect
                 @scmd = EC_Sync
                 @scode = ECC_Sync1_NoRecord
                 @sbuf = panhash
@@ -2951,7 +2954,7 @@ module PandoraNet
               panhashes.each do |panhash|
                 kind = PandoraUtils.kind_from_panhash(panhash)
                 record = PandoraModel.get_record_by_panhash(kind, panhash, true, @recv_models)
-                p log_mes+'EC_Request panhashes='+PandoraUtils.bytes_to_hex(panhash).inspect
+                #p log_mes+'EC_Request panhashes='+PandoraUtils.bytes_to_hex(panhash).inspect
                 rec_array << record if record
               end
               if rec_array.size>0
@@ -2973,7 +2976,7 @@ module PandoraNet
             end
           end
         when EC_Record
-          p log_mes+' EC_Record: [rcode, rdata.bytesize]='+[rcode, rdata.bytesize].inspect
+          #p log_mes+' EC_Record: [rcode, rdata.bytesize]='+[rcode, rdata.bytesize].inspect
           support = :auto
           support = :yes if (skey_trust >= $keep_for_trust)
           if rcode>0
@@ -3001,7 +3004,7 @@ module PandoraNet
             end
           elsif (@stage==ES_Exchange)
             records, len = PandoraUtils.pson_to_rubyobj(rdata)
-            p log_mes+"!record2! recs="+records.inspect
+            #p log_mes+"!record2! recs="+records.inspect
             PandoraModel.save_records(records, @recv_models, support)
           else
             err_scmd('Records came on wrong stage')
@@ -3009,12 +3012,12 @@ module PandoraNet
         when EC_Sync
           case rcode
             when ECC_Sync1_NoRecord
-              p log_mes+'EC_Sync: No record: panhash='+rdata.inspect
+              #p log_mes+'EC_Sync: No record: panhash='+rdata.inspect
             when ECC_Sync2_Encode
               @r_encode = true
             when ECC_Sync3_Confirm
               confirms = rdata
-              p log_mes+'recv confirms='+confirms
+              #p log_mes+'recv confirms='+confirms
               if confirms
                 prev_kind = nil
                 i = 0
@@ -3026,7 +3029,7 @@ module PandoraNet
                     prev_kind = kind
                   end
                   id = confirms[i+1, 4].unpack('N')
-                  p log_mes+'update confirm  kind,id='+[kind, id].inspect
+                  #p log_mes+'update confirm  kind,id='+[kind, id].inspect
                   res = model.update({:state=>2}, nil, {:id=>id})
                   if res
                     talkview = nil
@@ -3065,7 +3068,7 @@ module PandoraNet
           if @stage>=ES_Exchange
             case rcmd
               when EC_Message, EC_Channel
-                p log_mes+'EC_Message  dialog='+@dialog.inspect
+                #p log_mes+'EC_Message  dialog='+@dialog.inspect
                 if (not @dialog) or @dialog.destroyed?
                   @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
                   #panhashes = [@skey[PandoraCrypto::KV_Panhash], @skey[PandoraCrypto::KV_Creator]]
@@ -3102,7 +3105,7 @@ module PandoraNet
                     values = {:destination=>destination, :text=>text, :state=>2, \
                       :creator=>creator, :created=>created, :modified=>time_now, \
                       :panstate=>panstate}
-                    p log_mes+'++++Recv EC_Message: values='+values.inspect
+                    #p log_mes+'++++Recv EC_Message: values='+values.inspect
                     model = PandoraUtils.get_model('Message', @recv_models)
                     panhash = model.calc_panhash(values)
                     values['panhash'] = panhash
@@ -3136,7 +3139,7 @@ module PandoraNet
                       i ||= text.size
                       chat_com = text[1..i-1].downcase
                       chat_par = text[i+1..-1]
-                      p '===>Chat command: '+[chat_com, chat_par].inspect
+                      #p '===>Chat command: '+[chat_com, chat_par].inspect
                       chat_com_par = chat_com
                       chat_com_par += ' '+chat_par if chat_par
                       trust_level = $special_chatcom_trusts[chat_com]
@@ -3193,9 +3196,9 @@ module PandoraNet
                 else #EC_Channel
                   case rcode
                     when ECC_Channel0_Open
-                      p 'ECC_Channel0_Open'
+                      #p 'ECC_Channel0_Open'
                     when ECC_Channel2_Close
-                      p 'ECC_Channel2_Close'
+                      #p 'ECC_Channel2_Close'
                   else
                     PandoraUI.log_message(PandoraUI::LM_Error, 'Неизвестный код управления каналом: '+rcode.to_s)
                   end
@@ -3203,23 +3206,23 @@ module PandoraNet
               when EC_Media
                 process_media_segment(rcode, rdata)
               when EC_Lure
-                p log_mes+'EC_Lure'
+                #p log_mes+'EC_Lure'
                 send_segment_to_fish(rcode, rdata, true)
                 #sleep 2
               when EC_Bite
-                p log_mes+'EC_Bite'
+                #p log_mes+'EC_Bite'
                 send_segment_to_fish(rcode, rdata)
                 #sleep 2
               when EC_Query
                 case rcode
                   when ECC_Query_Rel
-                    p log_mes+'===ECC_Query_Rel'
+                    #p log_mes+'===ECC_Query_Rel'
                     from_time = rdata[0, 4].unpack('N')[0]
                     pankinds = rdata[4..-1]
                     trust = skey_trust
-                    p log_mes+'from_time, pankinds, trust='+[from_time, pankinds, trust].inspect
+                    #p log_mes+'from_time, pankinds, trust='+[from_time, pankinds, trust].inspect
                     pankinds = PandoraCrypto.allowed_kinds(trust, pankinds)
-                    p log_mes+'pankinds='+pankinds.inspect
+                    #p log_mes+'pankinds='+pankinds.inspect
 
                     questioner = pool.person
                     answerer = @skey[PandoraCrypto::KV_Creator]
@@ -3233,16 +3236,16 @@ module PandoraNet
                     #panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
                     #panhash_list = PandoraModel.get_panhashes_by_questioner(questioner, trust, from_time)
 
-                    p log_mes+'ph_list='+ph_list.inspect
+                    #p log_mes+'ph_list='+ph_list.inspect
                     ph_list = PandoraUtils.rubyobj_to_pson(ph_list) if ph_list
                     @scmd = EC_News
                     @scode = ECC_News_Panhash
                     @sbuf = ph_list
                   when ECC_Query_Record  #EC_Request
-                    p log_mes+'==ECC_Query_Record'
+                    #p log_mes+'==ECC_Query_Record'
                     two_list, len = PandoraUtils.pson_to_rubyobj(rdata)
                     need_ph_list, foll_list = two_list
-                    p log_mes+'need_ph_list, foll_list='+[need_ph_list, foll_list].inspect
+                    #p log_mes+'need_ph_list, foll_list='+[need_ph_list, foll_list].inspect
                     created_list = []
                     if (foll_list.is_a? Array) and (foll_list.size>0)
                       from_time = Time.now.to_i - 7*24*3600
@@ -3251,7 +3254,7 @@ module PandoraNet
                       foll_list.each do |panhash|
                         if panhash[0].ord==PandoraModel::PK_Person
                           cr_l = PandoraModel.created_records(panhash, from_time, kinds, @send_models)
-                          p 'cr_l='+cr_l.inspect
+                          #p 'cr_l='+cr_l.inspect
                           created_list = created_list + cr_l if cr_l
                         end
                       end
@@ -3259,29 +3262,29 @@ module PandoraNet
                       created_list.uniq!
                       created_list.compact!
                       created_list.sort! {|a,b| a[0]<=>b[0] }
-                      p log_mes+'created_list='+created_list.inspect
+                      #p log_mes+'created_list='+created_list.inspect
                     end
                     pson_records = []
                     if (need_ph_list.is_a? Array) and (need_ph_list.size>0)
-                      p log_mes+'need_ph_list='+need_ph_list.inspect
+                      #p log_mes+'need_ph_list='+need_ph_list.inspect
                       need_ph_list.each do |panhash|
                         kind = PandoraUtils.kind_from_panhash(panhash)
-                        p log_mes+[panhash, kind].inspect
-                        p res = PandoraModel.get_record_by_panhash(kind, panhash, true, \
-                          @send_models)
+                        #p log_mes+[panhash, kind].inspect
+                        #p res = PandoraModel.get_record_by_panhash(kind, panhash, true, \
+                        #  @send_models)
                         pson_records << res if res
                       end
-                      p log_mes+'pson_records='+pson_records.inspect
+                      #p log_mes+'pson_records='+pson_records.inspect
                     end
                     @scmd = EC_News
                     @scode = ECC_News_Record
                     @sbuf = PandoraUtils.rubyobj_to_pson([pson_records, created_list])
                   when ECC_Query_Fragment
                     # запрос фрагмента для корзины
-                    p log_mes+'==ECC_Query_Fragment'
+                    #p log_mes+'==ECC_Query_Fragment'
                     sha1_frag, len = PandoraUtils.pson_to_rubyobj(rdata)
                     sha1, frag_ind = sha1_frag
-                    p log_mes+'[sha1, frag_ind]='+[sha1, frag_ind].inspect
+                    #p log_mes+'[sha1, frag_ind]='+[sha1, frag_ind].inspect
                     punnet = pool.init_punnet(sha1)
                     if punnet
                       frag = pool.load_fragment(punnet, frag_ind)
@@ -3305,18 +3308,18 @@ module PandoraNet
               when EC_News
                 case rcode
                   when ECC_News_Panhash
-                    p log_mes+'==ECC_News_Panhash'
+                    #p log_mes+'==ECC_News_Panhash'
                     ph_list, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    p log_mes+'ph_list, len='+[ph_list, len].inspect
+                    #p log_mes+'ph_list, len='+[ph_list, len].inspect
                     # Check non-existing records
                     need_ph_list = PandoraModel.needed_records(ph_list, @send_models)
-                    p log_mes+'need_ph_list='+ need_ph_list.inspect
+                    #p log_mes+'need_ph_list='+ need_ph_list.inspect
 
                     two_list = [need_ph_list]
 
                     questioner = pool.person #me
                     answerer = @skey[PandoraCrypto::KV_Creator]
-                    p '[questioner, answerer]='+[questioner, answerer].inspect
+                    #p '[questioner, answerer]='+[questioner, answerer].inspect
                     follower = nil
                     from_time = Time.now.to_i - 10*24*3600
                     pankinds = nil
@@ -3328,10 +3331,10 @@ module PandoraNet
                     @scode = ECC_Query_Record
                     @sbuf = two_list
                   when ECC_News_Record
-                    p log_mes+'==ECC_News_Record'
+                    #p log_mes+'==ECC_News_Record'
                     two_list, len = PandoraUtils.pson_to_rubyobj(rdata)
                     pson_records, created_list = two_list
-                    p log_mes+'pson_records, created_list='+[pson_records, created_list].inspect
+                    #p log_mes+'pson_records, created_list='+[pson_records, created_list].inspect
                     support = :auto
                     support = :yes if (skey_trust >= $keep_for_trust)
                     PandoraModel.save_records(pson_records, @recv_models, support)
@@ -3350,21 +3353,21 @@ module PandoraNet
                     if (len>0) and line.is_a?(Array) and (line.size==6)
                       # данные корректны
                       fisher, fisher_key, fisher_baseid, fish, fish_key, fish_baseid = line
-                      p log_mes+'--ECC_News_Hook line='+line.inspect
+                      #p log_mes+'--ECC_News_Hook line='+line.inspect
                       if fish and (fish == pool.person) or \
                       fish_key and (fish_key == pool.key_hash) or
                       fish_baseid and (fish_baseid == pool.base_id)
-                        p '!!это узел-рыбка, найти/создать сессию рыбака'
+                        #p '!!это узел-рыбка, найти/создать сессию рыбака'
                         sessions = pool.sessions_of_personkeybase(fisher, fisher_key, fisher_baseid)
                         #pool.init_session(node, tokey, nil, nil, node_id)
                         #Tsaheylu
                         if (sessions.is_a? Array) and (sessions.size>0)
-                          p 'Найдены сущ. сессии'
+                          #p 'Найдены сущ. сессии'
                           sessions.each do |session|
-                            p 'Подсоединяюсь к сессии: session.id='+session.object_id.to_s
+                            #p 'Подсоединяюсь к сессии: session.id='+session.object_id.to_s
                             sess_hook, rec = reg_line(line, session)
                             if not self.connect_session_to_hook([session], hook, true)
-                              p 'Не могу прицепить сессию'
+                              #p 'Не могу прицепить сессию'
                             end
                           end
                         else
@@ -3376,12 +3379,12 @@ module PandoraNet
                       elsif (fisher == pool.person) and \
                       (fisher_key == pool.key_hash) and \
                       (fisher_baseid == pool.base_id)
-                        p '!!это узел-рыбак, найти/создать сессию рыбки'
+                        #p '!!это узел-рыбак, найти/создать сессию рыбки'
                         sessions = pool.sessions_of_personkeybase(fish, fish_key, fish_baseid)
-                        p 'sessions1 size='+sessions.size.to_s
+                        #p 'sessions1 size='+sessions.size.to_s
                         if (not (sessions.is_a? Array)) or (sessions.size==0)
                           sessions = pool.sessions_of_personkeybase(fish, fish_key, nil)
-                          p 'sessions2 size='+sessions.size.to_s
+                          #p 'sessions2 size='+sessions.size.to_s
                         end
                         if not self.connect_session_to_hook(sessions, hook, true, line)
                           #(line, session, far_hook, hook, sess_hook)
@@ -3390,7 +3393,7 @@ module PandoraNet
                             CM_Hunter, nil, nil, nil, nil, fish, fish_key, fish_baseid)
                         end
                       else
-                        p '!!это узел-посредник, пробросить по истории заявок'
+                        #p '!!это узел-посредник, пробросить по истории заявок'
                         mass_records = pool.find_mass_record(MK_Fishing, *line[0..4])
                         mass_records.each do |fo|
                           sess = mr[PandoraNet::MR_Session]
@@ -3438,7 +3441,7 @@ module PandoraNet
                     end
                   when ECC_News_Notice
                     nick, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    p log_mes+'==ECC_News_Notice [rdata, notic, len]='+[rdata, nick, len].inspect
+                    #p log_mes+'==ECC_News_Notice [rdata, notic, len]='+[rdata, nick, len].inspect
                     if (notic.is_a? Array) and (notic.size==5)
                       #pool.add_notice_order(self, *notic)
                       #pool.add_mass_record(MK_Presence, nick, nil, nil, \
@@ -3446,13 +3449,13 @@ module PandoraNet
                       #  nil, @to_node, nil, @recv_models)
                     end
                   when ECC_News_SessMode
-                    p log_mes + 'ECC_News_SessMode'
+                    #p log_mes + 'ECC_News_SessMode'
                     @conn_mode2 = rdata[0].ord if rdata.bytesize>0
                   when ECC_News_Answer
-                    p log_mes + '==ECC_News_Answer'
+                    #p log_mes + '==ECC_News_Answer'
                     req_answer, len = PandoraUtils.pson_to_rubyobj(rdata)
                     req,answ = req_answer
-                    p log_mes+'req,answ='+[req,answ].inspect
+                    #p log_mes+'req,answ='+[req,answ].inspect
                     request,kind,base_id = req
                     if kind==PandoraModel::PK_BlobBody
                       PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: blob is found'))
@@ -3466,7 +3469,7 @@ module PandoraNet
                       if punnet
                         if punnet[PI_FragsFile] and (not pool.frags_complite?(punnet))
                           frag_ind = pool.hold_next_frag(punnet)
-                          p log_mes+'--[frag_ind]='+[frag_ind].inspect
+                          #p log_mes+'--[frag_ind]='+[frag_ind].inspect
                           if frag_ind
                             @scmd = EC_Query
                             @scode = ECC_Query_Fragment
@@ -3475,7 +3478,7 @@ module PandoraNet
                             pool.close_punnet(punnet, sha1, @send_models)
                           end
                         else
-                          p log_mes+'--File is already complete: '+fn.inspect
+                          #p log_mes+'--File is already complete: '+fn.inspect
                           pool.close_punnet(punnet, sha1, @send_models)
                         end
                       end
@@ -3488,11 +3491,11 @@ module PandoraNet
                     end
                   when ECC_News_BigBlob
                     # есть запись, но она слишком большая
-                    p log_mes+'==ECC_News_BigBlob'
+                    #p log_mes+'==ECC_News_BigBlob'
                     toobig, len = PandoraUtils.pson_to_rubyobj(rdata)
                     toobig.each do |rec|
                       panhash,sha1,size,fill = rec
-                      p 'panhash,sha1,size,fill='+[panhash,sha1,size,fill].inspect
+                      #p 'panhash,sha1,size,fill='+[panhash,sha1,size,fill].inspect
                       pun_tit = [panhash,sha1,size]
                       frags = init_punnet(*pun_tit)
                       if frags or frags.nil?
@@ -3504,22 +3507,22 @@ module PandoraNet
                     end
                   when ECC_News_Punnet
                     # есть козина (для сборки фрагментов)
-                    p log_mes+'ECC_News_Punnet'
+                    #p log_mes+'ECC_News_Punnet'
                     punnets, len = PandoraUtils.pson_to_rubyobj(rdata)
                     punnets.each do |rec|
                       panhash,size,sha1,blocksize,punnet = rec
-                      p 'panhash,size,sha1,blocksize,fragments='+[panhash,size,sha1,blocksize,fragments].inspect
+                      #p 'panhash,size,sha1,blocksize,fragments='+[panhash,size,sha1,blocksize,fragments].inspect
                     end
                   when ECC_News_Fragments
                     # есть новые фрагменты
-                    p log_mes+'ECC_News_Fragments'
+                    #p log_mes+'ECC_News_Fragments'
                     frags, len = PandoraUtils.pson_to_rubyobj(rdata)
                     frags.each do |rec|
                       panhash,size,sha1,blocksize,punnet = rec
-                      p 'panhash,size,sha1,blocksize,fragments='+[panhash,size,sha1,blocksize,fragments].inspect
+                      #p 'panhash,size,sha1,blocksize,fragments='+[panhash,size,sha1,blocksize,fragments].inspect
                     end
                   else
-                    p "news more!!!!"
+                    #p "news more!!!!"
                     pkind = rcode
                     pnoticecount = rdata.unpack('N')
                     @scmd = EC_Sync
@@ -3527,7 +3530,7 @@ module PandoraNet
                     @sbuf = ''
                 end
               when EC_Fragment
-                p log_mes+'====EC_Fragment'
+                #p log_mes+'====EC_Fragment'
                 sha1_ind_frag, len = PandoraUtils.pson_to_rubyobj(rdata)
                 sha1, frag_ind, frag = sha1_ind_frag
                 punnet = pool.init_punnet(sha1)
@@ -3545,7 +3548,7 @@ module PandoraNet
               when EC_Mass
                 kind = rcode
                 params, len = PandoraUtils.pson_to_rubyobj(rdata)
-                p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
+                #p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
                 if (params.is_a? Array) and (params.size>=6)
                   src_node, src_ind, atime, atrust, adepth, param1, \
                     param2, param3 = params
@@ -3567,8 +3570,8 @@ module PandoraNet
                       when MK_Chat
                         destination  = AsciiString.new(params[MRC_Dest])
                         row, len = PandoraUtils.pson_to_rubyobj(params[MRC_MesRow])
-                        p '---MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
-                          MRC_MesRow, params[MRC_MesRow], row].inspect
+                        #p '---MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
+                        #  MRC_MesRow, params[MRC_MesRow], row].inspect
                         creator  = row[MCM_Creator]
                         created  = row[MCM_Created]
                         text     = row[MCM_Text]
@@ -3581,7 +3584,7 @@ module PandoraNet
                         values = {:destination=>destination, :text=>text, :state=>2, \
                           :creator=>creator, :created=>created, :modified=>time_now, \
                           :panstate=>panstate}
-                        p log_mes+'++++Recv MK_Chat: values='+values.inspect
+                        #p log_mes+'++++Recv MK_Chat: values='+values.inspect
                         model = PandoraUtils.get_model('Message', @recv_models)
                         panhash = model.calc_panhash(values)
                         values['panhash'] = panhash
@@ -3760,11 +3763,11 @@ module PandoraNet
       @port         = aport
       @proto        = aproto
 
-      p 'Session.new( [asocket, ahost_name, ahost_ip, aport, aproto, '+\
-        'aconn_mode, anode_id, a_dialog, send_state_add, nodehash, to_person, '+\
-        'to_key, to_base_id]'+[asocket.object_id, ahost_name, ahost_ip, aport, aproto, \
-        aconn_mode, anode_id, a_dialog, send_state_add, nodehash, to_person, \
-        to_key, to_base_id].inspect
+      #p 'Session.new( [asocket, ahost_name, ahost_ip, aport, aproto, '+\
+      #  'aconn_mode, anode_id, a_dialog, send_state_add, nodehash, to_person, '+\
+      #  'to_key, to_base_id]'+[asocket.object_id, ahost_name, ahost_ip, aport, aproto, \
+      #  aconn_mode, anode_id, a_dialog, send_state_add, nodehash, to_person, \
+      #  to_key, to_base_id].inspect
 
       init_and_check_node(to_person, to_key, to_base_id)
       pool.add_session(self)
@@ -3785,7 +3788,7 @@ module PandoraNet
         elsif asocket.is_a? Session
           sess = asocket
           sess_hook = ahost_name
-          p 'донор-сессия: '+sess.object_id.inspect
+          #p 'донор-сессия: '+sess.object_id.inspect
           if sess_hook
             #(line, session, far_hook, hook, sess_hook)
             fhook, rec = reg_line(nil, sess, nil, nil, sess_hook)
@@ -3793,16 +3796,16 @@ module PandoraNet
             if sess_hook2
               #add_hook(asocket, ahost_name)
               if hunter?
-                p 'крючок рыбака '+sess_hook.inspect
+                #p 'крючок рыбака '+sess_hook.inspect
                 PandoraUI.log_message(PandoraUI::LM_Info, _('Active fisher')+': [sess, hook]='+\
                   [sess.object_id, sess_hook].inspect)
               else
-                p 'крючок рыбки '+sess_hook.inspect
+                #p 'крючок рыбки '+sess_hook.inspect
                 PandoraUI.log_message(PandoraUI::LM_Info, _('Passive fisher')+': [sess, hook]='+\
                   [sess.object_id, sess_hook].inspect)
               end
             else
-              p 'Не удалось зарегать рыб.сессию'
+              #p 'Не удалось зарегать рыб.сессию'
             end
           end
         end
@@ -3817,7 +3820,7 @@ module PandoraNet
           if (not @socket) and (not active_hook)
             # нет подключения ни через сокет, ни через донора
             # значит, нужно подключаться самому
-            p 'нет подключения ни через сокет, ни через донора'
+            #p 'нет подключения ни через сокет, ни через донора'
             host = ahost_name
             host = ahost_ip if ((not host) or (host == ''))
 
@@ -3892,7 +3895,7 @@ module PandoraNet
 
           work_time = Time.now
 
-          p '==reconn: '+[@socket.object_id].inspect
+          #p '==reconn: '+[@socket.object_id].inspect
           sleep 0.5
 
 
@@ -3915,7 +3918,7 @@ module PandoraNet
           if (@socket and (not @socket.closed?)) or ahook
             #@conn_mode = (@conn_mode | (CM_Hunter & aconn_mode)) if @ahook
 
-            p 'есть подключение [@socket, ahook, @conn_mode]' + [@socket.object_id, ahook, @conn_mode].inspect
+            #p 'есть подключение [@socket, ahook, @conn_mode]' + [@socket.object_id, ahook, @conn_mode].inspect
             @stage          = ES_Protocol  #ES_IpCheck
             #@conn_mode      = aconn_mode
             @conn_state     = CS_Connected
@@ -3975,7 +3978,7 @@ module PandoraNet
                 serrcode = nil
                 serrbuf = nil
 
-                p log_mes+"Цикл ЧТЕНИЯ сокета. начало"
+                #p log_mes+"Цикл ЧТЕНИЯ сокета. начало"
                 # Цикл обработки команд и блоков данных
                 while (@conn_state < CS_StopRead) \
                 and (not socket.closed?)
@@ -4108,7 +4111,7 @@ module PandoraNet
                         end
                         rkdata_size = 0
                         rkdata_size = rkdata.bytesize if rkdata
-                        p log_mes+'<<-RECV [rkcmd/rkcode, rkdata.size] stage='+[rkcmd, rkcode, rkdata_size].inspect+' '+@stage.to_s
+                        #p log_mes+'<<-RECV [rkcmd/rkcode, rkdata.size] stage='+[rkcmd, rkcode, rkdata_size].inspect+' '+@stage.to_s
                         res = @read_queue.add_block_to_queue([rkcmd, rkcode, rkdata])
                         if not res
                           PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot add socket segment to read queue'))
@@ -4129,7 +4132,7 @@ module PandoraNet
                   #Thread.pass
                 end
                 @conn_state = CS_StopRead if (not @conn_state) or (@conn_state < CS_StopRead)
-                p log_mes+"Цикл ЧТЕНИЯ сокета конец!"
+                #p log_mes+"Цикл ЧТЕНИЯ сокета конец!"
                 @socket_thread = nil
               end
             end
@@ -4142,7 +4145,7 @@ module PandoraNet
               @scmd = EC_Sync
               @sbuf = ''
 
-              p log_mes+"Цикл ЧТЕНИЯ начало"
+              #p log_mes+"Цикл ЧТЕНИЯ начало"
               # Цикл обработки команд и блоков данных
               while (@conn_state < CS_StopRead)
                 read_segment = @read_queue.get_block_from_queue
@@ -4181,7 +4184,7 @@ module PandoraNet
                 end
               end
               @conn_state = CS_StopRead if (not @conn_state) or (@conn_state < CS_StopRead)
-              p log_mes+"Цикл ЧТЕНИЯ конец!"
+              #p log_mes+"Цикл ЧТЕНИЯ конец!"
               #socket.close if not socket.closed?
               #@conn_state = CS_Disconnected
               @read_thread = nil
@@ -4191,7 +4194,7 @@ module PandoraNet
             # RU: Цикл отправки
             questioner_step = QS_ResetMessage
             message_model = PandoraUtils.get_model('Message', @send_models)
-            p log_mes+'ЦИКЛ ОТПРАВКИ начало: @conn_state='+@conn_state.inspect
+            #p log_mes+'ЦИКЛ ОТПРАВКИ начало: @conn_state='+@conn_state.inspect
 
             while (@conn_state < CS_Disconnected)
               #p '@conn_state='+@conn_state.inspect
@@ -4201,7 +4204,7 @@ module PandoraNet
                 ssbuf = ''
                 confirm_rec = @confirm_queue.get_block_from_queue
                 while (@conn_state < CS_Disconnected) and confirm_rec
-                  p log_mes+'send  confirm_rec='+confirm_rec
+                  #p log_mes+'send  confirm_rec='+confirm_rec
                   ssbuf << confirm_rec
                   confirm_rec = @confirm_queue.get_block_from_queue
                   if (not confirm_rec) or (ssbuf.bytesize+5>MaxSegSize)
@@ -4230,16 +4233,16 @@ module PandoraNet
                       end
                     else
                       @conn_state = CS_Disconnected
-                      p log_mes+'err send comm and buf'
+                      #p log_mes+'err send comm and buf'
                     end
                   else
-                    p 'SILENT!!!!!!!!'
+                    #p 'SILENT!!!!!!!!'
                   end
                   if (sscmd==EC_Sync) and (sscode==ECC_Sync2_Encode)
                     @s_encode = true
                   end
                   if (sscmd==EC_Bye)
-                    p log_mes+'SEND BYE!!!!!!!!!!!!!!!'
+                    #p log_mes+'SEND BYE!!!!!!!!!!!!!!!'
                     send_segment = nil
                     #if not socket.closed?
                     #  socket.close_write
@@ -4291,9 +4294,9 @@ module PandoraNet
                       kind = PandoraUtils.kind_from_panhash(creator)
                       res = PandoraModel.get_record_by_panhash(kind, creator, nil, \
                         @send_models, 'id')
-                      p log_mes+'Whyer: CreatorCheck  creator='+creator.inspect
+                      #p log_mes+'Whyer: CreatorCheck  creator='+creator.inspect
                       if not res
-                        p log_mes+'Whyer: CreatorCheck  Request!'
+                        #p log_mes+'Whyer: CreatorCheck  Request!'
                         set_request(creator, true)
                       end
                     end
@@ -4462,7 +4465,7 @@ module PandoraNet
                     msbuf = send_media_chunk
                     if not send_comm_and_data(sindex, mscmd, mscode, msbuf)
                       @conn_state = CS_Disconnected
-                      p log_mes+' err send media'
+                      #p log_mes+' err send media'
                     end
                   else
                     cannel += 1
@@ -4483,8 +4486,8 @@ module PandoraNet
                 and (processed<$mass_per_cicle)
                 #and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
                   mass_rec = pool.mass_records[@mr_ind]
-                  p log_mes+'->>>MASSREC [@mr_ind, pool.mass_records.size, @sess_trust, mass_rec[MR_Trust], mass_rec, @to_node]=' \
-                    +[@mr_ind, pool.mass_records.size, @sess_trust, PandoraModel.transform_trust(mass_rec[MR_Trust]), mass_rec, @to_node].inspect
+                  #p log_mes+'->>>MASSREC [@mr_ind, pool.mass_records.size, @sess_trust, mass_rec[MR_Trust], mass_rec, @to_node]=' \
+                  #  +[@mr_ind, pool.mass_records.size, @sess_trust, PandoraModel.transform_trust(mass_rec[MR_Trust]), mass_rec, @to_node].inspect
                   if (mass_rec and mass_rec[MR_Node] \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], \
                   :auto_to_float)) and (mass_rec[MR_Node] != @to_node) and (mass_rec[MR_Depth]>0))
@@ -4510,7 +4513,7 @@ module PandoraNet
                       when MK_Chat
                     end
                     if params
-                      p log_mes+'-->>>> MR SEND [kind, params]'+[kind, params].inspect
+                      #p log_mes+'-->>>> MR SEND [kind, params]'+[kind, params].inspect
                       params_pson = PandoraUtils.rubyobj_to_pson(params)
                       add_send_segment(EC_Mass, true, params_pson, kind)
                     end
@@ -4528,7 +4531,7 @@ module PandoraNet
               and (pool.need_fragments?) \
               and false # OFFF !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 next_frag = pool.get_next_frag(@to_base_id, @punnet_ind, @frag_ind)
-                p '***!!pool.get_next_frag='+next_frag.inspect
+                #p '***!!pool.get_next_frag='+next_frag.inspect
                 if next_frag
                   punn, frag = next_frag
                   processed += 1
@@ -4579,21 +4582,21 @@ module PandoraNet
               Thread.pass
             end
 
-            p log_mes+"Цикл ОТПРАВКИ конец!!!   @conn_state="+@conn_state.inspect
+            #p log_mes+"Цикл ОТПРАВКИ конец!!!   @conn_state="+@conn_state.inspect
 
             #Thread.critical = true
             #Thread.critical = false
             #p log_mes+'check close'
             if socket and (not socket.closed?)
-              p log_mes+'before close_write'
+              #p log_mes+'before close_write'
               #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
               #socket.flush
               #socket.print('\000')
               socket.close_write
-              p log_mes+'before close'
+              #p log_mes+'before close'
               sleep(0.05)
               socket.close
-              p log_mes+'closed!'
+              #p log_mes+'closed!'
             end
             if socket.is_a? IPSocket
               if not hunter?
@@ -4605,7 +4608,7 @@ module PandoraNet
             @socket_thread.exit if @socket_thread
             @read_thread.exit if @read_thread
             while (@hooks.size>0)
-              p 'DONORs free!!!!'
+              #p 'DONORs free!!!!'
               hook = @hooks.size-1 #active_hook
               send_segment_to_fish(hook, EC_Bye.chr + ECC_Bye_NoAnswer.chr)
               rec = @hooks[hook]
@@ -4641,19 +4644,19 @@ module PandoraNet
             #  #fisher.free_out_lure_of_fisher(self, i) if fish #and (not fish.destroyed?)
             #end
           else
-            p 'НЕТ ПОДКЛЮЧЕНИЯ'
+            #p 'НЕТ ПОДКЛЮЧЕНИЯ'
           end
           @conn_state = CS_Disconnected if @conn_state < CS_Disconnected
 
           need_connect = (((@conn_mode & CM_Keep) != 0) \
           and (not (@socket.is_a? FalseClass)) and @conn_state < CS_CloseSession) \
 
-          p 'NEED??? [need_connect, @conn_mode, @socket]='+[need_connect, \
-            @conn_mode, @socket].inspect
+          #p 'NEED??? [need_connect, @conn_mode, @socket]='+[need_connect, \
+          #  @conn_mode, @socket].inspect
 
           if need_connect and (not @socket) and work_time \
           and ((Time.now.to_i - work_time.to_i)<15)
-            p 'sleep!'
+            #p 'sleep!'
             sleep(3.1+0.5*rand)
           end
 
@@ -4767,7 +4770,7 @@ module PandoraNet
         host_name = socket.peeraddr[3]
         port = socket.peeraddr[1]
         proto = 'tcp'
-        p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
+        #p 'LISTENER: '+[host_name, host_ip, port, proto].inspect
         session = Session.new(socket, host_name, host_ip, port, proto, \
           0, nil, nil, nil, nil)
       end
@@ -4925,7 +4928,7 @@ module PandoraNet
               end
               #data, addr = udp_server.recvfrom_nonblock(2000)
               udp_hello_len = UdpHello.bytesize
-              p 'Received UDP-pack ['+data.inspect+'] addr='+addr.inspect
+              #p 'Received UDP-pack ['+data.inspect+'] addr='+addr.inspect
               if (data.is_a? String) and (data.bytesize > udp_hello_len) \
               and (data[0, udp_hello_len] == UdpHello)
                 data = data[udp_hello_len..-1]
@@ -5182,7 +5185,7 @@ module PandoraNet
             if (not $hunter_thread[:paused]) and $hunter_thread.stop?
               $hunter_thread.run
             end
-            p '$hunter_thread[:paused]='+$hunter_thread[:paused].inspect
+            #p '$hunter_thread[:paused]='+$hunter_thread[:paused].inspect
           else
             # need to exit thread
             $hunter_thread[:active] = false
@@ -5364,7 +5367,7 @@ module PandoraNet
       http = nil
       PandoraUI.log_message(PandoraUI::LM_Trace, _('Connection error')+\
         [host, port].inspect+' '+Utf8String.new(err.message))
-      puts Utf8String.new(err.message)
+      #puts Utf8String.new(err.message)
     end
     [http, host, path]
   end
@@ -5384,7 +5387,7 @@ module PandoraNet
         http = nil
         PandoraUI.log_message(PandoraUI::LM_Trace, _('Connection error')+\
           [host, port].inspect+' '+Utf8String.new(err.message))
-        puts Utf8String.new(err.message)
+        #puts Utf8String.new(err.message)
       end
     end
     http
@@ -5403,7 +5406,7 @@ module PandoraNet
       loglev = LM_Trace if loglev.is_a?(TrueClass)
       PandoraUtils.log_message(loglev, _('Size is not getted')+' '+\
         [http, path].inspect+' '+Utf8String.new(err.message)) if loglev
-      puts Utf8String.new(err.message)
+      #puts Utf8String.new(err.message)
     end
     res
   end
@@ -5485,7 +5488,7 @@ module PandoraNet
                   filter = ["(addr=? OR domain=?) AND panhash=?", ip, ip, panhash]
                   sel = node_model.select(filter, false, 'id', nil, 1)
                   if sel.nil? or (sel.size==0)
-                    p '+++Add [panhash, IP]='+[panhash, ip].inspect
+                    #p '+++Add [panhash, IP]='+[panhash, ip].inspect
                     panstate = 0
                     time_now = Time.now.to_i
                     creator = PandoraCrypto.current_user_or_key(true, false)
@@ -5525,7 +5528,7 @@ module PandoraNet
           err = ' '+_('Loading error')
         elsif body[0]=='!'
           if delete or (body.size==1)
-            puts body
+            #puts body
           else
             err = ' '+_(body[1..-1].strip)
           end

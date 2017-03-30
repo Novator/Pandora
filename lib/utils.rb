@@ -1805,7 +1805,7 @@ module PandoraUtils
       if tfd and (tfd != [])
         sql_values.concat(sql_values2)
         values_to_ascii(sql_values)
-        p 'update: sql='+sql.inspect+' sql_values='+sql_values.inspect
+        #p 'update: sql='+sql.inspect+' sql_values='+sql_values.inspect
         begin
           res = db.execute(sql, sql_values)
           res = true

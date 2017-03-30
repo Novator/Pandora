@@ -80,7 +80,13 @@ end
 
 module PandoraCui
 
-  $curse_windows = nil
+  def self.cui_inited
+    @cui_inited
+  end
+
+  def self.cui_inited=(val)
+    @cui_inited = val
+  end
 
   def self.cur_page=(val)
     @cur_page = val
@@ -98,15 +104,91 @@ module PandoraCui
     @act_panel
   end
 
+  def self.curse_windows=(val)
+    @curse_windows = val
+  end
+
+  def self.curse_windows
+    @curse_windows
+  end
+
+  def self.user_command=(val)
+    @user_command = val
+  end
+
+  def self.user_command
+    @user_command
+  end
+
+  MaxLogSize = 100
+  LastLogMessages = []
+
+  def self.add_mes_to_log_win(mes, refresh=nil)
+    while LastLogMessages.size >= MaxLogSize
+      LastLogMessages.delete(0)
+    end
+    LastLogMessages << mes
+    if self.cui_inited and (self.cur_page == CPI_Status)
+      line = mes
+      line = "\n" + line if LastLogMessages.size>1
+      right_win = self.curse_windows[CWI_RightArea]
+      if right_win
+        $pool.mutex.synchronize do
+          right_win.addstr(line)
+          #right_win.addstr(right_win.methods.inspect+"\n")
+          if refresh
+            right_win.noutrefresh
+            Ncurses.doupdate  # update real screen
+            #Ncurses.refresh
+          end
+        end
+      end
+    end
+  end
+
+  def self.set_status_field(index, text, enabled, toggle)
+    self.add_mes_to_log_win('set_status_field: '+[index, text, \
+      enabled, toggle].inspect, true)
+  end
+
+  def self.correct_lis_btn_state
+    self.add_mes_to_log_win('correct_lis_btn_state', true)
+  end
+
+  def self.correct_hunt_btn_state
+    self.add_mes_to_log_win('correct_hunt_btn_state', true)
+  end
+
+  def self.show_cabinet(panhash, session, conntype, node_id, models, \
+  page, fields, obj_id, edit)
+    res = nil
+    self.add_mes_to_log_win('show_cabinet: '+[panhash, session, conntype, \
+      node_id, models, page, fields, obj_id, edit].inspect, true)
+    res
+  end
+
+  def self.fill_log_win
+    asize = LastLogMessages.size
+    right_win = self.curse_windows[CWI_RightArea]
+    num = @win_height-2
+    num = asize if num > asize
+    right_win.clear
+    num.times do |i|
+      line = LastLogMessages[asize-(num-i)]
+      line = "\n"+line if i>0
+      right_win.addstr(line)
+    end
+  end
+
   def self.create_win(height, width, y, x, box_index, title, color, active=true)
     res = Ncurses.newwin(height, width, y, x)
-    $curse_windows[box_index] = res
+    self.curse_windows[box_index] = res
     color = (color | Ncurses::A_BOLD) if active
     res.attron(color)
     res.box(0, 0)
     res.mvaddstr(0, 2, title) if title
     res2 = Ncurses.newwin(height-2, width-2, y+1, x+1)
-    $curse_windows[box_index+1] = res2
+    self.curse_windows[box_index+1] = res2
     res2.bkgd(0)
     res2.scrollok(true)
     res2
@@ -117,8 +199,8 @@ module PandoraCui
   CWI_RightBox  = 2
   CWI_RightArea = 3
 
-  def self.do_windows(doing=:noutrefresh)
-    $curse_windows.each do |win|
+  def self.do_with_windows(doing=:noutrefresh)
+    self.curse_windows.each do |win|
       case doing
         when :noutrefresh
           win.noutrefresh
@@ -129,8 +211,13 @@ module PandoraCui
   end
 
   def self.del_windows
-    do_windows(:del)
-    $curse_windows.clear
+    do_with_windows(:del)
+    self.curse_windows.clear
+  end
+
+  def self.do_user_command(acommand, press_key=true)
+    self.user_command = acommand
+    Ncurses.ungetch(32) if press_key
   end
 
   CPI_Status   = 0
@@ -145,19 +232,27 @@ module PandoraCui
   def self.recreate_windows(page=nil)
     self.cur_page = page if page
     is_resized = true
+    first_start = false
     while is_resized
+      self.cui_inited = false
       is_resized = false
-      if $curse_windows
+      if self.curse_windows
         del_windows
-        Ncurses.close_screen
+        #Ncurses.close_screen
         Ncurses.refresh if $curses_is_active
       else
-        $curse_windows = []
+        self.curse_windows = []
+        first_start = true
+        100.times do
+          sleep(0.001)
+        end
       end
       stdscr = Ncurses.stdscr
 
       left_width = 20
       win_height = Ncurses.lines-1
+      @left_width = left_width
+      @win_height = win_height
 
       if (left_width+7 < Ncurses.cols) and (win_height>3)
         color = Ncurses.color_pair(self.cur_page+1)
@@ -172,8 +267,10 @@ module PandoraCui
         right_win = create_win(win_height, Ncurses.cols - left_width, 0, left_width, \
           CWI_RightBox, RightTitles[self.cur_page], color, self.act_panel==1)
 
-        right_win.addstr("Just a log text 1\n")
-        right_win.addstr("Это лог текст ёЁ 2\n")
+        case self.cur_page
+          when CPI_Status
+            fill_log_win
+        end
 
         stdscr.move(Ncurses.lines - 1, 0)
         edge = 0
@@ -215,135 +312,156 @@ module PandoraCui
         stdscr.addstr('Screen is too small')
       end
 
-      do_windows(:noutrefresh)
+      do_with_windows(:noutrefresh)
       Ncurses.doupdate  # update real screen
-      Ncurses.refresh
+
+      self.cui_inited = true
+
+      if first_start
+        first_start = false
+        yield if block_given?
+      end
 
       mev = nil
       mev = Ncurses::MEVENT.new if Ncurses::MEVENT
       ch = 0
       while ch
         ch = Ncurses.getch
-        stdscr.mvaddstr(Ncurses.lines - 3, 28, ch.inspect+'  ')
-        stdscr.refresh();
-        if (ch==27)
-          sleep 0.2
-          chg = Ncurses.getch
-          ch = (chg ^ (ch << 8))
-          if (chg==208) or (chg==209)
+        if self.user_command
+          comm = self.user_command
+          self.user_command = nil
+          case comm
+            when :close
+              break
+          end
+        else
+          stdscr.mvaddstr(Ncurses.lines - 3, 28, ch.inspect+'  ')
+          stdscr.refresh
+          if (ch==27)
+            sleep 0.2
             chg = Ncurses.getch
             ch = (chg ^ (ch << 8))
-          end
-          stdscr.mvaddstr(Ncurses.lines - 3, 28, ch.inspect+'-  ')
-          stdscr.refresh();
-        end
-        case ch
-          when Ncurses::KEY_RESIZE
-            is_resized = true
-            break
-          when Ncurses::KEY_F1, 19
-            self.cur_page = CPI_Status
-            is_resized = true
-            break
-          when Ncurses::KEY_F2, 18
-            self.cur_page = CPI_Radar
-            is_resized = true
-            break
-          when Ncurses::KEY_F3, 2
-            self.cur_page = CPI_Base
-            is_resized = true
-            break
-          when Ncurses::KEY_F4, 6
-            self.cur_page = CPI_Find
-            is_resized = true
-            break
-          when Ncurses::KEY_NPAGE
-            if self.cur_page < CPI_Find
-              self.cur_page += 1
-            else
-              self.cur_page = 0
+            if (chg==208) or (chg==209)
+              chg = Ncurses.getch
+              ch = (chg ^ (ch << 8))
             end
-            is_resized = true
-            break
-          when Ncurses::KEY_PPAGE
-            if self.cur_page > 0
-              self.cur_page -= 1
-            else
+            stdscr.mvaddstr(Ncurses.lines - 3, 28, ch.inspect+'-  ')
+            stdscr.refresh
+          end
+          case ch
+            when Ncurses::KEY_RESIZE
+              is_resized = true
+              break
+            when Ncurses::KEY_F1, 19
+              self.cur_page = CPI_Status
+              is_resized = true
+              break
+            when Ncurses::KEY_F2, 18
+              self.cur_page = CPI_Radar
+              is_resized = true
+              break
+            when Ncurses::KEY_F3, 2
+              self.cur_page = CPI_Base
+              is_resized = true
+              break
+            when Ncurses::KEY_F4, 6
               self.cur_page = CPI_Find
-            end
-            is_resized = true
-            break
-          when Ncurses::KEY_LEFT, Ncurses::KEY_RIGHT, 9, 353
-            if self.act_panel>0
-              self.act_panel = 0
-            else
-              self.act_panel = 1
-            end
-            is_resized = true
-            break
-          when Ncurses::KEY_MOUSE
-            if mev = Ncurses.getmouse2(mev)
-              #Ncurses.ungetmouse(mev)
-              if (mev.bstate == 4)
-                x = mev.x
-                if (mev.y < win_height)
-                  if x < left_width
-                    self.act_panel = 0
-                  else
-                    self.act_panel = 1
-                  end
-                  is_resized = true
-                  break
-                else
-                  quit_edge = PanelEdges[-1]
-                  if (x >= quit_edge)
-                    p = x - quit_edge
-                    if p==2
-                      stdscr.mvaddstr(win_height, x, 'A')
-                    elsif p==4
-                      stdscr.mvaddstr(win_height, x, 'L')
-                    elsif p==6
-                      stdscr.mvaddstr(win_height, x, 'H')
-                    else
-                      stdscr.mvaddstr(Ncurses.lines - 3, 50, p.inspect+'  ')
-                      stdscr.refresh();
-                      sleep 0.5
-                    end
-                  else
-                    (PanelEdges.count-1).times do |i|
-                      ed = PanelEdges[i]
-                      if x < ed
-                        self.cur_page = i
-                        is_resized = true
-                        break
-                      end
-                    end
-                    break
-                  end
-                end
+              is_resized = true
+              break
+            when Ncurses::KEY_NPAGE
+              if self.cur_page < CPI_Find
+                self.cur_page += 1
               else
-                stdscr.mvaddstr(Ncurses.lines - 3, 50, [mev.bstate, mev.x, mev.y].inspect+'  ')
-                stdscr.refresh();
+                self.cur_page = 0
               end
-            end
-            #fields_form.form_driver(ch)
-            #Ncurses.curs_set(1)
-          when Ncurses::KEY_F8
-            right_win.addstr(right_win.methods.inspect+"\n")
-            right_win.noutrefresh
-          when Ncurses::KEY_F10, 7000, 7032, 1823111, 1822887, 17
-            break
-          else
-            Ncurses.curs_set(1)
+              is_resized = true
+              break
+            when Ncurses::KEY_PPAGE
+              if self.cur_page > 0
+                self.cur_page -= 1
+              else
+                self.cur_page = CPI_Find
+              end
+              is_resized = true
+              break
+            when Ncurses::KEY_LEFT, Ncurses::KEY_RIGHT, 9, 353
+              if self.act_panel>0
+                self.act_panel = 0
+              else
+                self.act_panel = 1
+              end
+              is_resized = true
+              break
+            when 1   #A
+              PandoraUI.do_menu_act('Authorize')
+            when 12  #L
+              PandoraUI.do_menu_act('Listen')
+            when 8   #H
+              PandoraUI.do_menu_act('Hunt')
+            when Ncurses::KEY_MOUSE
+              if mev = Ncurses.getmouse2(mev)
+                #Ncurses.ungetmouse(mev)
+                if (mev.bstate == 4)
+                  x = mev.x
+                  if (mev.y < win_height)
+                    if x < left_width
+                      self.act_panel = 0
+                    else
+                      self.act_panel = 1
+                    end
+                    is_resized = true
+                    break
+                  else
+                    quit_edge = PanelEdges[-1]
+                    if (x >= quit_edge)
+                      p = x - quit_edge
+                      if p==2
+                        stdscr.mvaddstr(win_height, x, 'A')
+                      elsif p==4
+                        stdscr.mvaddstr(win_height, x, 'L')
+                      elsif p==6
+                        stdscr.mvaddstr(win_height, x, 'H')
+                      else
+                        stdscr.mvaddstr(Ncurses.lines - 3, 50, p.inspect+'  ')
+                        stdscr.refresh
+                        sleep 0.5
+                      end
+                    else
+                      (PanelEdges.count-1).times do |i|
+                        ed = PanelEdges[i]
+                        if x < ed
+                          self.cur_page = i
+                          is_resized = true
+                          break
+                        end
+                      end
+                      break
+                    end
+                  end
+                else
+                  stdscr.mvaddstr(Ncurses.lines - 3, 50, [mev.bstate, mev.x, mev.y].inspect+'  ')
+                  stdscr.refresh
+                end
+              end
+              #fields_form.form_driver(ch)
+              #Ncurses.curs_set(1)
+            when Ncurses::KEY_F8
+              add_mes_to_log_win(('Just a log text '*8)+LastLogMessages.size.to_s, true)
+              #right_win.addstr(right_win.methods.inspect+"\n")
+              #right_win.noutrefresh
+            when Ncurses::KEY_F10, 7000, 7032, 1823111, 1822887, 17
+              PandoraUI.do_menu_act('Quit')
+            else
+              Ncurses.curs_set(1)
           end
+        end
       end
-      stdscr.bkgd(0)
-      Ncurses.clear
-      Ncurses.refresh
     end
   end
 
-  def self.init_main_window
+  def self.do_main_loop
+    self.cui_inited = false
+    self.user_command = nil
     self.cur_page = CPI_Status
     self.act_panel = 0
     Ncurses.init_screen
@@ -371,7 +489,12 @@ module PandoraCui
       Ncurses.init_pair(7, Ncurses::COLOR_RED, Ncurses::COLOR_BLACK)
       stdscr.bkgd(Ncurses.color_pair(0))
       Ncurses.refresh
-      recreate_windows
+      recreate_windows do
+        yield if block_given?
+      end
+      stdscr.bkgd(0)
+      Ncurses.clear
+      Ncurses.refresh
     ensure
       Ncurses.curs_set(1)
       Ncurses.echo
