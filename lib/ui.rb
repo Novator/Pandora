@@ -864,9 +864,10 @@ module PandoraUI
         PandoraUtils.external_open($pandora_doc_dir, 'open')
       when 'Close'
         if $gtk_is_active
-          if $window.notebook.page >= 0
-            page = $window.notebook.get_nth_page(notebook.page)
-            tab = $window.notebook.get_tab_label(page)
+          anotebook = $window.notebook
+          if anotebook.page >= 0
+            page = anotebook.get_nth_page(anotebook.page)
+            tab = anotebook.get_tab_label(page)
             close_btn = tab.children[tab.children.size-1].children[0]
             close_btn.clicked
           end

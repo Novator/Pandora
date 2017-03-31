@@ -5570,7 +5570,7 @@ module PandoraGtk
       :sender_box, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
       :send_hpaned, :cab_notebook, :opt_btns, :cab_panhash, :session, \
       :bodywin, :fields, :obj_id, :edit, :property_box, :kind, :label_box, \
-      :active_page, :dlg_stock, :its_blob
+      :active_page, :dlg_stock, :its_blob, :has_blob
 
     include PandoraGtk
 
@@ -6715,12 +6715,13 @@ module PandoraGtk
 
       @dlg_stock = nil
       @its_blob = nil
+      @has_blob = nil
       if cab_panhash
         kind = PandoraUtils.kind_from_panhash(cab_panhash)
         panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
         @its_blob = ((kind==PandoraModel::PK_Blob) \
-          or (panobjectclass <= PandoraModel::Blob) \
-          or panobjectclass.has_blob_fields?)
+          or (panobjectclass <= PandoraModel::Blob))
+        @has_blob = (@its_blob or panobjectclass.has_blob_fields?)
         @dlg_stock = $window.get_panobject_stock(panobjectclass.ider)
       end
       @dlg_stock ||= Gtk::Stock::PROPERTIES
@@ -6826,7 +6827,7 @@ module PandoraGtk
       a_page ||= PandoraUI::CPI_Dialog
       opt_btns[PandoraUI::CPI_Sub+1].children[0].children[0].hide
       btn_offset = PandoraUI::CPI_Last_Sub-PandoraUI::CPI_Sub-1
-      opt_btns[PandoraUI::CPI_Editor-btn_offset].hide if (not its_blob)
+      opt_btns[PandoraUI::CPI_Editor-btn_offset].hide if (not has_blob)
       if (kind != PandoraModel::PK_Person)
         opt_btns[PandoraUI::CPI_Dialog-btn_offset].hide
         a_page = PandoraUI::CPI_Chat if a_page == PandoraUI::CPI_Dialog

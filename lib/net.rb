@@ -1379,6 +1379,7 @@ module PandoraNet
   $captcha_attempts = 2
   $trust_for_captchaed = true
   $trust_for_listener = true
+  $trust_for_unknown = nil
   $low_conn_trust = 0.0
 
   $keep_alive = 1  #(on/off)
@@ -2775,13 +2776,19 @@ module PandoraNet
                     init_and_check_node(@skey[PandoraCrypto::KV_Creator], skey_hash, sbase_id)
                     if ((@conn_mode & CM_Double) == 0)
                       if (not hunter?)
-                        trust = 0 if (not trust) and $trust_for_captchaed
+                        if ($trust_for_unknown.is_a? Float) and ($trust_for_unknown > -1.0001)
+                          trust = $trust_for_unknown
+                          @skey[PandoraCrypto::KV_Trust] = trust
+                        else
+                          trust = 0 if (not trust) and $trust_for_captchaed
+                        end
                       elsif $trust_for_listener and (not (trust.is_a? Float))
                         trust = 0.01
                         @skey[PandoraCrypto::KV_Trust] = trust
                       end
                       #p log_mes+'ECC_Auth_Sign trust='+trust.inspect
-                      if ($captcha_length>0) and (trust.is_a? Integer) \
+                      if ($captcha_length>0) and $gtk_is_active \
+                      and (trust.is_a? Integer) \
                       and (not hunter?) and ((@sess_mode & CM_Captcha)>0)
                         @skey[PandoraCrypto::KV_Trust] = 0
                         send_captcha
@@ -4721,6 +4728,7 @@ module PandoraNet
     $trust_captchaed     = PandoraUtils.get_param('trust_captchaed')
     $trust_listener      = PandoraUtils.get_param('trust_listener')
     $low_conn_trust      = PandoraUtils.get_param('low_conn_trust')
+    $trust_for_unknown   = PandoraUtils.get_param('trust_for_unknown')
     $max_opened_keys     = PandoraUtils.get_param('max_opened_keys')
     $max_session_count   = PandoraUtils.get_param('max_session_count')
     $hunt_step_pause     = PandoraUtils.get_param('hunt_step_pause')
@@ -5058,7 +5066,7 @@ module PandoraNet
       PandoraUtils.set_param('last_ip'+version, ip) if ip
     end
 
-    if $node_registering_thread.nil?
+    if $pool.current_key and $node_registering_thread.nil?
       $node_registering_thread = Thread.current
       ip_list = Socket.ip_address_list
       ip4_list = ip_list.select do |addr_info|

@@ -1588,7 +1588,7 @@ module PandoraUtils
           res = db.execute(sql)
         rescue => err
           res = nil
-          PandoraUtils.log_message(LM_Error, \
+          PandoraUI.log_message(PandoraUI::LM_Error, \
             _('Cannot create table')+' "'+sql+'": '+Utf8String.new(err.message))
         end
         @exist[table] = true
@@ -1605,7 +1605,7 @@ module PandoraUtils
           res = db.execute(sql)
         rescue => err
           res = nil
-          PandoraUtils.log_message(LM_Error, \
+          PandoraUI.log_message(PandoraUI::LM_Error, \
             _('Cannot insert field')+' "'+sql+'": '+Utf8String.new(err.message))
         end
       end
@@ -1744,7 +1744,7 @@ module PandoraUtils
           res = db.execute(sql, sql_values)
         rescue => err
           res = nil
-          PandoraUtils.log_message(LM_Error, \
+          PandoraUI.log_message(PandoraUI::LM_Error, \
             _('Wrong select')+' "'+sql+'": '+Utf8String.new(err.message))
         end
       end
@@ -1811,7 +1811,7 @@ module PandoraUtils
           res = true
         rescue => err
           res = false
-          PandoraUtils.log_message(LM_Error, \
+          PandoraUI.log_message(PandoraUI::LM_Error, \
             _('Wrong update')+' "'+sql+'": '+Utf8String.new(err.message))
         end
         #p 'upd_tab: db.execute.res='+res.inspect
@@ -2173,11 +2173,11 @@ module PandoraUtils
               end
               flds = absent_flds.join('|')
               if res
-                PandoraUtils.log_message(LM_Warning, \
+                PandoraUI.log_message(PandoraUI::LM_Warning, \
                   (_('New fields %s were added in table') % ('['+flds+\
                   ']')) + ' ['+pname+']')
               else
-                PandoraUtils.log_message(LM_Error, \
+                PandoraUI.log_message(PandoraUI::LM_Error, \
                   (_('Cannot add new fields %s in the table') % ('['+\
                   flds+']')) + ' ['+pname+']')
               end
@@ -2975,7 +2975,7 @@ module PandoraUtils
   # RU: Задаёт значение параметра (удаляет если value=nil)
   def self.set_param(name, value)
     res = false
-    p 'set_param [name, value]='+[name, value].inspect
+    #p 'set_param [name, value]='+[name, value].inspect
     old_value, id = PandoraUtils.get_param(name, true)
     param_model = PandoraUtils.get_model('Parameter')
     if ((value != old_value) or value.nil?) and param_model
@@ -3096,7 +3096,8 @@ module PandoraUtils
       size = 0.36
       size = 0.38 if ('a'..'z').include? c
       cr.set_font_size(size*(0.7+0.3*rand))
-      cr.select_font_face(CapFonts[rand(CapFonts.size)], Cairo::FONT_SLANT_NORMAL, Cairo::FONT_WEIGHT_NORMAL)
+      cr.select_font_face(CapFonts[rand(CapFonts.size)], Cairo::FONT_SLANT_NORMAL, \
+        Cairo::FONT_WEIGHT_NORMAL)
       x = x0 + step + 0.2*(rand-0.5)
       y = y0 + 0.1 + 0.3*(rand-0.5)
       cr.move_to(x, y)

@@ -368,13 +368,13 @@ module PandoraModel
             #namesvalues = panobject.namesvalues
             #fields = model.matter_fields
             fields = model.clear_excess_fields(sel[0])
-            p 'get_rec: matter_fields='+fields.inspect
+            #p 'get_rec: matter_fields='+fields.inspect
             # need get all fields (except: id, panhash, modified) + kind
             lang = PandoraUtils.lang_from_panhash(panhash)
             res = AsciiString.new
             res << [kind].pack('C') if pson_with_kind
             res << [lang].pack('C')
-            p 'get_record_by_panhash|||  fields='+fields.inspect
+            #p 'get_record_by_panhash|||  fields='+fields.inspect
             res << PandoraUtils.hash_to_namepson(fields)
           else
             res = sel
@@ -431,7 +431,7 @@ module PandoraModel
   # RU: Сохранить запись
   def self.save_record(kind, lang, values, models=nil, require_panhash=nil, support=:auto)
     res = false
-    p '=======save_record  [kind, lang, values]='+[kind, lang, values].inspect
+    #p '=======save_record  [kind, lang, values]='+[kind, lang, values].inspect
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
     ider = panobjectclass.ider
     model = PandoraUtils.get_model(ider, models)
@@ -440,7 +440,7 @@ module PandoraModel
       require_panhash ||= values[:panhash]
     end
     panhash = model.calc_panhash(values, lang)
-    p 'panhash='+panhash.inspect
+    #p 'panhash='+panhash.inspect
     if (not require_panhash) or (panhash==require_panhash)
       harvest_blob = nil
       filter = {'panhash'=>panhash}
@@ -457,12 +457,12 @@ module PandoraModel
           fn = values[:blob]
           str_blob = false if fn
         end
-        p '--- save_record1  fn='+fn.inspect
+        #p '--- save_record1  fn='+fn.inspect
         if (not str_blob.nil?) and (fn.is_a? String) and (fn.size>1) and (fn[0]=='@')
-          p '--- save_record2  fn='+fn.inspect
+          #p '--- save_record2  fn='+fn.inspect
           fn = PandoraUtils.absolute_path(fn[1..-1])
           fn = '@'+PandoraUtils.relative_path(fn, $max_relative_path_depth)
-          p '--- save_record3  fn='+fn.inspect
+          #p '--- save_record3  fn='+fn.inspect
           if str_blob
             values['blob'] = fn
           else
@@ -476,7 +476,7 @@ module PandoraModel
 
         if sha1
           fn_fs = $window.pool.blob_exists?(sha1, models, true)
-          p '--- save_record4  fn='+fn.inspect
+          #p '--- save_record4  fn='+fn.inspect
           if fn_fs
             fn, fs = fn_fs
             harvest_blob = (not File.exist?(fn))
@@ -519,18 +519,18 @@ module PandoraModel
         res = model.update(values, nil, nil)
         str = '['+model.record_info(80, values, ': ')+']'
         if res
-          PandoraUtils.log_message(LM_Info, _('Recorded')+' '+str)
+          PandoraUI.log_message(PandoraUI::LM_Info, _('Recorded')+' '+str)
         else
-          PandoraUtils.log_message(LM_Warning, _('Cannot record')+' '+str)
+          PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot record')+' '+str)
         end
       end
-      p '--save_rec5   harvest_blob='+harvest_blob.inspect
+      #p '--save_rec5   harvest_blob='+harvest_blob.inspect
       if (harvest_blob.is_a? String)
         reqs = $window.pool.add_mass_record(MK_Search, PandoraModel::PK_BlobBody, \
           harvest_blob)
       end
     else
-      PandoraUtils.log_message(LM_Warning, _('Non-equal panhashes ')+' '+ \
+      PandoraUI.log_message(PandoraUI::LM_Warning, _('Non-equal panhashes ')+' '+ \
         PandoraUtils.bytes_to_hex(panhash) + '<>' + \
         PandoraUtils.bytes_to_hex(require_panhash))
       res = nil
@@ -547,7 +547,7 @@ module PandoraModel
         lang = record[1].ord
         values = PandoraUtils.namepson_to_hash(record[2..-1])
         if not PandoraModel.save_record(kind, lang, values, models, nil, support)
-          PandoraUtils.log_message(LM_Warning, _('Cannot write a record')+' 2')
+          PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot write a record')+' 2')
         end
       end
     end
@@ -813,15 +813,15 @@ module PandoraModel
               if (proto=='pandora')
                 panhash = PandoraModel.hex_to_panhash(way)
                 kind = PandoraUtils.kind_from_panhash(panhash)
-                sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'type,blob')
+                sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'blob')
               else
                 hash = PandoraUtils.hex_to_bytes(way)
-                sel = PandoraModel.get_record_by_hash(hash, nil, nil, nil, 'type,blob')
+                sel = PandoraModel.get_record_by_hash(hash, nil, nil, nil, 'blob')
               end
               #p 'get_image_from_url.pandora/panhash='+panhash.inspect
               if sel and (sel.size>0)
-                type = sel[0][0]
-                blob = sel[0][1]
+                #type = sel[0][0]
+                blob = sel[0][0]
                 if blob and (blob.size>0)
                   if blob[0]=='@'
                     fn = blob[1..-1]
@@ -900,7 +900,9 @@ module PandoraModel
   def self.get_avatar_icon(panhash, pixbuf_parent, its_blob=false, icon_size=16)
     pixbuf = nil
     avatar_hash = panhash
-    avatar_hash = PandoraModel.find_relation(panhash, RK_AvatarFor, true) if not its_blob
+    if (not its_blob)
+      avatar_hash = PandoraModel.find_relation(panhash, RK_AvatarFor, true)
+    end
     if avatar_hash
       #p '--get_avatar_icon [its_blob, avatar_hash]='+[its_blob, avatar_hash].inspect
       proto = 'icon'

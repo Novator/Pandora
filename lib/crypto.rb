@@ -224,7 +224,7 @@ module PandoraCrypto
                 data = nil
               end
             else
-              PandoraUtils.log_message(LM_Warning, _('Bad data encrypted on key'))
+              PandoraUI.log_message(PandoraUI::LM_Warning, _('Bad data encrypted on key'))
               data = nil
             end
           end
@@ -1112,7 +1112,7 @@ module PandoraCrypto
           values['panhash'] = panhash
           res = sign_model.update(values, nil, nil)
         else
-          PandoraUtils.log_message(LM_Warning, _('Cannot create sign')+' ['+\
+          PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot create sign')+' ['+\
             panobject.show_panhash(obj_hash)+']')
         end
       end
@@ -1275,7 +1275,8 @@ module PandoraCrypto
           key_vec = 0
         end
       else
-        PandoraUtils.log_message(LM_Warning, _('Achieved limit of opened keys')+': '+$open_keys.size.to_s)
+        PandoraUI.log_message(PandoraUI::LM_Warning, \
+          _('Achieved limit of opened keys')+': '+$open_keys.size.to_s)
       end
     else
       key_vec = panhash
