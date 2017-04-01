@@ -24,6 +24,7 @@ $lang = 'en'
 $autodetect_lang = true
 $pandora_parameters = []
 $cui_mode = false
+$screen_mode = false
 
 # Paths and files
 # RU: Пути и файлы
@@ -118,6 +119,9 @@ while (ARGVdup.size>0) or next_arg
       $poly_launch = true
     when '-c','--cui', '--console'
       $cui_mode = true
+    when '-s','--screen'
+      $cui_mode = true
+      $screen_mode = true
     when '--shell', '--help', '/?', '-?'
       runit = '  '
       if arg=='--shell' then

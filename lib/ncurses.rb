@@ -308,6 +308,9 @@ module PandoraCui
         stdscr.addstr('H')
         stdscr.attroff(Ncurses.color_pair(7) | Ncurses::A_BOLD)
         stdscr.attron(Ncurses.color_pair(0))
+        if $screen_mode or ENV['STY'] or (ENV['TERM']=='screen')
+          stdscr.addstr(' | Ctrl+A,D')
+        end
       else
         stdscr.addstr('Screen is too small')
       end

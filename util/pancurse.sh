@@ -40,6 +40,6 @@ cd "$CURDIR/.."
 #Resume or run screen session
 screen -x "pancurse"
 if [ "$?" != "0" ]; then
-  screen -S "pancurse" $RUBY ./pandora.rb --cui
+  screen -S "pancurse" $RUBY ./pandora.rb --screen
 fi
 

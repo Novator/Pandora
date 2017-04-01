@@ -116,6 +116,18 @@ case "$PARAMS" in
     sudo apt-get -y install ruby gstreamer0.10-ffmpeg gstreamer0.10-x openssl rubygems
     sudo gem install sqlite3 gtk2 gstreamer openssl
     ;;
+  screen|--screen|-s)
+    cd "$CURDIR"
+    SCREEN=`which screen`
+    if [ "$SCREEN" = "" ]; then
+      $RUBY ./pandora.rb --cui
+    else
+      $SCREEN -x "pancurse"
+      if [ "$?" != "0" ]; then
+        $SCREEN -S "pancurse" $RUBY ./pandora.rb $@
+      fi
+    fi
+    ;;
   *)
     cd "$CURDIR"
     $RUBY ./pandora.rb $@

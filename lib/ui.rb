@@ -396,7 +396,7 @@ module PandoraUI
         end
         if new_size
           PandoraUtils.set_param('last_check', Time.now)
-          p 'Size diff: '+[new_size, curr_size].inspect
+          #p 'Size diff: '+[new_size, curr_size].inspect
           if (new_size == curr_size)
             http = nil
             step = 254
@@ -652,8 +652,15 @@ module PandoraUI
     @pool = PandoraNet::Pool.new
     $pool = @pool
 
+    if $screen_mode
+      PandoraUI.log_message(PandoraUI::LM_Info, \
+        _('Use hot keys for screen:'+"\n"+'Ctrl+A,D - detach, Ctrl+A,K - kill, "screen -r" to resume)'))
+    end
+
     if @do_on_start and (@do_on_start > 0)
-      dialog_timer = GLib::Timeout.add(400) do
+      #dialog_timer = GLib::Timeout.add(400) do
+      Thread.new do
+        sleep(0.4)
         key = PandoraCrypto.current_key(false, true)
         if ((@do_on_start & 2) != 0) and key
           PandoraNet.start_or_stop_listen(true)
