@@ -39,39 +39,49 @@ $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database 
 $pandora_files_dir = File.join($pandora_app_dir, 'files')      # Files directory
 $pandora_doc_dir = File.join($pandora_app_dir, 'doc')          # Doc directory
 
-# Check Ruby version and init ASCII string class
-# RU: Проверить версию Ruby и объявить класс ASCII-строки
+# Check Ruby version
+# RU: Проверить версию Ruby
 if RUBY_VERSION<'1.9'
   puts 'Pandora requires Ruby1.9 or higher - current '+RUBY_VERSION
-  exit(10)
-else
-  class AsciiString < String
-    def initialize(str=nil)
-      if str == nil
-        super('')
-      else
-        super(str)
-      end
-      force_encoding('ASCII-8BIT')
-    end
-  end
-  class Utf8String < String
-    def initialize(str=nil)
-      if str.is_a? String
-        super(str)
-      elsif str.is_a? Numeric
-        super(str.to_s)
-      elsif str.nil?
-        super('')
-      else
-        super(str.inspect)
-      end
-      force_encoding('UTF-8')
-    end
-  end
-  Encoding.default_external = 'UTF-8'
-  Encoding.default_internal = 'UTF-8' #BINARY ASCII-8BIT UTF-8
+  Kernel.exit(10)
 end
+
+# Init ASCII string for binary data
+# RU: Объявить ASCII-строку для бинарных данных
+class AsciiString < String
+  def initialize(str=nil)
+    if str == nil
+      super('')
+    else
+      super(str)
+    end
+    force_encoding('ASCII-8BIT')
+  end
+end
+
+# Init UTF8 string for human strings
+# RU: Объявить UTF8-строку для человечьих строк
+class Utf8String < String
+  def initialize(str=nil)
+    if str.is_a? String
+      super(str)
+    elsif str.is_a? Numeric
+      super(str.to_s)
+    elsif str.nil?
+      super('')
+    else
+      super(str.inspect)
+    end
+    force_encoding('UTF-8')
+  end
+end
+
+# Some global settings
+# RU: Некоторые глобальные настройки
+Encoding.default_external = 'UTF-8'
+Encoding.default_internal = 'UTF-8'
+BasicSocket.do_not_reverse_lookup = true
+Thread.abort_on_exception = true
 
 # Expand the arguments of command line
 # RU: Разобрать аргументы командной строки
@@ -140,6 +150,7 @@ while (ARGVdup.size>0) or next_arg
   val = nil
 end
 
+# Pandora Unix Socket file and its handler
 PANDORA_USOCK = '/tmp/pandora_unix_socket'
 $pserver = nil
 
@@ -418,20 +429,15 @@ if $autodetect_lang
   end
 end
 
+#Forced language setting
 #$lang = 'ua'
-
-# Some settings
-# RU: Некоторые настройки
-BasicSocket.do_not_reverse_lookup = true
-Thread.abort_on_exception = true
 
 # === Running the Pandora!
 # === RU: Запуск Пандоры!
 PandoraUtils.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
 PandoraUtils.detect_mp3_player
-$base_id = PandoraUtils.get_param('base_id')
-
+PandoraUtils.init_base_id
 PandoraUI.init_user_interface_and_network($cui_mode)
 
 # Free unix-socket on exit

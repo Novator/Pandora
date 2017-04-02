@@ -431,14 +431,17 @@ module PandoraModel
   # RU: Сохранить запись
   def self.save_record(kind, lang, values, models=nil, require_panhash=nil, support=:auto)
     res = false
+    inside_panhash = values['panhash']
+    inside_panhash ||= values[:panhash]
+    if (inside_panhash.is_a? String) and (inside_panhash.size>2)
+      require_panhash ||= inside_panhash
+      kind ||= inside_panhash[0].ord
+      lang ||= inside_panhash[1].ord
+    end
     #p '=======save_record  [kind, lang, values]='+[kind, lang, values].inspect
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
     ider = panobjectclass.ider
     model = PandoraUtils.get_model(ider, models)
-    if not require_panhash
-      require_panhash = values['panhash']
-      require_panhash ||= values[:panhash]
-    end
     panhash = model.calc_panhash(values, lang)
     #p 'panhash='+panhash.inspect
     if (not require_panhash) or (panhash==require_panhash)
@@ -535,12 +538,14 @@ module PandoraModel
         PandoraUtils.bytes_to_hex(require_panhash))
       res = nil
     end
+    res = panhash if res
     res
   end
 
   # Save records from PSON array
   # RU: Сохранить записи из массива PSON
   def self.save_records(records, models=nil, support=:auto)
+    res = true
     if records.is_a? Array
       records.each do |record|
         kind = record[0].ord
@@ -548,9 +553,11 @@ module PandoraModel
         values = PandoraUtils.namepson_to_hash(record[2..-1])
         if not PandoraModel.save_record(kind, lang, values, models, nil, support)
           PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot write a record')+' 2')
+          res = false
         end
       end
     end
+    res
   end
 
   # Get panhash list of needed records from offer

@@ -149,14 +149,69 @@ module PandoraCui
   def self.set_status_field(index, text, enabled, toggle)
     self.add_mes_to_log_win('set_status_field: '+[index, text, \
       enabled, toggle].inspect, true)
+    case index
+      when PandoraUI::SF_Auth
+        @auth_text = text
+    end
+    self.show_status_bar
   end
 
   def self.correct_lis_btn_state
     self.add_mes_to_log_win('correct_lis_btn_state', true)
+    self.show_status_bar
   end
 
   def self.correct_hunt_btn_state
     self.add_mes_to_log_win('correct_hunt_btn_state', true)
+    self.show_status_bar
+  end
+
+  # Create person "Ncurses Robot"
+  def self.create_ncurses_robot_person
+    values = {'first_name'=>'Ncurses', 'last_name'=>'Robot'}
+    lang = PandoraModel.text_to_lang('en')
+    res = PandoraModel.save_record(PandoraModel::PK_Person, lang, values)
+  end
+
+  # Ask user and password for key pair generation
+  # RU: Запросить пользователя и пароль для генерации ключевой пары
+  def self.ask_user_and_password(rights=nil)
+    res = nil
+    creator = self.create_ncurses_robot_person
+    password = ''
+    rights ||= (PandoraCrypto::KS_Exchange | PandoraCrypto::KS_Voucher)
+    yield(creator, password, rights) if block_given?
+    res
+  end
+
+  # Ask key and password for authorization
+  # RU: Запросить ключ и пароль для авторизации
+  def self.ask_key_and_password(alast_auth_key=nil)
+    res = nil
+    key_hash = alast_auth_key
+    password = ''
+    change_pass = false
+    new_pass = nil
+    yield(key_hash, password, 1, change_pass, new_pass) if block_given?
+    res
+  end
+
+  def self.show_dialog(mes, do_if_ok=true)
+    res = nil
+    self.add_mes_to_log_win('show_dialog: '+mes, true)
+    ok_pressed = true
+    yield(ok_pressed) if block_given?
+    res
+  end
+
+  # Showing panobject list
+  # RU: Показ списка панобъектов
+  def self.show_panobject_list(panobject_class, widget=nil, page_sw=nil, \
+  auto_create=false, fix_filter=nil)
+    res = nil
+    self.add_mes_to_log_win('show_panobject_list: '+[panobject_class, widget, \
+      page_sw, auto_create, fix_filter].inspect, true)
+    res
   end
 
   def self.show_cabinet(panhash, session, conntype, node_id, models, \
@@ -224,10 +279,69 @@ module PandoraCui
   CPI_Radar    = 1
   CPI_Base     = 2
   CPI_Find     = 3
+  CPI_Quit     = 4
+  CPI_Auth     = 5
+  CPI_Listen   = 6
+  CPI_Hunt     = 7
 
   LeftTitles = ['Status', 'Radar', 'Base', 'Find']
   RightTitles = ['Log', 'Dialog', 'Record', 'Parameters']
   PanelEdges = []
+
+  def self.show_status_bar
+    edge = PanelEdges[CPI_Quit]
+    if edge and (edge>0) and $pool
+      edge += 2
+      $pool.mutex.synchronize do
+        stdscr = Ncurses.stdscr
+        authorized = PandoraCrypto.authorized?
+        listening = PandoraNet.listen?
+        hunting = PandoraNet.hunting?
+        stdscr.move(Ncurses.lines - 1, edge)
+        stdscr.addstr(' '*(Ncurses.cols-edge))
+        if authorized
+          stdscr.attron(Ncurses.color_pair(5) | Ncurses::A_BOLD)
+        end
+        stdscr.move(Ncurses.lines - 1, edge)
+        stdscr.addstr('U')
+        stdscr.attron(Ncurses.color_pair(0))
+        if @auth_text and (@auth_text.size>0)
+          stdscr.addstr(':'+@auth_text)
+          edge += (1+@auth_text.size)
+        end
+        if authorized
+          stdscr.attroff(Ncurses.color_pair(5) | Ncurses::A_BOLD)
+        end
+        stdscr.addstr(' ')
+        edge += 2
+        PanelEdges[CPI_Auth] = edge
+        if listening
+          stdscr.attron(Ncurses.color_pair(6) | Ncurses::A_BOLD)
+        end
+        stdscr.addstr('L')
+        if listening
+          stdscr.attroff(Ncurses.color_pair(6) | Ncurses::A_BOLD)
+        end
+        stdscr.attron(Ncurses.color_pair(0))
+        stdscr.addstr(' ')
+        edge += 2
+        PanelEdges[CPI_Listen] = edge
+        if hunting
+          stdscr.attron(Ncurses.color_pair(7) | Ncurses::A_BOLD)
+        end
+        stdscr.addstr('H')
+        if hunting
+          stdscr.attroff(Ncurses.color_pair(7) | Ncurses::A_BOLD)
+        end
+        stdscr.attron(Ncurses.color_pair(0))
+        edge += 2
+        PanelEdges[CPI_Hunt] = edge
+        if PandoraUI.runned_via_screen
+          stdscr.addstr(' | Ctrl+A,D')
+        end
+      end
+    end
+  end
 
   def self.recreate_windows(page=nil)
     self.cur_page = page if page
@@ -254,7 +368,10 @@ module PandoraCui
       @left_width = left_width
       @win_height = win_height
 
-      if (left_width+7 < Ncurses.cols) and (win_height>3)
+      min_width = left_width+7
+      edge = PanelEdges[CPI_Hunt]
+      min_width = edge if edge and (edge>min_width)
+      if (min_width < Ncurses.cols) and (win_height>3)
         color = Ncurses.color_pair(self.cur_page+1)
         left_win = create_win(win_height, left_width, 0, 0, CWI_LeftBox, \
           LeftTitles[self.cur_page], color, self.act_panel==0)
@@ -288,29 +405,13 @@ module PandoraCui
           edge += title.size+1
           PanelEdges[ind] = edge
         end
-        PanelEdges[CPI_Find+1] = edge + 5
+        PanelEdges[CPI_Quit] = edge + 5
         #right_win.addstr(PanelEdges.inspect+ "\n")
         stdscr.attron(Ncurses::A_BOLD)
         stdscr.addstr('Q')
         stdscr.attroff(Ncurses::A_BOLD)
         stdscr.addstr('uit | ')
-        stdscr.attron(Ncurses.color_pair(5) | Ncurses::A_BOLD)
-        stdscr.addstr('A')
-        stdscr.attroff(Ncurses.color_pair(5) | Ncurses::A_BOLD)
-        stdscr.attron(Ncurses.color_pair(0))
-        stdscr.addstr(' ')
-        stdscr.attron(Ncurses.color_pair(6) | Ncurses::A_BOLD)
-        stdscr.addstr('L')
-        stdscr.attroff(Ncurses.color_pair(6) | Ncurses::A_BOLD)
-        stdscr.attron(Ncurses.color_pair(0))
-        stdscr.addstr(' ')
-        stdscr.attron(Ncurses.color_pair(7) | Ncurses::A_BOLD)
-        stdscr.addstr('H')
-        stdscr.attroff(Ncurses.color_pair(7) | Ncurses::A_BOLD)
-        stdscr.attron(Ncurses.color_pair(0))
-        if $screen_mode or ENV['STY'] or (ENV['TERM']=='screen')
-          stdscr.addstr(' | Ctrl+A,D')
-        end
+        self.show_status_bar
       else
         stdscr.addstr('Screen is too small')
       end
@@ -395,7 +496,7 @@ module PandoraCui
               end
               is_resized = true
               break
-            when 1   #A
+            when 21  #U
               PandoraUI.do_menu_act('Authorize')
             when 12  #L
               PandoraUI.do_menu_act('Listen')
@@ -415,30 +516,34 @@ module PandoraCui
                     is_resized = true
                     break
                   else
-                    quit_edge = PanelEdges[-1]
-                    if (x >= quit_edge)
-                      p = x - quit_edge
-                      if p==2
-                        stdscr.mvaddstr(win_height, x, 'A')
-                      elsif p==4
-                        stdscr.mvaddstr(win_height, x, 'L')
-                      elsif p==6
-                        stdscr.mvaddstr(win_height, x, 'H')
-                      else
-                        stdscr.mvaddstr(Ncurses.lines - 3, 50, p.inspect+'  ')
-                        stdscr.refresh
-                        sleep 0.5
+                    ind = nil
+                    PanelEdges.count.times do |i|
+                      if x < PanelEdges[i]
+                        ind = i
+                        break
                       end
-                    else
-                      (PanelEdges.count-1).times do |i|
-                        ed = PanelEdges[i]
-                        if x < ed
-                          self.cur_page = i
+                    end
+                    if ind
+                      if ind <= CPI_Quit
+                        if ind < CPI_Quit
+                          self.cur_page = ind
                           is_resized = true
-                          break
+                        end
+                        break
+                      else
+                        case ind
+                          when CPI_Auth
+                            PandoraUI.do_menu_act('Authorize')
+                          when CPI_Listen
+                            PandoraUI.do_menu_act('Listen')
+                          when CPI_Hunt
+                            PandoraUI.do_menu_act('Hunt')
                         end
                       end
-                      break
+                    else
+                      stdscr.mvaddstr(Ncurses.lines - 3, 50, p.inspect+'  ')
+                      stdscr.refresh
+                      sleep 0.5
                     end
                   end
                 else
@@ -455,7 +560,7 @@ module PandoraCui
             when Ncurses::KEY_F10, 7000, 7032, 1823111, 1822887, 17
               PandoraUI.do_menu_act('Quit')
             else
-              Ncurses.curs_set(1)
+              #Ncurses.curs_set(1)
           end
         end
       end

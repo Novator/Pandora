@@ -572,7 +572,13 @@ module PandoraUtils
     res
   end
 
-  # Obtain date value from string
+  # Convert Ruby 4-byte data-time to Pandora 3-byte date
+  # RU: Преобразует 4х-байтную руби-дату в 3х-байтную пандорскую
+  def self.date_to_date3(date)
+    res = date.to_i / (24*60*60)   #obtain days, drop hours and seconds
+    res += (1970-1900)*365         #mesure data from 1900
+  end
+
   # RU: Извлекает дату из строки
   def self.str_to_date(str)
     res = nil
@@ -2625,15 +2631,16 @@ module PandoraUtils
           res = fval
         elsif hfor == 'date'
           res = 0
-          if fval.is_a? Integer
+          if fval.is_a?(Time)
+            res = fval
+          elsif fval.is_a?(Integer)
             res = Time.at(fval)
-          else
+          elsif fval.is_a?(String)
             res = Time.parse(fval)
           end
-          res = res.to_i / (24*60*60)   #obtain days, drop hours and seconds
-          res += (1970-1900)*365   #mesure data from 1900
+          res = PandoraUtils.date_to_date3(res)
         else
-          if fval.is_a? Integer
+          if fval.is_a?(Integer)
             fval = PandoraUtils.bigint_to_bytes(fval)
           elsif fval.is_a? Float
             fval = fval.to_s
@@ -2983,6 +2990,12 @@ module PandoraUtils
       res = param_model.update(value, nil, 'id='+id.to_s)
     end
     res
+  end
+
+  # Initialize ID of database
+  # RU: Инициализировать ID базы данных
+  def self.init_base_id
+    $base_id = PandoraUtils.get_param('base_id')
   end
 
   # Round queue buffer
@@ -3410,8 +3423,7 @@ module PandoraUtils
   # RU: Проиграть mp3
   def self.play_mp3(filename, path=nil, anyway=nil)
     if ($poly_play or (not $play_thread)) and (anyway \
-    or ($statusicon and (not $statusicon.destroyed?) \
-    and $statusicon.play_sounds and (filename.is_a? String) and (filename.size>0)))
+    or (PandoraUI.play_sounds? and (filename.is_a? String) and (filename.size>0)))
       $play_thread = Thread.new do
         begin
           path ||= $pandora_view_dir

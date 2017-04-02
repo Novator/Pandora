@@ -1153,7 +1153,8 @@ try:
     pool.start()
     print('Pool thread is active...')
     print('Press Q to stop and quit.')
-    print('(screen: Ctrl+A,D - detach, Ctrl+A,K - kill, "screen -r" to resume)')
+    if (os.environ['TERM']=='screen'):
+      print('(screen: Ctrl+A,D - detach, Ctrl+A,K - kill, "screen -r" to resume)')
     working = True
     while working:
       time.sleep(0.5)  # prevent overload cpu

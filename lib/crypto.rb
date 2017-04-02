@@ -765,104 +765,18 @@ module PandoraCrypto
           key_vec, cipher = read_key_and_set_pass(last_auth_key, passwd, key_model)
           #p '[key_vec, cipher]='+[key_vec, cipher].inspect
           if (not key_vec) or (not cipher) or (cipher != 0) or (not $first_key_init)
-            dialog = PandoraGtk::AdvancedDialog.new(_('Key init'))
-            dialog.set_default_size(420, 190)
-            dialog.icon = $window.get_preset_icon('auth')
-
-            vbox = Gtk::VBox.new
-            dialog.viewport.add(vbox)
-
-            label = Gtk::Label.new(_('Key'))
-            vbox.pack_start(label, false, false, 2)
-            key_entry = PandoraGtk::PanhashBox.new('Panhash(Key)')
-            key_entry.text = PandoraUtils.bytes_to_hex(last_auth_key)
-            #key_entry.editable = false
-
-            vbox.pack_start(key_entry, false, false, 2)
-
-            label = Gtk::Label.new(_('Password'))
-            vbox.pack_start(label, false, false, 2)
-            pass_entry = Gtk::Entry.new
-            pass_entry.visibility = false
-
-            dialog_timer = nil
-            key_entry.entry.signal_connect('changed') do |widget, event|
-              if dialog_timer.nil?
-                dialog_timer = GLib::Timeout.add(1000) do
-                  if not key_entry.destroyed?
-                    panhash2 = PandoraModel.hex_to_panhash(key_entry.text)
-                    key_vec2, cipher = read_key_and_set_pass(panhash2, \
-                      passwd, key_model)
-                    nopass = ((not cipher) or (cipher == 0))
-                    PandoraGtk.set_readonly(pass_entry, nopass)
-                    pass_entry.grab_focus if not nopass
-                    dialog_timer = nil
-                  end
-                  false
-                end
-              end
-              false
-            end
-
-            nopass = ((not cipher) or (cipher == 0))
-            PandoraGtk.set_readonly(pass_entry, nopass)
-            pass_entry.width_request = 200
-            align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
-            align.add(pass_entry)
-            vbox.pack_start(align, false, false, 2)
-
-            new_label = nil
-            new_pass_entry = nil
-            new_align = nil
-
-            if key_entry.text == ''
-              dialog.def_widget = key_entry.entry
-            else
-              dialog.def_widget = pass_entry
-            end
-
-            changebtn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::EDIT)
-            changebtn.tooltip_text = _('Change password')
-            changebtn.safe_signal_clicked do |*args|
-              if not new_label
-                new_label = Gtk::Label.new(_('New password'))
-                vbox.pack_start(new_label, false, false, 2)
-                new_pass_entry = Gtk::Entry.new
-                new_pass_entry.width_request = 200
-                new_align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
-                new_align.add(new_pass_entry)
-                vbox.pack_start(new_align, false, false, 2)
-                new_align.show_all
-              end
-              new_label.visible = changebtn.active?
-              new_align.visible = changebtn.active?
-              if changebtn.active?
-                #dialog.set_size_request(420, 250)
-                dialog.resize(420, 240)
-              else
-                dialog.resize(420, 190)
-              end
-            end
-            dialog.hbox.pack_start(changebtn, false, false, 0)
-
-            gen_button = Gtk::ToolButton.new(Gtk::Stock::ADD, _('New'))  #:NEW
-            gen_button.tooltip_text = _('Generate new key pair')
-            #gen_button.width_request = 110
-            gen_button.signal_connect('clicked') { |*args| dialog.response=3 }
-            dialog.hbox.pack_start(gen_button, false, false, 0)
-
             key_vec0 = key_vec
             key_vec = nil
-            dialog.run2 do
-              if (dialog.response == 3)
+            PandoraUI.ask_key_and_password(last_auth_key) do |key_hash, passwd, \
+            aresponse, change_pass, new_pass|
+              if (aresponse == 3)
                 getting = true
               else
                 key_vec = key_vec0
-                panhash = PandoraModel.hex_to_panhash(key_entry.text)
-                passwd = pass_entry.text
-                if changebtn.active? and new_pass_entry
-                  key_vec, cipher, passwd = recrypt_key(key_model, key_vec, cipher, panhash, \
-                    passwd, new_pass_entry.text)
+                panhash = key_hash
+                if change_pass and new_pass
+                  key_vec, cipher, passwd = recrypt_key(key_model, key_vec, cipher, \
+                    panhash, passwd, new_pass)
                 end
                 #p '-------------key_vec='+key_vec.inspect
                 if (last_auth_key != panhash) or (not key_vec)
@@ -882,85 +796,19 @@ module PandoraCrypto
         end
         if (not key_vec) and getting
           getting = false
-          dialog = PandoraGtk::AdvancedDialog.new(_('Key generation'))
-          dialog.set_default_size(420, 250)
-          dialog.icon = $window.get_preset_icon('key')
-
-          vbox = Gtk::VBox.new
-          dialog.viewport.add(vbox)
-
-          #creator = PandoraUtils.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
-          label = Gtk::Label.new(_('Person panhash'))
-          vbox.pack_start(label, false, false, 2)
-          user_entry = PandoraGtk::PanhashBox.new('Panhash(Person)')
-          #user_entry.text = PandoraUtils.bytes_to_hex(creator)
-          vbox.pack_start(user_entry, false, false, 2)
-
-          rights = KS_Exchange | KS_Voucher
-          label = Gtk::Label.new(_('Key credentials'))
-          vbox.pack_start(label, false, false, 2)
-
-          hbox = Gtk::HBox.new
-
-          voucher_btn = Gtk::CheckButton.new(_('voucher'), true)
-          voucher_btn.active = ((rights & KS_Voucher)>0)
-          hbox.pack_start(voucher_btn, true, true, 2)
-
-          exchange_btn = Gtk::CheckButton.new(_('exchange'), true)
-          exchange_btn.active = ((rights & KS_Exchange)>0)
-          hbox.pack_start(exchange_btn, true, true, 2)
-
-          robotic_btn = Gtk::CheckButton.new(_('robotic'), true)
-          robotic_btn.active = ((rights & KS_Robotic)>0)
-          hbox.pack_start(robotic_btn, true, true, 2)
-
-          vbox.pack_start(hbox, false, false, 2)
-
-          label = Gtk::Label.new(_('Password')+' ('+_('optional')+')')
-          vbox.pack_start(label, false, false, 2)
-          pass_entry = Gtk::Entry.new
-          pass_entry.width_request = 250
-          align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
-          align.add(pass_entry)
-          vbox.pack_start(align, false, false, 2)
-          #vbox.pack_start(pass_entry, false, false, 2)
-
-          agree_btn = Gtk::CheckButton.new(_('I agree to publish the person name'), true)
-          agree_btn.active = true
-          agree_btn.signal_connect('clicked') do |widget|
-            dialog.okbutton.sensitive = widget.active?
-          end
-          vbox.pack_start(agree_btn, false, false, 2)
-
-          dialog.def_widget = user_entry.entry
-
-          dialog.run2 do
-            creator = PandoraUtils.hex_to_bytes(user_entry.text)
-            if creator.size==PandoraModel::PanhashSize
-              #cipher_hash = encode_cipher_and_hash(KT_Bf, KH_Sha2 | KL_bit256)
-              passwd = pass_entry.text
-              cipher_hash = 0
-              if passwd and (passwd.size>0)
-                cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
-              end
-
-              rights = 0
-              rights = (rights | KS_Exchange) if exchange_btn.active?
-              rights = (rights | KS_Voucher) if voucher_btn.active?
-              rights = (rights | KS_Robotic) if robotic_btn.active?
-
-              #p 'cipher_hash='+cipher_hash.to_s
-              type_klen = KT_Rsa | KL_bit2048
-
-              key_vec = generate_key(type_klen, cipher_hash, passwd)
-              panhash = save_key(key_vec, creator, rights, key_model)
-              last_auth_key = panhash if panhash
-            else
-              dialog = PandoraGtk::GoodMessageDialog.new(_('Panhash must consist of 44 symbols'))
-              dialog.run_and_do do
-                PandoraGtk.show_panobject_list(PandoraModel::Person, nil, nil, true)
-              end
+          PandoraUI.ask_user_and_password do |creator, passwd, rights|
+            #PandoraUI.log_message(PandoraUI::LM_Warning, '[creator, passwd, rights]='+[creator, passwd, rights].inspect)
+            cipher_hash = 0
+            if passwd and (passwd.size>0)
+              cipher_hash = encode_cipher_and_hash(KT_Aes | KL_bit256, KH_Sha2 | KL_bit256)
             end
+
+            #p 'cipher_hash='+cipher_hash.to_s
+            type_klen = (KT_Rsa | KL_bit2048)
+
+            key_vec = generate_key(type_klen, cipher_hash, passwd)
+            panhash = save_key(key_vec, creator, rights, key_model)
+            last_auth_key = panhash if panhash
           end
         end
         if key_vec and (key_vec != [])
@@ -997,6 +845,14 @@ module PandoraCrypto
       end
     end
     key_vec
+  end
+
+  def self.authorized?
+    res = false
+    if PandoraCrypto.current_key(false, false)
+      res = true
+    end
+    res
   end
 
   # Get panhash of current user or key

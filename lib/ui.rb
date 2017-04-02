@@ -644,6 +644,21 @@ module PandoraUI
     @title_view
   end
 
+  def self.auth_listen_hunt
+    key = PandoraCrypto.current_key(false, true)
+    if ((@do_on_start & 2) != 0) and key
+      PandoraNet.start_or_stop_listen(true)
+    end
+    if ((@do_on_start & 4) != 0) and key and (not $hunter_thread)
+      PandoraNet.start_or_stop_hunt(true, 2)
+    end
+    @do_on_start = 0
+  end
+
+  def self.runned_via_screen
+    res = ($screen_mode or ENV['STY'] or (ENV['TERM']=='screen'))
+  end
+
   def self.do_after_start
     @do_on_start = PandoraUtils.get_param('do_on_start')
     @title_view = PandoraUtils.get_param('title_view')
@@ -652,24 +667,22 @@ module PandoraUI
     @pool = PandoraNet::Pool.new
     $pool = @pool
 
-    if $screen_mode
+    if PandoraUI.runned_via_screen
       PandoraUI.log_message(PandoraUI::LM_Info, \
         _('Use hot keys for screen:'+"\n"+'Ctrl+A,D - detach, Ctrl+A,K - kill, "screen -r" to resume)'))
     end
 
     if @do_on_start and (@do_on_start > 0)
-      #dialog_timer = GLib::Timeout.add(400) do
-      Thread.new do
-        sleep(0.4)
-        key = PandoraCrypto.current_key(false, true)
-        if ((@do_on_start & 2) != 0) and key
-          PandoraNet.start_or_stop_listen(true)
+      if $ncurses_is_active
+        Thread.new do
+          sleep(0.4)
+          auth_listen_hunt
         end
-        if ((@do_on_start & 4) != 0) and key and (not $hunter_thread)
-          PandoraNet.start_or_stop_hunt(true, 2)
+      elsif $gtk_is_active
+        dialog_timer = GLib::Timeout.add(400) do
+          auth_listen_hunt
+          false
         end
-        @do_on_start = 0
-        false
       end
     end
 
@@ -701,10 +714,26 @@ module PandoraUI
     end
   end
 
+  def self.play_sounds
+    @play_sounds
+  end
+
+  # Do need play sounds?
+  # RU: Нужно ли играть звуки?
+  def self.play_sounds?
+    #res = @play_sounds
+    res = false
+    if $gtk_is_active and $statusicon and (not $statusicon.destroyed?)
+      res = $statusicon.play_sounds
+    end
+    res
+  end
+
   # Init user interface and network
   # RU: Инициилизировать интерфейс пользователя и сеть
   def self.init_user_interface_and_network(cui_mode)
     @hunter_count = @listener_count = @fisher_count = 0
+    @play_sounds = PandoraUtils.get_param('play_sounds')
     if cui_mode
       require_ncurses
       PandoraCui.do_main_loop do
@@ -929,14 +958,6 @@ module PandoraUI
             end
           end
         end
-      when 'Listen'
-        PandoraNet.start_or_stop_listen
-      when 'Hunt'
-        continue = false
-        if $gtk_is_active
-          continue = PandoraGtk.is_ctrl_shift_alt?(true, true)
-        end
-        PandoraNet.start_or_stop_hunt(continue)
       when 'Authorize'
         key = PandoraCrypto.current_key(false, false)
         if key
@@ -945,6 +966,14 @@ module PandoraUI
           $pool.close_all_session
         end
         key = PandoraCrypto.current_key(true)
+      when 'Listen'
+        PandoraNet.start_or_stop_listen
+      when 'Hunt'
+        continue = false
+        if $gtk_is_active
+          continue = PandoraGtk.is_ctrl_shift_alt?(true, true)
+        end
+        PandoraNet.start_or_stop_hunt(continue)
       when 'Wizard'
         if $gtk_is_active
           PandoraGtk.show_log_bar(80)
@@ -1098,6 +1127,55 @@ module PandoraUI
     res
   end
 
+  # Ask user and password for key pair generation
+  # RU: Запросить пользователя и пароль для генерации ключевой пары
+  def self.ask_user_and_password(rights=nil)
+    res = nil
+    if $ncurses_is_active
+      rights = (PandoraCrypto::KS_Exchange | PandoraCrypto::KS_Robotic)
+      PandoraCui.ask_user_and_password(rights) do |*args|
+        res = yield(*args) if block_given?
+      end
+    elsif $gtk_is_active
+      rights = (PandoraCrypto::KS_Exchange | PandoraCrypto::KS_Voucher)
+      PandoraGtk.ask_user_and_password(rights) do |*args|
+        res = yield(*args) if block_given?
+      end
+    end
+    res
+  end
+
+  # Ask key and password for authorization
+  # RU: Запросить ключ и пароль для авторизации
+  def self.ask_key_and_password(alast_auth_key=nil)
+    res = nil
+    if $ncurses_is_active
+      rights = (PandoraCrypto::KS_Exchange | PandoraCrypto::KS_Robotic)
+      PandoraCui.ask_key_and_password(alast_auth_key) do |*args|
+        res = yield(*args) if block_given?
+      end
+    elsif $gtk_is_active
+      rights = (PandoraCrypto::KS_Exchange | PandoraCrypto::KS_Voucher)
+      PandoraGtk.ask_key_and_password(alast_auth_key) do |*args|
+        res = yield(*args) if block_given?
+      end
+    end
+    res
+  end
+
+  def self.show_dialog(mes, do_if_ok=true)
+    res = nil
+    if $ncurses_is_active
+      res = PandoraCui.show_dialog(mes, do_if_ok) do |*args|
+        yield(*args) if block_given?
+      end
+    elsif $gtk_is_active
+      res = PandoraGtk.show_dialog(mes, do_if_ok) do |*args|
+        yield(*args) if block_given?
+      end
+    end
+    res
+  end
 
 end
 

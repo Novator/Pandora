@@ -5170,11 +5170,11 @@ module PandoraNet
     end
   end
 
-  $hunter_thread         = nil
+  $hunter_thread = nil
 
   # Is hunting?
   # RU: Идёт охота?
-  def self.is_hunting?
+  def self.hunting?
     res = ((not $hunter_thread.nil?) and $hunter_thread.alive? \
       and $hunter_thread[:active] and (not $hunter_thread[:paused]))
   end
@@ -5286,8 +5286,7 @@ module PandoraNet
           end
         else
           PandoraUI.correct_hunt_btn_state
-          dialog = PandoraGtk::GoodMessageDialog.new(_('Enter at least one node'))
-          dialog.run_and_do do
+          PandoraUI.show_dialog(_('Enter at least one node')) do
             PandoraUI.show_panobject_list(PandoraModel::Node, nil, nil, true)
           end
         end
@@ -5298,7 +5297,7 @@ module PandoraNet
     if (not $resume_harvest_time) \
     or (Time.now.to_i >= $resume_harvest_time + $resume_harvest_period*60)
       GLib::Timeout.add(900) do
-        if is_hunting?
+        if hunting?
           $resume_harvest_time = Time.now.to_i
           $pool.resume_harvest
         end

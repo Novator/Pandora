@@ -120,12 +120,19 @@ module PandoraGtk
       res = (self.run == Gtk::Dialog::RESPONSE_OK)
       if (res and do_if_ok) or ((not res) and (not do_if_ok))
         res = true
-        yield if block_given?
+        yield(res) if block_given?
       end
       self.destroy if not self.destroyed?
       res
     end
 
+  end
+
+  def self.show_dialog(mes, do_if_ok=true)
+    res = PandoraGtk::GoodMessageDialog.new(mes).run_and_do(do_if_ok) do |*args|
+      yield(*args) if block_given?
+    end
+    res
   end
 
   # Advanced dialog window
@@ -1880,7 +1887,7 @@ module PandoraGtk
             @types = @types.split(',')
             @types.each do |ptype|
               ptype.strip!
-              if PandoraModel.const_defined? ptype
+              if PandoraModel.const_defined?(ptype)
                 @panclasses << PandoraModel.const_get(ptype)
               end
             end
@@ -1893,7 +1900,7 @@ module PandoraGtk
             ptype = rec[1]
             ptype.strip!
             p '---ptype='+ptype.inspect
-            if PandoraModel.const_defined? ptype
+            if PandoraModel.const_defined?(ptype)
               @panclasses << PandoraModel.const_get(ptype)
             end
             if @panclasses.size>MaxPanhashTabs
@@ -4413,7 +4420,7 @@ module PandoraGtk
           operation.run(Gtk::PrintOperation::ACTION_PRINT_DIALOG, $window)
         end
       rescue
-        PandoraGtk::GoodMessageDialog.new($!.message).run_and_do
+        PandoraGtk.show_dialog($!.message)
       end
     end
 
@@ -5353,11 +5360,186 @@ module PandoraGtk
       rescue
       end
       lang = lg if lg
-      lang = 5 if (not lang.is_a? Integer) or (lang<0) or (lang>255)
+      if (not lang.is_a? Integer) or (lang<0) or (lang>255)
+        lang = PandoraModel.text_to_lang($lang)
+      end
 
       self.save_flds_with_form_flags(flds_hash, lang, created0)
     end
 
+  end
+
+  # Ask user and password for key pair generation
+  # RU: Запросить пользователя и пароль для генерации ключевой пары
+  def self.ask_user_and_password(rights=nil)
+    dialog = PandoraGtk::AdvancedDialog.new(_('Key generation'))
+    dialog.set_default_size(420, 250)
+    dialog.icon = $window.get_preset_icon('key')
+
+    vbox = Gtk::VBox.new
+    dialog.viewport.add(vbox)
+
+    #creator = PandoraUtils.bigint_to_bytes(0x01052ec783d34331de1d39006fc80000000000000000)
+    label = Gtk::Label.new(_('Person panhash'))
+    vbox.pack_start(label, false, false, 2)
+    user_entry = PandoraGtk::PanhashBox.new('Panhash(Person)')
+    #user_entry.text = PandoraUtils.bytes_to_hex(creator)
+    vbox.pack_start(user_entry, false, false, 2)
+
+    rights ||= (PandoraCrypto::KS_Exchange | PandoraCrypto::KS_Voucher)
+
+    label = Gtk::Label.new(_('Key credentials'))
+    vbox.pack_start(label, false, false, 2)
+
+    hbox = Gtk::HBox.new
+
+    voucher_btn = Gtk::CheckButton.new(_('voucher'), true)
+    voucher_btn.active = ((rights & PandoraCrypto::KS_Voucher)>0)
+    hbox.pack_start(voucher_btn, true, true, 2)
+
+    exchange_btn = Gtk::CheckButton.new(_('exchange'), true)
+    exchange_btn.active = ((rights & PandoraCrypto::KS_Exchange)>0)
+    hbox.pack_start(exchange_btn, true, true, 2)
+
+    robotic_btn = Gtk::CheckButton.new(_('robotic'), true)
+    robotic_btn.active = ((rights & PandoraCrypto::KS_Robotic)>0)
+    hbox.pack_start(robotic_btn, true, true, 2)
+
+    vbox.pack_start(hbox, false, false, 2)
+
+    label = Gtk::Label.new(_('Password')+' ('+_('optional')+')')
+    vbox.pack_start(label, false, false, 2)
+    pass_entry = Gtk::Entry.new
+    pass_entry.width_request = 250
+    align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+    align.add(pass_entry)
+    vbox.pack_start(align, false, false, 2)
+    #vbox.pack_start(pass_entry, false, false, 2)
+
+    agree_btn = Gtk::CheckButton.new(_('I agree to publish the person name'), true)
+    agree_btn.active = true
+    agree_btn.signal_connect('clicked') do |widget|
+      dialog.okbutton.sensitive = widget.active?
+    end
+    vbox.pack_start(agree_btn, false, false, 2)
+
+    dialog.def_widget = user_entry.entry
+
+    dialog.run2 do
+      creator = PandoraUtils.hex_to_bytes(user_entry.text)
+      if creator.size==PandoraModel::PanhashSize
+        rights = 0
+        rights = (rights | PandoraCrypto::KS_Exchange) if exchange_btn.active?
+        rights = (rights | PandoraCrypto::KS_Voucher) if voucher_btn.active?
+        rights = (rights | PandoraCrypto::KS_Robotic) if robotic_btn.active?
+        yield(creator, pass_entry.text, rights) if block_given?
+      else
+        PandoraGtk.show_dialog(_('Panhash must consist of 44 symbols')) do
+          PandoraGtk.show_panobject_list(PandoraModel::Person, nil, nil, true)
+        end
+      end
+    end
+  end
+
+  # Ask key and password for authorization
+  # RU: Запросить ключ и пароль для авторизации
+  def self.ask_key_and_password(alast_auth_key=nil)
+    dialog = PandoraGtk::AdvancedDialog.new(_('Key init'))
+    dialog.set_default_size(420, 190)
+    dialog.icon = $window.get_preset_icon('auth')
+
+    vbox = Gtk::VBox.new
+    dialog.viewport.add(vbox)
+
+    label = Gtk::Label.new(_('Key'))
+    vbox.pack_start(label, false, false, 2)
+    key_entry = PandoraGtk::PanhashBox.new('Panhash(Key)')
+    if alast_auth_key
+      key_entry.text = PandoraUtils.bytes_to_hex(alast_auth_key)
+    end
+    #key_entry.editable = false
+
+    vbox.pack_start(key_entry, false, false, 2)
+
+    label = Gtk::Label.new(_('Password'))
+    vbox.pack_start(label, false, false, 2)
+    pass_entry = Gtk::Entry.new
+    pass_entry.visibility = false
+
+    dialog_timer = nil
+    key_entry.entry.signal_connect('changed') do |widget, event|
+      if dialog_timer.nil?
+        dialog_timer = GLib::Timeout.add(1000) do
+          if not key_entry.destroyed?
+            panhash2 = PandoraModel.hex_to_panhash(key_entry.text)
+            key_vec2, cipher = read_key_and_set_pass(panhash2, \
+              passwd, key_model)
+            nopass = ((not cipher) or (cipher == 0))
+            PandoraGtk.set_readonly(pass_entry, nopass)
+            pass_entry.grab_focus if not nopass
+            dialog_timer = nil
+          end
+          false
+        end
+      end
+      false
+    end
+
+    nopass = ((not cipher) or (cipher == 0))
+    PandoraGtk.set_readonly(pass_entry, nopass)
+    pass_entry.width_request = 200
+    align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+    align.add(pass_entry)
+    vbox.pack_start(align, false, false, 2)
+
+    new_label = nil
+    new_pass_entry = nil
+    new_align = nil
+
+    if key_entry.text == ''
+      dialog.def_widget = key_entry.entry
+    else
+      dialog.def_widget = pass_entry
+    end
+
+    changebtn = PandoraGtk::SafeToggleToolButton.new(Gtk::Stock::EDIT)
+    changebtn.tooltip_text = _('Change password')
+    changebtn.safe_signal_clicked do |*args|
+      if not new_label
+        new_label = Gtk::Label.new(_('New password'))
+        vbox.pack_start(new_label, false, false, 2)
+        new_pass_entry = Gtk::Entry.new
+        new_pass_entry.width_request = 200
+        new_align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
+        new_align.add(new_pass_entry)
+        vbox.pack_start(new_align, false, false, 2)
+        new_align.show_all
+      end
+      new_label.visible = changebtn.active?
+      new_align.visible = changebtn.active?
+      if changebtn.active?
+        #dialog.set_size_request(420, 250)
+        dialog.resize(420, 240)
+      else
+        dialog.resize(420, 190)
+      end
+    end
+    dialog.hbox.pack_start(changebtn, false, false, 0)
+
+    gen_button = Gtk::ToolButton.new(Gtk::Stock::ADD, _('New'))  #:NEW
+    gen_button.tooltip_text = _('Generate new key pair')
+    #gen_button.width_request = 110
+    gen_button.signal_connect('clicked') { |*args| dialog.response=3 }
+    dialog.hbox.pack_start(gen_button, false, false, 0)
+
+    dialog.run2 do
+      aresponse = dialog.response
+      key_hash = PandoraModel.hex_to_panhash(key_entry.text)
+      if block_given?
+        yield(key_hash, pass_entry.text, aresponse, changebtn.active?, \
+          new_pass_entry.text)
+      end
+    end
   end
 
   # Dialog with enter fields
@@ -7496,7 +7678,7 @@ module PandoraGtk
       # RU: Устанавливает дескриптор окна
       def set_xid(area, sink)
         if (not area.destroyed?) and area.window and sink \
-        and (sink.class.method_defined? 'set_xwindow_id')
+        and (sink.class.method_defined?('set_xwindow_id'))
           win_id = nil
           if PandoraUtils.os_family=='windows'
             win_id = area.window.handle
@@ -8978,8 +9160,8 @@ module PandoraGtk
   # RU: Установить виджету режим только для чтения
   def self.set_readonly(widget, value=true, set_sensitive=true)
     value = (not value)
-    widget.editable = value if widget.class.method_defined? 'editable?'
-    widget.sensitive = value if set_sensitive and (widget.class.method_defined? 'sensitive?')
+    widget.editable = value if widget.class.method_defined?('editable?')
+    widget.sensitive = value if set_sensitive and (widget.class.method_defined?('sensitive?'))
     #widget.can_focus = value
     #widget.has_focus = value if widget.class.method_defined? 'has_focus?'
     #widget.can_focus = (not value) if widget.class.method_defined? 'can_focus?'
@@ -10613,7 +10795,7 @@ module PandoraGtk
   # Status icon
   # RU: Иконка в трее
   class PandoraStatusIcon < Gtk::StatusIcon
-    attr_accessor :main_icon, :play_sounds, :online, :hide_on_minimize, :message
+    attr_accessor :main_icon, :online, :play_sounds, :hide_on_minimize, :message
 
     # Create status icon
     # RU: Создает иконку в трее
@@ -11069,7 +11251,7 @@ module PandoraGtk
       tool_btn = $toggle_buttons[PandoraUI::SF_Hunt]
       #pushed = ((not $hunter_thread.nil?) and $hunter_thread[:active] \
       #  and (not $hunter_thread[:paused]))
-      pushed = PandoraNet.is_hunting?
+      pushed = PandoraNet.hunting?
       #p 'correct_hunt_btn_state: pushed='+[tool_btn, pushed, $hunter_thread, \
       #  $hunter_thread[:active], $hunter_thread[:paused]].inspect
       tool_btn.safe_set_active(pushed) if tool_btn.is_a? SafeToggleToolButton
@@ -11582,7 +11764,7 @@ module PandoraGtk
       ['Box', 'box:m', 'Boxes'],
       ['Event', 'event:m', 'Events'],
       ['-', nil, '-'],
-      ['Authorize', :auth, 'Authorize', '<control>O', :check], #Gtk::Stock::DIALOG_AUTHENTICATION
+      ['Authorize', :auth, 'Authorize', '<control>U', :check], #Gtk::Stock::DIALOG_AUTHENTICATION
       ['Listen', :listen, 'Listen', '<control>L', :check],  #Gtk::Stock::CONNECT
       ['Hunt', :hunt, 'Hunt', '<control>H', :check],   #Gtk::Stock::REFRESH
       ['Radar', :radar, 'Radar', '<control>R', :check],  #Gtk::Stock::GO_FORWARD
@@ -11915,7 +12097,6 @@ module PandoraGtk
       update_win_icon = PandoraUtils.get_param('status_update_win_icon')
       flash_on_new = PandoraUtils.get_param('status_flash_on_new')
       flash_interval = PandoraUtils.get_param('status_flash_interval')
-      play_sounds = PandoraUtils.get_param('play_sounds')
       hide_on_minimize = PandoraUtils.get_param('hide_on_minimize')
       hide_on_close = PandoraUtils.get_param('hide_on_close')
       mplayer = nil
@@ -11927,7 +12108,7 @@ module PandoraGtk
       $mp3_player = mplayer if ((mplayer.is_a? String) and (mplayer.size>0))
 
       $statusicon = PandoraGtk::PandoraStatusIcon.new(update_win_icon, flash_on_new, \
-        flash_interval, play_sounds, hide_on_minimize)
+        flash_interval, PandoraUI.play_sounds, hide_on_minimize)
 
       $window.signal_connect('delete-event') do |*args|
         if hide_on_close
