@@ -222,7 +222,16 @@ module PandoraCui
     res
   end
 
-  def self.fill_log_win
+  def self.fill_left_log_win
+    left_win = self.curse_windows[CWI_LeftArea]
+    left_win.mvaddstr(1, 1, 'Log')
+    left_win.mvaddstr(2, 1, 'User')
+    left_win.mvaddstr(3, 1, 'Listen')
+    left_win.mvaddstr(4, 1, 'Hunt')
+    left_win.mvaddstr(5, 1, 'Sessions')
+  end
+
+  def self.fill_right_log_win
     asize = LastLogMessages.size
     right_win = self.curse_windows[CWI_RightArea]
     num = @win_height-2
@@ -376,17 +385,12 @@ module PandoraCui
         left_win = create_win(win_height, left_width, 0, 0, CWI_LeftBox, \
           LeftTitles[self.cur_page], color, self.act_panel==0)
         left_win.keypad(true)
-
-        left_win.mvaddstr(1, 1, 'Auth')
-        left_win.mvaddstr(2, 1, 'Listen')
-        left_win.mvaddstr(3, 1, 'Hunt')
-
         right_win = create_win(win_height, Ncurses.cols - left_width, 0, left_width, \
           CWI_RightBox, RightTitles[self.cur_page], color, self.act_panel==1)
-
         case self.cur_page
           when CPI_Status
-            fill_log_win
+            fill_left_log_win
+            fill_right_log_win
         end
 
         stdscr.move(Ncurses.lines - 1, 0)
@@ -439,7 +443,7 @@ module PandoraCui
               break
           end
         else
-          stdscr.mvaddstr(Ncurses.lines - 3, 28, ch.inspect+'  ')
+          stdscr.mvaddstr(Ncurses.lines - 3, 28, '1:'+ch.inspect+'  ')
           stdscr.refresh
           if (ch==27)
             sleep 0.2
@@ -449,26 +453,26 @@ module PandoraCui
               chg = Ncurses.getch
               ch = (chg ^ (ch << 8))
             end
-            stdscr.mvaddstr(Ncurses.lines - 3, 28, ch.inspect+'-  ')
+            stdscr.mvaddstr(Ncurses.lines - 3, 28, '2:'+ch.inspect+'-  ')
             stdscr.refresh
           end
           case ch
             when Ncurses::KEY_RESIZE
               is_resized = true
               break
-            when Ncurses::KEY_F1, 19
+            when Ncurses::KEY_F1, Ncurses::KEY_F5, 19  #Ctrl+S
               self.cur_page = CPI_Status
               is_resized = true
               break
-            when Ncurses::KEY_F2, 18
+            when Ncurses::KEY_F2, Ncurses::KEY_F6, 18  #Ctrl+R
               self.cur_page = CPI_Radar
               is_resized = true
               break
-            when Ncurses::KEY_F3, 2
+            when Ncurses::KEY_F3, Ncurses::KEY_F7, 2  #Ctrl+B
               self.cur_page = CPI_Base
               is_resized = true
               break
-            when Ncurses::KEY_F4, 6
+            when Ncurses::KEY_F4, Ncurses::KEY_F8, 6  #Ctrl+F
               self.cur_page = CPI_Find
               is_resized = true
               break
@@ -488,11 +492,35 @@ module PandoraCui
               end
               is_resized = true
               break
-            when Ncurses::KEY_LEFT, Ncurses::KEY_RIGHT, 9, 353
+            when 9, 353   #Tab, Shift+Tab
               if self.act_panel>0
                 self.act_panel = 0
               else
                 self.act_panel = 1
+              end
+              is_resized = true
+              break
+            when Ncurses::KEY_RIGHT
+              if self.act_panel>0
+                if self.cur_page < CPI_Find
+                  self.cur_page += 1
+                else
+                  self.cur_page = 0
+                end
+              else
+                self.act_panel = 1
+              end
+              is_resized = true
+              break
+            when Ncurses::KEY_LEFT
+              if self.act_panel==0
+                if self.cur_page > 0
+                  self.cur_page -= 1
+                else
+                  self.cur_page = CPI_Find
+                end
+              else
+                self.act_panel = 0
               end
               is_resized = true
               break
@@ -557,7 +585,8 @@ module PandoraCui
               add_mes_to_log_win(('Just a log text '*8)+LastLogMessages.size.to_s, true)
               #right_win.addstr(right_win.methods.inspect+"\n")
               #right_win.noutrefresh
-            when Ncurses::KEY_F10, 7000, 7032, 1823111, 1822887, 17
+            when Ncurses::KEY_F10, 3, 17, 7000, 7032, 1823111, 1822887, 81, 113, \
+            153, 185   #Ctrl+C, Ctrl+Q, Alt+X, Alt+x, Alt+Ч, Alt+ч, Q, q, Й, й
               PandoraUI.do_menu_act('Quit')
             else
               #Ncurses.curs_set(1)

@@ -21,7 +21,7 @@ begin
   Gtk.init
   $gtk_is_active = true
 rescue Exception
-  Kernel.abort("Gtk cannot be activated.\nInstall packet 'ruby-gtk'")
+  puts("Gtk cannot be activated.\nInstall packet 'ruby-gtk'")
 end
 
 

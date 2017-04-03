@@ -735,14 +735,24 @@ module PandoraUI
     @hunter_count = @listener_count = @fisher_count = 0
     @play_sounds = PandoraUtils.get_param('play_sounds')
     if cui_mode
-      require_ncurses
-      PandoraCui.do_main_loop do
-        do_after_start
+      if require_ncurses
+        PandoraCui.do_main_loop do
+          do_after_start
+        end
       end
     else
-      require_gtk
-      PandoraGtk.do_main_loop do
-        do_after_start
+      if require_gtk
+        PandoraGtk.do_main_loop do
+          do_after_start
+        end
+      else
+        puts('Ncurses interface will be used...')
+        sleep(5)
+        if require_ncurses
+          PandoraCui.do_main_loop do
+            do_after_start
+          end
+        end
       end
     end
 
