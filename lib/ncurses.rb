@@ -56,6 +56,15 @@ rescue Exception
         def move(y, x)
           setpos(y, x)
         end
+        def mvhline(y, x, ch, num)
+          box(ch, ch)
+        end
+        def erase
+          clear
+        end
+        def getmaxx
+          maxx
+        end
       end
       def self.mousemask2(flags)
         mousemask(flags)
@@ -120,6 +129,10 @@ module PandoraCui
     @user_command
   end
 
+  def self.mutex
+    @mutex ||= Mutex.new
+  end
+
   MaxLogSize = 100
   LastLogMessages = []
 
@@ -128,18 +141,21 @@ module PandoraCui
       LastLogMessages.delete(0)
     end
     LastLogMessages << mes
-    if self.cui_inited and (self.cur_page == CPI_Status)
-      line = mes
-      line = "\n" + line if LastLogMessages.size>1
-      right_win = self.curse_windows[CWI_RightArea]
-      if right_win
-        $pool.mutex.synchronize do
-          right_win.addstr(line)
-          #right_win.addstr(right_win.methods.inspect+"\n")
-          if refresh
-            right_win.noutrefresh
-            Ncurses.doupdate  # update real screen
-            #Ncurses.refresh
+    if self.cui_inited and (self.cur_page == LMI_Status)
+      menu_pos = LeftWinMenuPos[self.cur_page]
+      if menu_pos and (menu_pos == RPI_Log)
+        line = mes
+        line = "\n" + line if LastLogMessages.size>1
+        right_win = self.curse_windows[CWI_RightArea]
+        if right_win
+          self.mutex.synchronize do
+            right_win.addstr(line)
+            #right_win.addstr(right_win.methods.inspect+"\n")
+            if refresh
+              right_win.noutrefresh
+              Ncurses.doupdate if refresh==2
+              #Ncurses.refresh
+            end
           end
         end
       end
@@ -148,22 +164,22 @@ module PandoraCui
 
   def self.set_status_field(index, text, enabled, toggle)
     self.add_mes_to_log_win('set_status_field: '+[index, text, \
-      enabled, toggle].inspect, true)
+      enabled, toggle].inspect, 1)
     case index
       when PandoraUI::SF_Auth
         @auth_text = text
     end
-    self.show_status_bar
+    self.show_status_bar(2)
   end
 
   def self.correct_lis_btn_state
-    self.add_mes_to_log_win('correct_lis_btn_state', true)
-    self.show_status_bar
+    self.add_mes_to_log_win('correct_lis_btn_state', 1)
+    self.show_status_bar(2)
   end
 
   def self.correct_hunt_btn_state
-    self.add_mes_to_log_win('correct_hunt_btn_state', true)
-    self.show_status_bar
+    self.add_mes_to_log_win('correct_hunt_btn_state', 1)
+    self.show_status_bar(2)
   end
 
   # Create person "Ncurses Robot"
@@ -198,7 +214,7 @@ module PandoraCui
 
   def self.show_dialog(mes, do_if_ok=true)
     res = nil
-    self.add_mes_to_log_win('show_dialog: '+mes, true)
+    self.add_mes_to_log_win('show_dialog: '+mes, 2)
     ok_pressed = true
     yield(ok_pressed) if block_given?
     res
@@ -210,7 +226,7 @@ module PandoraCui
   auto_create=false, fix_filter=nil)
     res = nil
     self.add_mes_to_log_win('show_panobject_list: '+[panobject_class, widget, \
-      page_sw, auto_create, fix_filter].inspect, true)
+      page_sw, auto_create, fix_filter].inspect, 2)
     res
   end
 
@@ -218,29 +234,117 @@ module PandoraCui
   page, fields, obj_id, edit)
     res = nil
     self.add_mes_to_log_win('show_cabinet: '+[panhash, session, conntype, \
-      node_id, models, page, fields, obj_id, edit].inspect, true)
+      node_id, models, page, fields, obj_id, edit].inspect, 2)
     res
   end
 
-  def self.fill_left_log_win
+  CWI_LeftBox   = 0
+  CWI_LeftArea  = 1
+  CWI_RightBox  = 2
+  CWI_RightArea = 3
+
+  LeftTitles = ['Status', 'Radar', 'Base', 'Find']
+
+  LMI_Status   = 0
+  LMI_Radar    = 1
+  LMI_Base     = 2
+  LMI_Find     = 3
+  LMI_Quit     = 4
+  LMI_Auth     = 5
+  LMI_Listen   = 6
+  LMI_Hunt     = 7
+
+  MenuItems = [['Log', 'User', 'Listen', 'Hunt', 'Sessions'], nil]
+
+  RPI_Log   = 0
+  RPI_User  = 1
+
+  PanelEdges = []
+  LeftWinMenuPos = [0, nil]
+
+  def self.fill_left_win(menu_move=nil, refresh=nil)
     left_win = self.curse_windows[CWI_LeftArea]
-    left_win.mvaddstr(1, 1, 'Log')
-    left_win.mvaddstr(2, 1, 'User')
-    left_win.mvaddstr(3, 1, 'Listen')
-    left_win.mvaddstr(4, 1, 'Hunt')
-    left_win.mvaddstr(5, 1, 'Sessions')
+    page = self.cur_page
+    menu_items = MenuItems[page]
+    if menu_items
+      right_box = self.curse_windows[CWI_RightBox]
+      menu_items_count = menu_items.size
+      menu_pos = LeftWinMenuPos[page]
+      if (not menu_pos) or menu_move
+        menu_pos ||= 0
+        if menu_move
+          if menu_move>0
+            if (menu_pos+menu_move)<menu_items_count
+              menu_pos += menu_move
+            else
+              menu_pos = 0
+            end
+          else
+            if (menu_pos+menu_move)>=0
+              menu_pos += menu_move
+            else
+              menu_pos = menu_items_count-1
+            end
+          end
+        end
+        LeftWinMenuPos[page] = menu_pos
+      end
+      menu_items.each_with_index do |mi, i|
+        attr = nil
+        if i==menu_pos
+          if self.act_panel==0
+            attr = Ncurses::A_REVERSE
+          else
+            attr = Ncurses::A_BOLD
+          end
+        end
+        left_win.attron(attr) if attr
+        spaces = ''
+        len = @left_width-2-mi.size
+        spaces = ' '*len if len>0
+        left_win.mvaddstr(i, 0, mi+spaces)
+        left_win.attroff(attr) if attr
+      end
+      title = menu_items[menu_pos]
+      if title
+        num = right_box.getmaxx-2
+        right_box.mvhline(0, 1, 0, num)
+        right_box.mvaddstr(0, 2, title)
+      end
+      if refresh
+        left_win.noutrefresh
+        right_box.noutrefresh if title
+        Ncurses.doupdate if refresh==2
+      end
+    end
   end
 
-  def self.fill_right_log_win
-    asize = LastLogMessages.size
+  def self.fill_right_win(refresh=nil)
     right_win = self.curse_windows[CWI_RightArea]
-    num = @win_height-2
-    num = asize if num > asize
-    right_win.clear
-    num.times do |i|
-      line = LastLogMessages[asize-(num-i)]
-      line = "\n"+line if i>0
-      right_win.addstr(line)
+    page = self.cur_page
+    menu_items = MenuItems[page]
+    if menu_items
+      menu_pos = LeftWinMenuPos[page]
+      case page
+        when LMI_Status
+          right_win.erase
+          if menu_pos == RPI_Log
+            asize = LastLogMessages.size
+            num = @win_height-2
+            num = asize if num > asize
+            num.times do |i|
+              line = LastLogMessages[asize-(num-i)]
+              line = "\n"+line if i>0
+              right_win.addstr(line)
+            end
+            #right_win.addstr("\n"+right_win.methods.inspect)
+            #right_win.addstr("\n"+Ncurses.methods[0..110].inspect)
+          end
+      end
+    end
+    if refresh
+      right_win.noutrefresh
+      Ncurses.doupdate if refresh==2
     end
   end
 
@@ -257,11 +361,6 @@ module PandoraCui
     res2.scrollok(true)
     res2
   end
-
-  CWI_LeftBox   = 0
-  CWI_LeftArea  = 1
-  CWI_RightBox  = 2
-  CWI_RightArea = 3
 
   def self.do_with_windows(doing=:noutrefresh)
     self.curse_windows.each do |win|
@@ -284,24 +383,11 @@ module PandoraCui
     Ncurses.ungetch(32) if press_key
   end
 
-  CPI_Status   = 0
-  CPI_Radar    = 1
-  CPI_Base     = 2
-  CPI_Find     = 3
-  CPI_Quit     = 4
-  CPI_Auth     = 5
-  CPI_Listen   = 6
-  CPI_Hunt     = 7
-
-  LeftTitles = ['Status', 'Radar', 'Base', 'Find']
-  RightTitles = ['Log', 'Dialog', 'Record', 'Parameters']
-  PanelEdges = []
-
-  def self.show_status_bar
-    edge = PanelEdges[CPI_Quit]
-    if edge and (edge>0) and $pool
+  def self.show_status_bar(refresh=nil)
+    edge = PanelEdges[LMI_Quit]
+    if edge and (edge>0)
       edge += 2
-      $pool.mutex.synchronize do
+      self.mutex.synchronize do
         stdscr = Ncurses.stdscr
         authorized = PandoraCrypto.authorized?
         listening = PandoraNet.listen?
@@ -323,7 +409,7 @@ module PandoraCui
         end
         stdscr.addstr(' ')
         edge += 2
-        PanelEdges[CPI_Auth] = edge
+        PanelEdges[LMI_Auth] = edge
         if listening
           stdscr.attron(Ncurses.color_pair(6) | Ncurses::A_BOLD)
         end
@@ -334,7 +420,7 @@ module PandoraCui
         stdscr.attron(Ncurses.color_pair(0))
         stdscr.addstr(' ')
         edge += 2
-        PanelEdges[CPI_Listen] = edge
+        PanelEdges[LMI_Listen] = edge
         if hunting
           stdscr.attron(Ncurses.color_pair(7) | Ncurses::A_BOLD)
         end
@@ -344,9 +430,13 @@ module PandoraCui
         end
         stdscr.attron(Ncurses.color_pair(0))
         edge += 2
-        PanelEdges[CPI_Hunt] = edge
+        PanelEdges[LMI_Hunt] = edge
         if PandoraUI.runned_via_screen
           stdscr.addstr(' | Ctrl+A,D')
+        end
+        if refresh
+          stdscr.noutrefresh
+          Ncurses.doupdate if refresh==2
         end
       end
     end
@@ -378,7 +468,7 @@ module PandoraCui
       @win_height = win_height
 
       min_width = left_width+7
-      edge = PanelEdges[CPI_Hunt]
+      edge = PanelEdges[LMI_Hunt]
       min_width = edge if edge and (edge>min_width)
       if (min_width < Ncurses.cols) and (win_height>3)
         color = Ncurses.color_pair(self.cur_page+1)
@@ -386,12 +476,9 @@ module PandoraCui
           LeftTitles[self.cur_page], color, self.act_panel==0)
         left_win.keypad(true)
         right_win = create_win(win_height, Ncurses.cols - left_width, 0, left_width, \
-          CWI_RightBox, RightTitles[self.cur_page], color, self.act_panel==1)
-        case self.cur_page
-          when CPI_Status
-            fill_left_log_win
-            fill_right_log_win
-        end
+          CWI_RightBox, nil, color, self.act_panel==1)
+        fill_left_win
+        fill_right_win
 
         stdscr.move(Ncurses.lines - 1, 0)
         edge = 0
@@ -409,13 +496,13 @@ module PandoraCui
           edge += title.size+1
           PanelEdges[ind] = edge
         end
-        PanelEdges[CPI_Quit] = edge + 5
+        PanelEdges[LMI_Quit] = edge + 5
         #right_win.addstr(PanelEdges.inspect+ "\n")
         stdscr.attron(Ncurses::A_BOLD)
         stdscr.addstr('Q')
         stdscr.attroff(Ncurses::A_BOLD)
         stdscr.addstr('uit | ')
-        self.show_status_bar
+        show_status_bar
       else
         stdscr.addstr('Screen is too small')
       end
@@ -453,7 +540,7 @@ module PandoraCui
               chg = Ncurses.getch
               ch = (chg ^ (ch << 8))
             end
-            stdscr.mvaddstr(Ncurses.lines - 3, 28, '2:'+ch.inspect+'-  ')
+            stdscr.mvaddstr(Ncurses.lines - 3, 35, '2:'+ch.inspect+'-  ')
             stdscr.refresh
           end
           case ch
@@ -461,23 +548,23 @@ module PandoraCui
               is_resized = true
               break
             when Ncurses::KEY_F1, Ncurses::KEY_F5, 19  #Ctrl+S
-              self.cur_page = CPI_Status
+              self.cur_page = LMI_Status
               is_resized = true
               break
             when Ncurses::KEY_F2, Ncurses::KEY_F6, 18  #Ctrl+R
-              self.cur_page = CPI_Radar
+              self.cur_page = LMI_Radar
               is_resized = true
               break
             when Ncurses::KEY_F3, Ncurses::KEY_F7, 2  #Ctrl+B
-              self.cur_page = CPI_Base
+              self.cur_page = LMI_Base
               is_resized = true
               break
             when Ncurses::KEY_F4, Ncurses::KEY_F8, 6  #Ctrl+F
-              self.cur_page = CPI_Find
+              self.cur_page = LMI_Find
               is_resized = true
               break
             when Ncurses::KEY_NPAGE
-              if self.cur_page < CPI_Find
+              if self.cur_page < LMI_Find
                 self.cur_page += 1
               else
                 self.cur_page = 0
@@ -488,7 +575,7 @@ module PandoraCui
               if self.cur_page > 0
                 self.cur_page -= 1
               else
-                self.cur_page = CPI_Find
+                self.cur_page = LMI_Find
               end
               is_resized = true
               break
@@ -502,7 +589,7 @@ module PandoraCui
               break
             when Ncurses::KEY_RIGHT
               if self.act_panel>0
-                if self.cur_page < CPI_Find
+                if self.cur_page < LMI_Find
                   self.cur_page += 1
                 else
                   self.cur_page = 0
@@ -517,13 +604,23 @@ module PandoraCui
                 if self.cur_page > 0
                   self.cur_page -= 1
                 else
-                  self.cur_page = CPI_Find
+                  self.cur_page = LMI_Find
                 end
               else
                 self.act_panel = 0
               end
               is_resized = true
               break
+            when Ncurses::KEY_UP, Ncurses::KEY_DOWN
+              if self.act_panel==0
+                if ch==Ncurses::KEY_DOWN
+                  fill_left_win(1, 1)
+                else
+                  fill_left_win(-1, 1)
+                end
+                fill_right_win(1)
+                Ncurses.doupdate
+              end
             when 21  #U
               PandoraUI.do_menu_act('Authorize')
             when 12  #L
@@ -552,19 +649,19 @@ module PandoraCui
                       end
                     end
                     if ind
-                      if ind <= CPI_Quit
-                        if ind < CPI_Quit
+                      if ind <= LMI_Quit
+                        if ind < LMI_Quit
                           self.cur_page = ind
                           is_resized = true
                         end
                         break
                       else
                         case ind
-                          when CPI_Auth
+                          when LMI_Auth
                             PandoraUI.do_menu_act('Authorize')
-                          when CPI_Listen
+                          when LMI_Listen
                             PandoraUI.do_menu_act('Listen')
-                          when CPI_Hunt
+                          when LMI_Hunt
                             PandoraUI.do_menu_act('Hunt')
                         end
                       end
@@ -582,12 +679,16 @@ module PandoraCui
               #fields_form.form_driver(ch)
               #Ncurses.curs_set(1)
             when Ncurses::KEY_F8
-              add_mes_to_log_win(('Just a log text '*8)+LastLogMessages.size.to_s, true)
+              add_mes_to_log_win(('Just a log text '*8)+LastLogMessages.size.to_s, 2)
               #right_win.addstr(right_win.methods.inspect+"\n")
               #right_win.noutrefresh
-            when Ncurses::KEY_F10, 3, 17, 7000, 7032, 1823111, 1822887, 81, 113, \
-            153, 185   #Ctrl+C, Ctrl+Q, Alt+X, Alt+x, Alt+Ч, Alt+ч, Q, q, Й, й
+            when Ncurses::KEY_F10, 3, 17, 7000, 7032, 1823111, 1822887
+            #Ctrl+C, Ctrl+Q, Alt+X, Alt+x, Alt+Ч, Alt+ч
               PandoraUI.do_menu_act('Quit')
+            when 81, 113, 153, 185   #Q, q, Й, й
+              if (self.act_panel==0) or (self.cur_page==0)
+                PandoraUI.do_menu_act('Quit')
+              end
             else
               #Ncurses.curs_set(1)
           end
@@ -599,7 +700,7 @@ module PandoraCui
   def self.do_main_loop
     self.cui_inited = false
     self.user_command = nil
-    self.cur_page = CPI_Status
+    self.cur_page = LMI_Status
     self.act_panel = 0
     Ncurses.init_screen
     begin

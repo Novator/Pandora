@@ -802,7 +802,7 @@ module PandoraUI
       lev ||= ''
       mes = time.strftime('%H:%M:%S') + lev + ': '+mes
       if $ncurses_is_active
-        PandoraCui.add_mes_to_log_win(mes, true)
+        PandoraCui.add_mes_to_log_win(mes, 2)
       elsif $gtk_is_active
         $window.add_mes_to_log_view(mes, time, level)
         puts 'log: '+mes
