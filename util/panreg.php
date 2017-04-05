@@ -39,7 +39,7 @@ if ($ips) {
 }
 
 // Read ini-file parameters
-$conf = parse_ini_file('panreg.ini', true);
+$conf = parse_ini_file('/var/www/ini/panreg.ini', true);
 if (! $conf)
   die('!No config file');
 $sql_server = $conf['panreg']['sql_server'];
@@ -125,14 +125,10 @@ if ($node) {
       die('!Bad IP');
 
     // Delete nodes when: ips specified, time expired or limit exceeds
-    $filter = '';
-    if (($ips) and (strlen($ips)>0))
-      $filter = "node='$node'";
+    $filter = "node='$node'";
     $now2000 = old_now(2000);
     if ($erase_time) {
-      if (strlen($filter)>0)
-        $filter .= ' OR ';
-      $filter .= "(time>NOW()-INTERVAL 1 YEAR AND time<NOW()-INTERVAL $erase_time)";
+      $filter .= " OR (time>NOW()-INTERVAL 1 YEAR AND time<NOW()-INTERVAL $erase_time)";
       $now2001 = old_now(2001);
       $filter .= " OR (YEAR(time)=2000 AND ((time<$now2000-INTERVAL $erase_time) OR (time>$now2001-INTERVAL $erase_time)))";
       $now1996 = old_now(1996);
@@ -140,9 +136,7 @@ if ($node) {
       $filter .= " OR (YEAR(time)=1996 AND ((time<$now1996-INTERVAL $erase_time) OR (time>$now1997-INTERVAL $erase_time)))";
     }
     if ($limit) {
-      if (strlen($filter)>0)
-        $filter .= ' OR ';
-      $filter .= "node NOT IN (SELECT * FROM (SELECT node FROM $table ORDER BY time DESC LIMIT $limit) s )";
+      $filter .= " OR node NOT IN (SELECT * FROM (SELECT node FROM $table ORDER BY time DESC LIMIT $limit) s )";
     }
     if (strlen($filter)>0) {
       $res = mysql_query("DELETE FROM $table WHERE ".$filter);

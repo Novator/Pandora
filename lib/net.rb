@@ -5367,26 +5367,28 @@ module PandoraNet
     begin
       proxy = PandoraNet.detect_proxy
       aopen_timeout ||= HTTP_TIMEOUT
+      http = Net::HTTP.new(host, port, *proxy)
+
       #:continue_timeout => aopen_timeout
-      proxy ||= [nil, nil, nil, nil]
+      #proxy ||= [nil, nil, nil, nil]
       #opt = {:open_timeout => aopen_timeout}
       #opt[:read_timeout] = aread_timeout if aread_timeout
-      p '1[aopen_timeout, aread_timeout]='+[aopen_timeout, aread_timeout].inspect
+      #p '1[aopen_timeout, aread_timeout]='+[aopen_timeout, aread_timeout].inspect
 
-      http = Net::HTTP.new(nil)
-      http.open_timeout = aopen_timeout
-      http.read_timeout = aread_timeout if aread_timeout
-      http.instance_variable_set('@open_timeout', aopen_timeout)
-      http.instance_variable_set('@read_timeout', aread_timeout) if aread_timeout
-      http.instance_variable_set('@address', host)
-      http.instance_variable_set('@port', port)
+      #http = Net::HTTP.new(nil)
+      #http.open_timeout = aopen_timeout
+      #http.read_timeout = aread_timeout if aread_timeout
+      #http.instance_variable_set('@open_timeout', aopen_timeout)
+      #http.instance_variable_set('@read_timeout', aread_timeout) if aread_timeout
+      #http.instance_variable_set('@address', host)
+      #http.instance_variable_set('@port', port)
       #http.set_address(host)
       #http.port = port
       #http.address = host
 
       #http.start #(host, port) #, :open_timeout => aopen_timeout)
 
-      p '2[aopen_timeout, aread_timeout]='+[aopen_timeout, aread_timeout].inspect
+      #p '2[aopen_timeout, aread_timeout]='+[aopen_timeout, aread_timeout].inspect
       if scheme == 'https'
         http.use_ssl = true
         http.verify_mode = OpenSSL::SSL::VERIFY_NONE
