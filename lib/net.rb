@@ -5353,23 +5353,44 @@ module PandoraNet
     [host, path, port, scheme]
   end
 
+  HTTP_TIMEOUT  = 10        #10 sec
 
-  HTTP_TIMEOUT  = 5*60    #5 minutes
-
-  def self.http_connect(url)
+  def self.http_connect(url, aopen_timeout=nil, aread_timeout=nil, show_log=true)
     http = nil
     host, path, port, scheme = parse_url(url)
     port_str = ''
     port_str = ':'+port.to_s if port
-    PandoraUI.log_message(PandoraUI::LM_Info, _('Connect to')+': '+host+path+port_str+'..')
+    if show_log
+      PandoraUI.log_message(PandoraUI::LM_Info, _('Connect to')+': '+\
+        host+path+port_str+'..')
+    end
     begin
       proxy = PandoraNet.detect_proxy
-      http = Net::HTTP.new(host, port, *proxy)
+      aopen_timeout ||= HTTP_TIMEOUT
+      #:continue_timeout => aopen_timeout
+      proxy ||= [nil, nil, nil, nil]
+      #opt = {:open_timeout => aopen_timeout}
+      #opt[:read_timeout] = aread_timeout if aread_timeout
+      p '1[aopen_timeout, aread_timeout]='+[aopen_timeout, aread_timeout].inspect
+
+      http = Net::HTTP.new(nil)
+      http.open_timeout = aopen_timeout
+      http.read_timeout = aread_timeout if aread_timeout
+      http.instance_variable_set('@open_timeout', aopen_timeout)
+      http.instance_variable_set('@read_timeout', aread_timeout) if aread_timeout
+      http.instance_variable_set('@address', host)
+      http.instance_variable_set('@port', port)
+      #http.set_address(host)
+      #http.port = port
+      #http.address = host
+
+      #http.start #(host, port) #, :open_timeout => aopen_timeout)
+
+      p '2[aopen_timeout, aread_timeout]='+[aopen_timeout, aread_timeout].inspect
       if scheme == 'https'
         http.use_ssl = true
         http.verify_mode = OpenSSL::SSL::VERIFY_NONE
       end
-      http.open_timeout = HTTP_TIMEOUT
     rescue => err
       http = nil
       PandoraUI.log_message(PandoraUI::LM_Trace, _('Connection error')+\
@@ -5379,8 +5400,9 @@ module PandoraNet
     [http, host, path]
   end
 
-  def self.http_reconnect_if_need(http, time, url)
-    if (not http.active?) or (Time.now.to_i >= (time + HTTP_TIMEOUT))
+  def self.http_reconnect_if_need(http, time, url, aopen_timeout=nil, aread_timeout=nil)
+    aopen_timeout ||= HTTP_TIMEOUT
+    if (not http.active?) or (Time.now.to_i >= (time + aopen_timeout))
       host, path, port, scheme = parse_url(url)
       begin
         proxy = PandoraNet.detect_proxy
@@ -5389,7 +5411,8 @@ module PandoraNet
           http.use_ssl = true
           http.verify_mode = OpenSSL::SSL::VERIFY_NONE
         end
-        http.open_timeout = HTTP_TIMEOUT
+        http.open_timeout = aopen_timeout
+        http.read_timeout = aread_timeout if aread_timeout
       rescue => err
         http = nil
         PandoraUI.log_message(PandoraUI::LM_Trace, _('Connection error')+\
@@ -5420,30 +5443,38 @@ module PandoraNet
 
   # Http get body
   # RU: Взять тело по Http
-  def self.http_get_body_from_path(http, path, host='')
+  def self.http_get_body_from_path(http, path, host='', show_log=true)
     body = nil
     if http and path
-      PandoraUI.log_message(PandoraUI::LM_Trace, _('Download from') + ': ' + \
-        host + path + '..')
+      if show_log
+        PandoraUI.log_message(PandoraUI::LM_Trace, _('Download from') + ': ' + \
+          host + path + '..')
+      end
       begin
         response = http.request_get(path)
         body = response.body if response.is_a?(Net::HTTPSuccess)
       rescue => err
-        PandoraUI.log_message(PandoraUI::LM_Info, _('Http download fails')+': '+Utf8String.new(err.message))
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Http download fails')+': '+\
+          Utf8String.new(err.message))
       end
     end
     body
   end
 
-  def self.http_get_request(url, show_log=nil)
+  def self.http_get_request(url, show_log=nil, aopen_timeout=nil, aread_timeout=nil)
     body = nil
     if url.is_a?(String) and (url.size>0)
       if show_log
         PandoraUI.log_message(PandoraUI::LM_Trace, _('Download from') + ': ' + url + '..')
       end
       begin
-        uri = URI.parse(url)
-        body = Net::HTTP.get(uri)
+        #uri = URI.parse(url)
+        #body = Net::HTTP.get(uri)
+        http, host, path = PandoraNet.http_connect(url, aopen_timeout, \
+          aread_timeout, show_log)
+        if http
+          body = PandoraNet.http_get_body_from_path(http, path, host, show_log)
+        end
       rescue => err
         PandoraUI.log_message(PandoraUI::LM_Info, _('Http download fails')+': '+Utf8String.new(err.message))
       end
@@ -5529,7 +5560,13 @@ module PandoraNet
       end
       suffix << ': '+url
       err = nil
-      body = http_get_request(url)
+      aopen_timeout=5
+      aread_timeout=5
+      if delete
+        aopen_timeout=4
+        aread_timeout=2
+      end
+      body = http_get_request(url, false, aopen_timeout, aread_timeout)
       if mes and body
         if body.size==0
           err = ' '+_('Loading error')
