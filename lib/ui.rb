@@ -871,7 +871,7 @@ module PandoraUI
         PandoraNet.start_or_stop_hunt(false) if $hunter_thread
         $pool.close_all_session
         if $ncurses_is_active
-          PandoraCui.do_user_command(:close)
+          PandoraCui.emulate_user_command(:close)
         elsif $gtk_is_active
           $window.destroy
         end

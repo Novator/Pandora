@@ -419,7 +419,7 @@ module PandoraCui
     self.curse_windows.clear
   end
 
-  def self.process_user_command(comm)
+  def self.process_command(comm)
     need_break = false
     case comm
       when :close
@@ -428,7 +428,7 @@ module PandoraCui
     need_break
   end
 
-  def self.do_user_command(comm)
+  def self.emulate_user_command(comm)
     self.user_command = comm
     Ncurses.ungetch(32)
   end
@@ -575,12 +575,8 @@ module PandoraCui
         comm = self.user_command
         if comm
           self.user_command = nil
-          #if self.process_user_command(comm)
-          #  break
-          #end
-          case comm
-            when :close
-              break
+          if self.process_command(comm)
+            break
           end
         else
           stdscr.mvaddstr(Ncurses.lines - 3, 28, '1:'+ch.inspect+'  ')

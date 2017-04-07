@@ -5,6 +5,9 @@
 # 2017 (c) Michael Galyuk, P2P social network Pandora, free software, GNU GPLv2
 # RU: 2017 (c) Михаил Галюк, P2P социальная сеть Пандора, свободное ПО
 
+# Use "-d" parameter for deamon launching. Example for /etc/crontab:
+#*/7 *   * * *   user   /opt/pandora/util/pancurse.sh -d &
+
 
 DIRFILE=`readlink -e "$0"`
 CURFILE=`basename "$DIRFILE"`
@@ -38,8 +41,17 @@ fi
 cd "$CURDIR/.."
 
 #Resume or run screen session
-screen -x "pancurse"
-if [ "$?" != "0" ]; then
-  screen -S "pancurse" $RUBY ./pandora.rb --screen
+SCREEN=`which screen`
+if [ "$SCREEN" = "" ]; then
+  echo "Screen is not installed"
+else
+  if [ "$1" = "-d" ]; then
+    $SCREEN -fn -h 1000 -dm -S "pancurse" $RUBY ./pandora.rb --screen
+  else
+    $SCREEN -x "pancurse"
+    if [ "$?" != "0" ]; then
+      $SCREEN -S "pancurse" $RUBY ./pandora.rb --screen
+    fi
+  fi
 fi
 
