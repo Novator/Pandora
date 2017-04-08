@@ -11998,7 +11998,7 @@ module PandoraGtk
       $statusbar.pack_start(pathlabel, true, true, 0)
 
       add_status_field(PandoraUI::SF_Update, _('Version') + ': ' + _('Not checked'), 'Update') do
-        PandoraGtk.start_updating(true)
+        PandoraUI.start_updating(true)
       end
       add_status_field(PandoraUI::SF_Lang, $lang, 'Language') do
         PandoraUI.do_menu_act('Blob')

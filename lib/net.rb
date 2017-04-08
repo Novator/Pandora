@@ -5355,7 +5355,8 @@ module PandoraNet
 
   HTTP_TIMEOUT  = 10        #10 sec
 
-  def self.http_connect(url, aopen_timeout=nil, aread_timeout=nil, show_log=true)
+  def self.http_connect(url, aopen_timeout=nil, aread_timeout=nil, show_log=true, \
+  need_start=true)
     http = nil
     host, path, port, scheme = parse_url(url)
     port_str = ''
@@ -5375,7 +5376,7 @@ module PandoraNet
           http.use_ssl = true
           http.verify_mode = OpenSSL::SSL::VERIFY_NONE
         end
-        http.start
+        #http.start if need_start
       end
     rescue => err
       http = nil
@@ -5454,16 +5455,18 @@ module PandoraNet
         PandoraUI.log_message(PandoraUI::LM_Trace, _('Download from') + ': ' + url + '..')
       end
       begin
-        #uri = URI.parse(url)
-        #body = Net::HTTP.get(uri)
-        http, host, path = PandoraNet.http_connect(url, aopen_timeout, \
-          aread_timeout, show_log)
-        #p '===http, host, path, http.started?='+[http, host, path, http.started?].inspect
-        if http
-          body = PandoraNet.http_get_body_from_path(http, path, host, show_log)
-          http.finish if http and http.started?
-        end
-        #p '---body='+body.inspect
+        uri = URI.parse(url)
+        body = Net::HTTP.get(uri)
+        #http, host, path = PandoraNet.http_connect(url, aopen_timeout, \
+        #  aread_timeout, show_log, false)
+        ##p '===http, host, path, http.started?='+[http, host, path, http.started?].inspect
+        #if http
+        #  #http.start do
+        #  body = PandoraNet.http_get_body_from_path(http, path, host, show_log)
+        #  #end
+        #  #http.finish if http and http.started?
+        #end
+        ##p '---body='+body.inspect
       rescue => err
         PandoraUI.log_message(PandoraUI::LM_Info, _('Http download fails')+': '+Utf8String.new(err.message))
       end
