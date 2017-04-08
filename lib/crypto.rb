@@ -767,7 +767,7 @@ module PandoraCrypto
           if (not key_vec) or (not cipher) or (cipher != 0) or (not $first_key_init)
             key_vec0 = key_vec
             key_vec = nil
-            PandoraUI.ask_key_and_password(last_auth_key) do |key_hash, passwd, \
+            PandoraUI.ask_key_and_password(last_auth_key, cipher) do |key_hash, passwd, \
             aresponse, change_pass, new_pass|
               if (aresponse == 3)
                 getting = true

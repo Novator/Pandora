@@ -1157,16 +1157,16 @@ module PandoraUI
 
   # Ask key and password for authorization
   # RU: Запросить ключ и пароль для авторизации
-  def self.ask_key_and_password(alast_auth_key=nil)
+  def self.ask_key_and_password(alast_auth_key=nil, cipher=nil)
     res = nil
     if $ncurses_is_active
       rights = (PandoraCrypto::KS_Exchange | PandoraCrypto::KS_Robotic)
-      PandoraCui.ask_key_and_password(alast_auth_key) do |*args|
+      PandoraCui.ask_key_and_password(alast_auth_key, cipher) do |*args|
         res = yield(*args) if block_given?
       end
     elsif $gtk_is_active
       rights = (PandoraCrypto::KS_Exchange | PandoraCrypto::KS_Voucher)
-      PandoraGtk.ask_key_and_password(alast_auth_key) do |*args|
+      PandoraGtk.ask_key_and_password(alast_auth_key, cipher) do |*args|
         res = yield(*args) if block_given?
       end
     end

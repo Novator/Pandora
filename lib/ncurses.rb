@@ -206,7 +206,7 @@ module PandoraCui
 
   # Ask key and password for authorization
   # RU: Запросить ключ и пароль для авторизации
-  def self.ask_key_and_password(alast_auth_key=nil)
+  def self.ask_key_and_password(alast_auth_key=nil, cipher=nil)
     res = nil
     key_hash = alast_auth_key
     password = ''

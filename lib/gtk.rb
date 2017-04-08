@@ -5443,7 +5443,7 @@ module PandoraGtk
 
   # Ask key and password for authorization
   # RU: Запросить ключ и пароль для авторизации
-  def self.ask_key_and_password(alast_auth_key=nil)
+  def self.ask_key_and_password(alast_auth_key=nil, cipher=nil)
     dialog = PandoraGtk::AdvancedDialog.new(_('Key init'))
     dialog.set_default_size(420, 190)
     dialog.icon = $window.get_preset_icon('auth')
@@ -5536,8 +5536,9 @@ module PandoraGtk
       aresponse = dialog.response
       key_hash = PandoraModel.hex_to_panhash(key_entry.text)
       if block_given?
+        new_pass = new_pass_entry.text if new_pass_entry
         yield(key_hash, pass_entry.text, aresponse, changebtn.active?, \
-          new_pass_entry.text)
+          new_pass)
       end
     end
   end
