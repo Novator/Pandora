@@ -612,7 +612,7 @@ module PandoraCui
               self.cur_page = LMI_Find
               is_resized = true
               break
-            when 554 #Ctrl+Right
+            when 67, 554 #Ctrl+Right
               if self.cur_page < LMI_Find
                 self.cur_page += 1
               else
@@ -620,7 +620,7 @@ module PandoraCui
               end
               is_resized = true
               break
-            when 539 #Ctrl+Left
+            when 68, 539 #Ctrl+Left
               if self.cur_page > 0
                 self.cur_page -= 1
               else

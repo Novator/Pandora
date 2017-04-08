@@ -137,7 +137,7 @@ but you can order it to run Ncurses console user interface:
   ./pandora.sh -c   -- this is Curses/Ncurses mode
   ./pandora.sh -s   -- run via screen or return to session
   ./util/pancurse.sh      -- run or return screen session
-  ./util/pancurse.sh -d   -- use it to run like a daemon
+  ./util/pancurse.sh -d   -- use this to run like a daemon
 
 Console interface can be useful on Raspberri Pi, dedicated or
 virtual servers when you want to have your own permanent node.
