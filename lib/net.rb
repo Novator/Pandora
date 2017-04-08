@@ -5364,9 +5364,9 @@ module PandoraNet
       PandoraUI.log_message(PandoraUI::LM_Info, _('Connect to')+': '+\
         host+path+port_str+'..')
     end
+    aopen_timeout ||= HTTP_TIMEOUT
     begin
       proxy = PandoraNet.detect_proxy
-      aopen_timeout ||= HTTP_TIMEOUT
       http = Net::HTTP.new(host, port, *proxy)
 
       #:continue_timeout => aopen_timeout
@@ -5398,6 +5398,18 @@ module PandoraNet
       PandoraUI.log_message(PandoraUI::LM_Trace, _('Connection error')+\
         [host, port].inspect+' '+Utf8String.new(err.message))
       #puts Utf8String.new(err.message)
+    end
+    time_sec = 0.0
+    while (time_sec<aopen_timeout) and http and (not http.active?) do
+      sleep(0.5)
+      time_sec += 0.5
+    end
+    if (time_sec>=aopen_timeout) and http and (not http.active?)
+      begin
+        http.finish
+      rescue
+      end
+      http = nil
     end
     [http, host, path]
   end

@@ -10,8 +10,9 @@ Contents
 5) installation in Debian
 6) installation in Macosx
 7) manual installation or update
-8) join as developer
-9) getting help
+8) console user interface
+9) join as developer
+10) getting help
 
 
 1. OVERVIEW
@@ -128,23 +129,41 @@ Download and unpack master.zip (see the next chapter), run pandora.sh.
 Pandora can update itself by user click to button on status bar.
 
 
-8. JOIN AS DEVELOPER
+8. CONSOLE USER INTERFACE
 
-8.1. See current technical tasks at file:
+By default Pandora launches Gtk2 graphical user interface,
+but you can order it to run Ncurses console user interface:
+
+  ./pandora.sh -c   -- this is Curses/Ncurses mode
+  ./pandora.sh -s   -- run via screen or return to session
+  ./util/pancurse.sh      -- run or return screen session
+  ./util/pancurse.sh -d   -- use it to run like a daemon
+
+Console interface can be useful on Raspberri Pi, dedicated or
+virtual servers when you want to have your own permanent node.
+
+Attention: CUI has pared-down functionality in comparison with GUI.
+It is recommended to setup all preferences in GUI mode on desktop
+computer, then move ./base/pandora.sqlite to remote computer.
+
+
+9. JOIN AS DEVELOPER
+
+9.1. See current technical tasks at file:
 
   https://github.com/Novator/Pandora/blob/master/doc/todo.ru.txt
 
-8.2. Registrate on GitHub:
+9.2. Registrate on GitHub:
 
   https://github.com/
 
 For example, your login is "YourNick".
 
-8.3. Push "Fork" button on top of Pandora github page:
+9.3. Push "Fork" button on top of Pandora github page:
 
   https://github.com/Novator/Pandora/fork
 
-8.4. Install git in Ubuntu:
+9.4. Install git in Ubuntu:
 
   sudo apt-get -y install git
 
@@ -152,23 +171,23 @@ in Windows download and install:
 
   https://git-for-windows.github.io/
 
-8.5. Download Pandora to your hard disk via git command:
+9.5. Download Pandora to your hard disk via git command:
 
   git clone --depth=1 https://github.com/YourNick/Pandora.git
 
 Warning: change "YourNick" to your login!
 
-8.6. Correct a code with any text editor, for example Geany:
+9.6. Correct a code with any text editor, for example Geany:
 
   http://www.geany.org/Download/Releases
 
-8.7. Update your github repository:
+9.7. Update your github repository:
 
   git commit -a -m "your comment" && git push
 
 (see more useful git commands in the file "git.sh")
 
-8.8. Push "Pull Request" at your Pandora github page:
+9.8. Push "Pull Request" at your Pandora github page:
 
   https://github.com/YourNick/Pandora/pull/new/master
 
@@ -176,7 +195,7 @@ If your contribution will be rated as useful it will be added to next release.
 When you show yourself like active developer you will be added as collaborator.
 
 
-9. GETTING HELP
+10. GETTING HELP
 
 Help to Pandora project like a programmer, translator, journalist or donator:
 
