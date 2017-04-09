@@ -1,0 +1,9 @@
+# Pandora language file EN=>AR
+# See full list of phrases in "ru.txt" file
+_World=>العالمية
+_Business=>الأعمال
+_Region=>المنطقة
+_Node=>عقدة
+People=>الناس
+Communities=>المنتديات
+Files=>الملفات

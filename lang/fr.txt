@@ -1,4 +1,5 @@
 # Pandora language file EN=>FR
+# See full list of phrases in "ru.txt" file
 Nodes=>Nœuds
 Punishments=>Châtiment
 States=>Pays

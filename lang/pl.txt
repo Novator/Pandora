@@ -1,4 +1,5 @@
 # Pandora language file EN=>PL
+# See full list of phrases in "ru.txt" file
 _About=>_O programie
 _Quit=>_Wyjście
 On line!=>Zamieniły!

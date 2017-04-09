@@ -1,4 +1,5 @@
 # Pandora language file EN=>TR
+# See full list of phrases in "ru.txt" file
 _About=>_Hakkında
 Clients=>Müşteriler
 Workers=>Çalışanlar

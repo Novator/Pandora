@@ -1,0 +1,9 @@
+# Pandora language file EN=>PT
+# See full list of phrases in "ru.txt" file
+_World=>_Mundo
+_Business=>_Negócios
+_Region=>_Região
+_Node=>_Node
+People=>Pessoas
+Communities=>Comunidades
+Files=>Arquivos

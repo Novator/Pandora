@@ -1,0 +1,9 @@
+# Pandora language file EN=>KO
+# See full list of phrases in "ru.txt" file
+_World=>세계
+_Business=>비즈니스
+_Region=>지역
+_Node=>노드
+People=>사람들
+Communities=>커뮤니티
+Files=>파일

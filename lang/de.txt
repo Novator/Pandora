@@ -1,4 +1,5 @@
 # Pandora language file EN=>DE
+# See full list of phrases in "ru.txt" file
 Distributed Social Network=>Distributed Social Network
 _About=>_Über Programm
 _Quit=>_Verlassen

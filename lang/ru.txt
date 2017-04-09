@@ -460,3 +460,4 @@ Full screen=>Полный экран
 Info=>Инфо
 Feed=>Лента
 Set avatar=>Задать аватар
+Dialog with creator=>Диалог с создателем

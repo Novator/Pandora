@@ -9287,12 +9287,34 @@ module PandoraGtk
         if panobject  # SubjTreeView
           id = iter[0]
           sel = panobject.select('id='+id.to_s, true)
-          panhash0 = panobject.namesvalues['panhash']
-          panstate = panobject.namesvalues['panstate']
-          panstate ||= 0
-          if (panobject.is_a? PandoraModel::Created)
-            created0 = panobject.namesvalues['created']
-            creator0 = panobject.namesvalues['creator']
+          if sel and (sel.size>0)
+            panhash0 = panobject.namesvalues['panhash']
+            panstate = panobject.namesvalues['panstate']
+            panstate ||= 0
+            if (panobject.is_a? PandoraModel::Created)
+              created0 = panobject.namesvalues['created']
+              creator0 = panobject.namesvalues['creator']
+            end
+          end
+          if (action=='Dialog') and (not PandoraUtils.panhash_nil?(creator0))
+            panhash0 = creator0
+            id = nil
+            sel = nil
+            panstate = 0
+            creator0 = nil
+            created0 = nil
+            panobject = nil
+            panobject = PandoraUtils.get_model('Person')
+            sel = panobject.select({:panhash=>panhash0}, true)
+            if sel and (sel.size>0)
+              panhash0 = panobject.namesvalues['panhash']
+              panstate = panobject.namesvalues['panstate']
+              panstate ||= 0
+              if (panobject.is_a? PandoraModel::Created)
+                created0 = panobject.namesvalues['created']
+                creator0 = panobject.namesvalues['creator']
+              end
+            end
           end
         else  # RadarScrollWin
           panhash0 = PandoraUtils.hex_to_bytes(iter[2])
@@ -10176,6 +10198,11 @@ module PandoraGtk
     menu.append(create_menu_item(['Copy', Gtk::Stock::COPY, _('Copy'), '<control>Insert'], treeview))
     menu.append(create_menu_item(['-', nil, nil], treeview))
     menu.append(create_menu_item([chat_item, chat_stock.to_s+dlg_opt, _(chat_item), '<control>D'], treeview))
+
+    if (panobject.is_a? PandoraModel::Created)
+      menu.append(create_menu_item(['Dialog', :dialog, _('Dialog with creator')], treeview))
+    end
+
     menu.append(create_menu_item(['Relation', :relation, _('Relate'), '<control>R'], treeview))
     menu.append(create_menu_item(['Connect', Gtk::Stock::CONNECT, _('Connect'), '<control>N'], treeview))
     menu.append(create_menu_item(['-', nil, nil], treeview))

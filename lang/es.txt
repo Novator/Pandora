@@ -1,4 +1,5 @@
 # Pandora language file EN=>ES
+# See full list of phrases in "ru.txt" file
 Opinions=>Opiniones
 On line!=>Connect!
 Keys=>Claves

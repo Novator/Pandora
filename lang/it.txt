@@ -1,4 +1,5 @@
 # Pandora language file EN=>IT
+# See full list of phrases in "ru.txt" file
 _Quit=>_Uscita
 Profile=>Profilo
 Events=>Eventi

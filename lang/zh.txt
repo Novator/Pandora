@@ -1,0 +1,9 @@
+# Pandora language file EN=>ZH
+# See full list of phrases in "ru.txt" file
+_World=>世界
+_Business=>业务
+_Region=>地区
+_Node=>节点
+People=>人民
+Communities=>社区
+Files=>文件
