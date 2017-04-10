@@ -230,7 +230,8 @@ module PandoraNet
   #---------------------------body} (23-140 byte)
   MR_Kind            = 8   #1  (presence, fishing, chat, search)
   MR_KeepNodes       = 9  #(0-220) fill when register, not sending
-  MR_Requests        = 10  #4
+  MR_ReqIndexes      = 10  #0-255
+  MR_ReceiveState    = 11  #nil, Time или
 
   # Alive
   MRP_Nick           = MR_Param1  #~30    #sum: 33+(~30)= ~63

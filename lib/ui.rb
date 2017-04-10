@@ -1173,14 +1173,14 @@ module PandoraUI
     res
   end
 
-  def self.show_dialog(mes, do_if_ok=true)
+  def self.show_dialog(mes, do_if_ok=true, a_title=nil, a_stock=nil)
     res = nil
     if $ncurses_is_active
-      res = PandoraCui.show_dialog(mes, do_if_ok) do |*args|
+      res = PandoraCui.show_dialog(mes, do_if_ok, a_title, a_stock) do |*args|
         yield(*args) if block_given?
       end
     elsif $gtk_is_active
-      res = PandoraGtk.show_dialog(mes, do_if_ok) do |*args|
+      res = PandoraGtk.show_dialog(mes, do_if_ok, a_title, a_stock) do |*args|
         yield(*args) if block_given?
       end
     end

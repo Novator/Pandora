@@ -461,3 +461,5 @@ Info=>Инфо
 Feed=>Лента
 Set avatar=>Задать аватар
 Dialog with creator=>Диалог с создателем
+To initialize a key without person is not allowed=>Инициализировать ключ без персоны нельзя
+Correct person back or generate new key=>Исправьте персону обратно или сгенирируйте новый ключ

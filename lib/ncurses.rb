@@ -216,7 +216,7 @@ module PandoraCui
     res
   end
 
-  def self.show_dialog(mes, do_if_ok=true)
+  def self.show_dialog(mes, do_if_ok=true, a_title=nil, a_stock=nil)
     res = nil
     self.add_mes_to_log_win('show_dialog: '+mes, 2)
     ok_pressed = true

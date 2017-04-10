@@ -87,6 +87,9 @@ module PandoraGtk
   class GoodMessageDialog < Gtk::MessageDialog
 
     def initialize(a_mes, a_title=nil, a_stock=nil, an_icon=nil)
+      a_stock = Gtk::MessageDialog::WARNING if a_stock==:warning
+      a_stock = Gtk::MessageDialog::QUESTION if a_stock==:question
+      a_stock = Gtk::MessageDialog::ERROR if a_stock==:error
       a_stock ||= Gtk::MessageDialog::INFO
       super($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
         a_stock, Gtk::MessageDialog::BUTTONS_OK_CANCEL, a_mes)
@@ -128,8 +131,9 @@ module PandoraGtk
 
   end
 
-  def self.show_dialog(mes, do_if_ok=true)
-    res = PandoraGtk::GoodMessageDialog.new(mes).run_and_do(do_if_ok) do |*args|
+  def self.show_dialog(mes, do_if_ok=true, a_title=nil, a_stock=nil)
+    res = PandoraGtk::GoodMessageDialog.new(mes, a_title, \
+    a_stock).run_and_do(do_if_ok) do |*args|
       yield(*args) if block_given?
     end
     res

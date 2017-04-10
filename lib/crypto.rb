@@ -652,6 +652,7 @@ module PandoraCrypto
   end
 
   $first_key_init = true
+  $last_person_warning = nil
 
   # Return current key or allow to choose and activate a key
   # RU: Возвращает текущий ключ или позволяет выбрать и активировать ключ
@@ -690,15 +691,29 @@ module PandoraCrypto
             cipher = key_model.field_val('cipher', sel[1])
             creator = key_model.field_val('creator', sel[1])
           end
-          key_vec = Array.new
-          key_vec[KV_Pub] = pub
-          key_vec[KV_Priv] = priv
-          key_vec[KV_Cipher] = cipher
-          key_vec[KV_Kind] = kind
-          key_vec[KV_Pass] = passwd
-          key_vec[KV_Panhash] = panhash
-          key_vec[KV_Creator] = creator
-          cipher ||= 0
+          person_model = PandoraUtils.get_model('Person')
+          sel = person_model.select({:panhash=>creator}, false, 'id', nil, 1)
+          if sel and (sel.size>0)
+            key_vec = Array.new
+            key_vec[KV_Pub] = pub
+            key_vec[KV_Priv] = priv
+            key_vec[KV_Cipher] = cipher
+            key_vec[KV_Kind] = kind
+            key_vec[KV_Pass] = passwd
+            key_vec[KV_Panhash] = panhash
+            key_vec[KV_Creator] = creator
+            cipher ||= 0
+          else
+            cipher = nil
+            if $last_person_warning.nil? or ($last_person_warning != panhash)
+              PandoraUI.show_dialog( \
+                _('To initialize a key without person is not allowed')+"\n"+ \
+                _('Correct person back or generate new key'), true, 'Warning', \
+              :warning) do
+                $last_person_warning = panhash
+              end
+            end
+          end
         end
       end
       [key_vec, cipher]
@@ -783,7 +798,7 @@ module PandoraCrypto
                   last_auth_key = panhash
                   key_vec, cipher = read_key_and_set_pass(last_auth_key, passwd, key_model)
                   if not key_vec
-                    getting = true
+                    getting = $gtk_is_active
                     key_vec = []
                   end
                 else

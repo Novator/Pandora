@@ -3,7 +3,7 @@
 _World=>_Mundo
 _Business=>_Negócios
 _Region=>_Região
-_Node=>_Node
+_Node=>N_ode
 People=>Pessoas
 Communities=>Comunidades
 Files=>Arquivos
