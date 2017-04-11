@@ -1008,11 +1008,27 @@ module PandoraNet
       end
       if not mr
         ind_mutex.synchronize do
-          while @mass_records.size>$max_mass_count do
+          while @mass_records.size>=$max_mass_count do
             @mass_records.delete_at(0)
           end
           if (not src_time) and (src_node==self_node)
             src_time = Time.now.to_i
+          end
+          if src_time
+            i = @mass_records.size
+            while i>0 do
+              i =- 1
+              mrI = @mass_records[i]
+              if mrI
+                perv_time = mrI[MR_CrtTime]
+                if perv_time and (perv_time==src_time)
+                  src_time -= 1
+                  if (i==0) and (@mass_records.size>=$max_mass_count-1)
+                    src_time -= 60*2
+                  end
+                end
+              end
+            end
           end
           if src_time
             mr = Array.new
