@@ -101,7 +101,7 @@ module PandoraUI
               @task_list = @task_model.select(filter, false, fields, 'time ASC')
               Thread.pass
               if @task_list and (@task_list.size>0)
-                p 'TTTTTTTTTT @task_list='+@task_list.inspect
+                #p 'TTTTTTTTTT @task_list='+@task_list.inspect
 
                 message = ''
                 store = nil

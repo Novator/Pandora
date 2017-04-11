@@ -463,3 +463,7 @@ Set avatar=>Задать аватар
 Dialog with creator=>Диалог с создателем
 To initialize a key without person is not allowed=>Инициализировать ключ без персоны нельзя
 Correct person back or generate new key=>Исправьте персону обратно или сгенирируйте новый ключ
+Private message came, but cannot open dialog=>Пришло личное сообщение, но не могу открыть диалог
+Chat message came, but cannot open dialog=>Пришло чат сообщение, но не могу открыть диалог
+Double of chat message was ignored=>Дубль чат-сообщения проигнорирован
+Own mass record is received=>Своё же массовое сообщение получено

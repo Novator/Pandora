@@ -413,8 +413,10 @@
     <max_mass_depth desc="Max broadcast depth" type="Byte" section="net" setting="2" />
     <low_conn_trust desc="Low allowed trust to connection for key" type="Real" section="net" setting="0.0" />
     <trust_for_unknown desc="Trust for unknown (-2.0 means off)" type="Real" section="net" setting="0.0" />
+    <keep_for_trust desc="Set keep flag on income records from user with trust" type="Real" section="net" setting="0.5" />
     <max_opened_keys desc="Max opened keys" type="Integer" section="net" setting="1000" />
     <max_session_count desc="Max session count" type="Integer" section="net" setting="400" />
+    <min_keep_session_count desc="Min keep session count" type="Integer" section="net" setting="15" />
     <hunt_step_pause desc="Hunt step pause" type="Real" section="net" setting="0.1" />
     <hunt_overflow_pause desc="Hunt overflow pause" type="Real" section="net" setting="1.0" />
     <hunt_period desc="Hunt period (sec)" type="Real" section="net" setting="180.0" />

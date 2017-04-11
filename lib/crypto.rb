@@ -1306,6 +1306,7 @@ module PandoraCrypto
   # Get short name of person
   # RU: Возвращает короткое имя человека
   def self.short_name_of_person(key, person=nil, view_kind=0, othername=nil)
+    res = nil
     aname, afamily = name_and_family_of_person(key, person)
     #p [othername, aname, afamily]
     if view_kind==0

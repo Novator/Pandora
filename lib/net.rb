@@ -25,7 +25,7 @@ module PandoraNet
 
   # Version of protocol
   # RU: Версия протокола
-  ProtocolVersion = 'pandora0.67'
+  ProtocolVersion = 'pandora0.69'
 
   DefTcpPort = 5577
   DefUdpPort = 5577
@@ -218,20 +218,20 @@ module PandoraNet
   # RU: Общие индексы полей в векторе массовых записей
   #==========================={head
   MR_Node            = 0  #22
-  MR_Index           = 1  #4
-  MR_CrtTime         = 2  #4
-  MR_Trust           = 3  #1
-  MR_Depth           = 4  #1
+  MR_CrtTime         = 1  #4
+  MR_Trust           = 2  #1
+  MR_Depth           = 3  #1
   #---------------------------head} (33 byte)
   #==========================={body
-  MR_Param1          = 5  #1-30
-  MR_Param2          = 6  #22-140
-  MR_Param3          = 7  #0 или 22
+  MR_Param1          = 4  #1-30
+  MR_Param2          = 5  #22-140
+  MR_Param3          = 6  #0 или 22
   #---------------------------body} (23-140 byte)
-  MR_Kind            = 8   #1  (presence, fishing, chat, search)
-  MR_KeepNodes       = 9  #(0-220) fill when register, not sending
-  MR_ReqIndexes      = 10  #0-255
-  MR_ReceiveState    = 11  #nil, Time или
+  #====service fields (not send):
+  MR_Kind            = 7   #1  (presence, fishing, chat, search)
+  MR_KeepNodes       = 8  #(0-220) fill when register, not sending
+  MR_ReqIndexes      = 9  #0-255
+  MR_ReceiveState    = 10  #nil, Time или
 
   # Alive
   MRP_Nick           = MR_Param1  #~30    #sum: 33+(~30)= ~63
@@ -248,8 +248,6 @@ module PandoraNet
   MCM_Created  = 1
   MCM_Text     = 2
   MCM_PanState = 3
-  MCM_Id       = 4   #not send
-  MCM_Dest     = 5   #not send
 
   # Search request and answer field indexes
   # RU: Индексы полей в поисковом и ответом запросе
@@ -786,12 +784,16 @@ module PandoraNet
       end
     end
 
-    def active_socket?
+    def has_active_session?(count=nil)
       res = false
+      i = 0
       sessions.each do |session|
         if session.active?
-          res = session
-          break
+          i += 1
+          if count.nil? or (i>=count)
+            res = true
+            break
+          end
         end
       end
       res
@@ -970,11 +972,11 @@ module PandoraNet
       end
     end
 
-    def find_mass_record_by_index(src_node, src_ind)
+    def find_mass_record_by_time(src_node, src_time)
       res = nil
       res = @mass_records.find do |mr|
         mr and ((mr[PandoraNet::MR_Node] == src_node) and \
-        (mr[PandoraNet::MR_Index] == src_ind))
+        (mr[PandoraNet::MR_CrtTime] == src_time))
       end
       res
     end
@@ -993,26 +995,29 @@ module PandoraNet
 
     # Register mass record and its keeper to queue
     # RU: Зарегать массовую запись и её хранителя в очереди
-    def register_mass_record(src_node=nil, src_ind=nil, keep_node=nil)
+    def register_mass_record(src_node=nil, src_time=nil, keep_node=nil)
       mr = nil
       src_node ||= self_node
       keep_node ||= src_node
-      if src_ind
-        mr = find_mass_record_by_index(src_node, src_ind)
+      if src_time
+        mr = find_mass_record_by_time(src_node, src_time)
         if mr
-          mr[MR_KeepNodes] << keep_node if not mr[MR_KeepNodes].include?(keep_node)
+          keep_nodes = mr[MR_KeepNodes]
+          keep_nodes << keep_node if not keep_nodes.include?(keep_node)
         end
       end
       if not mr
         ind_mutex.synchronize do
-          if (not src_ind) and (src_node==self_node)
-            @mass_ind += 1
-            src_ind = @mass_ind
+          while @mass_records.size>$max_mass_count do
+            @mass_records.delete_at(0)
           end
-          if src_ind
+          if (not src_time) and (src_node==self_node)
+            src_time = Time.now.to_i
+          end
+          if src_time
             mr = Array.new
             mr[MR_Node]     = src_node
-            mr[MR_Index]    = src_ind
+            mr[MR_CrtTime]    = src_time
             mr[MR_KeepNodes] = [keep_node]
             yield(mr) if block_given?
             @mass_records << mr
@@ -1025,7 +1030,7 @@ module PandoraNet
     # Add mass record to queue
     # RU: Добавить массовую запись в очередь
     def add_mass_record(akind, param1, param2=nil, param3=nil, src_node=nil, \
-    src_ind=nil, atime=nil, atrust=nil, adepth=nil, keep_node=nil, \
+    src_time=nil, atrust=nil, adepth=nil, keep_node=nil, \
     hunt=nil, models=nil)
       src_node ||= self_node
       mr = find_mass_record_by_params(src_node, akind, param1, param2, param3)
@@ -1041,10 +1046,9 @@ module PandoraNet
             when MK_Search
               param2 = AsciiString.new(param2)
           end
-          mr = register_mass_record(src_node, src_ind, keep_node) do |mr|
-            atime ||= cur_time
+          mr = register_mass_record(src_node, src_time, keep_node) do |mr|
+            src_time ||= cur_time
             mr[MR_Kind]     = akind
-            mr[MR_CrtTime]  = atime
             mr[MR_Trust]    = atrust
             mr[MR_Depth]    = adepth
             mr[MR_Param1]   = param1
@@ -1164,8 +1168,8 @@ module PandoraNet
               PandoraModel::PSF_ChatMes))
           end
           #creator = row[1]
-          id = row[MCM_Id]
-          dest = row[MCM_Dest]
+          id = row[4]
+          dest = row[5]
           #text = row[4]
           #if ((panstate & PandoraModel::PSF_Crypted)>0) and text
           #  dest_key = @skey[PandoraCrypto::KV_Panhash]
@@ -2203,7 +2207,8 @@ module PandoraNet
           @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
           #node = PandoraNet.encode_addr(host_ip, port, proto)
           panhash = @skey[PandoraCrypto::KV_Creator]
-          @dialog = PandoraUI.show_cabinet(panhash, self, conn_type)
+          @dialog = PandoraUI.show_cabinet(panhash, self, conn_type, \
+            nil, nil, PandoraUI::CPI_Dialog)
           dialog.update_state(true)
           Thread.pass
           #PandoraUtils.play_mp3('online')
@@ -2525,7 +2530,7 @@ module PandoraNet
           if not_dep >= 0
             nick = PandoraCrypto.short_name_of_person(@skey, @to_person, 1)
             #pool.add_mass_record(MK_Presence, nick, nil, nil, \
-            #  nil, nil, nil, not_trust, not_dep, pool.self_node, \
+            #  nil, nil, not_trust, not_dep, pool.self_node, \
             #  nil, @recv_models)
           end
         end
@@ -3081,7 +3086,8 @@ module PandoraNet
                   @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
                   #panhashes = [@skey[PandoraCrypto::KV_Panhash], @skey[PandoraCrypto::KV_Creator]]
                   panhash = @skey[PandoraCrypto::KV_Creator]
-                  @dialog = PandoraUI.show_cabinet(panhash, self, conn_type)
+                  @dialog = PandoraUI.show_cabinet(panhash, self, conn_type, \
+                    nil, nil, PandoraUI::CPI_Dialog)
                   Thread.pass
                   #PandoraUtils.play_mp3('online')
                 end
@@ -3125,22 +3131,29 @@ module PandoraNet
                       @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
                         +[id0].pack('N'))
                     end
-
                     talkview = nil
                     talkview = @dialog.dlg_talkview if @dialog
+                    if not talkview
+                      @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
+                      panhash = @skey[PandoraCrypto::KV_Creator]
+                      @dialog = PandoraUI.show_cabinet(panhash, self, conn_type, \
+                        nil, nil, PandoraUI::CPI_Dialog)
+                      talkview = @dialog.dlg_talkview if @dialog
+                    end
                     if talkview
                       myname = PandoraCrypto.short_name_of_person(pool.current_key)
                       sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
                       id = nil
                       id = sel[0][0] if sel and (sel.size > 0)
-                      @dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
+                      @dialog.add_mes_to_view(text, id, panstate, nil, creator, \
                         myname, time_now, created)
                       @dialog.show_page(PandoraUI::CPI_Dialog)
                     else
-                      PandoraUI.log_message(PandoraUI::LM_Error, 'Пришло сообщение, но лоток чата не найден!')
+                      PandoraUI.log_message(PandoraUI::LM_Error, \
+                        _('Private message came, but cannot open dialog'))
                     end
 
-                    # This is a chat "!command"
+                    # This is a dialog !echo !menu or other command
                     if ((panstate & PandoraModel::PSF_Crypted)==0) and (text.is_a? String) \
                     and (text.size>1) and ((text[0]=='!') or (text[0]=='/'))
                       i = text.index(' ')
@@ -3453,7 +3466,7 @@ module PandoraNet
                     if (notic.is_a? Array) and (notic.size==5)
                       #pool.add_notice_order(self, *notic)
                       #pool.add_mass_record(MK_Presence, nick, nil, nil, \
-                      #  nil, nil, nil, nil, \
+                      #  nil, nil, nil, \
                       #  nil, @to_node, nil, @recv_models)
                     end
                   when ECC_News_SessMode
@@ -3557,98 +3570,114 @@ module PandoraNet
                 kind = rcode
                 params, len = PandoraUtils.pson_to_rubyobj(rdata)
                 #p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
-                if (params.is_a? Array) and (params.size>=6)
-                  src_node, src_ind, atime, atrust, adepth, param1, \
+                if (params.is_a? Array) and (params.size>=5)
+                  src_node, src_time, atrust, adepth, param1, \
                     param2, param3 = params
-                  src_key = nil
-                  scr_baseid = nil
-                  scr_person = nil
-                  nl = pool.get_node_params(src_node)
-                  if nl
-                    src_key = nl[NL_Key]
-                    scr_baseid = nl[NL_BaseId]
-                    scr_person = nl[NL_Person]
-                  end
-                  if not pool.find_mass_record_by_params(src_node, kind, param1, param2, param3)
-                  #if not pool.find_mass_record_by_index(src_node, src_ind)
-                    keep_node = @to_node
-                    resend = true
-                    case kind
-                      when MK_Presence
-                      when MK_Chat
-                        destination  = AsciiString.new(params[MRC_Dest])
-                        row, len = PandoraUtils.pson_to_rubyobj(params[MRC_MesRow])
-                        #p '---MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
-                        #  MRC_MesRow, params[MRC_MesRow], row].inspect
-                        creator  = row[MCM_Creator]
-                        created  = row[MCM_Created]
-                        text     = row[MCM_Text]
-                        panstate = row[MCM_PanState]
-                        panstate ||= 0
-                        panstate = (panstate & (PandoraModel::PSF_Crypted | \
-                          PandoraModel::PSF_Verified))
-                        panstate = (panstate | PandoraModel::PSF_ChatMes)
-                        time_now = Time.now.to_i
-                        values = {:destination=>destination, :text=>text, :state=>2, \
-                          :creator=>creator, :created=>created, :modified=>time_now, \
-                          :panstate=>panstate}
-                        #p log_mes+'++++Recv MK_Chat: values='+values.inspect
-                        model = PandoraUtils.get_model('Message', @recv_models)
-                        panhash = model.calc_panhash(values)
-                        values['panhash'] = panhash
-                        chat_dialog = PandoraUI.show_cabinet(destination, nil, \
-                          nil, nil, nil, PandoraUI::CPI_Chat)
-                          #@conn_type, nil, nil, CPI_Chat)
-                        res = model.update(values, nil, nil)
-                        Thread.pass
-                        sleep(0.05)
-                        Thread.pass
-                        talkview = nil
-                        talkview = chat_dialog.chat_talkview if chat_dialog
-                        if talkview
-                          myname = PandoraCrypto.short_name_of_person(pool.current_key)
-                          sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
-                          id = nil
-                          id = sel[0][0] if sel and (sel.size > 0)
-                          chat_dialog.add_mes_to_view(text, id, panstate, nil, @skey, \
-                            myname, time_now, created)
-                        else
-                          PandoraUI.log_message(PandoraUI::LM_Error, 'Пришло чат-сообщение, но лоток чата не найден!')
-                        end
-                      when MK_Search
-                        # пришёл поисковый запрос (ECC_Query_Search)
-                        #MRS_Kind       = MR_Param1    #1
-                        #MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
-                        #MRA_Answer     = MR_Param3    #~22
-                        scr_baseid ||= @to_base_id
-                        resend = ((scr_baseid.nil?) or (scr_baseid != pool.base_id))
-                        #  p log_mes+'ADD search req to pool list'
-                        #  pool.add_mass_record(MK_Search, params[MRS_Kind], \
-                        #    params[MRS_Request], params[MRA_Answer], nil, nil, nil, \
-                        #    nil, nil, @to_node, nil, @recv_models)
-                        #end
-                      when MK_Fishing
-                        # пришла заявка на рыбалку (ECC_Query_Fish)
-                        #params[MRF_Fish]            = MR_Param1   #22
-                        #params[MRF_Fish_key]        = MR_Param2   #22    #sum: 33+44=  77
-                        #params[MRL_Fish_Baseid]     = MR_Param3   #16
-                        if nl
-                          fisher = scr_person
-                          fisher_key = src_key
-                          fisher_baseid = scr_baseid
-                          fish = params[MRF_Fish]
-                          fish_key = params[MRF_Fish_key]
-                          resend = (init_line([fisher, fisher_key, fisher_baseid, \
-                            fish, fish_key], pool.key_hash) == false)
-                        end
-                      when MK_Cascade
-                      when MK_CiferBox
+                  if src_node != pool.self_node
+                    src_key = nil
+                    scr_baseid = nil
+                    scr_person = nil
+                    nl = pool.get_node_params(src_node)
+                    if nl
+                      src_key = nl[NL_Key]
+                      scr_baseid = nl[NL_BaseId]
+                      scr_person = nl[NL_Person]
                     end
-                    if resend
-                      pool.add_mass_record(kind, param1, param2, param3, src_node, \
-                        src_ind, atime, atrust, adepth, keep_node, nil, @recv_models)
+                    if (not pool.find_mass_record_by_params(src_node, kind, \
+                    param1, param2, param3))
+                    #if not pool.find_mass_record_by_time(src_node, src_time)
+                      keep_node = @to_node
+                      resend = true
+                      case kind
+                        when MK_Presence
+                        when MK_Chat
+                          destination  = AsciiString.new(params[MRC_Dest])
+                          row, len = PandoraUtils.pson_to_rubyobj(params[MRC_MesRow])
+                          #p '---MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
+                          #  MRC_MesRow, params[MRC_MesRow], row].inspect
+                          creator  = row[MCM_Creator]
+                          created  = row[MCM_Created]
+                          text     = row[MCM_Text]
+                          panstate = row[MCM_PanState]
+                          panstate ||= 0
+                          panstate = (panstate & (PandoraModel::PSF_Crypted | \
+                            PandoraModel::PSF_Verified))
+                          panstate = (panstate | PandoraModel::PSF_ChatMes)
+                          time_now = Time.now.to_i
+                          values = {:destination=>destination, :text=>text, :state=>2, \
+                            :creator=>creator, :created=>created, :modified=>time_now, \
+                            :panstate=>panstate}
+                          #p log_mes+'++++Recv MK_Chat: values='+values.inspect
+                          model = PandoraUtils.get_model('Message', @recv_models)
+                          panhash = model.calc_panhash(values)
+                          values['panhash'] = panhash
+                          sel = model.select({:panhash=>panhash}, false, 'id', nil, 1)
+                          if (not sel) or (sel.size == 0)
+                            chat_dialog = PandoraUI.show_cabinet(destination, nil, \
+                              nil, nil, nil, PandoraUI::CPI_Chat)
+                              #@conn_type, nil, nil, CPI_Chat)
+                            res = model.update(values, nil, nil)
+                            Thread.pass
+                            sleep(0.05)
+                            Thread.pass
+                            talkview = nil
+                            talkview = chat_dialog.chat_talkview if chat_dialog
+                            if talkview
+                              myname = PandoraCrypto.short_name_of_person(pool.current_key)
+                              sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
+                              id = nil
+                              id = sel[0][0] if sel and (sel.size > 0)
+                              chat_dialog.add_mes_to_view(text, id, panstate, nil, creator, \
+                                myname, time_now, created)
+                            else
+                              PandoraUI.log_message(PandoraUI::LM_Error, \
+                                _('Chat message came, but cannot open dialog'))
+                            end
+                          else
+                            PandoraUI.log_message(PandoraUI::LM_Trace, \
+                              _('Double of chat message was ignored')+': panhash='+\
+                              PandoraUtils.bytes_to_hex(panhash))
+                          end
+                        when MK_Search
+                          # пришёл поисковый запрос (ECC_Query_Search)
+                          #MRS_Kind       = MR_Param1    #1
+                          #MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
+                          #MRA_Answer     = MR_Param3    #~22
+                          scr_baseid ||= @to_base_id
+                          resend = ((scr_baseid.nil?) or (scr_baseid != pool.base_id))
+                          #  p log_mes+'ADD search req to pool list'
+                          #  pool.add_mass_record(MK_Search, params[MRS_Kind], \
+                          #    params[MRS_Request], params[MRA_Answer], nil, nil, \
+                          #    nil, nil, @to_node, nil, @recv_models)
+                          #end
+                        when MK_Fishing
+                          # пришла заявка на рыбалку (ECC_Query_Fish)
+                          #params[MRF_Fish]            = MR_Param1   #22
+                          #params[MRF_Fish_key]        = MR_Param2   #22    #sum: 33+44=  77
+                          #params[MRL_Fish_Baseid]     = MR_Param3   #16
+                          if nl
+                            fisher = scr_person
+                            fisher_key = src_key
+                            fisher_baseid = scr_baseid
+                            fish = params[MRF_Fish]
+                            fish_key = params[MRF_Fish_key]
+                            resend = (init_line([fisher, fisher_key, fisher_baseid, \
+                              fish, fish_key], pool.key_hash) == false)
+                          end
+                        when MK_Cascade
+                        when MK_CiferBox
+                      end
+                      if resend
+                        pool.add_mass_record(kind, param1, param2, param3, src_node, \
+                          src_time, atrust, adepth, keep_node, nil, @recv_models)
+                      end
+                    else
+                      PandoraUI.log_message(PandoraUI::LM_Trace, \
+                        _('Own mass record is received')+': ind='+src_time.to_s)
                     end
                   end
+                else
+                  err_scmd('Low count of mass rec parameters')
                 end
               else
                 err_scmd('Unknown command is recieved', ECC_Bye_Unknown)
@@ -3884,8 +3913,8 @@ module PandoraNet
                 #  to_person, to_key, @recv_models)
                 fish_trust = 0
                 fish_dep = 2
-                pool.add_mass_record(MK_Fishing, to_person, to_key, nil, \
-                   nil, nil, nil, fish_trust, fish_dep, nil, nil, @recv_models)
+                #pool.add_mass_record(MK_Fishing, to_person, to_key, nil, \
+                #   nil, nil, fish_trust, fish_dep, nil, nil, @recv_models)
                 #while (not @socket) and (not active_hook) \
                 #and (@conn_state == CS_Connecting)
                 #  p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
@@ -4484,18 +4513,19 @@ module PandoraNet
               # рассылка массовых записей
               if (@sess_mode.is_a? Integer) and ((@sess_mode & CM_MassExch)>0) \
               and @to_key and @to_person and @to_base_id and @sess_trust \
-              and (questioner_step>QS_ResetMessage)
+              and (questioner_step>QS_ResetMessage) and (@stage>=ES_Exchange)
                 processed = 0
                 if @mr_ind+$max_mass_count < pool.mass_records.size
                   @mr_ind = pool.mass_records.size - $max_mass_count
                 end
+                @mr_ind = pool.mass_records.size if @mr_ind > pool.mass_records.size
                 while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
                 and (@mr_ind < pool.mass_records.size) \
                 and (processed<$mass_per_cicle)
                 #and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
                   mass_rec = pool.mass_records[@mr_ind]
-                  #p log_mes+'->>>MASSREC [@mr_ind, pool.mass_records.size, @sess_trust, mass_rec[MR_Trust], mass_rec, @to_node]=' \
-                  #  +[@mr_ind, pool.mass_records.size, @sess_trust, PandoraModel.transform_trust(mass_rec[MR_Trust]), mass_rec, @to_node].inspect
+                  #p log_mes+'->>>MASSREC [@mr_ind, pool.mass_records.size, @sess_trust, mass_rec[MR_Trust], @to_node]=' \
+                  #  +[@mr_ind, pool.mass_records.size, @sess_trust, PandoraModel.transform_trust(mass_rec[MR_Trust]), @to_node].inspect
                   if (mass_rec and mass_rec[MR_Node] \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], \
                   :auto_to_float)) and (mass_rec[MR_Node] != @to_node) and (mass_rec[MR_Depth]>0))
@@ -4573,6 +4603,10 @@ module PandoraNet
                   else
                     ito = is_timeout?($exchange_timeout)
                     #p log_mes+'all timeout  ito='+ito.inspect
+                    if (ito and @to_node and (@to_node != pool.self_node) \
+                    and (not pool.has_active_session?($min_keep_session_count)))
+                      ito = false
+                    end
                   end
                 end
                 if ito
@@ -4718,6 +4752,9 @@ module PandoraNet
   $hunt_overflow_pause = 1.0
   $hunt_period         = 60*3
 
+  $trust_for_chatcom  = 0.7   # trust level for all chat commands
+  $special_chatcom_trusts  = {'echo'=>0.01, 'exec'=>0.9, 'sound'=>0.2, 'tunnel'=>0.8}
+
   # Get exchange params
   # RU: Взять параметры обмена
   def self.get_exchange_params
@@ -4732,13 +4769,16 @@ module PandoraNet
     $trust_for_unknown   = PandoraUtils.get_param('trust_for_unknown')
     $max_opened_keys     = PandoraUtils.get_param('max_opened_keys')
     $max_session_count   = PandoraUtils.get_param('max_session_count')
+    $min_keep_session_count  = PandoraUtils.get_param('min_keep_session_count')
     $hunt_step_pause     = PandoraUtils.get_param('hunt_step_pause')
     $hunt_overflow_pause = PandoraUtils.get_param('hunt_overflow_pause')
     $hunt_period         = PandoraUtils.get_param('hunt_period')
     $exchange_timeout    = PandoraUtils.get_param('exchange_timeout')
     $dialog_timeout      = PandoraUtils.get_param('dialog_timeout')
     $captcha_timeout     = PandoraUtils.get_param('captcha_timeout')
+    $keep_for_trust      = PandoraUtils.get_param('keep_for_trust')
     $low_conn_trust     ||= 0.0
+    $keep_for_trust     ||= 0.5
     get_mass_params
   end
 
@@ -4792,12 +4832,12 @@ module PandoraNet
   # Open server socket and begin listen
   # RU: Открывает серверный сокет и начинает слушать
   def self.start_or_stop_listen(must_listen=nil, quit_programm=nil)
-    PandoraNet.get_exchange_params
     must_listen = (not listen?) if must_listen.nil?
     if must_listen
       # Need to start
       user = PandoraCrypto.current_user_or_key(true)
       if user
+        PandoraNet.get_exchange_params
         PandoraUI.set_status_field(PandoraUI::SF_Listen, nil, nil, true)
         hosts = $host
         hosts ||= PandoraUtils.get_param('listen_host')
@@ -4825,8 +4865,8 @@ module PandoraNet
                   end
                 rescue => err
                   str = 'TCP ['+host.to_s+']:'+tcp_port.to_s
-                  PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot open')+' '+str+' ' \
-                    +Utf8String.new(err.message))
+                  PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot open')+\
+                    ' '+str+' '+Utf8String.new(err.message))
                 end
               end
             end
@@ -5220,6 +5260,7 @@ module PandoraNet
     else
       user = PandoraCrypto.current_user_or_key(true)
       if user
+        PandoraNet.get_exchange_params
         node_model = PandoraModel::Node.new
         filter = 'addr<>"" OR domain<>""'
         flds = 'id, addr, domain, key_hash, tport, panhash, base_id'
@@ -5239,7 +5280,7 @@ module PandoraNet
                 domain = row[2]
                 key_hash = row[3]
                 if (addr and (addr.size>0)) or (domain and (domain.size>0)) \
-                or ($pool.active_socket? and key_hash and (key_hash.size>0))
+                or ($pool.has_active_session? and key_hash and (key_hash.size>0))
                   tport = 0
                   begin
                     tport = row[4].to_i

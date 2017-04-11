@@ -5330,11 +5330,14 @@ module PandoraGtk
         entry = field[FI_Widget]
         if entry.text == ''
           body_win = field[FI_Widget2]
+          if body_win and body_win.destroyed?
+            body_win = nil
+            field[FI_Widget2] = nil
+          end
           text = flds_hash[field[FI_Id]]
           #p '====(entry.text == '')  body_win, body_win.destroyed?, body_win.raw_buffer, text='+\
-            [body_win, body_win.destroyed?, body_win.raw_buffer, text].inspect
-          if (body_win.is_a? BodyScrolledWindow) \
-          and (not body_win.destroyed?) and body_win.raw_buffer
+          #  [body_win, body_win.destroyed?, body_win.raw_buffer, text].inspect
+          if (body_win.is_a? BodyScrolledWindow) and body_win.raw_buffer
             #text = textview.buffer.text
             text = body_win.raw_buffer.text
             #p '---text='+text.inspect
@@ -6158,7 +6161,13 @@ module PandoraGtk
       first_body_fld = property_box.text_fields[0]
       if first_body_fld
         bodywin = first_body_fld[FI_Widget2]
-        bodywid = bodywin.child
+        if bodywin and bodywin.destroyed?
+          bodywin = nil
+          first_body_fld[FI_Widget2] = nil
+        end
+        if bodywin and bodywin.child and (not bodywin.child.destroyed?)
+          bodywid = bodywin.child
+        end
       end
 
       btn = add_btn_to_toolbar(Gtk::Stock::EDIT, 'Edit', false) do |btn|
@@ -6619,9 +6628,15 @@ module PandoraGtk
               first_body_fld = property_box.text_fields[0]
               if first_body_fld
                 bodywin = first_body_fld[FI_Widget2]
-                bodywin.fill_body
-                container.add(bodywin)
-                bodywin.edit_btn.safe_set_active((not bodywin.view_mode)) if bodywin.edit_btn
+                if bodywin and bodywin.destroyed?
+                  bodywin = nil
+                  first_body_fld[FI_Widget2] = nil
+                end
+                if bodywin
+                  bodywin.fill_body
+                  container.add(bodywin)
+                  bodywin.edit_btn.safe_set_active((not bodywin.view_mode)) if bodywin.edit_btn
+                end
               end
             end
           when PandoraUI::CPI_Dialog, PandoraUI::CPI_Chat
@@ -6863,7 +6878,11 @@ module PandoraGtk
               first_body_fld = property_box.text_fields[0]
               if first_body_fld
                 bodywin = first_body_fld[FI_Widget2]
-                if bodywin.edit_btn
+                if bodywin and bodywin.destroyed?
+                  bodywin = nil
+                  first_body_fld[FI_Widget2] = nil
+                end
+                if bodywin and bodywin.edit_btn
                   bodywin.edit_btn.active = (not bodywin.edit_btn.active?)
                 end
               end
@@ -7163,14 +7182,14 @@ module PandoraGtk
         name_style = 'you_bold'
         user_name = nil
         if key_or_panhash
-          if key_or_panhash.is_a? String
+          if key_or_panhash.is_a?(String)
             user_name = PandoraCrypto.short_name_of_person(nil, key_or_panhash, 0, myname)
           else
             user_name = PandoraCrypto.short_name_of_person(key_or_panhash, nil, 0, myname)
           end
           time_style = 'dude'
           name_style = 'dude_bold'
-          notice = (not to_end.is_a? FalseClass)
+          notice = (not to_end.is_a?(FalseClass))
         else
           user_name = myname
         end
@@ -8282,7 +8301,7 @@ module PandoraGtk
         reqs.each do |mr|
           if (mr.is_a? Array) and (mr[PandoraNet::MR_Kind] == PandoraNet::MK_Search)
             user_iter = @list_store.append
-            user_iter[0] = mr[PandoraNet::MR_Index]
+            user_iter[0] = mr[PandoraNet::MR_CrtTime]
             user_iter[1] = Utf8String.new(mr[PandoraNet::MRS_Request])
             user_iter[2] = Utf8String.new(mr[PandoraNet::MRS_Kind])
             user_iter[3] = Utf8String.new(mr[PandoraNet::MRA_Answer].inspect)
@@ -8822,7 +8841,7 @@ module PandoraGtk
       #mass_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
       list_store = Gtk::ListStore.new(Integer, String, String, String, String, \
-        Integer, Integer, Integer, String, String, Integer)
+        Integer, Integer, Integer, String, String)
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
@@ -8853,7 +8872,6 @@ module PandoraGtk
               sess_iter[7] = 0 #distance
               sess_iter[8] = PandoraUtils.bytes_to_hex(anode)
               sess_iter[9] = PandoraUtils.time_to_str(mr[PandoraNet::MR_CrtTime])
-              sess_iter[10] = mr[PandoraNet::MR_Index]
             end
           end
         end
@@ -8933,11 +8951,6 @@ module PandoraGtk
       renderer = Gtk::CellRendererText.new
       column = Gtk::TreeViewColumn.new(_('Time'), renderer, 'text' => 9)
       column.set_sort_column_id(9)
-      list_tree.append_column(column)
-
-      renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 10)
-      column.set_sort_column_id(10)
       list_tree.append_column(column)
 
       list_tree.signal_connect('row_activated') do |tree_view, path, column|
@@ -9059,8 +9072,8 @@ module PandoraGtk
 
       #mass_ind, session, fisher, fisher_key, fisher_baseid, fish, fish_key, time]
 
-      list_store = Gtk::ListStore.new(Integer, String, Integer, String, String, \
-        String, String, String, String, String, String)
+      list_store = Gtk::ListStore.new(Integer, String, String, String, \
+        String, String, String, String, String, String, String)
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
@@ -9069,15 +9082,15 @@ module PandoraGtk
             sess_iter = list_store.append
             sess_iter[0] = mr[PandoraNet::MR_Kind]
             sess_iter[1] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Node])
-            sess_iter[2] = mr[PandoraNet::MR_Index]
-            sess_iter[3] = PandoraUtils.time_to_str(mr[PandoraNet::MR_CrtTime])
-            sess_iter[4] = mr[PandoraNet::MR_Trust].inspect
-            sess_iter[5] = mr[PandoraNet::MR_Depth].inspect
-            sess_iter[6] = mr[PandoraNet::MR_Param1].inspect
-            sess_iter[7] = mr[PandoraNet::MR_Param2].inspect
-            sess_iter[8] = mr[PandoraNet::MR_Param3].inspect
-            sess_iter[9] = mr[PandoraNet::MR_KeepNodes].inspect
-            sess_iter[10] = mr[PandoraNet::MR_Requests].inspect
+            sess_iter[2] = PandoraUtils.time_to_str(mr[PandoraNet::MR_CrtTime])
+            sess_iter[3] = mr[PandoraNet::MR_Trust].inspect
+            sess_iter[4] = mr[PandoraNet::MR_Depth].inspect
+            sess_iter[5] = mr[PandoraNet::MR_Param1].inspect
+            sess_iter[6] = mr[PandoraNet::MR_Param2].inspect
+            sess_iter[7] = mr[PandoraNet::MR_Param3].inspect
+            sess_iter[8] = mr[PandoraNet::MR_KeepNodes].inspect
+            sess_iter[9] = mr[PandoraNet::MR_ReqIndexes].inspect
+            sess_iter[10] = mr[PandoraNet::MR_ReceiveState].inspect
           end
         end
       end
@@ -9100,47 +9113,47 @@ module PandoraGtk
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Index'), renderer, 'text' => 2)
+      column = Gtk::TreeViewColumn.new(_('CrtTime'), renderer, 'text' => 2)
       column.set_sort_column_id(2)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('CrtTime'), renderer, 'text' => 3)
+      column = Gtk::TreeViewColumn.new(_('Trust'), renderer, 'text' => 3)
       column.set_sort_column_id(3)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Trust'), renderer, 'text' => 4)
+      column = Gtk::TreeViewColumn.new(_('Depth'), renderer, 'text' => 4)
       column.set_sort_column_id(4)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Depth'), renderer, 'text' => 5)
+      column = Gtk::TreeViewColumn.new(_('Param1'), renderer, 'text' => 5)
       column.set_sort_column_id(5)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Param1'), renderer, 'text' => 6)
+      column = Gtk::TreeViewColumn.new(_('Param2'), renderer, 'text' => 6)
       column.set_sort_column_id(6)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Param2'), renderer, 'text' => 7)
+      column = Gtk::TreeViewColumn.new(_('Param3'), renderer, 'text' => 7)
       column.set_sort_column_id(7)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Param3'), renderer, 'text' => 8)
+      column = Gtk::TreeViewColumn.new(_('KeepNodes'), renderer, 'text' => 8)
       column.set_sort_column_id(8)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('KeepNodes'), renderer, 'text' => 9)
+      column = Gtk::TreeViewColumn.new(_('Requests'), renderer, 'text' => 9)
       column.set_sort_column_id(9)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('Requests'), renderer, 'text' => 10)
+      column = Gtk::TreeViewColumn.new(_('ResState'), renderer, 'text' => 10)
       column.set_sort_column_id(10)
       list_tree.append_column(column)
 

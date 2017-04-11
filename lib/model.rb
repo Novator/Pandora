@@ -423,8 +423,6 @@ module PandoraModel
   end
 
   $keep_for_trust  = 0.5      # set "Support" flag for records with creator trust
-  $trust_for_chatcom  = 0.7   # trust level for all chat commands
-  $special_chatcom_trusts  = {'echo'=>0.01, 'exec'=>0.9, 'sound'=>0.2, 'tunnel'=>0.8}
   $max_relative_path_depth = 2
 
   # Save record
