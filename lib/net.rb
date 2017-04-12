@@ -4619,11 +4619,12 @@ module PandoraNet
                   else
                     ito = is_timeout?($exchange_timeout)
                     #p log_mes+'all timeout  ito='+ito.inspect
-                    if (ito and @to_node and (@to_node != pool.self_node) \
-                    and (not pool.has_active_session?($min_keep_session_count)))
-                      ito = false
-                    end
                   end
+                end
+                if (@stage>=ES_Exchange) \
+                and (ito and @to_node and (@to_node != pool.self_node) \
+                and (not pool.has_active_session?($min_keep_session_count)))
+                  ito = false
                 end
                 if ito
                   add_send_segment(EC_Bye, true, nil, ECC_Bye_TimeOut)
