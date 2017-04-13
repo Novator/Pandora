@@ -1740,9 +1740,29 @@ module PandoraGtk
         end
       end
 
+      list_sw = Gtk::ScrolledWindow.new(nil, nil)
+      #list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+      list_sw.shadow_type = Gtk::SHADOW_NONE
+      list_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      list_sw.border_width = 0
+      list_sw.add(treeview)
+
+      awidth, aheight = treeview.size_request
+      awidth += 5
+      scr = Gdk::Screen.default
+      swidth = scr.width-80
+      sheight = scr.height-100
+      swidth = 500 if swidth>500
+      awidth = swidth if awidth>swidth
+      if aheight>sheight
+        aheight = sheight
+        awidth += 30
+      end
+      list_sw.set_size_request(awidth, aheight)
+
       frame = Gtk::Frame.new
       frame.shadow_type = Gtk::SHADOW_OUT
-      frame.add(treeview)
+      frame.add(list_sw)
 
       treeview.can_default = true
       treeview.grab_focus
@@ -4577,6 +4597,24 @@ module PandoraGtk
       #statusbar.pack_start(rate_btn, false, false, 0)
       #panelbox.pack_start(statusbar, false, false, 0)
 
+      #inject lang field
+      ind = @fields.index { |field| field[FI_Id] == 'panhash_lang' }
+      if not ind
+        lang = PandoraModel.text_to_lang($lang)
+        lang = @panhash0[1].ord if @panhash0 and (@panhash0.size>1)
+        lang ||= 0
+        field = Array.new
+        field[FI_Id] = 'panhash_lang'
+        field[FI_Name] = 'Language'
+        lang_tit = _('Language')
+        field[FI_LName] = lang_tit
+        field[FI_VFName] = lang_tit
+        field[FI_Type] = 'Byte'
+        field[FI_View] = 'bytelist'
+        field[FI_Value] = lang
+        @fields << field
+      end
+
       # devide text fields in separate list
       @panstate = 0
       @text_fields = Array.new
@@ -4700,7 +4738,9 @@ module PandoraGtk
               entry = PanhashBox.new(atype, amodal)
             end
           when 'bytelist'
-            if field[FI_Id]=='sex'
+            if field[FI_Id]=='panhash_lang'
+              entry = ByteListEntry.new(PandoraModel.lang_code_list, amodal)
+            elsif field[FI_Id]=='sex'
               entry = ByteListEntry.new(SexList, amodal)
             elsif field[FI_Id]=='kind'
               entry = ByteListEntry.new(PandoraModel::RelationNames, amodal)
@@ -5267,61 +5307,71 @@ module PandoraGtk
       flds_hash = {}
       file_way = nil
       file_way_exist = nil
+      lang = nil
+
       row ||= fields
       fields.each do |field|
-        type = field[FI_Type]
-        view = field[FI_View]
+        fld_id = field[FI_Id]
         entry = field[FI_Widget]
         val = entry.text
-
-        if ((panobject.kind==PK_Relation) and val \
-        and ((field[FI_Id]=='first') or (field[FI_Id]=='second')))
-          PandoraModel.del_image_from_cache(val, true)
-        elsif (panobject.kind==PK_Parameter) and (field[FI_Id]=='value')
-          par_type = panobject.field_val('type', row)
-          setting = panobject.field_val('setting', row)
-          ps = PandoraUtils.decode_param_setting(setting)
-          view = ps['view']
-          view ||= PandoraUtils.pantype_to_view(par_type)
-        elsif file_way
-          p 'file_way2='+file_way.inspect
-          if (field[FI_Id]=='type')
-            val = PandoraUtils.detect_file_type(file_way) if (not val) or (val.size==0)
-          elsif (field[FI_Id]=='sha1')
-            if file_way_exist
-              sha1 = Digest::SHA1.file(file_way)
-              val = sha1.hexdigest
-            else
-              val = nil
-            end
-          elsif (field[FI_Id]=='md5')
-            if file_way_exist
-              md5 = Digest::MD5.file(file_way)
-              val = md5.hexdigest
-            else
-              val = nil
-            end
-          elsif (field[FI_Id]=='size')
-            val = File.size?(file_way)
-          end
-        end
-        p 'fld, val, type, view='+[field[FI_Id], val, type, view].inspect
-        val = PandoraUtils.view_to_val(val, type, view)
-        if (view=='blob') or (view=='text')
-          if val and (val.size>0)
-            file_way = PandoraUtils.absolute_path(val)
-            file_way_exist = File.exist?(file_way)
-            p 'file_way1='+file_way.inspect
-            val = '@'+val
-            flds_hash[field[FI_Id]] = val
-            field[FI_Value] = val
-            #p '----TEXT ENTR!!!!!!!!!!!'
-          else
-            flds_hash[field[FI_Id]] = field[FI_Value]
+        if (fld_id=='panhash_lang')
+          begin
+            lang = val.to_i if val.size>0
+          rescue
+            lang = nil
           end
         else
-          flds_hash[field[FI_Id]] = val
-          field[FI_Value] = val
+          type = field[FI_Type]
+          view = field[FI_View]
+          if ((panobject.kind==PK_Relation) and val \
+          and ((fld_id=='first') or (fld_id=='second')))
+            PandoraModel.del_image_from_cache(val, true)
+          elsif (panobject.kind==PK_Parameter) and (fld_id=='value')
+            par_type = panobject.field_val('type', row)
+            setting = panobject.field_val('setting', row)
+            ps = PandoraUtils.decode_param_setting(setting)
+            view = ps['view']
+            view ||= PandoraUtils.pantype_to_view(par_type)
+          elsif file_way
+            p 'file_way2='+file_way.inspect
+            if (fld_id=='type')
+              val = PandoraUtils.detect_file_type(file_way) if (not val) or (val.size==0)
+            elsif (fld_id=='sha1')
+              if file_way_exist
+                sha1 = Digest::SHA1.file(file_way)
+                val = sha1.hexdigest
+              else
+                val = nil
+              end
+            elsif (fld_id=='md5')
+              if file_way_exist
+                md5 = Digest::MD5.file(file_way)
+                val = md5.hexdigest
+              else
+                val = nil
+              end
+            elsif (fld_id=='size')
+              val = File.size?(file_way)
+            end
+          end
+          #p 'fld, val, type, view='+[fld_id, val, type, view].inspect
+          val = PandoraUtils.view_to_val(val, type, view)
+          if (view=='blob') or (view=='text')
+            if val and (val.size>0)
+              file_way = PandoraUtils.absolute_path(val)
+              file_way_exist = File.exist?(file_way)
+              #p 'file_way1='+file_way.inspect
+              val = '@'+val
+              flds_hash[fld_id] = val
+              field[FI_Value] = val
+              #p '----TEXT ENTR!!!!!!!!!!!'
+            else
+              flds_hash[fld_id] = field[FI_Value]
+            end
+          else
+            flds_hash[fld_id] = val
+            field[FI_Value] = val
+          end
         end
       end
 
@@ -5360,13 +5410,6 @@ module PandoraGtk
         end
       end
 
-      # language detect
-      lg = nil
-      begin
-        lg = PandoraModel.text_to_lang(@lang_entry.entry.text)
-      rescue
-      end
-      lang = lg if lg
       if (not lang.is_a? Integer) or (lang<0) or (lang>255)
         lang = PandoraModel.text_to_lang($lang)
       end
@@ -9174,6 +9217,160 @@ module PandoraGtk
     end
   end
 
+  # List of fishers
+  # RU: Список рыбаков
+  class PhraseEditorScrollWin < Gtk::ScrolledWindow
+    #attr_accessor :update_btn
+
+    include PandoraGtk
+
+    # Show fishers window
+    # RU: Показать окно рыбаков
+    def initialize
+      super(nil, nil)
+
+      set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+      border_width = 0
+
+      vbox = Gtk::VBox.new
+      hbox = Gtk::HBox.new
+
+      title = _('Load from file')
+      load_btn = Gtk::ToolButton.new(Gtk::Stock::OPEN, title)
+      load_btn.tooltip_text = title
+      load_btn.label = title
+
+      title = _('Save to file')
+      save_btn = Gtk::ToolButton.new(Gtk::Stock::SAVE, title)
+      save_btn.tooltip_text = title
+      save_btn.label = title
+
+      file_label = Gtk::Label.new('file name')
+
+      hbox.pack_start(load_btn, false, true, 0)
+      hbox.pack_start(save_btn, false, true, 0)
+      hbox.pack_start(file_label, false, true, 0)
+
+      list_sw = Gtk::ScrolledWindow.new(nil, nil)
+      list_sw.shadow_type = Gtk::SHADOW_ETCHED_IN
+      list_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC) #Gtk::POLICY_NEVER
+
+      list_store = Gtk::ListStore.new(Integer, String, String)
+
+      lang_trans_ru = nil
+      if $lang != 'ru'
+        lang_trans_ru = Hash.new
+        PandoraUtils.load_language('ru', nil, lang_trans_ru)
+      end
+
+      load_btn.signal_connect('clicked') do |*args|
+        lang_trans = $lang_trans
+        file_label.text = PandoraUtils.get_lang_file($lang)
+        list_store.clear
+        i = 0
+        if PandoraUtils.load_language($lang, nil, lang_trans)
+          lang_trans.each do |key,val|
+            list_iter = list_store.append
+            i += 1
+            list_iter[0] = i
+            list_iter[1] = key
+            list_iter[2] = val
+          end
+        end
+        if lang_trans_ru
+          lang_trans_ru.each do |key,val|
+            val0 = lang_trans[key]
+            if val0.nil? or (val0=='')
+              list_iter = list_store.append
+              i += 1
+              list_iter[0] = i
+              list_iter[1] = key
+            end
+          end
+        end
+      end
+
+      save_btn.signal_connect('clicked') do |*args|
+        lang_trans = Hash.new
+        list_store.each do |model, path, iter|
+          key = iter[1]
+          val = iter[2]
+          lang_trans[key] = val
+        end
+        if lang_trans.size>0
+          file_label.text = ''
+          if PandoraUtils.save_as_language($lang, lang_trans)
+            lang_file = PandoraUtils.get_lang_file($lang)
+            file_label.text = lang_file
+            PandoraUI.log_message(PandoraUI::LM_Info, _('Language file is saved')+\
+              ' ['+lang_file+']')
+          end
+        end
+      end
+
+      # create tree view
+      list_tree = Gtk::TreeView.new(list_store)
+      list_tree.rules_hint = true
+      list_tree.selection.mode = Gtk::SELECTION_SINGLE
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('№'), renderer, 'text' => 0)
+      column.set_sort_column_id(0)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      column = Gtk::TreeViewColumn.new(_('English'), renderer, 'text' => 1)
+      column.set_sort_column_id(1)
+      list_tree.append_column(column)
+
+      renderer = Gtk::CellRendererText.new
+      renderer.editable = true
+      #renderer.editable_set = true
+      renderer.single_paragraph_mode = false
+
+      renderer.signal_connect('editing-started') do |ren, editable, path_str|
+        if path_str and (path_str.size>0)
+          iter = list_tree.model.get_iter(path_str)
+          if iter
+            value = iter[2]
+            #iter.set_value(2, value)
+            #ren.text = value
+            #editable.truncate_multiline=(val)
+            editable.text = value
+          end
+        end
+        false
+      end
+
+      renderer.signal_connect('edited') do |ren, path_str, value|
+        if path_str and (path_str.size>0)
+          iter = list_tree.model.get_iter(path_str)
+          iter.set_value(2, value) if iter
+        end
+        false
+      end
+      column = Gtk::TreeViewColumn.new(_('Current')+'('+$lang+')', renderer, \
+        'text' => 2)
+      column.set_sort_column_id(2)
+      list_tree.append_column(column)
+
+      list_tree.signal_connect('row_activated') do |tree_view, path, column|
+        # download and go to record
+      end
+
+      list_sw.add(list_tree)
+
+      vbox.pack_start(hbox, false, true, 0)
+      vbox.pack_start(list_sw, true, true, 0)
+      list_sw.show_all
+
+      self.add_with_viewport(vbox)
+      load_btn.clicked
+
+      list_tree.grab_focus
+    end
+  end
+
   # Set readonly mode to widget
   # RU: Установить виджету режим только для чтения
   def self.set_readonly(widget, value=true, set_sensitive=true)
@@ -9295,7 +9492,6 @@ module PandoraGtk
       sel = nil
       id = nil
       panhash0 = nil
-      lang = PandoraModel.text_to_lang($lang)
       panstate = 0
       created0 = nil
       creator0 = nil
@@ -9336,8 +9532,6 @@ module PandoraGtk
         else  # RadarScrollWin
           panhash0 = PandoraUtils.hex_to_bytes(iter[2])
         end
-        lang = panhash0[1].ord if panhash0 and (panhash0.size>1)
-        lang ||= 0
       end
 
       if action=='Delete'
@@ -9552,8 +9746,8 @@ module PandoraGtk
           end
 
           st_text = panobject.panhash_formula
-          st_text = st_text + ' [#'+panobject.calc_panhash(row, lang, \
-            true, true)+']' if sel and sel.size>0
+          #st_text = st_text + ' [#'+panobject.calc_panhash(row, lang, \
+          #  true, true)+']' if sel and sel.size>0
           #!!!PandoraGtk.set_statusbar_text(dialog.statusbar, st_text)
 
           #if panobject.is_a? PandoraModel::Key
@@ -9770,8 +9964,8 @@ module PandoraGtk
               fdesc = panobject.tab_fields[tab_ind][PandoraUtils::TI_Desc]
               view = type = nil
               if fdesc
-                view = fdesc[PandoraUtils::FI_View]
-                type = fdesc[PandoraUtils::FI_Type]
+                view = fdesc[FI_View]
+                type = fdesc[FI_Type]
                 val = PandoraUtils.view_to_val(val, type, view)
               elsif fld=='id'
                 val = val.to_i
@@ -10816,6 +11010,29 @@ module PandoraGtk
     image = Gtk::Image.new(:fish, Gtk::IconSize::SMALL_TOOLBAR)
     image.set_padding(2, 0)
     label_box = TabLabelBox.new(image, _('Fishers'), sw) do
+      #sw.destroy
+    end
+    page = $window.notebook.append_page(sw, label_box)
+    $window.notebook.set_tab_reorderable(sw, true)
+    sw.show_all
+    $window.notebook.page = $window.notebook.n_pages-1
+  end
+
+  # Show language phrases editor
+  # RU: Показать редактор языковых фраз
+  def self.show_lang_editor
+    $window.notebook.children.each do |child|
+      if (child.is_a? PhraseEditorScrollWin)
+        $window.notebook.page = $window.notebook.children.index(child)
+        child.update_btn.clicked
+        return
+      end
+    end
+    sw = PhraseEditorScrollWin.new
+
+    image = Gtk::Image.new(:lang, Gtk::IconSize::SMALL_TOOLBAR)
+    image.set_padding(2, 0)
+    label_box = TabLabelBox.new(image, _('Phrases'), sw) do
       #sw.destroy
     end
     page = $window.notebook.append_page(sw, label_box)
@@ -12029,7 +12246,8 @@ module PandoraGtk
       add_status_field(PandoraUI::SF_Log, nil, 'Logbar', :log, false, 0) do
         PandoraUI.do_menu_act('LogBar')
       end
-      add_status_field(PandoraUI::SF_FullScr, nil, 'Full screen', Gtk::Stock::FULLSCREEN, false, 0) do
+      add_status_field(PandoraUI::SF_FullScr, nil, 'Full screen', \
+      Gtk::Stock::FULLSCREEN, false, 0) do
         PandoraUI.do_menu_act('FullScr')
       end
 
@@ -12046,7 +12264,7 @@ module PandoraGtk
         PandoraUI.start_updating(true)
       end
       add_status_field(PandoraUI::SF_Lang, $lang, 'Language') do
-        PandoraUI.do_menu_act('Blob')
+        PandoraUI.do_menu_act('LangEdit')
       end
       add_status_field(PandoraUI::SF_Auth, _('Not logged'), 'Authorize', :auth, false) do
         PandoraUI.do_menu_act('Authorize')          #Gtk::Stock::DIALOG_AUTHENTICATION

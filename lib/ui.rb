@@ -1019,6 +1019,10 @@ module PandoraUI
         elsif $gtk_is_active
           PandoraGtk.show_log_bar
         end
+      when 'LangEdit'
+        if $gtk_is_active
+          PandoraGtk.show_lang_editor
+        end
       when 'Fisher'
         if $ncurses_is_active
           PandoraCui.show_fisher_panel

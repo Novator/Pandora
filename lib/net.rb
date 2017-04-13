@@ -812,7 +812,8 @@ module PandoraNet
     # Get a session by the node panhash
     # RU: Возвращает сессию по панхэшу узла
     def sessions_of_node(panhash)
-      res = sessions.select { |s| (s.node_panhash == panhash) }
+      res = sessions.select { |s| (s.node_panhash == panhash) \
+        or (s.to_node and (s.to_node == panhash)) }
       res
     end
 
@@ -3689,7 +3690,8 @@ module PandoraNet
                       end
                     else
                       PandoraUI.log_message(PandoraUI::LM_Trace, \
-                        _('Own mass record is received')+': ind='+src_time.to_s)
+                        _('Double of mass record was ignored')+': time='+\
+                          PandoraUtils.time_to_dialog_str(src_time))
                     end
                   end
                 else
@@ -3780,10 +3782,10 @@ module PandoraNet
     $exchange_timeout = 5
     # Timeout after message in sec
     # RU: Таймаут после сообщений в секундах
-    $dialog_timeout = 90
+    $dialog_timeout = 10*60
     # Timeout for captcha in sec
     # RU: Таймаут для капчи в секундах
-    $captcha_timeout = 120
+    $captcha_timeout = 2*60
 
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
@@ -3889,6 +3891,7 @@ module PandoraNet
 
               # Try to connect
               @conn_thread = Thread.new do
+                @conn_thread = Thread.current
                 begin
                   @conn_state = CS_Connecting
                   asocket = TCPSocket.open(host, port)
@@ -4628,7 +4631,8 @@ module PandoraNet
                 end
                 if ito
                   add_send_segment(EC_Bye, true, nil, ECC_Bye_TimeOut)
-                  PandoraUI.log_message(PandoraUI::LM_Trace, _('Idle timeout')+': '+@host_ip.inspect)
+                  PandoraUI.log_message(PandoraUI::LM_Trace, _('Idle timeout')+': '+\
+                    @host_ip.inspect)
                 else
                   sleep(0.08)
                 end
@@ -5295,18 +5299,19 @@ module PandoraNet
                 node_id = row[0]
                 addr   = row[1]
                 domain = row[2]
+                tport = 0
+                begin
+                  tport = row[4].to_i
+                rescue
+                end
                 key_hash = row[3]
-                if (addr and (addr.size>0)) or (domain and (domain.size>0)) \
-                or ($pool.has_active_session? and key_hash and (key_hash.size>0))
-                  tport = 0
-                  begin
-                    tport = row[4].to_i
-                  rescue
-                  end
+                if ((addr and (addr.size>0)) or (domain and (domain.size>0))) \
+                and tport and (tport>0)
+                #or ($pool.has_active_session? and key_hash and (key_hash.size>0))
                   person = nil
                   panhash = row[4]
                   base_id = row[5]
-                  tport = PandoraNet::DefTcpPort if (not tport) or (tport==0) or (tport=='')
+                  #tport = PandoraNet::DefTcpPort if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
                   addr = $pool.encode_addr(domain, tport, 'tcp')
                   if Thread.current[:active]
@@ -5581,7 +5586,8 @@ module PandoraNet
                     panstate = 0
                     time_now = Time.now.to_i
                     creator = PandoraCrypto.current_user_or_key(true, false)
-                    values = {:addr=>ip, :panhash=>panhash, :creator=>creator, \
+                    values = {:addr=>ip, :tport=>PandoraNet::DefTcpPort, \
+                      :panhash=>panhash, :creator=>creator, \
                       :created=>time_now, :modified=>time_now, :panstate=>panstate}
                     sel = node_model.update(values, nil, nil)
                   end

@@ -54,13 +54,20 @@ module PandoraUtils
     $detected_os_family
   end
 
+  # Get language file name
+  # RU: Взять имя языкового файла
+  def self.get_lang_file(lang='ru')
+    res = File.join($pandora_lang_dir, lang+'.txt')
+    res
+  end
+
   # Maximal depth for diving to cognate language files
   # RU: Глубина погружения по родственным языковым файлам
   MaxCognateDeep = 3
 
   # Load translated phrases
   # RU: Загрузить переводы фраз
-  def self.load_language(lang='ru', cognate_call=nil)
+  def self.load_language(lang='ru', cognate_call=nil, lang_trans=nil)
 
     def self.unslash_quotes(str)
       str ||= ''
@@ -85,12 +92,14 @@ module PandoraUtils
       (i<pos)
     end
 
+    res = nil
+    lang_trans = $lang_trans if not lang_trans
     if cognate_call.nil?
       cognate_call = MaxCognateDeep
-      $lang_trans.clear
+      lang_trans.clear
     end
     cognate = nil
-    langfile = File.join($pandora_lang_dir, lang+'.txt')
+    langfile = get_lang_file(lang)
     if File.exist?(langfile) and (cognate_call>0)
       scanmode = 0
       frase = ''
@@ -115,9 +124,9 @@ module PandoraUtils
                   frase, trans = line.split('=>')
                   if (frase != '') and (trans != '')
                     if cognate_call
-                      $lang_trans[frase] ||= trans
+                      lang_trans[frase] ||= trans
                     else
-                      $lang_trans[frase] = trans
+                      lang_trans[frase] = trans
                     end
                   end
                 else
@@ -154,9 +163,9 @@ module PandoraUtils
             if end_is_found
               if (frase != '') and (trans != '')
                 if cognate_call
-                  $lang_trans[frase] ||= trans
+                  lang_trans[frase] ||= trans
                 else
-                  $lang_trans[frase] = trans
+                  lang_trans[frase] = trans
                 end
               end
               scanmode = 0
@@ -171,15 +180,17 @@ module PandoraUtils
           end
         end
       end
+      res = true
     end
     if (cognate.is_a? String) and (cognate.size>0) and (cognate != lang)
       load_language(cognate, cognate_call-1)
     end
+    res
   end
 
   # Save language phrases
   # RU: Сохранить языковые фразы
-  def self.save_as_language(lang='ru')
+  def self.save_as_language(lang='ru', lang_trans=nil)
 
     # RU: Экранирует кавычки слэшем
     def self.slash_quotes(str)
@@ -192,21 +203,29 @@ module PandoraUtils
       (lastchar==' ') or (lastchar=="\t")
     end
 
-    langfile = File.join($pandora_lang_dir, lang+'.txt')
+    res = nil
+    lang_trans = $lang_trans if not lang_trans
+    langfile = get_lang_file(lang)
     File.open(langfile, 'w') do |file|
       file.puts('# Pandora language file EN=>'+lang.upcase)
-      $lang_trans.each do |value|
-        if (not value[0].index('"')) and (not value[1].index('"')) \
-          and (not value[0].index("\n")) and (not value[1].index("\n")) \
-          and (not end_space_exist?(value[0])) and (not end_space_exist?(value[1]))
-        then
-          str = value[0]+'=>'+value[1]
-        else
-          str = '"'+slash_quotes(value[0])+'"=>"'+slash_quotes(value[1])+'"'
+      file.puts('# See full list of phrases in "ru.txt" file')
+      lang_trans.each do |key,val|
+        if key and (key.size>1) and val and (val.size>1)
+          str = ''
+          if (not key.index('"')) and (not val.index('"')) \
+            and (not key.index("\n")) and (not val.index("\n")) \
+            and (not end_space_exist?(key)) and (not end_space_exist?(val))
+          then
+            str = key+'=>'+val
+          else
+            str = '"'+slash_quotes(key)+'"=>"'+slash_quotes(val)+'"'
+          end
+          file.puts(str)
         end
-        file.puts(str)
       end
+      res = true
     end
+    res
   end
 
   # Plural or single name

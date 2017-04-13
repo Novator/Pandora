@@ -14,6 +14,9 @@
 #export LANG="en_US.UTF-8"
 #export LANG="en_AU.UTF-8"
 #export LANG="ua_UA.UTF-8"
+#export LANG="ar_IR.UTF-8"
+#export LANG="ur_PA.UTF-8"
+
 
 DIRFILE=`readlink -e "$0"`
 CURFILE=`basename "$DIRFILE"`
