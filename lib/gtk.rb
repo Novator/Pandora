@@ -3815,14 +3815,14 @@ module PandoraGtk
 
     def get_fld_value_by_id(id)
       res = nil
-      fld = fields.detect{ |f| (f[FI_Id].to_s == id) }
-      res = fld[FI_Value] if fld.is_a? Array
+      fld = fields.detect{ |f| (f[PandoraUtils::FI_Id].to_s == id) }
+      res = fld[PandoraUtils::FI_Value] if fld.is_a? Array
       res
     end
 
     def fill_body
       if field
-        link_name = field[FI_Widget].text
+        link_name = field[PandoraUtils::FI_Widget].text
         link_name.chomp! if link_name
         link_name = PandoraUtils.absolute_path(link_name)
         bodywin = self
@@ -3832,7 +3832,7 @@ module PandoraGtk
           if bodywid
             bodywid.destroy if (not bodywid.destroyed?)
             bodywid = nil
-            #field[FI_Widget2] = nil
+            #field[PandoraUtils::FI_Widget2] = nil
           end
           if link_name and (link_name != '')
             if File.exist?(link_name)
@@ -3855,14 +3855,14 @@ module PandoraGtk
                   end
                   p 'Read file: '+link_name
                   File.open(link_name, 'r') do |file|
-                    field[FI_Value] = file.read
+                    field[PandoraUtils::FI_Value] = file.read
                   end
                 else
                   ext = nil
                 end
               end
               if not ext
-                field[FI_Value] = '@'+link_name
+                field[PandoraUtils::FI_Value] = '@'+link_name
               end
             else
               err_text = _('File does not exist')+":\n"+link_name
@@ -3891,7 +3891,7 @@ module PandoraGtk
           bodywin.body_child = bodywid
           if bodywid.is_a? Gtk::TextView
             bodywin.init_view_buf(bodywin.body_child.buffer)
-            atext = field[FI_Value].to_s
+            atext = field[PandoraUtils::FI_Value].to_s
             bodywin.init_raw_buf(atext)
             if atext and (atext.size==0)
               bodywin.view_mode = false
@@ -4598,20 +4598,20 @@ module PandoraGtk
       #panelbox.pack_start(statusbar, false, false, 0)
 
       #inject lang field
-      ind = @fields.index { |field| field[FI_Id] == 'panhash_lang' }
+      ind = @fields.index { |field| field[PandoraUtils::FI_Id] == 'panhash_lang' }
       if not ind
         lang = PandoraModel.text_to_lang($lang)
         lang = @panhash0[1].ord if @panhash0 and (@panhash0.size>1)
         lang ||= 0
         field = Array.new
-        field[FI_Id] = 'panhash_lang'
-        field[FI_Name] = 'Language'
+        field[PandoraUtils::FI_Id] = 'panhash_lang'
+        field[PandoraUtils::FI_Name] = 'Language'
         lang_tit = _('Language')
-        field[FI_LName] = lang_tit
-        field[FI_VFName] = lang_tit
-        field[FI_Type] = 'Byte'
-        field[FI_View] = 'bytelist'
-        field[FI_Value] = lang
+        field[PandoraUtils::FI_LName] = lang_tit
+        field[PandoraUtils::FI_VFName] = lang_tit
+        field[PandoraUtils::FI_Type] = 'Byte'
+        field[PandoraUtils::FI_View] = 'bytelist'
+        field[PandoraUtils::FI_Value] = lang
         @fields << field
       end
 
@@ -4622,21 +4622,21 @@ module PandoraGtk
       while i>0 do
         i -= 1
         field = @fields[i]
-        atext = field[FI_VFName]
-        aview = field[FI_View]
+        atext = field[PandoraUtils::FI_VFName]
+        aview = field[PandoraUtils::FI_View]
         if (aview=='blob') or (aview=='text')
           bodywin = BodyScrolledWindow.new(self, @fields, nil, nil)
           bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
           bodywin.field = field
-          field[FI_Widget2] = bodywin
+          field[PandoraUtils::FI_Widget2] = bodywin
           if notebook
             label_box = TabLabelBox.new(Gtk::Stock::DND, atext, nil)
             page = notebook.append_page(bodywin, label_box)
           end
           @text_fields << field
         end
-        if (field[FI_Id]=='panstate')
-          val = field[FI_Value]
+        if (field[PandoraUtils::FI_Id]=='panstate')
+          val = field[PandoraUtils::FI_Value]
           @panstate = val.to_i if (val and (val.size>0))
         end
       end
@@ -4661,15 +4661,15 @@ module PandoraGtk
       labels_width = 0
       max_label_height = 0
       @fields.each do |field|
-        atext = field[FI_VFName]
-        aview = field[FI_View]
+        atext = field[PandoraUtils::FI_VFName]
+        aview = field[PandoraUtils::FI_View]
         label = Gtk::Label.new(atext)
         label.tooltip_text = aview if aview and (aview.size>0)
         label.xalign = 0.0
         lw,lh = label.size_request
-        field[FI_Label] = label
-        field[FI_LabW] = lw
-        field[FI_LabH] = lh
+        field[PandoraUtils::FI_Label] = label
+        field[PandoraUtils::FI_LabW] = lw
+        field[PandoraUtils::FI_LabH] = lh
         texts_width += lw
         texts_chars += atext.length
         #texts_chars += atext.length
@@ -4693,8 +4693,8 @@ module PandoraGtk
         #p 'field='+field.inspect
         max_size = 0
         fld_size = 0
-        aview = field[FI_View]
-        atype = field[FI_Type]
+        aview = field[PandoraUtils::FI_View]
+        atype = field[PandoraUtils::FI_Type]
         entry = nil
         amodal = (not notebook.nil?)
         case aview
@@ -4717,8 +4717,8 @@ module PandoraGtk
           when 'filename', 'blob'
             entry = FilenameBox.new(window, amodal) do |filename, entry, button, filename0|
               name_fld = @panobject.field_des('name')
-              if (name_fld.is_a? Array) and (name_fld[FI_Widget].is_a? Gtk::Entry)
-                name_ent = name_fld[FI_Widget]
+              if (name_fld.is_a? Array) and (name_fld[PandoraUtils::FI_Widget].is_a? Gtk::Entry)
+                name_ent = name_fld[PandoraUtils::FI_Widget]
                 old_name = File.basename(filename0)
                 old_name2 = File.basename(filename0, '.*')
                 new_name = File.basename(filename)
@@ -4731,20 +4731,20 @@ module PandoraGtk
           when 'base64'
             entry = Base64Entry.new
           when 'phash', 'panhash'
-            if field[FI_Id]=='panhash'
+            if field[PandoraUtils::FI_Id]=='panhash'
               entry = HexEntry.new
               #entry.editable = false
             else
               entry = PanhashBox.new(atype, amodal)
             end
           when 'bytelist'
-            if field[FI_Id]=='panhash_lang'
+            if field[PandoraUtils::FI_Id]=='panhash_lang'
               entry = ByteListEntry.new(PandoraModel.lang_code_list, amodal)
-            elsif field[FI_Id]=='sex'
+            elsif field[PandoraUtils::FI_Id]=='sex'
               entry = ByteListEntry.new(SexList, amodal)
-            elsif field[FI_Id]=='kind'
+            elsif field[PandoraUtils::FI_Id]=='kind'
               entry = ByteListEntry.new(PandoraModel::RelationNames, amodal)
-            elsif field[FI_Id]=='mode'
+            elsif field[PandoraUtils::FI_Id]=='mode'
               entry = ByteListEntry.new(PandoraModel::TaskModeNames, amodal)
             else
               entry = IntegerEntry.new
@@ -4763,8 +4763,8 @@ module PandoraGtk
             when 'Filename' , 'Blob', 'Text'
               def_size = 256
           end
-          fld_size = field[FI_FSize].to_i if field[FI_FSize]
-          max_size = field[FI_Size].to_i
+          fld_size = field[PandoraUtils::FI_FSize].to_i if field[PandoraUtils::FI_FSize]
+          max_size = field[PandoraUtils::FI_Size].to_i
           max_size = fld_size if (max_size==0)
           fld_size = def_size if (fld_size<=0)
           max_size = fld_size if (max_size<fld_size) and (max_size>0)
@@ -4773,7 +4773,7 @@ module PandoraGtk
         end
         #entry.width_chars = fld_size
         entry.max_length = max_size if max_size>0
-        color = field[FI_Color]
+        color = field[PandoraUtils::FI_Color]
         if color
           color = Gdk::Color.parse(color)
         else
@@ -4788,12 +4788,12 @@ module PandoraGtk
         ew,eh = entry.size_request
         #p 'Final [fld_size, max_size, ew]='+[fld_size, max_size, ew].inspect
         #p '[view, ew,eh]='+[aview, ew,eh].inspect
-        field[FI_Widget] = entry
-        field[FI_WidW] = ew
-        field[FI_WidH] = eh
+        field[PandoraUtils::FI_Widget] = entry
+        field[PandoraUtils::FI_WidW] = ew
+        field[PandoraUtils::FI_WidH] = eh
         entries_width += ew
         max_entry_height = eh if max_entry_height < eh
-        text = field[FI_Value].to_s
+        text = field[PandoraUtils::FI_Value].to_s
         #if (atype=='Blob') or (atype=='Text')
         if (aview=='blob') or (aview=='text')
           entry.text = text[1..-1] if text and (text.size<1024) and (text[0]=='@')
@@ -4811,7 +4811,7 @@ module PandoraGtk
       orient = :up
       @fields.each_index do |index|
         field = @fields[index]
-        if (index==0) or (field[FI_NewRow]==1)
+        if (index==0) or (field[PandoraUtils::FI_NewRow]==1)
           row_index += 1
           #field_matrix << row if row != []
           mw, mh = [mw, rw].max, mh+rh
@@ -4819,8 +4819,8 @@ module PandoraGtk
           rw, rh = 0, 0
         end
 
-        if ! [:up, :down, :left, :right].include?(field[FI_LabOr]) then field[FI_LabOr]=orient; end
-        orient = field[FI_LabOr]
+        if ! [:up, :down, :left, :right].include?(field[PandoraUtils::FI_LabOr]) then field[PandoraUtils::FI_LabOr]=orient; end
+        orient = field[PandoraUtils::FI_LabOr]
 
         field_size = calc_field_size(field)
         rw, rh = rw+field_size[0], [rh, field_size[1]+1].max
@@ -4940,11 +4940,11 @@ module PandoraGtk
     # Calculate field size
     # RU: Вычислить размер поля
     def calc_field_size(field)
-      lw = field[FI_LabW]
-      lh = field[FI_LabH]
-      ew = field[FI_WidW]
-      eh = field[FI_WidH]
-      if (field[FI_LabOr]==:left) or (field[FI_LabOr]==:right)
+      lw = field[PandoraUtils::FI_LabW]
+      lh = field[PandoraUtils::FI_LabH]
+      ew = field[PandoraUtils::FI_WidW]
+      eh = field[PandoraUtils::FI_WidH]
+      if (field[PandoraUtils::FI_LabOr]==:left) or (field[PandoraUtils::FI_LabOr]==:right)
         [lw+ew, [lh,eh].max]
       else
         field_size = [[lw,ew].max, lh+eh]
@@ -4996,7 +4996,7 @@ module PandoraGtk
               rw, rh = 0, 0
               orient = :up
               fields.each_with_index do |field, index|
-                if (index==0) or (field[FI_NewRow]==1)
+                if (index==0) or (field[PandoraUtils::FI_NewRow]==1)
                   row_index += 1
                   field_matrix << row if row != []
                   mw, mh = [mw, rw].max, mh+rh
@@ -5010,10 +5010,10 @@ module PandoraGtk
                   rw, rh = 0, 0
                 end
 
-                if (not [:up, :down, :left, :right].include?(field[FI_LabOr]))
-                  field[FI_LabOr]=orient
+                if (not [:up, :down, :left, :right].include?(field[PandoraUtils::FI_LabOr]))
+                  field[PandoraUtils::FI_LabOr]=orient
                 end
-                orient = field[FI_LabOr]
+                orient = field[PandoraUtils::FI_LabOr]
 
                 field_size = calc_field_size(field)
                 rw, rh = rw+field_size[0], [rh, field_size[1]].max
@@ -5024,8 +5024,8 @@ module PandoraGtk
                   while (col>0) and (rw>form_width)
                     col -= 1
                     fld = row[col]
-                    if [:left, :right].include?(fld[FI_LabOr])
-                      fld[FI_LabOr]=:up
+                    if [:left, :right].include?(fld[PandoraUtils::FI_LabOr])
+                      fld[PandoraUtils::FI_LabOr]=:up
                       rw, rh = calc_row_size(row)
                     end
                   end
@@ -5053,10 +5053,10 @@ module PandoraGtk
               rw, rh = 0, 0
               orient = :up
               fields.each_with_index do |field, index|
-                if ! [:up, :down, :left, :right].include?(field[FI_LabOr])
-                  field[FI_LabOr] = orient
+                if ! [:up, :down, :left, :right].include?(field[PandoraUtils::FI_LabOr])
+                  field[PandoraUtils::FI_LabOr] = orient
                 end
-                orient = field[FI_LabOr]
+                orient = field[PandoraUtils::FI_LabOr]
                 field_size = calc_field_size(field)
 
                 if (rw+field_size[0]>form_width)
@@ -5092,11 +5092,11 @@ module PandoraGtk
             row.each_index do |findex|
               field = row[findex]
               ofield = orow[findex]
-              if (field[FI_LabOr] != ofield[FI_LabOr]) \
-                or (field[FI_LabW] != ofield[FI_LabW]) \
-                or (field[FI_LabH] != ofield[FI_LabH]) \
-                or (field[FI_WidW] != ofield[FI_WidW]) \
-                or (field[FI_WidH] != ofield[FI_WidH]) \
+              if (field[PandoraUtils::FI_LabOr] != ofield[PandoraUtils::FI_LabOr]) \
+                or (field[PandoraUtils::FI_LabW] != ofield[PandoraUtils::FI_LabW]) \
+                or (field[PandoraUtils::FI_LabH] != ofield[PandoraUtils::FI_LabH]) \
+                or (field[PandoraUtils::FI_WidW] != ofield[PandoraUtils::FI_WidW]) \
+                or (field[PandoraUtils::FI_WidH] != ofield[PandoraUtils::FI_WidH]) \
               then
                 matrix_is_changed = true
                 break
@@ -5119,8 +5119,8 @@ module PandoraGtk
             @vbox.child_visible = false
             @fields.each_index do |index|
               field = @fields[index]
-              label = field[FI_Label]
-              entry = field[FI_Widget]
+              label = field[PandoraUtils::FI_Label]
+              entry = field[PandoraUtils::FI_Widget]
               label.parent.remove(label)
               entry.parent.remove(entry)
             end
@@ -5134,17 +5134,17 @@ module PandoraGtk
             row_hbox = Gtk::HBox.new
             row.each_index do |field_index|
               field = row[field_index]
-              label = field[FI_Label]
-              entry = field[FI_Widget]
-              if (field[FI_LabOr]==nil) or (field[FI_LabOr]==:left)
+              label = field[PandoraUtils::FI_Label]
+              entry = field[PandoraUtils::FI_Widget]
+              if (field[PandoraUtils::FI_LabOr]==nil) or (field[PandoraUtils::FI_LabOr]==:left)
                 row_hbox.pack_start(label, false, false, 2)
                 row_hbox.pack_start(entry, false, false, 2)
-              elsif (field[FI_LabOr]==:right)
+              elsif (field[PandoraUtils::FI_LabOr]==:right)
                 row_hbox.pack_start(entry, false, false, 2)
                 row_hbox.pack_start(label, false, false, 2)
               else
                 field_vbox = Gtk::VBox.new
-                if (field[FI_LabOr]==:down)
+                if (field[PandoraUtils::FI_LabOr]==:down)
                   field_vbox.pack_start(entry, false, false, 2)
                   field_vbox.pack_start(label, false, false, 2)
                 else
@@ -5311,8 +5311,8 @@ module PandoraGtk
 
       row ||= fields
       fields.each do |field|
-        fld_id = field[FI_Id]
-        entry = field[FI_Widget]
+        fld_id = field[PandoraUtils::FI_Id]
+        entry = field[PandoraUtils::FI_Widget]
         val = entry.text
         if (fld_id=='panhash_lang')
           begin
@@ -5321,8 +5321,8 @@ module PandoraGtk
             lang = nil
           end
         else
-          type = field[FI_Type]
-          view = field[FI_View]
+          type = field[PandoraUtils::FI_Type]
+          view = field[PandoraUtils::FI_View]
           if ((panobject.kind==PK_Relation) and val \
           and ((fld_id=='first') or (fld_id=='second')))
             PandoraModel.del_image_from_cache(val, true)
@@ -5363,28 +5363,28 @@ module PandoraGtk
               #p 'file_way1='+file_way.inspect
               val = '@'+val
               flds_hash[fld_id] = val
-              field[FI_Value] = val
+              field[PandoraUtils::FI_Value] = val
               #p '----TEXT ENTR!!!!!!!!!!!'
             else
-              flds_hash[fld_id] = field[FI_Value]
+              flds_hash[fld_id] = field[PandoraUtils::FI_Value]
             end
           else
             flds_hash[fld_id] = val
-            field[FI_Value] = val
+            field[PandoraUtils::FI_Value] = val
           end
         end
       end
 
       # add text and blob fields
       text_fields.each do |field|
-        entry = field[FI_Widget]
+        entry = field[PandoraUtils::FI_Widget]
         if entry.text == ''
-          body_win = field[FI_Widget2]
+          body_win = field[PandoraUtils::FI_Widget2]
           if body_win and body_win.destroyed?
             body_win = nil
-            field[FI_Widget2] = nil
+            field[PandoraUtils::FI_Widget2] = nil
           end
-          text = flds_hash[field[FI_Id]]
+          text = flds_hash[field[PandoraUtils::FI_Id]]
           #p '====(entry.text == '')  body_win, body_win.destroyed?, body_win.raw_buffer, text='+\
           #  [body_win, body_win.destroyed?, body_win.raw_buffer, text].inspect
           if (body_win.is_a? BodyScrolledWindow) and body_win.raw_buffer
@@ -5399,8 +5399,8 @@ module PandoraGtk
             end
           end
           text ||= ''
-          field[FI_Value] = text
-          flds_hash[field[FI_Id]] = text
+          field[PandoraUtils::FI_Value] = text
+          flds_hash[field[PandoraUtils::FI_Id]] = text
           sha1_fld = panobject.field_des('sha1')
           flds_hash['sha1'] = Digest::SHA1.digest(text) if sha1_fld
           md5_fld = panobject.field_des('md5')
@@ -6203,10 +6203,10 @@ module PandoraGtk
       pb = property_box
       first_body_fld = property_box.text_fields[0]
       if first_body_fld
-        bodywin = first_body_fld[FI_Widget2]
+        bodywin = first_body_fld[PandoraUtils::FI_Widget2]
         if bodywin and bodywin.destroyed?
           bodywin = nil
-          first_body_fld[FI_Widget2] = nil
+          first_body_fld[PandoraUtils::FI_Widget2] = nil
         end
         if bodywin and bodywin.child and (not bodywin.child.destroyed?)
           bodywid = bodywin.child
@@ -6670,10 +6670,10 @@ module PandoraGtk
               #p property_box.text_fields
               first_body_fld = property_box.text_fields[0]
               if first_body_fld
-                bodywin = first_body_fld[FI_Widget2]
+                bodywin = first_body_fld[PandoraUtils::FI_Widget2]
                 if bodywin and bodywin.destroyed?
                   bodywin = nil
-                  first_body_fld[FI_Widget2] = nil
+                  first_body_fld[PandoraUtils::FI_Widget2] = nil
                 end
                 if bodywin
                   bodywin.fill_body
@@ -6920,10 +6920,10 @@ module PandoraGtk
             and property_box.text_fields and (property_box.text_fields.size>0)
               first_body_fld = property_box.text_fields[0]
               if first_body_fld
-                bodywin = first_body_fld[FI_Widget2]
+                bodywin = first_body_fld[PandoraUtils::FI_Widget2]
                 if bodywin and bodywin.destroyed?
                   bodywin = nil
-                  first_body_fld[FI_Widget2] = nil
+                  first_body_fld[PandoraUtils::FI_Widget2] = nil
                 end
                 if bodywin and bodywin.edit_btn
                   bodywin.edit_btn.active = (not bodywin.edit_btn.active?)
@@ -9964,8 +9964,8 @@ module PandoraGtk
               fdesc = panobject.tab_fields[tab_ind][PandoraUtils::TI_Desc]
               view = type = nil
               if fdesc
-                view = fdesc[FI_View]
-                type = fdesc[FI_Type]
+                view = fdesc[PandoraUtils::FI_View]
+                type = fdesc[PandoraUtils::FI_Type]
                 val = PandoraUtils.view_to_val(val, type, view)
               elsif fld=='id'
                 val = val.to_i
@@ -10069,7 +10069,7 @@ module PandoraGtk
       tab_flds = panobject.tab_fields
       def_flds = panobject.def_fields
       #def_flds.each do |df|
-      #id = df[FI_Id]
+      #id = df[PandoraUtils::FI_Id]
       #tab_ind = tab_flds.index{ |tf| tf[0] == id }
       #if tab_ind
       #  renderer = Gtk::CellRendererText.new
@@ -10077,7 +10077,7 @@ module PandoraGtk
         #renderer.editable = true
         #renderer.text = 'aaa'
 
-      #  title = df[FI_VFName]
+      #  title = df[PandoraUtils::FI_VFName]
       if @filters.size>0
         @logic_com = Gtk::Combo.new
         logic_com.set_popdown_strings(['AND', 'OR'])
@@ -10208,7 +10208,7 @@ module PandoraGtk
     end
 
     def_flds.each do |df|
-      id = df[FI_Id]
+      id = df[PandoraUtils::FI_Id]
       tab_ind = tab_flds.index{ |tf| tf[0] == id }
       if tab_ind
         renderer = Gtk::CellRendererText.new
@@ -10216,7 +10216,7 @@ module PandoraGtk
         #renderer.editable = true
         #renderer.text = 'aaa'
 
-        title = df[FI_VFName]
+        title = df[PandoraUtils::FI_VFName]
         title ||= v
         column = SubjTreeViewColumn.new(title, renderer )  #, {:text => i}
 
@@ -10255,10 +10255,10 @@ module PandoraGtk
             fdesc = panobject.tab_fields[col][TI_Desc]
             if fdesc.is_a? Array
               view = nil
-              if tvc.tree_view.param_view_col and ((fdesc[FI_Id]=='value') or (fdesc[FI_Id]=='text'))
+              if tvc.tree_view.param_view_col and ((fdesc[PandoraUtils::FI_Id]=='value') or (fdesc[PandoraUtils::FI_Id]=='text'))
                 view = row[tvc.tree_view.param_view_col] if row
               else
-                view = fdesc[FI_View]
+                view = fdesc[PandoraUtils::FI_View]
               end
               val, color = PandoraUtils.val_to_view(val, nil, view, false)
             else
@@ -11937,7 +11937,7 @@ module PandoraGtk
 
         tab_flds = panobject.tab_fields
         #def_flds = panobject.def_fields
-        #id = df[FI_Id]
+        #id = df[PandoraUtils::FI_Id]
         #tab_ind = tab_flds.index{ |tf| tf[0] == id }
         fields = tab_flds.collect{|tf| tf[0]}
         fields = fields.join('|')
