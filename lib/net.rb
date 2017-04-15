@@ -1248,6 +1248,7 @@ module PandoraNet
           session.dialog = nil if (session.dialog and session.dialog.destroyed?)
           session.dialog = dialog if dialog and (i==0)
           if session.dialog and (not session.dialog.destroyed?) \
+          and session.dialog.online_btn and (not session.dialog.online_btn.destroyed?) \
           and session.dialog.online_btn.active?
             session.conn_mode = (session.conn_mode | PandoraNet::CM_Keep)
             if ((session.socket and (not session.socket.closed?)) or session.active_hook)
@@ -5309,8 +5310,8 @@ module PandoraNet
                 and tport and (tport>0)
                 #or ($pool.has_active_session? and key_hash and (key_hash.size>0))
                   person = nil
-                  panhash = row[4]
-                  base_id = row[5]
+                  panhash = row[5]
+                  base_id = row[6]
                   #tport = PandoraNet::DefTcpPort if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
                   addr = $pool.encode_addr(domain, tport, 'tcp')
