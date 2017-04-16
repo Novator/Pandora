@@ -9331,7 +9331,7 @@ module PandoraGtk
       column.resizable = true
       column.reorderable = true
       column.clickable = true
-      column.fixed_width = 200
+      #column.fixed_width = 200
       column.set_sort_column_id(1)
       list_tree.append_column(column)
 

@@ -24,13 +24,16 @@ CURDIR=`dirname "$DIRFILE"`
 
 # Searching a path to ruby
 PARAMS="$1"
-RUBY=`which ruby2.0`
+RUBY=`which ruby2.3`
 if [ "$RUBY" = "" ]; then
-  RUBY=`which ruby1.9.3`
+  RUBY=`which ruby2.0`
   if [ "$RUBY" = "" ]; then
-    RUBY=`which ruby1.9.1`
+    RUBY=`which ruby1.9.3`
     if [ "$RUBY" = "" ]; then
-      RUBY=`which ruby`
+      RUBY=`which ruby1.9.1`
+      if [ "$RUBY" = "" ]; then
+        RUBY=`which ruby`
+      fi
     fi
   fi
 fi
