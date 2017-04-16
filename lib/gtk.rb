@@ -9235,17 +9235,21 @@ module PandoraGtk
       vbox = Gtk::VBox.new
       hbox = Gtk::HBox.new
 
+      english = ($lang == 'en')
+
       title = _('Load from file')
       load_btn = Gtk::ToolButton.new(Gtk::Stock::OPEN, title)
       load_btn.tooltip_text = title
       load_btn.label = title
+      load_btn.sensitive = (not english)
 
       title = _('Save to file')
       save_btn = Gtk::ToolButton.new(Gtk::Stock::SAVE, title)
       save_btn.tooltip_text = title
       save_btn.label = title
+      save_btn.sensitive = (not english)
 
-      file_label = Gtk::Label.new('file name')
+      file_label = Gtk::Label.new('')
 
       hbox.pack_start(load_btn, false, true, 0)
       hbox.pack_start(save_btn, false, true, 0)
@@ -9265,7 +9269,7 @@ module PandoraGtk
 
       load_btn.signal_connect('clicked') do |*args|
         lang_trans = $lang_trans
-        file_label.text = PandoraUtils.get_lang_file($lang)
+        file_label.text = PandoraUtils.get_lang_file($lang) if not english
         list_store.clear
         i = 0
         if PandoraUtils.load_language($lang, nil, lang_trans)
@@ -9315,11 +9319,19 @@ module PandoraGtk
 
       renderer = Gtk::CellRendererText.new
       column = Gtk::TreeViewColumn.new(_('№'), renderer, 'text' => 0)
+      column.resizable = true
+      column.reorderable = true
+      column.clickable = true
+      #column.fixed_width = 50
       column.set_sort_column_id(0)
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
       column = Gtk::TreeViewColumn.new(_('English'), renderer, 'text' => 1)
+      column.resizable = true
+      column.reorderable = true
+      column.clickable = true
+      column.fixed_width = 200
       column.set_sort_column_id(1)
       list_tree.append_column(column)
 
@@ -9327,7 +9339,6 @@ module PandoraGtk
       renderer.editable = true
       #renderer.editable_set = true
       renderer.single_paragraph_mode = false
-
       renderer.signal_connect('editing-started') do |ren, editable, path_str|
         if path_str and (path_str.size>0)
           iter = list_tree.model.get_iter(path_str)
@@ -9351,6 +9362,9 @@ module PandoraGtk
       end
       column = Gtk::TreeViewColumn.new(_('Current')+'('+$lang+')', renderer, \
         'text' => 2)
+      column.resizable = true
+      column.reorderable = true
+      column.clickable = true
       column.set_sort_column_id(2)
       list_tree.append_column(column)
 
@@ -10818,8 +10832,8 @@ module PandoraGtk
   node_id=nil, models=nil, page=nil, fields=nil, obj_id=nil, edit=nil)
     sw = nil
 
-    p '---show_cabinet(panhash, session.id, conntype, node_id, models, page, fields, obj_id, edit)=' \
-      +[panhash, session.object_id, conntype, node_id, models, page, fields, obj_id, edit].inspect
+    #p '---show_cabinet(panhash, session.id, conntype, node_id, models, page, fields, obj_id, edit)=' \
+    #  +[panhash, session.object_id, conntype, node_id, models, page, fields, obj_id, edit].inspect
 
     room_id = AsciiString.new(PandoraUtils.fill_zeros_from_right(panhash, \
       PandoraModel::PanhashSize)).dup if panhash
@@ -10829,7 +10843,7 @@ module PandoraGtk
       creator = PandoraCrypto.current_user_or_key(true)
       #room_id[-1] = (room_id[-1].ord ^ 1).chr if panhash==creator
     end
-    p 'room_id='+room_id.inspect
+    #p 'room_id='+room_id.inspect
     $window.notebook.children.each do |child|
       if ((child.is_a? CabinetBox) and ((child.room_id==room_id) \
       or (session and (child.session==session))))
@@ -10838,7 +10852,10 @@ module PandoraGtk
         #child.online_btn.inconsistent = false
         $window.notebook.page = $window.notebook.children.index(child) if conntype.nil?
         sw = child
-        sw.show_page(page) if page
+        if page
+          sw.show_page(page)
+          sleep(0.01)
+        end
         break
       end
     end

@@ -3156,7 +3156,13 @@ module PandoraNet
                       panhash = @skey[PandoraCrypto::KV_Creator]
                       @dialog = PandoraUI.show_cabinet(panhash, self, conn_type, \
                         nil, nil, PandoraUI::CPI_Dialog)
-                      talkview = @dialog.dlg_talkview if @dialog
+                      if @dialog
+                        if not @dialog.dlg_talkview
+                          @dialog.show_page(PandoraUI::CPI_Dialog)
+                          sleep(0.05)
+                        end
+                        talkview = @dialog.dlg_talkview
+                      end
                     end
                     if talkview
                       myname = PandoraCrypto.short_name_of_person(pool.current_key)
