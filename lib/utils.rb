@@ -2960,40 +2960,42 @@ module PandoraUtils
   # RU: Возвращает значение параметра
   def self.get_param(name, get_id=false)
     value = nil
-    id = nil
     param_model = PandoraUtils.get_model('Parameter')
-    sel = param_model.select({'name'=>name}, false, 'value, id, type')
-    if (not sel) or (sel.size==0)
-      #p 'parameter was not found: ['+name+']'
-      ind = $pandora_parameters.index{ |row| row[PF_Name]==name }
-      if ind
-        # default description is found, create parameter
-        row = $pandora_parameters[ind]
-        type = row[PF_Type]
-        type = string_to_pantype(type) if type.is_a? String
-        section = row[PF_Section]
-        section = PandoraUtils.get_param('section_'+section) if section.is_a? String
-        section ||= row[PF_Section].to_i
-        values = { :name=>name, :desc=>row[PF_Desc],
-          :value=>calc_default_param_val(type, row[PF_Setting]), :type=>type,
-          :section=>section, :setting=>row[PF_Setting], :modified=>Time.now.to_i,
-          :panstate=>PandoraModel::PSF_Support }
-        panhash = param_model.calc_panhash(values)
-        values['panhash'] = panhash
-        #p 'add param: '+values.inspect
-        param_model.update(values, nil, nil)
-        sel = param_model.select({'name'=>name}, false, 'value, id, type')
+    if param_model
+      id = nil
+      sel = param_model.select({'name'=>name}, false, 'value, id, type')
+      if (not sel) or (sel.size==0)
+        #p 'parameter was not found: ['+name+']'
+        ind = $pandora_parameters.index{ |row| row[PF_Name]==name }
+        if ind
+          # default description is found, create parameter
+          row = $pandora_parameters[ind]
+          type = row[PF_Type]
+          type = string_to_pantype(type) if type.is_a? String
+          section = row[PF_Section]
+          section = PandoraUtils.get_param('section_'+section) if section.is_a? String
+          section ||= row[PF_Section].to_i
+          values = { :name=>name, :desc=>row[PF_Desc],
+            :value=>calc_default_param_val(type, row[PF_Setting]), :type=>type,
+            :section=>section, :setting=>row[PF_Setting], :modified=>Time.now.to_i,
+            :panstate=>PandoraModel::PSF_Support }
+          panhash = param_model.calc_panhash(values)
+          values['panhash'] = panhash
+          #p 'add param: '+values.inspect
+          param_model.update(values, nil, nil)
+          sel = param_model.select({'name'=>name}, false, 'value, id, type')
+        end
       end
+      if sel and (sel.size>0)
+        # value exists
+        value = sel[0][0]
+        type = sel[0][2]
+        value = normalize_param_value(value, type)
+        id = sel[0][1] if get_id
+      end
+      value = [value, id] if get_id
+      #p 'get_param value='+value.inspect
     end
-    if sel and (sel.size>0)
-      # value exists
-      value = sel[0][0]
-      type = sel[0][2]
-      value = normalize_param_value(value, type)
-      id = sel[0][1] if get_id
-    end
-    value = [value, id] if get_id
-    #p 'get_param value='+value.inspect
     value
   end
 

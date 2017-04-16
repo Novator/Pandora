@@ -508,6 +508,20 @@ end
 # === RU: Запуск Пандоры!
 PandoraUtils.load_language($lang)
 PandoraModel.load_model_from_xml($lang)
+
+lang = PandoraUtils.get_param('interface_language')
+if lang.is_a?(String) and (lang.size>1)
+  lang0 = $lang
+  $lang = lang[0, 2].downcase
+  if (lang.size>4)
+    $country = lang[3, 2].upcase
+  else
+    $country = $lang
+  end
+  $country = $country.upcase
+  PandoraUtils.load_language($lang) if lang0 != $lang
+end
+
 PandoraUtils.detect_mp3_player
 PandoraUtils.init_base_id
 PandoraUI.init_user_interface_and_network($cui_mode)
