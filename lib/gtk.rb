@@ -6967,11 +6967,15 @@ module PandoraGtk
       @has_blob = nil
       if cab_panhash
         kind = PandoraUtils.kind_from_panhash(cab_panhash)
-        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-        @its_blob = ((kind==PandoraModel::PK_Blob) \
-          or (panobjectclass <= PandoraModel::Blob))
-        @has_blob = (@its_blob or panobjectclass.has_blob_fields?)
-        @dlg_stock = $window.get_panobject_stock(panobjectclass.ider)
+        if kind
+          panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+          if panobjectclass
+            @its_blob = ((kind==PandoraModel::PK_Blob) \
+              or (panobjectclass <= PandoraModel::Blob))
+            @has_blob = (@its_blob or panobjectclass.has_blob_fields?)
+            @dlg_stock = $window.get_panobject_stock(panobjectclass.ider)
+          end
+        end
       end
       @dlg_stock ||= Gtk::Stock::PROPERTIES
 
