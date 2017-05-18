@@ -318,12 +318,14 @@ module PandoraNet
 
     def person
       key = current_key
-      key[PandoraCrypto::KV_Creator]
+      key = key[PandoraCrypto::KV_Creator] if key
+      key
     end
 
     def key_hash
       key = current_key
-      key[PandoraCrypto::KV_Panhash]
+      key = key[PandoraCrypto::KV_Panhash] if key
+      key
     end
 
     def self_node

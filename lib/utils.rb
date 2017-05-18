@@ -808,7 +808,8 @@ module PandoraUtils
             val = PandoraUtils.bytes_to_hex(val)
             color = 'dark blue'
           else
-            val = PandoraUtils.bytes_to_hex(val[2,16])
+            #val = PandoraUtils.bytes_to_hex(val[2,16])
+            val = PandoraUtils.bytes_to_hex(val[2,20])
             color = 'blue'
           end
         end

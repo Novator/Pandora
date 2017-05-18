@@ -1787,7 +1787,7 @@ module PandoraGtk
       self.icon = anicon
 
       self.skip_taskbar_hint = true
-      self.set_default_size(600, 400)
+      self.set_default_size(700, 450)
       auto_create = true
       @panclasses.each_with_index do |panclass, i|
         title = _(PandoraUtils.get_name_or_names(panclass.name, true))
@@ -1807,11 +1807,26 @@ module PandoraGtk
     def choose_record(*add_fields)
       self.run2 do
         panhash = nil
+        treeview = nil
         add_fields = nil if not ((add_fields.is_a? Array) and (add_fields.size>0))
         field_vals = nil
         pbox = self.notebook.get_nth_page(self.notebook.page)
-        treeview = pbox.treeview
-        if treeview.is_a? SubjTreeView
+        if pbox.is_a?(PandoraGtk::CabinetBox)
+          treeview = pbox.tree_view
+          page_sw = nil
+          page_sw = treeview.page_sw if treeview
+          pbox.save_and_close
+          sleep(0.01)
+          page = nil
+          page = self.notebook.page_num(page_sw)
+          #page = self.notebook.children.index(page_sw) if page_sw
+          self.notebook.page = page if page
+          pbox = self.notebook.get_nth_page(self.notebook.page)
+          pbox ||= page_sw
+        end
+        treeview = pbox.treeview if pbox.is_a?(PanobjScrolledWindow)
+        if treeview.is_a?(SubjTreeView)
+          treeview.grab_focus
           path, column = treeview.cursor
           panobject = treeview.panobject
           if path and panobject
@@ -5229,26 +5244,33 @@ module PandoraGtk
           #p 'panobject.matter_fields='+panobject.matter_fields.inspect
 
           if tree_view and (not tree_view.destroyed?)
-            @obj_id = panobject.field_val('id', sel[0])  #panobject.namesvalues['id']
-            @obj_id = obj_id.to_i
-            #p 'id='+id.inspect
-            #p 'id='+id.inspect
-            ind = tree_view.sel.index { |row| row[0]==obj_id }
-            #p 'ind='+ind.inspect
+            path, column = tree_view.cursor
+            iter = nil
             store = tree_view.model
-            if ind
-              #p '---------CHANGE'
-              sel[0].each_with_index do |c,i|
-                tree_view.sel[ind][i] = c
+            iter = store.get_iter(path) if store and path
+            if iter
+              @obj_id = panobject.field_val('id', sel[0])  #panobject.namesvalues['id']
+              @obj_id = obj_id.to_i
+              #p 'id='+id.inspect
+              #p 'id='+id.inspect
+              ind = tree_view.sel.index { |row| row[0]==obj_id }
+              #p 'ind='+ind.inspect
+              if ind
+                #p '---------CHANGE'
+                sel[0].each_with_index do |c,i|
+                  tree_view.sel[ind][i] = c
+                end
+                iter[0] = obj_id
+                store.row_changed(path, iter)
+              else
+                #p '---------INSERT'
+                tree_view.sel << sel[0]
+                iter = store.append
+                iter[0] = obj_id
+                tree_view.set_cursor(Gtk::TreePath.new(tree_view.sel.size-1), nil, false)
               end
-              iter[0] = obj_id
-              store.row_changed(path, iter)
             else
-              #p '---------INSERT'
-              tree_view.sel << sel[0]
-              iter = store.append
-              iter[0] = obj_id
-              tree_view.set_cursor(Gtk::TreePath.new(tree_view.sel.size-1), nil, false)
+              tree_view.page_sw.update_treeview if tree_view.page_sw
             end
           end
 
@@ -5796,7 +5818,7 @@ module PandoraGtk
   # Panobject cabinet page
   # RU: Страница кабинета панобъекта
   class CabinetBox < Gtk::VBox
-    attr_accessor :room_id, :online_btn, :mic_btn, :webcam_btn, \
+    attr_accessor :room_id, :tree_view, :online_btn, :mic_btn, :webcam_btn, \
       :dlg_talkview, :chat_talkview, :area_send, :area_recv, :recv_media_pipeline, \
       :appsrcs, :session, :ximagesink, \
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, \
@@ -5809,6 +5831,11 @@ module PandoraGtk
 
     CL_Online = 0
     CL_Name   = 1
+
+    def save_and_close
+      property_box.save_form_fields_with_flags_to_database if property_box
+      self.destroy
+    end
 
     def show_recv_area(width=nil)
       if area_recv.allocation.width <= 24
@@ -6567,7 +6594,7 @@ module PandoraGtk
       if need_init
         case page
           when PandoraUI::CPI_Property
-            @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
+            @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit, nil, @tree_view)
             fill_property_toolbar(property_box)
             property_box.set_status_icons
             #property_box.window_width = property_box.window_height = 0
@@ -6664,7 +6691,7 @@ module PandoraGtk
           when PandoraUI::CPI_Editor
             #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
             #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-            @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit)
+            @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit, nil, @tree_view)
             fill_edit_toolbar
             if property_box.text_fields.size>0
               #p property_box.text_fields
@@ -6940,13 +6967,20 @@ module PandoraGtk
     # Create cabinet
     # RU: Создать кабинет
     def initialize(a_panhash, a_room_id, a_page=nil, a_fields=nil, an_id=nil, \
-    an_edit=nil, a_session=nil)
+    an_edit=nil, a_session=nil, a_tree_view=nil)
       super(nil, nil)
 
-      p '==Cabinet.new a_panhash='+PandoraUtils.bytes_to_hex(a_panhash)
+      #p '==Cabinet.new a_panhash='+PandoraUtils.bytes_to_hex(a_panhash)
 
-      @cab_panhash = a_panhash
-      @kind = PandoraUtils.kind_from_panhash(cab_panhash)
+      @tree_view = a_tree_view
+      if a_panhash.is_a?(String)
+        @cab_panhash = a_panhash
+        @kind = PandoraUtils.kind_from_panhash(cab_panhash)
+      elsif a_panhash.is_a?(PandoraModel::Panobject)
+        panobject = a_panhash
+        @kind = panobject.kind
+        @property_box = PropertyBox.new(panobject, a_fields, nil, nil, an_edit, nil, @tree_view)
+      end
       @session = a_session
       @room_id = a_room_id
       @fields = a_fields
@@ -6965,16 +6999,13 @@ module PandoraGtk
       @dlg_stock = nil
       @its_blob = nil
       @has_blob = nil
-      if cab_panhash
-        kind = PandoraUtils.kind_from_panhash(cab_panhash)
-        if kind
-          panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-          if panobjectclass
-            @its_blob = ((kind==PandoraModel::PK_Blob) \
-              or (panobjectclass <= PandoraModel::Blob))
-            @has_blob = (@its_blob or panobjectclass.has_blob_fields?)
-            @dlg_stock = $window.get_panobject_stock(panobjectclass.ider)
-          end
+      if kind
+        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+        if panobjectclass
+          @its_blob = ((kind==PandoraModel::PK_Blob) \
+            or (panobjectclass <= PandoraModel::Blob))
+          @has_blob = (@its_blob or panobjectclass.has_blob_fields?)
+          @dlg_stock = $window.get_panobject_stock(panobjectclass.ider)
         end
       end
       @dlg_stock ||= Gtk::Stock::PROPERTIES
@@ -7047,14 +7078,18 @@ module PandoraGtk
       toolbar_sw.border_width = 0
       iw, iy = Gtk::IconSize.lookup(Gtk::IconSize::LARGE_TOOLBAR)
       toolbar_sw.height_request = iy+9
-      toolbar_sw.add(toolbar_box)
+      #toolbar_sw.add(toolbar_box)
+      toolbar_sw.add_with_viewport(toolbar_box)
 
       #main_vbox.pack_start(toolbar_box, false, false, 0)
       main_vbox.pack_start(toolbar_sw, false, false, 0)
 
-      dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, its_blob, \
-        Gtk::IconSize.lookup(Gtk::IconSize::SMALL_TOOLBAR)[0])
-      #buf = PandoraModel.scale_buf_to_size(buf, icon_size, center)
+      dlg_pixbuf = nil
+      if cab_panhash
+        dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, its_blob, \
+          Gtk::IconSize.lookup(Gtk::IconSize::SMALL_TOOLBAR)[0])
+        #buf = PandoraModel.scale_buf_to_size(buf, icon_size, center)
+      end
       dlg_image = nil
       dlg_image = Gtk::Image.new(dlg_pixbuf) if dlg_pixbuf
       #dlg_image ||= $window.get_preset_image('dialog')
@@ -7063,11 +7098,17 @@ module PandoraGtk
       @label_box = TabLabelBox.new(dlg_image, 'unknown', self) do
         area_send.destroy if area_send and (not area_send.destroyed?)
         area_recv.destroy if area_recv and (not area_recv.destroyed?)
-        $pool.stop_session(nil, cab_panhash, nil, false, self.session)
+        $pool.stop_session(nil, @cab_panhash, nil, false, self.session) if @cab_panhash
       end
 
-      page = $window.notebook.append_page(self, label_box)
-      $window.notebook.set_tab_reorderable(self, true)
+      notebook = nil
+      if tree_view.is_a?(SubjTreeView)
+        notebook = tree_view.get_notebook
+      end
+      notebook ||= $window.notebook
+
+      page = notebook.append_page(self, label_box)
+      notebook.set_tab_reorderable(self, true)
 
       construct_cab_title
 
@@ -7076,7 +7117,7 @@ module PandoraGtk
         area_recv.destroy if not area_recv.destroyed?
       end
 
-      show_all
+      self.show_all
       a_page ||= PandoraUI::CPI_Dialog
       opt_btns[PandoraUI::CPI_Sub+1].children[0].children[0].hide
       btn_offset = PandoraUI::CPI_Last_Sub-PandoraUI::CPI_Sub-1
@@ -7087,7 +7128,12 @@ module PandoraGtk
       end
       show_page(a_page)
 
-      $window.notebook.page = $window.notebook.n_pages-1 if not @known_node
+      GLib::Timeout.add(5) do
+        notebook.page = notebook.n_pages-1
+        notebook.queue_resize
+        notebook.queue_draw
+        false
+      end
     end
 
     MaxTitleLen = 15
@@ -9703,13 +9749,14 @@ module PandoraGtk
           formfields = panobject.get_fields_as_view(row, edit)
         end
 
-        if panhash0
+        if panobject or panhash0
           page = PandoraUI::CPI_Property
           page = PandoraUI::CPI_Profile if (action=='Profile')
           page = PandoraUI::CPI_Chat if (action=='Chat')
           page = PandoraUI::CPI_Dialog if (action=='Dialog')
           page = PandoraUI::CPI_Opinions if (action=='Opinion')
-          show_cabinet(panhash0, nil, nil, nil, nil, page, formfields, id, edit)
+          panhash0 ||= panobject
+          show_cabinet(panhash0, nil, nil, nil, nil, page, formfields, id, edit, tree_view)
         else
           dialog = FieldsDialog.new(panobject, tree_view, formfields, panhash0, id, \
             edit, panobject.sname)
@@ -9751,6 +9798,16 @@ module PandoraGtk
           else  #new or copy
             key = PandoraCrypto.current_key(false, false)
             key_inited = (key and key[PandoraCrypto::KV_Obj])
+
+            if formfields
+              ind = formfields.index { |field| field[PandoraUtils::FI_Id] == 'panstate' }
+              if ind
+                fld = formfields[ind]
+                panstate = fld[PandoraUtils::FI_Value]
+                panstate ||= 0
+                fld[PandoraUtils::FI_Value] = (panstate | PandoraModel::PSF_Support)
+              end
+            end
             #!!!dialog.keep_btn.active = true
             #!!!dialog.follow_btn.active = key_inited
             #!!!dialog.vouch_btn.active = key_inited
@@ -9803,8 +9860,16 @@ module PandoraGtk
   # Grid for panobjects
   # RU: Таблица для объектов Пандоры
   class SubjTreeView < Gtk::TreeView
-    attr_accessor :panobject, :sel, :notebook, :auto_create, :param_view_col, \
+    attr_accessor :panobject, :sel, :auto_create, :param_view_col, \
       :page_sw
+    def get_notebook
+      res = $window.notebook
+      if @page_sw and (not @page_sw.destroyed?) \
+      and @page_sw.parent and @page_sw.parent.is_a?(Gtk::Notebook)
+        res = @page_sw.parent
+      end
+      res
+    end
   end
 
   # Column for SubjTreeView
@@ -10487,7 +10552,8 @@ module PandoraGtk
       $treeview_thread.exit if $treeview_thread.alive?
       $treeview_thread = nil
     end
-    if (panobjbox.is_a? PanobjScrolledWindow) and panobjbox.auto_btn and panobjbox.auto_btn.active?
+    if (panobjbox.is_a? PanobjScrolledWindow) \
+    and panobjbox.auto_btn and panobjbox.auto_btn.active?
       $treeview_thread = Thread.new do
         while panobjbox and (not panobjbox.destroyed?) and panobjbox.treeview \
         and (not panobjbox.treeview.destroyed?) and $window.visible?
@@ -10833,37 +10899,44 @@ module PandoraGtk
   # Show panobject cabinet
   # RU: Показать кабинет панобъекта
   def self.show_cabinet(panhash, session=nil, conntype=nil, \
-  node_id=nil, models=nil, page=nil, fields=nil, obj_id=nil, edit=nil)
+  node_id=nil, models=nil, page=nil, fields=nil, obj_id=nil, edit=nil, tree_view=nil)
     sw = nil
 
     #p '---show_cabinet(panhash, session.id, conntype, node_id, models, page, fields, obj_id, edit)=' \
     #  +[panhash, session.object_id, conntype, node_id, models, page, fields, obj_id, edit].inspect
 
+    room_id = nil
     room_id = AsciiString.new(PandoraUtils.fill_zeros_from_right(panhash, \
-      PandoraModel::PanhashSize)).dup if panhash
+      PandoraModel::PanhashSize)).dup if panhash.is_a?(String)
     #room_id ||= session.object_id if session
 
-    if conntype.nil? or (conntype==PandoraNet::ST_Hunter)
-      creator = PandoraCrypto.current_user_or_key(true)
-      #room_id[-1] = (room_id[-1].ord ^ 1).chr if panhash==creator
-    end
+    #if conntype.nil? or (conntype==PandoraNet::ST_Hunter)
+    #  creator = PandoraCrypto.current_user_or_key(true)
+    #  #room_id[-1] = (room_id[-1].ord ^ 1).chr if panhash==creator
+    #end
     #p 'room_id='+room_id.inspect
-    $window.notebook.children.each do |child|
-      if ((child.is_a? CabinetBox) and ((child.room_id==room_id) \
-      or (session and (child.session==session))))
-        #child.targets = targets
-        #child.online_btn.safe_set_active(nodehash != nil)
-        #child.online_btn.inconsistent = false
-        $window.notebook.page = $window.notebook.children.index(child) if conntype.nil?
-        sw = child
-        if page
-          sw.show_page(page)
-          sleep(0.01)
+    notebook = nil
+    if tree_view.is_a?(SubjTreeView)
+      notebook = tree_view.get_notebook
+    end
+    if room_id and notebook
+      notebook.children.each do |child|
+        if ((child.is_a? CabinetBox) and ((child.room_id==room_id) \
+        or (session and (child.session==session))))
+          #child.targets = targets
+          #child.online_btn.safe_set_active(nodehash != nil)
+          #child.online_btn.inconsistent = false
+          notebook.page = notebook.children.index(child) if conntype.nil?
+          sw = child
+          if page
+            sw.show_page(page)
+            sleep(0.01)
+          end
+          break
         end
-        break
       end
     end
-    sw ||= CabinetBox.new(panhash, room_id, page, fields, obj_id, edit, session)
+    sw ||= CabinetBox.new(panhash, room_id, page, fields, obj_id, edit, session, tree_view)
     sw
   end
 

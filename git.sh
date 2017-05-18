@@ -52,12 +52,14 @@
 echo "`grep 'PandoraVersion  ' ./lib/gtk.rb | grep -o [\.[:digit:].]*` `./pandora.sh --md5`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
 
 ## Push files from local to repository
+#git remote rename origin github
+#git remote add bitbuc https://bitbucket.org/robux/pandora.git
 #git add --all
 git commit -a -m "version 0.69 alpha"
-git push -u bitbuc master
 git push -u github master
-#git push -u bitbuc develop
+git push -u bitbuc master
 #git push -u github develop
+#git push -u bitbuc develop
 #git push -u robux master
 
 ## Save to temporary cash without commit
