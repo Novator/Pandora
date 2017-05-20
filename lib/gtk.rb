@@ -10032,20 +10032,15 @@ module PandoraGtk
           if fld and oper
             logic = nil
             logic = fb.logic_com.entry.text if fb.logic_com
-            if not sql
-              sql = ''
-            else
-              sql << ' '
-              logic = 'AND' if (logic.nil? or (logic != 'OR'))
-            end
-            sql << logic+' ' if logic and (logic.size>0)
             val = fb.val_entry.text
+            #p '====[i, logic, fld, oper, val, sql]='+[i, logic, fld, oper, val, sql].inspect
             panobject = page_sw.treeview.panobject
             tab_flds = panobject.tab_fields
             tab_ind = tab_flds.index{ |tf| tf[0] == fld }
+            view = nil
+            type = nil
             if tab_ind
               fdesc = panobject.tab_fields[tab_ind][PandoraUtils::TI_Desc]
-              view = type = nil
               if fdesc
                 view = fdesc[PandoraUtils::FI_View]
                 type = fdesc[PandoraUtils::FI_Type]
@@ -10053,11 +10048,21 @@ module PandoraGtk
               elsif fld=='id'
                 val = val.to_i
               end
-              p '[val, type, view]='+[val, type, view].inspect
+            elsif fld=='lang'
+              tab_ind = true
+              fld = 'panhash'
+              val = panobject.kind.chr + (val.to_i).chr + '*'
+            end
+            if tab_ind
+              #p '[val, type, view]='+[val, type, view].inspect
               if view.nil? and val.is_a?(String) and (val.index('*') or val.index('?'))
                 PandoraUtils.correct_aster_and_quest!(val)
-                fb.oper_com.entry.text = '=' if (oper != '=')
-                oper = ' LIKE '
+                if (oper=='=')
+                  oper = ' LIKE '
+                else
+                  fb.oper_com.entry.text = '<>'
+                  oper = ' NOT LIKE '
+                end
               elsif (view.nil? and val.nil?) or (val.is_a?(String) and val.size==0)
                 fld = 'IFNULL('+fld+",'')"
                 oper << "''"
@@ -10067,8 +10072,16 @@ module PandoraGtk
                 val = nil
               end
               values ||= Array.new
-              sql << fld + oper
-              if not val.nil?
+              if sql.nil?
+                sql = ''
+              else
+                sql << ' '
+                logic = 'AND' if (logic.nil? or (logic != 'OR'))
+              end
+              sql << (logic+' ') if (logic and (logic.size>0))
+              #p "--[i, fld, oper, sql]="+[i, fld, oper, sql].inspect
+              sql << (fld + oper)
+              if val
                 sql << '?'
                 values << val
               end
@@ -10076,7 +10089,8 @@ module PandoraGtk
           end
         end
       end
-      values.insert(0, sql) if values
+      #p "++++++ sql="+sql.inspect
+      values.insert(0, sql) if (values and sql)
       values
     end
 

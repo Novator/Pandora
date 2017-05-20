@@ -1412,6 +1412,28 @@ module PandoraNet
   $keep_intvl = 1  #(every, sec)
   $keep_cnt   = 4  #(count)
 
+  def self.is_address_ip4?(addr)
+    res = nil
+    if addr.is_a?(String)
+      len = addr.size
+      res = ((len<=15) and (len>=7) and (addr.count('.')==3))
+    end
+    res
+  end
+
+  def self.is_address_ip6?(addr)
+    res = nil
+    if addr.is_a?(String)
+      len = addr.size
+      res = ((len<=39) and (len>=11) and (addr.count(':')>=4))
+    end
+    res
+  end
+
+  def self.is_address_ip?(addr)
+    res = (is_address_ip4?(addr) or is_address_ip6?(addr))
+  end
+
   # Session of data exchange with another node
   # RU: Сессия обмена данными с другим узлом
   class Session
@@ -2089,12 +2111,12 @@ module PandoraNet
         end
 
         time_now = Time.now.to_i
-        astate = 0
-        asended = 0
-        areceived = 0
+        astate = nil
+        asended = nil
+        areceived = nil
         aone_ip_count = 0
-        abad_attempts = 0
-        aban_time = 0
+        #abad_attempts = 0
+        #aban_time = 0
         apanhash = nil
         akey_hash = nil
         abase_id = nil
@@ -2111,14 +2133,19 @@ module PandoraNet
            +'domain, tport, uport'
 
         trusted = ((trust.is_a? Float) and (trust>0))
-        filter = {:key_hash=>skey_panhash, :base_id=>sbase_id}
         #if not trusted
         #  filter[:addr_from] = host_ip
         #end
         node_model = PandoraUtils.get_model('Node', @recv_models)
-        sel = node_model.select(filter, false, readflds, nil, 1)
-        if ((not sel) or (sel.size==0)) and @node_id
+
+        filter = nil
+        sel = nil
+        if @node_id.is_a?(Integer) and (@node_id>=0)
           filter = {:id => @node_id}
+          sel = node_model.select(filter, false, readflds, nil, 1)
+        end
+        if (filter.nil? or (not sel) or (sel.size==0)) and skey_panhash and sbase_id
+          filter = {:key_hash=>skey_panhash, :base_id=>sbase_id}
           sel = node_model.select(filter, false, readflds, nil, 1)
         end
 
@@ -2130,8 +2157,8 @@ module PandoraNet
           areceived = row[3]
           aone_ip_count = row[4]
           aone_ip_count ||= 0
-          abad_attempts = row[5]
-          aban_time = row[6]
+          #abad_attempts = row[5]
+          #aban_time = row[6]
           apanhash = row[7]
           akey_hash = row[8]
           abase_id = row[9]
@@ -2161,20 +2188,22 @@ module PandoraNet
 
         values[:addr_from] = @host_ip
         values[:addr_from_type] = AT_Ip4
-        values[:state]        = astate
-        values[:sended]       = asended
-        values[:received]     = areceived
-        values[:one_ip_count] = aone_ip_count+1
-        values[:bad_attempts] = abad_attempts
+        values[:state]        = astate if (not astate.nil?)
+        values[:sended]       = asended if (not asended.nil?)
+        values[:received]     = areceived if (not areceived.nil?)
+        values[:one_ip_count] = aone_ip_count+1 if (not aone_ip_count.nil?)
+        #values[:bad_attempts] = abad_attempts
         values[:session_key]  = session_key if session_key
-        values[:ban_time]     = aban_time
+        #values[:ban_time]     = aban_time
         values[:modified]     = time_now
 
         inaddr = params['addr']
         if inaddr and (inaddr != '')
           host, port, proto = pool.decode_node(inaddr)
           #p log_mes+'ADDR [addr, host, port, proto]='+[addr, host, port, proto].inspect
-          if host and (host.size>0) and (adomain.nil? or (adomain.size==0)) #and trusted
+          if ((adomain.nil? or (adomain.size==0)) and (host and (host.size>0) \
+          and (not PandoraNet.is_address_ip?(host))))
+          #and trusted
             adomain = host
             port = PandoraNet::DefTcpPort if (not port) or (port==0)
             proto ||= ''
@@ -2184,34 +2213,37 @@ module PandoraNet
           end
         end
 
-        if @node_id and (@node_id != 0) and ((not anode_id) or (@node_id != anode_id))
+        if false and @node_id and (@node_id != 0) and ((not anode_id) or (@node_id != anode_id))
           filter2 = {:id=>@node_id}
           @node_id = nil
           sel = node_model.select(filter2, false, 'addr, domain, tport, uport, addr_type', nil, 1)
           if sel and (sel.size>0)
-            baddr = sel[0][0]
-            bdomain = sel[0][1]
-            btport = sel[0][2]
-            buport = sel[0][3]
-            baddr_type = sel[0][4]
+            row = sel[0]
+            baddr = row[0]
+            bdomain = se[1]
+            btport = row[2]
+            buport = row[3]
+            baddr_type = row[4]
 
-            aaddr = baddr if (not aaddr) or (aaddr=='')
-            adomain = bdomain if bdomain and (bdomain.size>0) \
-              and (adomain.nil? or (adomain==''))
+            aaddr = baddr if ((not aaddr) or (aaddr==''))
+            adomain = bdomain if (bdomain and (bdomain.size>0) \
+              and (adomain.nil? or (adomain=='')))
 
-            values[:addr_type] ||= baddr_type
-            node_model.update(nil, nil, filter2)
+            values[:addr_type] ||= baddr_type if baddr_type
+            #node_model.update(nil, nil, filter2)
           end
         end
 
-        adomain = @host_name if @host_name and (@host_name.size>0) \
-          and (adomain.nil? or (adomain==''))
+        if ((adomain.nil? or (adomain=='')) and @host_name and (@host_name.size>0) \
+        and (not PandoraNet.is_address_ip?(@host_name)))
+          adomain = @host_name
+        end
         aaddr = @host_ip if (not aaddr) or (aaddr=='')
 
-        values[:addr] = aaddr
-        values[:domain] = adomain
-        values[:tport] = atport
-        values[:uport] = auport
+        values[:addr] = aaddr if aaddr
+        values[:domain] = adomain if adomain
+        values[:tport] = atport if atport
+        values[:uport] = auport if auport
 
         panhash = node_model.calc_panhash(values)
         values[:panhash] = panhash
