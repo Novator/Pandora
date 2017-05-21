@@ -4612,24 +4612,6 @@ module PandoraGtk
       #statusbar.pack_start(rate_btn, false, false, 0)
       #panelbox.pack_start(statusbar, false, false, 0)
 
-      #inject lang field
-      ind = @fields.index { |field| field[PandoraUtils::FI_Id] == 'panhash_lang' }
-      if not ind
-        lang = PandoraModel.text_to_lang($lang)
-        lang = @panhash0[1].ord if @panhash0 and (@panhash0.size>1)
-        lang ||= 0
-        field = Array.new
-        field[PandoraUtils::FI_Id] = 'panhash_lang'
-        field[PandoraUtils::FI_Name] = 'Language'
-        lang_tit = _('Language')
-        field[PandoraUtils::FI_LName] = lang_tit
-        field[PandoraUtils::FI_VFName] = lang_tit
-        field[PandoraUtils::FI_Type] = 'Byte'
-        field[PandoraUtils::FI_View] = 'bytelist'
-        field[PandoraUtils::FI_Value] = lang
-        @fields << field
-      end
-
       # devide text fields in separate list
       @panstate = 0
       @text_fields = Array.new
@@ -5232,16 +5214,43 @@ module PandoraGtk
       end
 
       filter = nil
-      filter = {:id=>obj_id.to_i} if (edit and obj_id)
+      filter = {:id=>@obj_id.to_i} if (edit and @obj_id)
+      if filter.nil?
+        filter ||= {:panhash => panhash}
+        sel = panobject.select(filter, false, 'id', 'id DESC', 1)
+        if sel and (sel.size>0)
+          @obj_id = sel[0][0]
+          filter = {:id=>@obj_id}
+        else
+          filter = nil
+        end
+      end
       #filter = {:panhash=>panhash} if filter.nil?
       res = panobject.update(flds_hash, nil, filter, true)
 
       if res
-        filter ||= { :panhash => panhash, :modified => time_now }
+        filter ||= {:panhash => panhash, :modified => time_now}
         sel = panobject.select(filter, true)
         if sel[0]
+          row = sel[0]
           #p 'panobject.namesvalues='+panobject.namesvalues.inspect
           #p 'panobject.matter_fields='+panobject.matter_fields.inspect
+
+          @obj_id = panobject.field_val('id', row)  #panobject.namesvalues['id']
+          @obj_id = obj_id.to_i
+
+          #put saved values to widgets
+          @fields = panobject.get_fields_as_view(row, true, panhash, @fields)
+          @fields.each do |form_fld|
+            entry = form_fld[PandoraUtils::FI_Widget]
+            aview = form_fld[PandoraUtils::FI_View]
+            text = form_fld[PandoraUtils::FI_Value].to_s
+            if (aview=='blob') or (aview=='text')
+              entry.text = text[1..-1] if text and (text.size<1024) and (text[0]=='@')
+            else
+              entry.text = text
+            end
+          end
 
           if tree_view and (not tree_view.destroyed?)
             path, column = tree_view.cursor
@@ -5249,22 +5258,20 @@ module PandoraGtk
             store = tree_view.model
             iter = store.get_iter(path) if store and path
             if iter
-              @obj_id = panobject.field_val('id', sel[0])  #panobject.namesvalues['id']
-              @obj_id = obj_id.to_i
               #p 'id='+id.inspect
               #p 'id='+id.inspect
               ind = tree_view.sel.index { |row| row[0]==obj_id }
               #p 'ind='+ind.inspect
               if ind
                 #p '---------CHANGE'
-                sel[0].each_with_index do |c,i|
+                row.each_with_index do |c,i|
                   tree_view.sel[ind][i] = c
                 end
                 iter[0] = obj_id
                 store.row_changed(path, iter)
               else
                 #p '---------INSERT'
-                tree_view.sel << sel[0]
+                tree_view.sel << row
                 iter = store.append
                 iter[0] = obj_id
                 tree_view.set_cursor(Gtk::TreePath.new(tree_view.sel.size-1), nil, false)
@@ -5320,6 +5327,7 @@ module PandoraGtk
 
         end
       end
+      panhash
     end
 
     # Save entered fields and flags to database
@@ -5436,7 +5444,8 @@ module PandoraGtk
         lang = PandoraModel.text_to_lang($lang)
       end
 
-      self.save_flds_with_form_flags(flds_hash, lang, created0)
+      panhash = self.save_flds_with_form_flags(flds_hash, lang, created0)
+      panhash
     end
 
   end
@@ -5820,10 +5829,10 @@ module PandoraGtk
   class CabinetBox < Gtk::VBox
     attr_accessor :room_id, :tree_view, :online_btn, :mic_btn, :webcam_btn, \
       :dlg_talkview, :chat_talkview, :area_send, :area_recv, :recv_media_pipeline, \
-      :appsrcs, :session, :ximagesink, \
+      :appsrcs, :session, :ximagesink, :parent_notebook, :cab_notebook, \
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, \
       :sender_box, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
-      :send_hpaned, :cab_notebook, :opt_btns, :cab_panhash, :session, \
+      :send_hpaned, :opt_btns, :cab_panhash, :session, \
       :bodywin, :fields, :obj_id, :edit, :property_box, :kind, :label_box, \
       :active_page, :dlg_stock, :its_blob, :has_blob
 
@@ -6079,11 +6088,11 @@ module PandoraGtk
       add_btn_to_toolbar
 
       add_btn_to_toolbar(Gtk::Stock::SAVE) do |btn|
-        pb.save_form_fields_with_flags_to_database
+        @cab_panhash = pb.save_form_fields_with_flags_to_database
+        construct_cab_title
       end
       add_btn_to_toolbar(Gtk::Stock::OK) do |btn|
-        pb.save_form_fields_with_flags_to_database
-        self.destroy
+        self.save_and_close
       end
 
       #add_btn_to_toolbar(Gtk::Stock::CANCEL) do |btn|
@@ -7106,6 +7115,7 @@ module PandoraGtk
         notebook = tree_view.get_notebook
       end
       notebook ||= $window.notebook
+      @parent_notebook = notebook
 
       page = notebook.append_page(self, label_box)
       notebook.set_tab_reorderable(self, true)
@@ -7138,8 +7148,8 @@ module PandoraGtk
 
     MaxTitleLen = 15
 
-    # Construct room title
-    # RU: Задаёт осмысленный заголовок окна
+    # Construct cabinet title
+    # RU: Генерирует заголовок кабинета
     def construct_cab_title(check_all=true, atitle_view=nil)
 
       def trunc_big_title(title)
@@ -7156,43 +7166,47 @@ module PandoraGtk
       end
 
       res = 'unknown'
+      notebook = @parent_notebook
+      notebook ||= $window.notebook
       if (kind==PandoraModel::PK_Person)
         title_view = atitle_view
         title_view ||= PandoraUI.title_view
         title_view ||= PandoraUI::TV_Name
         res = ''
-        aname, afamily = PandoraCrypto.name_and_family_of_person(nil, cab_panhash)
-        #p '------------[aname, afamily, cab_panhash]='+[aname, afamily, cab_panhash, \
-        #  PandoraUtils.bytes_to_hex(cab_panhash)].inspect
-        addname = ''
-        case title_view
-          when PandoraUI::TV_Name, PandoraUI::TV_NameN
-            if (aname.size==0)
-              addname << afamily
-            else
-              addname << aname
-            end
-          when PandoraUI::TV_Family
-            if (afamily.size==0)
-              addname << aname
-            else
-              addname << afamily
-            end
-          when PandoraUI::TV_NameFam
-            if (aname.size==0)
-              addname << afamily
-            else
-              addname << aname #[0, 4]
-              addname << ' '+afamily if afamily and (afamily.size>0)
-            end
+        if @cab_panhash
+          aname, afamily = PandoraCrypto.name_and_family_of_person(nil, @cab_panhash)
+          #p '------------[aname, afamily, cab_panhash]='+[aname, afamily, cab_panhash, \
+          #  PandoraUtils.bytes_to_hex(cab_panhash)].inspect
+          addname = ''
+          case title_view
+            when PandoraUI::TV_Name, PandoraUI::TV_NameN
+              if (aname.size==0)
+                addname << afamily
+              else
+                addname << aname
+              end
+            when PandoraUI::TV_Family
+              if (afamily.size==0)
+                addname << aname
+              else
+                addname << afamily
+              end
+            when PandoraUI::TV_NameFam
+              if (aname.size==0)
+                addname << afamily
+              else
+                addname << aname #[0, 4]
+                addname << ' '+afamily if afamily and (afamily.size>0)
+              end
+          end
+          if (addname.size>0)
+            res << ',' if (res.size>0)
+            res << addname
+          end
         end
-        if (addname.size>0)
-          res << ',' if (res.size>0)
-          res << addname
-        end
-        res = 'unknown' if (res.size==0)
+        res = PandoraModel::Person.sname if (res.size==0)
         res = trunc_big_title(res)
-        tab_widget = $window.notebook.get_tab_label(self)
+        tab_widget = notebook.get_tab_label(self)
         tab_widget.label.text = res if tab_widget
         #p '$window.title_view, res='+[@$window.title_view, res].inspect
         if check_all
@@ -7201,9 +7215,9 @@ module PandoraGtk
           while has_conflict and (title_view < PandoraUI::TV_NameN)
             has_conflict = false
             names = Array.new
-            $window.notebook.children.each do |child|
+            notebook.children.each do |child|
               if (child.is_a? CabinetBox)
-                tab_widget = $window.notebook.get_tab_label(child)
+                tab_widget = notebook.get_tab_label(child)
                 if tab_widget
                   tit = tab_widget.label.text
                   if names.include? tit
@@ -7221,14 +7235,14 @@ module PandoraGtk
               end
               #p '@$window.title_view='+@$window.title_view.inspect
               names = Array.new
-              $window.notebook.children.each do |child|
+              notebook.children.each do |child|
                 if (child.is_a? CabinetBox)
                   sn = child.construct_cab_title(false, title_view)
                   if (title_view == PandoraUI::TV_NameN)
                     names << sn
                     c = names.count(sn)
                     sn = sn+c.to_s if c>1
-                    tab_widget = $window.notebook.get_tab_label(child)
+                    tab_widget = notebook.get_tab_label(child)
                     tab_widget.label.text = sn if tab_widget
                   end
                 end
@@ -7241,10 +7255,11 @@ module PandoraGtk
         if panobjectclass
           model = PandoraUtils.get_model(panobjectclass.ider)
           if model
-            sel = model.select({'panhash'=>cab_panhash}, true, nil, nil, 1)
+            model.namesvalues = nil
+            sel = model.select({'panhash'=>@cab_panhash}, true, nil, nil, 1)
             res = model.record_info(MaxTitleLen+1, nil, nil, ' ')
             res = trunc_big_title(res)
-            tab_widget = $window.notebook.get_tab_label(self)
+            tab_widget = notebook.get_tab_label(self)
             tab_widget.label.text = res if tab_widget
           end
         end
@@ -9745,8 +9760,9 @@ module PandoraGtk
         row = nil
         formfields = nil
         if panobject
+          #panobject.namesvalues = nil if new_act
           row = sel[0] if sel
-          formfields = panobject.get_fields_as_view(row, edit)
+          formfields = panobject.get_fields_as_view(row, edit, panhash0)
         end
 
         if panobject or panhash0

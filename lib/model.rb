@@ -67,8 +67,8 @@ module PandoraModel
     ider = 'Panobject'
     name = "Объект Пандоры"
 
-    def get_fields_as_view(row, edit=nil)
-      formfields = self.def_fields.clone
+    def get_fields_as_view(row, edit=nil, panhash=nil, formfields=nil)
+      formfields ||= self.def_fields.clone
       tab_flds = self.tab_fields
       formfields.each do |field|
         val = nil
@@ -102,6 +102,28 @@ module PandoraModel
         field[FI_Value] = val
         field[FI_Color] = color
       end
+
+      ind = formfields.index { |field| field[PandoraUtils::FI_Id] == 'panhash_lang' }
+      field = nil
+      if ind
+        field = formfields[ind]
+      else
+        #inject lang field
+        field = Array.new
+        field[PandoraUtils::FI_Id] = 'panhash_lang'
+        field[PandoraUtils::FI_Name] = 'Language'
+        lang_tit = _('Language')
+        field[PandoraUtils::FI_LName] = lang_tit
+        field[PandoraUtils::FI_VFName] = lang_tit
+        field[PandoraUtils::FI_Type] = 'Byte'
+        field[PandoraUtils::FI_View] = 'bytelist'
+        formfields << field
+      end
+      lang = PandoraModel.text_to_lang($lang)
+      lang = panhash[1].ord if (panhash.is_a?(String) and (panhash.size>1))
+      lang ||= 0
+      field[PandoraUtils::FI_Value] = lang.to_s
+
       formfields
     end
 

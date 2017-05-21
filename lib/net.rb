@@ -4901,7 +4901,7 @@ module PandoraNet
       if user
         PandoraNet.get_exchange_params
         PandoraUI.set_status_field(PandoraUI::SF_Listen, nil, nil, true)
-        hosts = $host
+        hosts = $host   #from command parameters
         hosts ||= PandoraUtils.get_param('listen_host')
         hosts = hosts.split(',') if hosts
         hosts.compact!
@@ -5136,8 +5136,8 @@ module PandoraNet
   end
 
   $last_reg_listen_state = nil
-  $last_ip4_show = nil
-  $last_ip6_show = nil
+  $last_ip4 = nil
+  $last_ip6 = nil
 
   WrongUrl = 'http://robux.biz/panreg.php?node=[node]&amp;ips=[ips]'
 
@@ -5182,18 +5182,18 @@ module PandoraNet
       end
       ip4, ip4n = check_last_ip(ip4_list, '4')
       ip6, ip6n = check_last_ip(ip6_list, '6')
-      if ($last_ip4_show.nil? and ip4) or ip4n
-        $last_ip4_show = ip4
+      if (ip4 and ($last_ip4.nil? or ($last_ip4 != ip4))) or ip4n
         ip4_list.each do |addr_info|
           PandoraUI.log_message(PandoraUI::LM_Warning, _('Global IP')+'v4: '+addr_info.ip_address)
         end
       end
-      if ($last_ip6_show.nil? and ip6) or ip6n
-        $last_ip6_show = ip6
+      $last_ip4 = ip4
+      if (ip6 and ($last_ip6.nil? or ($last_ip6 != ip6))) or ip6n
         ip6_list.each do |addr_info|
           PandoraUI.log_message(PandoraUI::LM_Warning, _('Global IP')+'v6: '+addr_info.ip_address)
         end
       end
+      $last_ip6 = ip6
       panreg_url = get_update_url('panreg_url', true)
       if ip4 or ip6 or panreg_url
         ddns4_url = get_update_url('ddns4_url', ip4n)
@@ -5323,6 +5323,14 @@ module PandoraNet
       user = PandoraCrypto.current_user_or_key(true)
       if user
         PandoraNet.get_exchange_params
+        if (not $last_ip4) and (not $last_ip6)
+          ip_list = Socket.ip_address_list
+          ip6_list = ip_list.select do |addr_info|
+            (addr_info.ipv6? and (not addr_info.ipv6_loopback?) \
+            and (not addr_info.ipv6_linklocal?) and (not addr_info.ipv6_multicast?))
+          end
+          $last_ip6 = ip6_list[0].ip_address if ip6_list.size>0
+        end
         node_model = PandoraModel::Node.new
         filter = 'addr<>"" OR domain<>""'
         flds = 'id, addr, domain, key_hash, tport, panhash, base_id'
@@ -5354,18 +5362,20 @@ module PandoraNet
                   base_id = row[6]
                   #tport = PandoraNet::DefTcpPort if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
-                  addr = $pool.encode_addr(domain, tport, 'tcp')
-                  if Thread.current[:active]
-                    $pool.init_session(addr, panhash, 0, nil, node_id, person, \
-                      key_hash, base_id)
+                  if (not PandoraNet.is_address_ip6?(domain)) or $last_ip6
+                    addr = $pool.encode_addr(domain, tport, 'tcp')
                     if Thread.current[:active]
-                      if $pool.sessions.size<$max_session_count
-                        sleep($hunt_step_pause)
-                      else
-                        while Thread.current[:active] \
-                        and ($pool.sessions.size>=$max_session_count)
-                          sleep($hunt_overflow_pause)
-                          Thread.stop if Thread.current[:paused]
+                      $pool.init_session(addr, panhash, 0, nil, node_id, person, \
+                        key_hash, base_id)
+                      if Thread.current[:active]
+                        if $pool.sessions.size<$max_session_count
+                          sleep($hunt_step_pause)
+                        else
+                          while Thread.current[:active] \
+                          and ($pool.sessions.size>=$max_session_count)
+                            sleep($hunt_overflow_pause)
+                            Thread.stop if Thread.current[:paused]
+                          end
                         end
                       end
                     end
