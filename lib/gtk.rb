@@ -4593,12 +4593,18 @@ module PandoraGtk
         end
       end
       @panobject = apanobject
-      @fields = afields
       @notebook = anotebook
       @tree_view = atree_view
       @panhash0 = apanhash0
       @obj_id = an_id
       @edit = an_edit
+      if afields.nil? and @panobject
+        sel = PandoraModel.get_record_by_panhash(@panhash0)
+        if sel.is_a?(Array) and (sel.size>0)
+          afields = @panobject.get_fields_as_view(sel[0], @edit, @panhash0)
+        end
+      end
+      @fields = afields
 
       @vbox = self
 
@@ -5407,36 +5413,57 @@ module PandoraGtk
 
       # add text and blob fields
       text_fields.each do |field|
-        entry = field[PandoraUtils::FI_Widget]
-        if entry.text == ''
-          body_win = field[PandoraUtils::FI_Widget2]
-          if body_win and body_win.destroyed?
-            body_win = nil
-            field[PandoraUtils::FI_Widget2] = nil
-          end
-          text = flds_hash[field[PandoraUtils::FI_Id]]
-          #p '====(entry.text == '')  body_win, body_win.destroyed?, body_win.raw_buffer, text='+\
-          #  [body_win, body_win.destroyed?, body_win.raw_buffer, text].inspect
-          if (body_win.is_a? BodyScrolledWindow) and body_win.raw_buffer
-            #text = textview.buffer.text
-            text = body_win.raw_buffer.text
-            #p '---text='+text.inspect
-            if text and (text.size>0)
-              type_fld = panobject.field_des('type')
-              flds_hash['type'] = body_win.property_box.format_btn.label.upcase if type_fld
-            else
-              text = nil
+        fld_id = field[PandoraUtils::FI_Id]
+        file_way = flds_hash[fld_id]
+        if file_way and (file_way.size>1) and (file_way[0]=='@')
+          val = file_way[1..-1]
+          file_way = PandoraUtils.absolute_path(val)
+        else
+          file_way = nil
+        end
+        #entry = field[PandoraUtils::FI_Widget]
+        #if entry.text == ''
+        body_win = field[PandoraUtils::FI_Widget2]
+        if body_win and body_win.destroyed?
+          body_win = nil
+          field[PandoraUtils::FI_Widget2] = nil
+        end
+        #text = flds_hash[fld_id]
+        #p '====(entry.text == '')  body_win, body_win.destroyed?, body_win.raw_buffer, text='+\
+        #  [body_win, body_win.destroyed?, body_win.raw_buffer, text].inspect
+        if (body_win.is_a? BodyScrolledWindow) and body_win.raw_buffer
+          #text = textview.buffer.text
+          text = body_win.raw_buffer.text
+          #p '---text='+text.inspect
+          if text and (text.size>0) and (text[0] != '@')
+            type_fld = panobject.field_des('type')
+            flds_hash['type'] = body_win.property_box.format_btn.label.upcase if type_fld
+
+            if file_way
+              begin
+                File.open(file_way, 'w') do |file|
+                  #p '---[file_way, file.methods, text.size]='+[file_way, file.methods, text.size].inspect
+                  file.write(text)
+                end
+              rescue => err
+                PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot save text to file')+\
+                  '['+file_way+']: '+Utf8String.new(err.message))
+                file_way = nil
+              end
             end
+
+            if (not file_way)
+              flds_hash[fld_id] = text
+              field[PandoraUtils::FI_Value] = text
+            end
+
+            sha1_fld = panobject.field_des('sha1')
+            flds_hash['sha1'] = Digest::SHA1.digest(text) if sha1_fld
+            md5_fld = panobject.field_des('md5')
+            flds_hash['md5'] = Digest::MD5.digest(text) if md5_fld
+            size_fld = panobject.field_des('size')
+            flds_hash['size'] = text.size if size_fld
           end
-          text ||= ''
-          field[PandoraUtils::FI_Value] = text
-          flds_hash[field[PandoraUtils::FI_Id]] = text
-          sha1_fld = panobject.field_des('sha1')
-          flds_hash['sha1'] = Digest::SHA1.digest(text) if sha1_fld
-          md5_fld = panobject.field_des('md5')
-          flds_hash['md5'] = Digest::MD5.digest(text) if md5_fld
-          size_fld = panobject.field_des('size')
-          flds_hash['size'] = text.size if size_fld
         end
       end
 
@@ -10949,6 +10976,7 @@ module PandoraGtk
     if tree_view.is_a?(SubjTreeView)
       notebook = tree_view.get_notebook
     end
+    notebook ||= $window.notebook
     if room_id and notebook
       notebook.children.each do |child|
         if ((child.is_a? CabinetBox) and ((child.room_id==room_id) \

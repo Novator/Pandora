@@ -206,16 +206,25 @@ if not $poly_launch
         delete_psocket
         $pserver = UNIXServer.new(PANDORA_USOCK)
         Thread.new do
-          while not $pserver.closed?
-            psocket = $pserver.accept
+          while (not $pserver.closed?)
+            begin
+              psocket = $pserver.accept
+            rescue
+              psocket = nil
+            end
             if psocket
               Thread.new(psocket) do |psocket|
-                while not psocket.closed?
-                  command = psocket.recv(255)
+                while psocket and (not psocket.closed?)
+                  begin
+                    command = psocket.recv(255)
+                  rescue
+                    command = nil
+                  end
                   if ($window and command and (command != ''))
                     $window.do_menu_act(command)
-                  else
+                  elsif (not psocket.closed?)
                     psocket.close
+                    psocket = nil
                   end
                 end
               end

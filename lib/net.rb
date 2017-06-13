@@ -2999,8 +2999,7 @@ module PandoraNet
             #p log_mes+'panhashes='+panhashes.inspect
             if panhashes.size==1
               panhash = panhashes[0]
-              kind = PandoraUtils.kind_from_panhash(panhash)
-              pson = PandoraModel.get_record_by_panhash(kind, panhash, false, @recv_models)
+              pson = PandoraModel.get_record_by_panhash(panhash, kind, false, @recv_models)
               if pson
                 @scmd = EC_Record
                 @scode = kind
@@ -3018,7 +3017,7 @@ module PandoraNet
               rec_array = Array.new
               panhashes.each do |panhash|
                 kind = PandoraUtils.kind_from_panhash(panhash)
-                record = PandoraModel.get_record_by_panhash(kind, panhash, true, @recv_models)
+                record = PandoraModel.get_record_by_panhash(panhash, kind, true, @recv_models)
                 #p log_mes+'EC_Request panhashes='+PandoraUtils.bytes_to_hex(panhash).inspect
                 rec_array << record if record
               end
@@ -3349,7 +3348,7 @@ module PandoraNet
                       need_ph_list.each do |panhash|
                         kind = PandoraUtils.kind_from_panhash(panhash)
                         #p log_mes+[panhash, kind].inspect
-                        #p res = PandoraModel.get_record_by_panhash(kind, panhash, true, \
+                        #p res = PandoraModel.get_record_by_panhash(panhash, kind, true, \
                         #  @send_models)
                         pson_records << res if res
                       end
@@ -4389,7 +4388,7 @@ module PandoraNet
                     if @to_person
                       creator = @to_person
                       kind = PandoraUtils.kind_from_panhash(creator)
-                      res = PandoraModel.get_record_by_panhash(kind, creator, nil, \
+                      res = PandoraModel.get_record_by_panhash(creator, kind, nil, \
                         @send_models, 'id')
                       #p log_mes+'Whyer: CreatorCheck  creator='+creator.inspect
                       if not res

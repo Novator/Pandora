@@ -1273,8 +1273,8 @@ module PandoraCrypto
     elsif (person or key)
       person ||= key[KV_Creator] if key
       kind = PandoraUtils.kind_from_panhash(person)
-      if PandoraUtils.kind_from_panhash(person)==PandoraModel::PK_Person
-        sel = PandoraModel.get_record_by_panhash(kind, person, nil, nil, 'first_name, last_name')
+      if kind==PandoraModel::PK_Person
+        sel = PandoraModel.get_record_by_panhash(person, kind, nil, nil, 'first_name, last_name')
         #p 'key, person, sel='+[key, person, sel, PandoraUtils.bytes_to_hex(person)].inspect
         if (sel.is_a? Array) and (sel.size>0)
           aname, afamily = [Utf8String.new(sel[0][0]), Utf8String.new(sel[0][1])]

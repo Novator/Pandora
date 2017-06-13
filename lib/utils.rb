@@ -1343,7 +1343,15 @@ module PandoraUtils
       if ext
         ext.upcase!
         res = ext[1..-1]
-        res = 'JPG' if res=='JPEG'
+        if res=='JPEG'
+          res = 'JPG'
+        elsif res=='RB'
+          res = 'RUBY'
+        elsif res=='PY'
+          res = 'PYTHON'
+        elsif res=='HTM'
+          res = 'HTML'
+        end
       end
     end
     res

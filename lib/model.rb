@@ -369,10 +369,11 @@ module PandoraModel
 
   # Read record by panhash
   # RU: Читает запись по панхэшу
-  def self.get_record_by_panhash(kind, panhash, pson_with_kind=nil, models=nil, \
+  def self.get_record_by_panhash(panhash, kind=nil, pson_with_kind=nil, models=nil, \
   getfields=nil)
     # pson_with_kind: nil - raw data, false - short panhash+pson, true - panhash+pson
     res = nil
+    kind ||= PandoraUtils.kind_from_panhash(panhash)
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
     if panobjectclass
       model = PandoraUtils.get_model(panobjectclass.ider, models)
@@ -586,8 +587,7 @@ module PandoraModel
     need_list = []
     if ph_list.is_a? Array
       ph_list.each do |panhash|
-        kind = PandoraUtils.kind_from_panhash(panhash)
-        res = PandoraModel.get_record_by_panhash(kind, panhash, nil, models, 'id')
+        res = PandoraModel.get_record_by_panhash(panhash, nil, nil, models, 'id')
         need_list << panhash if (not res)  #add if record was not found
       end
     end
@@ -839,8 +839,7 @@ module PandoraModel
               sel = nil
               if (proto=='pandora')
                 panhash = PandoraModel.hex_to_panhash(way)
-                kind = PandoraUtils.kind_from_panhash(panhash)
-                sel = PandoraModel.get_record_by_panhash(kind, panhash, nil, nil, 'blob')
+                sel = PandoraModel.get_record_by_panhash(panhash, nil, nil, nil, 'blob')
               else
                 hash = PandoraUtils.hex_to_bytes(way)
                 sel = PandoraModel.get_record_by_hash(hash, nil, nil, nil, 'blob')
