@@ -2104,6 +2104,7 @@ module PandoraNet
 
         skey_creator = @skey[PandoraCrypto::KV_Creator]
         init_and_check_node(skey_creator, skey_panhash, sbase_id)
+
         creator = PandoraCrypto.current_user_or_key(true)
         if hunter? or (not skey_creator) or (skey_creator != creator)
           # check messages if it's not session to myself
@@ -2140,13 +2141,13 @@ module PandoraNet
 
         filter = nil
         sel = nil
-        if @node_id.is_a?(Integer) and (@node_id>=0)
-          filter = {:id => @node_id}
-          sel = node_model.select(filter, false, readflds, nil, 1)
-        end
-        if (filter.nil? or (not sel) or (sel.size==0)) and skey_panhash and sbase_id
+        if skey_panhash and sbase_id
           filter = {:key_hash=>skey_panhash, :base_id=>sbase_id}
           sel = node_model.select(filter, false, readflds, nil, 1)
+          if ((not sel) or (sel.size==0)) and @node_id.is_a?(Integer) and (@node_id>=0)
+            filter = {:id => @node_id}
+            sel = node_model.select(filter, false, readflds, nil, 1)
+          end
         end
 
         if sel and (sel.size>0)
@@ -2168,88 +2169,93 @@ module PandoraNet
           adomain = row[13]
           atport = row[14]
           auport = row[15]
+        elsif ((not skey_panhash) or (not sbase_id) \
+        or ((sbase_id==pool.base_id) and (skey_panhash==pool.key_hash)))
+          filter = false
         else
           filter = nil
         end
 
-        #p '=====%%%% %%%: [aaddr, adomain, @host_ip, @host_name]'+[aaddr, adomain, @host_ip, @host_name].inspect
+        if not filter.is_a?(FalseClass)
+          #p '=====%%%% %%%: [aaddr, adomain, @host_ip, @host_name]'+[aaddr, adomain, @host_ip, @host_name].inspect
 
-        values = {}
-        if (not acreator) or (not acreated)
-          acreator ||= PandoraCrypto.current_user_or_key(true)
-          values[:creator] = acreator
-          values[:created] = time_now
-        end
-        abase_id = sbase_id if (not abase_id) or (abase_id=='')
-        akey_hash = skey_panhash if (not akey_hash) or (akey_hash=='')
-
-        values[:base_id] = abase_id
-        values[:key_hash] = akey_hash
-
-        values[:addr_from] = @host_ip
-        values[:addr_from_type] = AT_Ip4
-        values[:state]        = astate if (not astate.nil?)
-        values[:sended]       = asended if (not asended.nil?)
-        values[:received]     = areceived if (not areceived.nil?)
-        values[:one_ip_count] = aone_ip_count+1 if (not aone_ip_count.nil?)
-        #values[:bad_attempts] = abad_attempts
-        values[:session_key]  = session_key if session_key
-        #values[:ban_time]     = aban_time
-        values[:modified]     = time_now
-
-        inaddr = params['addr']
-        if inaddr and (inaddr != '')
-          host, port, proto = pool.decode_node(inaddr)
-          #p log_mes+'ADDR [addr, host, port, proto]='+[addr, host, port, proto].inspect
-          if ((adomain.nil? or (adomain.size==0)) and (host and (host.size>0) \
-          and (not PandoraNet.is_address_ip?(host))))
-          #and trusted
-            adomain = host
-            port = PandoraNet::DefTcpPort if (not port) or (port==0)
-            proto ||= ''
-            atport = port if (proto != 'udp')
-            auport = port if (proto != 'tcp')
-            #values[:addr_type] = AT_Ip4
+          values = {}
+          if (not acreator) or (not acreated)
+            acreator ||= PandoraCrypto.current_user_or_key(true)
+            values[:creator] = acreator
+            values[:created] = time_now
           end
-        end
+          abase_id = sbase_id if (not abase_id) or (abase_id=='')
+          akey_hash = skey_panhash if (not akey_hash) or (akey_hash=='')
 
-        if false and @node_id and (@node_id != 0) and ((not anode_id) or (@node_id != anode_id))
-          filter2 = {:id=>@node_id}
-          @node_id = nil
-          sel = node_model.select(filter2, false, 'addr, domain, tport, uport, addr_type', nil, 1)
-          if sel and (sel.size>0)
-            row = sel[0]
-            baddr = row[0]
-            bdomain = se[1]
-            btport = row[2]
-            buport = row[3]
-            baddr_type = row[4]
+          values[:base_id] = abase_id
+          values[:key_hash] = akey_hash
 
-            aaddr = baddr if ((not aaddr) or (aaddr==''))
-            adomain = bdomain if (bdomain and (bdomain.size>0) \
-              and (adomain.nil? or (adomain=='')))
+          values[:addr_from] = @host_ip
+          values[:addr_from_type] = AT_Ip4
+          values[:state]        = astate if (not astate.nil?)
+          values[:sended]       = asended if (not asended.nil?)
+          values[:received]     = areceived if (not areceived.nil?)
+          values[:one_ip_count] = aone_ip_count+1 if (not aone_ip_count.nil?)
+          #values[:bad_attempts] = abad_attempts
+          values[:session_key]  = session_key if session_key
+          #values[:ban_time]     = aban_time
+          values[:modified]     = time_now
 
-            values[:addr_type] ||= baddr_type if baddr_type
-            #node_model.update(nil, nil, filter2)
+          inaddr = params['addr']
+          if inaddr and (inaddr != '')
+            host, port, proto = pool.decode_node(inaddr)
+            #p log_mes+'ADDR [addr, host, port, proto]='+[addr, host, port, proto].inspect
+            if ((adomain.nil? or (adomain.size==0)) and (host and (host.size>0) \
+            and (not PandoraNet.is_address_ip?(host))))
+            #and trusted
+              adomain = host
+              port = PandoraNet::DefTcpPort if (not port) or (port==0)
+              proto ||= ''
+              atport = port if (proto != 'udp')
+              auport = port if (proto != 'tcp')
+              #values[:addr_type] = AT_Ip4
+            end
           end
+
+          if false and @node_id and (@node_id != 0) and ((not anode_id) or (@node_id != anode_id))
+            filter2 = {:id=>@node_id}
+            @node_id = nil
+            sel = node_model.select(filter2, false, 'addr, domain, tport, uport, addr_type', nil, 1)
+            if sel and (sel.size>0)
+              row = sel[0]
+              baddr = row[0]
+              bdomain = se[1]
+              btport = row[2]
+              buport = row[3]
+              baddr_type = row[4]
+
+              aaddr = baddr if ((not aaddr) or (aaddr==''))
+              adomain = bdomain if (bdomain and (bdomain.size>0) \
+                and (adomain.nil? or (adomain=='')))
+
+              values[:addr_type] ||= baddr_type if baddr_type
+              #node_model.update(nil, nil, filter2)
+            end
+          end
+
+          if ((adomain.nil? or (adomain=='')) and @host_name and (@host_name.size>0) \
+          and (not PandoraNet.is_address_ip?(@host_name)))
+            adomain = @host_name
+          end
+          aaddr = @host_ip if (not aaddr) or (aaddr=='')
+
+          values[:addr] = aaddr if aaddr
+          values[:domain] = adomain if adomain
+          values[:tport] = atport if atport
+          values[:uport] = auport if auport
+
+          panhash = node_model.calc_panhash(values)
+          values[:panhash] = panhash
+          @node_panhash = panhash
+
+          res = node_model.update(values, nil, filter)
         end
-
-        if ((adomain.nil? or (adomain=='')) and @host_name and (@host_name.size>0) \
-        and (not PandoraNet.is_address_ip?(@host_name)))
-          adomain = @host_name
-        end
-        aaddr = @host_ip if (not aaddr) or (aaddr=='')
-
-        values[:addr] = aaddr if aaddr
-        values[:domain] = adomain if adomain
-        values[:tport] = atport if atport
-        values[:uport] = auport if auport
-
-        panhash = node_model.calc_panhash(values)
-        values[:panhash] = panhash
-        @node_panhash = panhash
-
-        res = node_model.update(values, nil, filter)
       end
 
       # Process media segment
@@ -2683,6 +2689,7 @@ module PandoraNet
                               @sbuf = sign2_baseid
                               @stage = ES_PreExchange
                               trust = @skey[PandoraCrypto::KV_Trust]
+
                               update_node(skey_panhash, sbaseid, trust, \
                                 @cipher[PandoraCrypto::KV_Panhash])
                               set_trust_and_notice
@@ -5139,6 +5146,7 @@ module PandoraNet
   $last_ip6 = nil
 
   WrongUrl = 'http://robux.biz/panreg.php?node=[node]&amp;ips=[ips]'
+  ExceptIp4List = ['147.146.146.49']
 
   def self.register_node_ips(listening=nil, quit_programm=nil)
 
@@ -5173,7 +5181,8 @@ module PandoraNet
       ip_list = Socket.ip_address_list
       ip4_list = ip_list.select do |addr_info|
         (addr_info.ipv4? and (not addr_info.ipv4_loopback?) \
-        and (not addr_info.ipv4_private?) and (not addr_info.ipv4_multicast?))
+        and (not addr_info.ipv4_private?) and (not addr_info.ipv4_multicast?) \
+        and not ExceptIp4List.include?(addr_info.ip_address))
       end
       ip6_list = ip_list.select do |addr_info|
         (addr_info.ipv6? and (not addr_info.ipv6_loopback?) \
