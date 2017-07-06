@@ -71,5 +71,5 @@ End Sub  '--VBS
 
 rem === Run Pandora with Ruby
 :RUN_PANDORA
-"%RUBY%" .\pandora.rb
+"%RUBY%" .\pandora.rb %*
 

@@ -69,7 +69,6 @@ git push -u bitbuc master
 
 ##Cancel last commit with save current files
 #git reset --soft HEAD~1
-#git reset --soft HEAD^
 ##Cancel last commit without save current files
 #git reset --hard HEAD^
 #git push -f github master

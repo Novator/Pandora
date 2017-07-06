@@ -96,13 +96,19 @@ while (ARGVdup.size>0) or next_arg
   else
     arg = ARGVdup.shift
   end
-  if (arg.is_a? String) and (arg[0,1]=='-')
-    if ARGVdup.size>0
-      next_arg = ARGVdup.shift
-    end
-    if next_arg and next_arg.is_a? String and (next_arg[0,1] != '-')
-      val = next_arg
-      next_arg = nil
+  if arg.is_a?(String) and (arg.size>0) and (arg[0]=='-')
+    i = arg.index('=')
+    if i and (i<20)
+      val = arg[i+1..-1]
+      arg = arg[0, i]
+    else
+      if ARGVdup.size>0
+        next_arg = ARGVdup.shift
+      end
+      if next_arg and next_arg.is_a? String and (next_arg[0,1] != '-')
+        val = next_arg
+        next_arg = nil
+      end
     end
   end
   case arg

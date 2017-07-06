@@ -3256,7 +3256,8 @@ module PandoraUtils
       if File.exist?($mp3_player)
         $mp3_player = '"'+$mp3_player+'"'
       else
-        $mp3_player = 'mplay32 /play /close'
+        #$mp3_player = 'mplay32 /play /close'
+        $mp3_player = nil
       end
     else
       res = `which #{$mp3_player}`
@@ -3452,8 +3453,8 @@ module PandoraUtils
   # Play mp3
   # RU: Проиграть mp3
   def self.play_mp3(filename, path=nil, anyway=nil)
-    if ($poly_play or (not $play_thread)) and (anyway \
-    or (PandoraUI.play_sounds? and (filename.is_a? String) and (filename.size>0)))
+    if ($mp3_player and ($poly_play or (not $play_thread)) and (anyway \
+    or (PandoraUI.play_sounds? and (filename.is_a? String) and (filename.size>0))))
       $play_thread = Thread.new do
         begin
           path ||= $pandora_view_dir

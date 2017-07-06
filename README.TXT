@@ -8,7 +8,7 @@ Contents
 3) installation in Ubuntu
 4) installation in Windows
 5) installation in Debian
-6) installation in Macosx
+6) preparation of Macosx
 7) manual installation or update
 8) console user interface
 9) join as developer
@@ -72,7 +72,7 @@ Download a package and install it with root:
   apt-get -f -y install
 
 
-6. INSTALLATION IN MACOSX
+6. PREPARATION OF MACOSX
 
 Run these commands in terminal:
 
