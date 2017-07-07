@@ -2615,6 +2615,10 @@ module PandoraGtk
             if event.state.control_mask?
               res = true
             end
+          when Gdk::Keyval::GDK_f, Gdk::Keyval::GDK_F
+            show_hide_find_panel
+          when Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H
+            show_hide_find_panel(true)
         end
         res
       end
@@ -2706,6 +2710,197 @@ module PandoraGtk
           window.cursor = $window.regular_cursor
         end
       end
+    end
+
+    def highlight_text(atext, direction=nil)
+      if atext.is_a?(String) and (atext.size>0)
+        direction ||= 0
+      end
+    end
+
+    def show_hide_find_panel(replace=nil)
+      if @find_panel
+        @find_panel.destroy
+        @find_panel = nil
+      else
+        popwin = Gtk::Window.new #(Gtk::Window::POPUP)
+        @find_panel = popwin
+        @replace_hbox = nil
+        popwin.transient_for = $window if PandoraUtils.os_family == 'windows'
+        popwin.modal = false #@modal
+        popwin.decorated = false
+        popwin.skip_taskbar_hint = true
+        popwin.destroy_with_parent = true
+
+        find_vbox = Gtk::VBox.new
+        hbox = Gtk::HBox.new
+
+        entry = Gtk::Entry.new
+        #entry = Gtk::Combo.new  #Gtk::Entry.new
+        #entry.set_popdown_strings(['word1', 'word2'])
+
+        entry.show_all
+        awidth, btn_height = entry.size_request
+        btn_height -= 8
+        wim, him = Gtk::IconSize.lookup(Gtk::IconSize::MENU)
+        btn_height = him if btn_height < him
+
+        #@@back_buf ||= $window.get_preset_icon(Gtk::Stock::GO_BACK, nil, btn_height)
+        #@@forward_buf ||= $window.get_preset_icon(Gtk::Stock::GO_FORWARD, nil, btn_height)
+        @@find_buf ||= $window.get_preset_icon(Gtk::Stock::FIND, nil, btn_height)
+        @@replace_buf ||= $window.get_preset_icon(Gtk::Stock::FIND_AND_REPLACE, nil, btn_height)
+        @@back_buf ||= $window.get_preset_icon(Gtk::Stock::GO_UP, nil, btn_height)
+        @@forward_buf ||= $window.get_preset_icon(Gtk::Stock::GO_DOWN, nil, btn_height)
+        @@all_buf ||= $window.get_preset_icon(Gtk::Stock::SELECT_ALL, nil, btn_height)
+        @@close_buf ||= $window.get_preset_icon(Gtk::Stock::CLOSE, nil, 10)
+
+        find_image = Gtk::Image.new(@@find_buf)
+        replace_image = Gtk::Image.new(@@replace_buf)
+        back_image = Gtk::Image.new(@@back_buf)
+        forward_image = Gtk::Image.new(@@forward_buf)
+        close_image = Gtk::Image.new(@@close_buf)
+        all_image = Gtk::Image.new(@@all_buf)
+
+        find_btn = SafeToggleToolButton.new  #Gtk::ToolButton.new(find_image, _('Find'))
+        find_btn.safe_set_active(replace)
+        find_btn.icon_widget = find_image
+        find_btn.can_focus = false
+        find_btn.can_default = false
+        find_btn.receives_default = false
+        find_btn.tooltip_text = _('Find and replace')
+        find_btn.safe_signal_clicked do |widget|
+          if find_btn.active?
+            find_btn.icon_widget = replace_image
+            if @replace_hbox
+              @replace_hbox.show_all
+            else
+              @replace_hbox = Gtk::HBox.new
+              replace_label = Gtk::Label.new(_('Replace by'))
+              @replace_hbox.pack_start(replace_label, false, false, 2)
+              replace_entry = Gtk::Entry.new
+              @replace_hbox.pack_start(replace_entry, true, true, 0)
+              #@replace_hbox.show_all
+              replace_all_btn = SafeToggleToolButton.new
+              replace_all_btn.icon_widget = all_image
+              replace_all_btn.can_focus = false
+              replace_all_btn.can_default = false
+              replace_all_btn.tooltip_text = _('Replace all')
+              @replace_hbox.pack_start(replace_all_btn, false, false, 0)
+              find_vbox.pack_start(@replace_hbox, false, false, 2)
+              find_vbox.show_all
+              #@find_panel.show_all
+              popwin.focus_chain = [entry, replace_entry]
+            end
+          else
+            find_btn.icon_widget = find_image
+            @replace_hbox.hide if @replace_hbox
+          end
+          find_btn.show_all
+          pwh = find_vbox.size_request
+          #pwh[1] = 200
+          @find_panel.resize(*pwh)
+          #@find_panel.present
+          false
+        end
+
+        back_btn = Gtk::ToolButton.new(back_image, _('Back'))
+        #back_btn = Gtk::Button.new
+        #back_btn.add(back_image)
+        back_btn.can_focus = false
+        back_btn.can_default = false
+        back_btn.receives_default = false
+        back_btn.tooltip_text = _('Back')
+        back_btn.signal_connect('clicked') do |widget|
+          highlight_text(entry.text, -1)
+          false
+        end
+
+        forward_btn = Gtk::ToolButton.new(forward_image, _('Forward'))
+        #forward_btn = Gtk::Button.new
+        #forward_btn.add(forward_image)
+        forward_btn.can_focus = false
+        forward_btn.can_default = false
+        forward_btn.receives_default = false
+        forward_btn.tooltip_text = _('Forward')
+        forward_btn.signal_connect('clicked') do |widget|
+          highlight_text(entry.text, 1)
+          false
+        end
+
+        close_btn = Gtk::ToolButton.new(close_image, _('Close'))
+        close_btn.can_focus = false
+        close_btn.can_default = false
+        close_btn.receives_default = false
+        close_btn.tooltip_text = _('Close')
+        close_btn.signal_connect('clicked') do |widget|
+          @find_panel.destroy
+          @find_panel = nil
+          false
+        end
+
+        hbox.pack_start(back_btn, false, false, 0)
+        hbox.pack_start(entry, false, false, 0)
+        hbox.pack_start(forward_btn, false, false, 0)
+        hbox.pack_start(find_btn, false, false, 0)
+
+        hbox.pack_start(close_btn, false, false, 2)
+
+        popwin.signal_connect('delete_event') { @popwin.destroy; @popwin=nil }
+
+        popwin.signal_connect('focus-out-event') do |win, event|
+          if @find_panel
+            GLib::Timeout.add(200) do
+              if (self.destroyed? or @find_panel.nil? or @find_panel.destroyed? \
+              or (not (self.has_focus? or @find_panel.active?)))
+                @find_panel.destroy if (not @find_panel.destroyed?)
+                @find_panel = nil if (not self.destroyed?)
+              end
+              continue = (@find_panel and (not @find_panel.destroyed?) \
+                and (not @find_panel.active?))
+              continue
+            end
+          end
+          false
+        end
+
+        popwin.signal_connect('key-press-event') do |widget, event|
+          if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+            forward_btn.clicked
+          elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+            ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
+            event.keyval) and event.state.control_mask?) #w, W, ц, Ц
+          then
+            @find_panel.destroy
+            @find_panel = nil
+          elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
+            event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
+            Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
+            and event.state.control_mask?) #q, Q, й, Й
+          then
+            @find_panel.destroy
+            @find_panel = nil
+            PandoraUI.do_menu_act('Quit')
+          end
+          false
+        end
+
+        popwin.add(find_vbox)
+
+        pos = self.window.origin
+        all = self.allocation.to_a
+
+        find_vbox.pack_start(hbox, false, false, 0)
+        find_vbox.show_all
+        awidth, aheight = find_vbox.size_request
+        popwin.move(pos[0]+all[2]-awidth, pos[1])  #all[3]+1
+
+        popwin.show_all
+
+        popwin.focus_chain = [entry]
+
+        entry.grab_focus
+      end
+      @find_panel
     end
 
     def follow_if_link(iter)
@@ -6498,12 +6693,12 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(toolbar)
 
       btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::FIND, nil, 0) do
-        #find
+        bodywin.body_child.show_hide_find_panel
       end
       menu = Gtk::Menu.new
       btn.menu = menu
       add_menu_item(btn, menu, Gtk::Stock::FIND_AND_REPLACE) do
-        #replace
+        bodywin.body_child.show_hide_find_panel(true)
       end
       menu.show_all
 

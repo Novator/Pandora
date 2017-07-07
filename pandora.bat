@@ -6,7 +6,9 @@ rem === Changing the current dir to bat-file place
 cd /d %~dp0
 
 rem === Set constants
-set RUBY=.\ruby193\bin\rubyw.exe
+
+set RUBY=.\ruby193\bin\ruby.exe
+
 set PANDORA_DIR=%CD%
 set SETUP_URL=http://cznic.dl.sourceforge.net/project/pandora-net/pandora_setup.exe
 set SETUP_FILE=.\pandora_setup.exe
