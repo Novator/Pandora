@@ -5009,7 +5009,9 @@ module PandoraNet
             udp_broadcast = PandoraUtils.get_param('udp_broadcast')
             if udp_broadcast and udp_server
               # Send UDP broadcast hello
-              GLib::Timeout.add(2000) do
+              #GLib::Timeout.add(2000) do
+              Thread.new do
+                sleep(2)
                 res = PandoraCrypto.current_user_and_key(false, false)
                 if res.is_a? Array
                   person_hash, key_hash = res
@@ -5094,7 +5096,9 @@ module PandoraNet
         sleep 0.08
         if $tcp_listen_thread
           tcp_lis_th0 = $tcp_listen_thread
-          GLib::Timeout.add(2000) do
+          #GLib::Timeout.add(2000) do
+          Thread.new do
+            sleep(2)
             if tcp_lis_th0 == $tcp_listen_thread
               $tcp_listen_thread.exit if $tcp_listen_thread and $tcp_listen_thread.alive?
               $tcp_listen_thread = nil
@@ -5114,7 +5118,9 @@ module PandoraNet
         sleep 0.03
         if $udp_listen_thread
           udp_lis_th0 = $udp_listen_thread
-          GLib::Timeout.add(2000) do
+          #GLib::Timeout.add(2000) do
+          Thread.new do
+            sleep(2)
             if udp_lis_th0 == $udp_listen_thread
               $udp_listen_thread.exit if $udp_listen_thread and $udp_listen_thread.alive?
               $udp_listen_thread = nil
@@ -5419,7 +5425,9 @@ module PandoraNet
     end
     if (not $resume_harvest_time) \
     or (Time.now.to_i >= $resume_harvest_time + $resume_harvest_period*60)
-      GLib::Timeout.add(900) do
+      #GLib::Timeout.add(900) do
+      Thread.new do
+        sleep(0.9)
         if hunting?
           $resume_harvest_time = Time.now.to_i
           $pool.resume_harvest

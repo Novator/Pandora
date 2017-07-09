@@ -2726,8 +2726,9 @@ module PandoraGtk
         popwin = Gtk::Window.new #(Gtk::Window::POPUP)
         @find_panel = popwin
         @replace_hbox = nil
-        popwin.transient_for = $window if PandoraUtils.os_family == 'windows'
-        popwin.modal = false #@modal
+        #win_os = (PandoraUtils.os_family == 'windows')
+        popwin.transient_for = $window #if win_os
+        popwin.modal = false #(not win_os)
         popwin.decorated = false
         popwin.skip_taskbar_hint = true
         popwin.destroy_with_parent = true
@@ -2736,6 +2737,7 @@ module PandoraGtk
         hbox = Gtk::HBox.new
 
         entry = Gtk::Entry.new
+        entry.width_request = 200
         #entry = Gtk::Combo.new  #Gtk::Entry.new
         #entry.set_popdown_strings(['word1', 'word2'])
 
@@ -2850,13 +2852,13 @@ module PandoraGtk
         popwin.signal_connect('focus-out-event') do |win, event|
           if @find_panel
             GLib::Timeout.add(200) do
-              if (self.destroyed? or @find_panel.nil? or @find_panel.destroyed? \
+              if @find_panel and (self.destroyed? or @find_panel.destroyed? \
               or (not (self.has_focus? or @find_panel.active?)))
                 @find_panel.destroy if (not @find_panel.destroyed?)
                 @find_panel = nil if (not self.destroyed?)
               end
               continue = (@find_panel and (not @find_panel.destroyed?) \
-                and (not @find_panel.active?))
+                and (not @find_panel.active?) and @find_panel.visible?)
               continue
             end
           end
@@ -2892,7 +2894,7 @@ module PandoraGtk
         find_vbox.pack_start(hbox, false, false, 0)
         find_vbox.show_all
         awidth, aheight = find_vbox.size_request
-        popwin.move(pos[0]+all[2]-awidth, pos[1])  #all[3]+1
+        popwin.move(pos[0]+all[2]-awidth-24, pos[1])  #all[3]+1
 
         popwin.show_all
 
@@ -3762,7 +3764,7 @@ module PandoraGtk
               str = numbers[i].to_s
               layout.text = str
               widget.style.paint_layout(target, widget.state, false,
-                nil, widget, nil, 2, pos, layout)
+                nil, widget, nil, 2, pos, layout)   #Gtk2 fails sometime!!!
             end
           end
         end
@@ -10126,84 +10128,86 @@ module PandoraGtk
     end
 
     def update_treeview
-      panobject = treeview.panobject
-      store = treeview.model
-      Gdk::Threads.synchronize do
-        Gdk::Display.default.sync
-        $pool.mutex.synchronize do
-          path, column = treeview.cursor
-          id0 = nil
-          if path
-            iter = store.get_iter(path)
-            id0 = iter[0]
-          end
-          #store.clear
-          panobject.class.modified = false if panobject.class.modified
-          filter = nil
-          filter = filter_box.compose_filter
-          if (not arch_btn.active?)
-            del_bit = PandoraModel::PSF_Archive
-            del_fil = 'IFNULL(panstate,0)&'+del_bit.to_s+'=0'
-            if filter.nil?
-              filter = del_fil
-            else
-              filter[0] << ' AND '+del_fil
+      if treeview and (not treeview.destroyed?)
+        panobject = treeview.panobject
+        store = treeview.model
+        Gdk::Threads.synchronize do
+          Gdk::Display.default.sync
+          $pool.mutex.synchronize do
+            path, column = treeview.cursor
+            id0 = nil
+            if path
+              iter = store.get_iter(path)
+              id0 = iter[0]
             end
-          end
-          p 'select filter[sql,values]='+filter.inspect
-          sel = panobject.select(filter, false, nil, panobject.sort)
-          if sel
-            treeview.sel = sel
-            treeview.param_view_col = nil
-            if ((panobject.kind==PandoraModel::PK_Parameter) \
-            or (panobject.kind==PandoraModel::PK_Message)) and sel[0]
-              treeview.param_view_col = sel[0].size
+            #store.clear
+            panobject.class.modified = false if panobject.class.modified
+            filter = nil
+            filter = filter_box.compose_filter
+            if (not arch_btn.active?)
+              del_bit = PandoraModel::PSF_Archive
+              del_fil = 'IFNULL(panstate,0)&'+del_bit.to_s+'=0'
+              if filter.nil?
+                filter = del_fil
+              else
+                filter[0] << ' AND '+del_fil
+              end
             end
-            iter0 = nil
-            sel.each_with_index do |row,i|
-              #iter = store.append
-              iter = store.get_iter(Gtk::TreePath.new(i))
-              iter ||= store.append
-              #store.set_value(iter, column, value)
-              id = row[0].to_i
-              iter[0] = id
-              iter0 = iter if id0 and id and (id == id0)
-              if treeview.param_view_col
-                view = nil
-                if (panobject.kind==PandoraModel::PK_Parameter)
-                  type = panobject.field_val('type', row)
-                  setting = panobject.field_val('setting', row)
-                  ps = PandoraUtils.decode_param_setting(setting)
-                  view = ps['view']
-                  view ||= PandoraUtils.pantype_to_view(type)
-                else
-                  panstate = panobject.field_val('panstate', row)
-                  if (panstate.is_a? Integer) and ((panstate & PandoraModel::PSF_Crypted)>0)
-                    view = 'hex'
+            p 'select filter[sql,values]='+filter.inspect
+            sel = panobject.select(filter, false, nil, panobject.sort)
+            if sel
+              treeview.sel = sel
+              treeview.param_view_col = nil
+              if ((panobject.kind==PandoraModel::PK_Parameter) \
+              or (panobject.kind==PandoraModel::PK_Message)) and sel[0]
+                treeview.param_view_col = sel[0].size
+              end
+              iter0 = nil
+              sel.each_with_index do |row,i|
+                #iter = store.append
+                iter = store.get_iter(Gtk::TreePath.new(i))
+                iter ||= store.append
+                #store.set_value(iter, column, value)
+                id = row[0].to_i
+                iter[0] = id
+                iter0 = iter if id0 and id and (id == id0)
+                if treeview.param_view_col
+                  view = nil
+                  if (panobject.kind==PandoraModel::PK_Parameter)
+                    type = panobject.field_val('type', row)
+                    setting = panobject.field_val('setting', row)
+                    ps = PandoraUtils.decode_param_setting(setting)
+                    view = ps['view']
+                    view ||= PandoraUtils.pantype_to_view(type)
+                  else
+                    panstate = panobject.field_val('panstate', row)
+                    if (panstate.is_a? Integer) and ((panstate & PandoraModel::PSF_Crypted)>0)
+                      view = 'hex'
+                    end
                   end
+                  row[treeview.param_view_col] = view
                 end
-                row[treeview.param_view_col] = view
               end
-            end
-            i = sel.size
-            iter = store.get_iter(Gtk::TreePath.new(i))
-            while iter
-              store.remove(iter)
+              i = sel.size
               iter = store.get_iter(Gtk::TreePath.new(i))
-            end
-            if treeview.sel.size>0
-              if (not path) or (not store.get_iter(path)) \
-              or (not store.iter_is_valid?(store.get_iter(path)))
-                path = iter0.path if iter0
-                path ||= Gtk::TreePath.new(treeview.sel.size-1)
+              while iter
+                store.remove(iter)
+                iter = store.get_iter(Gtk::TreePath.new(i))
               end
-              treeview.set_cursor(path, nil, false)
-              treeview.scroll_to_cell(path, nil, false, 0.0, 0.0)
+              if treeview.sel.size>0
+                if (not path) or (not store.get_iter(path)) \
+                or (not store.iter_is_valid?(store.get_iter(path)))
+                  path = iter0.path if iter0
+                  path ||= Gtk::TreePath.new(treeview.sel.size-1)
+                end
+                treeview.set_cursor(path, nil, false)
+                treeview.scroll_to_cell(path, nil, false, 0.0, 0.0)
+              end
             end
           end
+          p 'treeview is updated: '+panobject.ider
+          treeview.grab_focus
         end
-        p 'treeview is updated: '+panobject.ider
-        treeview.grab_focus
       end
     end
 

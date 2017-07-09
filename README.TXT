@@ -132,15 +132,15 @@ Pandora can update itself by user click to button on status bar.
 8. CONSOLE USER INTERFACE
 
 By default Pandora launches Gtk2 graphical user interface,
-but you can order it to run Ncurses console user interface:
+but you can force it to launch Ncurses console user interface:
 
   ./pandora.sh -c   -- this is Curses/Ncurses mode
   ./pandora.sh -s   -- run via screen or return to session
   ./util/pancurse.sh      -- run or return screen session
   ./util/pancurse.sh -d   -- run via screen like a daemon
 
-Console interface can be useful on Raspberri Pi, dedicated or
-virtual servers when you want to have your own permanent node.
+Console interface is useful on Raspberri Pi, dedicated or
+virtual servers, when you need to have day-and-night node.
 
 Attention: CUI has pared-down functionality in comparison with GUI.
 It is recommended to setup all preferences in GUI mode on desktop
