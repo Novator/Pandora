@@ -49,7 +49,7 @@
 #git log --graph --decorate --oneline
 
 ##Save version, md5 and date to history log
-echo "`grep 'PandoraVersion  ' ./lib/gtk.rb | grep -o [\.[:digit:].]*` `./pandora.sh --md5`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
+echo "`./pandora.sh --version` `./pandora.sh --md5`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
 
 ## Push files from local to repository
 #git remote rename origin github

@@ -388,6 +388,7 @@
     <icons_pan desc="Pandora icon file" type="String" section="view" setting="icons-pan.png:8x12:1p:1p|person|community|blob|city|street|address|contact|country|lang|word|relation|opinion|task|message|ad|transfer|order|deal|waybill|debenture|deposit|guarantee|insurer|product|service|currency|storage|estimate|contract|report|project|resolution|law|contribution|expenditure|offense|punishment|resource|delegation|registry|key|sign|node|event|request|session|auth|listen|hunt|fish|exchange|smile|game|dialog|radar|resize|send|chat|tags|crypt|require|webcam|mic|save|gogo|recv|image|date|time|list|panhash|update|arch|code|table|quote|log|coord|keep|ignore|block|follow|public|editor|box|" />
     <time_history desc="Time history" type="String" section="view" />
     <delete_mode desc="Delete mode (0-ask,1-silent)" type="Integer" section="view" setting="0" />
+    <tab_size desc="Tab symbol size in spaces for editor" type="Integer" section="view" setting="4" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
     <check_interval desc="Сheck interval (hour)" type="Integer" section="update" setting="1" />

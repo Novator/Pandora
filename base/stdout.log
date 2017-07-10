@@ -1,27 +1,8 @@
 "lang_code1=1049"
 "===FINAL lang_code=1049"
-"@filters=[#<PandoraGtk::FilterHBox:018986D0 ptr=0274D1C0>]"
-"select filter[sql,values]=\"IFNULL(panstate,0)&128=0\""
-"treeview is updated: Person"
-"path=#<Gtk::TreePath:0180B160 ptr=02A6D910 own=true>"
-:person
-:"gtk-home"
-:opinion
-:relation
-:sign
-:chat
-:dialog
-:editor
-:person
-"---show_page [page, tab_signal]=[6, nil]"
-:dialog
-"---- load_history [max_message, sort_mode]=[6, 0]"
-"--init_video_receiver [start, can_play, init]=[true, true, false]"
-"@filters=[#<PandoraGtk::FilterHBox:01349A90 ptr=02987E18>]"
+"@filters=[#<PandoraGtk::FilterHBox:019E5AA8 ptr=027441C0>]"
 "select filter[sql,values]=\"IFNULL(panstate,0)&128=0\""
 "treeview is updated: Blob"
-"--init_video_receiver [start, can_play, init]=[false, true, true]"
-"Disconnect HANDLER !!!"
 "parse_url  [url, proto, obj_type, way]=[\"0c050c549510a09be1a460301f1cd036fc3472bae109\", \"pandora\", nil, \"0c050c549510a09be1a460301f1cd036fc3472bae109\"]"
 "--save_image_to_cache  [img_obj, proto, obj_type, way]=[false, \"pandora\", nil, \"0c050c549510a09be1a460301f1cd036fc3472bae109\"]"
 "--save_image_to_cache  [img_obj, proto, obj_type, way]=[false, \"icon\", 45, \"\\f\\x05\\fT\\x95\\x10\\xA0\\x9B\\xE1\\xA4`0\\x1F\\x1C\\xD06\\xFC4r\\xBA\\xE1\\t\"]"
@@ -31,7 +12,7 @@
 "parse_url  [url, proto, obj_type, way]=[\"0c05ec153bcca09bfaa2b2493691d9ab088407796160\", \"pandora\", nil, \"0c05ec153bcca09bfaa2b2493691d9ab088407796160\"]"
 "--save_image_to_cache  [img_obj, proto, obj_type, way]=[false, \"pandora\", nil, \"0c05ec153bcca09bfaa2b2493691d9ab088407796160\"]"
 "--save_image_to_cache  [img_obj, proto, obj_type, way]=[false, \"icon\", 45, \"\\f\\x05\\xEC\\x15;\\xCC\\xA0\\x9B\\xFA\\xA2\\xB2I6\\x91\\xD9\\xAB\\b\\x84\\aya`\"]"
-"path=#<Gtk::TreePath:017CBD28 ptr=02A7DC18 own=true>"
+"path=#<Gtk::TreePath:01090470 ptr=02A7B000 own=true>"
 :blob
 :"gtk-home"
 :opinion
@@ -50,5 +31,3 @@
 "---show_page [page, tab_signal]=[7, nil]"
 :editor
 "Read file: C:/Progs/Pandora/pandora.rb"
-"--init_video_receiver [start, can_play, init]=[false, false, true]"
-"Disconnect HANDLER !!!"

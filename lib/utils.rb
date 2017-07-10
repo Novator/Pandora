@@ -36,6 +36,10 @@ end
 
 module PandoraUtils
 
+  # Version of GUI application
+  # RU: Версия GUI приложения
+  PandoraVersion  = '0.69'
+
   $detected_os_family = nil
 
   # Platform detection
@@ -647,6 +651,17 @@ module PandoraUtils
   # RU: Целое в строку с ведущими нулями
   def self.int_to_str_zero(int, num=nil)
     res = int.to_s.rjust(num, '0') if (num.is_a? Integer)
+  end
+
+  # Scan string on substrings and return Array with positions
+  # RU: Сканирует строку на подстроки и возвращает массив позиций
+  def self.scan_str_with_pos(str, substr)
+    res = nil
+    i = 0
+    while i
+      i = str.index(substr, i+1)
+    end
+    res
   end
 
   # Codes of data types in PSON
@@ -3415,6 +3430,12 @@ module PandoraUtils
     puts 'Execute restart script ['+restart_cmd+']'
     res = PandoraUtils.exec_cmd(restart_cmd)
     Kernel.exit if res
+  end
+
+  # Get Pandora version
+  # RU: Возвращает версию Пандоры
+  def self.pandora_version
+    res = PandoraVersion
   end
 
   # Calc hex md5 of Pandora files

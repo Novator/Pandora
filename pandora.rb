@@ -137,6 +137,9 @@ while (ARGVdup.size>0) or next_arg
     when '-m', '--md5'
       puts PandoraUtils.pandora_md5_sum
       Kernel.exit(0)
+    when '--version'
+      puts PandoraUtils.pandora_version
+      Kernel.exit(0)
     when '-pl', '--poly', '--poly-launch'
       $poly_launch = true
     when '-c','--cui', '--console'
