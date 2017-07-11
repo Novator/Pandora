@@ -2611,6 +2611,8 @@ module PandoraGtk
               show_hide_find_panel(true, false)
               res = true
           end
+        elsif (event.keyval==Gdk::Keyval::GDK_Escape)
+          @find_panel.hide if (@find_panel and (not @find_panel.destroyed?))
         end
         res
       end
@@ -2706,9 +2708,10 @@ module PandoraGtk
 
   class FindPanel < Gtk::Window
     attr_accessor :treeview, :find_vbox, :entry, :count_label, \
-      :replace_hbox, :replace_btn, :replace_label, :replace_entry, \
+      :replace_hbox, :replace_btn, :replace_entry, \
       :find_image, :replace_image, :back_image, :forward_image, \
-      :close_image, :all_image
+      :close_image, :all_image, :positions, :find_pos, :find_len, \
+      :back_btn, :forward_btn, :casesens_btn
 
     def initialize(atreeview, areplace, amodal=false)
       super()
@@ -2729,8 +2732,44 @@ module PandoraGtk
 
       @entry = Gtk::Entry.new
       entry.width_request = 200
+      entry.max_length = 512
       #entry = Gtk::Combo.new  #Gtk::Entry.new
       #entry.set_popdown_strings(['word1', 'word2'])
+      entry.signal_connect('changed') do |widget, event|
+        self.find_text
+        false
+      end
+      entry.signal_connect('key-press-event') do |widget, event|
+        res = false
+        if (event.keyval==Gdk::Keyval::GDK_Tab)
+          if @replace_btn and @replace_btn.active? and @replace_entry
+            @replace_entry.grab_focus
+            res = true
+          end
+        elsif (event.keyval>=65360) and (event.keyval<=65367)
+          ctrl = (event.state.control_mask? or event.state.shift_mask?)
+          #if event.keyval==65360 or (ctrl and event.keyval==65361)    #Left
+          #  left_mon_btn.clicked
+          #elsif event.keyval==65367 or (ctrl and event.keyval==65363) #Right
+          #  right_mon_btn.clicked
+          if event.keyval==65365 or event.keyval==65362 #PgUp, Up
+            if (@back_btn and @back_btn.sensitive?)
+              @back_btn.clicked
+              res = true
+            end
+          elsif (event.keyval==65366) or (event.keyval==65364) #PgDn, Down
+            if (event.keyval==65364) and (not ctrl) and @replace_btn \
+            and @replace_btn.active? and @replace_entry
+              @replace_entry.grab_focus
+              res = true
+            elsif (@forward_btn and @forward_btn.sensitive?)
+              @forward_btn.clicked
+              res = true
+            end
+          end
+        end
+        res
+      end
 
       entry.show_all
       awidth, btn_height = entry.size_request
@@ -2746,6 +2785,8 @@ module PandoraGtk
       @@forward_buf ||= $window.get_preset_icon(Gtk::Stock::GO_DOWN, nil, btn_height)
       @@all_buf ||= $window.get_preset_icon(Gtk::Stock::SELECT_ALL, nil, btn_height)
       @@close_buf ||= $window.get_preset_icon(Gtk::Stock::CLOSE, nil, 10)
+      $window.register_stock(:case)
+      @@case_buf ||= $window.get_preset_icon(:case, nil, btn_height)
 
       @find_image = Gtk::Image.new(@@find_buf)
       @replace_image = Gtk::Image.new(@@replace_buf)
@@ -2753,6 +2794,7 @@ module PandoraGtk
       @forward_image = Gtk::Image.new(@@forward_buf)
       @close_image = Gtk::Image.new(@@close_buf)
       @all_image = Gtk::Image.new(@@all_buf)
+      @case_image = Gtk::Image.new(@@case_buf)
 
       @find_image.show
       @replace_image.show
@@ -2778,7 +2820,18 @@ module PandoraGtk
             @replace_hbox = Gtk::HBox.new
             replace_label = Gtk::Label.new(_('Replace by'))
             @replace_hbox.pack_start(replace_label, false, false, 2)
+
             @replace_entry = Gtk::Entry.new
+            replace_entry.max_length = 512
+            replace_entry.signal_connect('key-press-event') do |widget, event|
+              res = false
+              if (event.keyval==Gdk::Keyval::GDK_Tab) or (event.keyval==65362)
+                @entry.grab_focus
+                res = true
+              end
+              res
+            end
+
             @replace_hbox.pack_start(replace_entry, true, true, 0)
             #@replace_hbox.show_all
             replace_all_btn = SafeToggleToolButton.new
@@ -2810,27 +2863,41 @@ module PandoraGtk
         false
       end
 
-      back_btn = Gtk::ToolButton.new(back_image, _('Back'))
+      @back_btn = Gtk::ToolButton.new(back_image, _('Back'))
       #back_btn = Gtk::Button.new
       #back_btn.add(back_image)
       back_btn.can_focus = false
+      back_btn.sensitive = false
       back_btn.can_default = false
       back_btn.receives_default = false
       back_btn.tooltip_text = _('Back')
       back_btn.signal_connect('clicked') do |widget|
-        self.highlight_text(entry.text, -1)
+        self.move_to_find_pos(entry.text, -1)
         false
       end
 
-      forward_btn = Gtk::ToolButton.new(forward_image, _('Forward'))
+      @forward_btn = Gtk::ToolButton.new(forward_image, _('Forward'))
       #forward_btn = Gtk::Button.new
       #forward_btn.add(forward_image)
       forward_btn.can_focus = false
+      forward_btn.sensitive = false
       forward_btn.can_default = false
       forward_btn.receives_default = false
       forward_btn.tooltip_text = _('Forward')
       forward_btn.signal_connect('clicked') do |widget|
-        self.highlight_text(entry.text, 1)
+        self.move_to_find_pos(entry.text, 1)
+        false
+      end
+
+      @casesens_btn = SafeToggleToolButton.new
+      casesens_btn.icon_widget = @case_image
+      casesens_btn.can_focus = false
+      casesens_btn.can_default = false
+      casesens_btn.receives_default = false
+      casesens_btn.tooltip_text = _('Case sensitive')
+      casesens_btn.active = true
+      casesens_btn.safe_signal_clicked do |widget|
+        self.find_text
         false
       end
 
@@ -2846,13 +2913,14 @@ module PandoraGtk
         false
       end
 
-      @count_label = Gtk::Label.new('0/0')
-      count_label.width_request = 50
+      @count_label = Gtk::Label.new('')
+      count_label.width_request = 40
 
       hbox.pack_start(back_btn, false, false, 0)
       hbox.pack_start(entry, false, false, 0)
       hbox.pack_start(forward_btn, false, false, 0)
       hbox.pack_start(count_label, false, false, 0)
+      hbox.pack_start(casesens_btn, false, false, 0)
       hbox.pack_start(replace_btn, false, false, 0)
 
       hbox.pack_start(close_btn, false, false, 2)
@@ -2875,10 +2943,10 @@ module PandoraGtk
         false
       end
 
-      popwin.signal_connect('key-press-event') do |widget, event|
+      self.signal_connect('key-press-event') do |widget, event|
         res = false
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-          forward_btn.clicked
+          @forward_btn.clicked if (@forward_btn and @forward_btn.sensitive?)
         elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
           ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
           event.keyval) and event.state.control_mask?) #w, W, ц, Ц
@@ -2899,11 +2967,30 @@ module PandoraGtk
               res = true
             when Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H
               #show_hide_find_panel(true, false)
-              show_and_set_replace_mode(true)
+              show_and_set_replace_mode(nil)
               res = true
           end
         end
         res
+      end
+
+      self.signal_connect('scroll-event') do |widget, event|
+        ctrl = (event.state.control_mask? or event.state.shift_mask?)
+        if (event.direction==Gdk::EventScroll::UP) \
+        or (event.direction==Gdk::EventScroll::LEFT)
+          if ctrl
+            left_year_btn.clicked
+          else
+            left_mon_btn.clicked
+          end
+        else
+          if ctrl
+            right_year_btn.clicked
+          else
+            right_mon_btn.clicked
+          end
+        end
+        true
       end
 
       popwin.add(find_vbox)
@@ -2915,7 +3002,7 @@ module PandoraGtk
       show_and_set_replace_mode(areplace)
     end
 
-    def show_and_set_replace_mode(areplace)
+    def show_and_set_replace_mode(areplace=nil)
       #areplace = areplace.is_a?(TrueClass)
       #replace_btn.safe_set_active(replace)
       #self.activate_focus
@@ -2928,18 +3015,60 @@ module PandoraGtk
 
       self.show if (not self.visible?)
 
+      areplace = (not @replace_btn.active?) if areplace.nil?
+
       @replace_btn.active = areplace
 
       self.present
     end
 
-    def highlight_text(atext, direction=nil)
-      if atext.is_a?(String) and (atext.size>0)
+    def find_text
+      @find_pos = 0
+      @find_len = 0
+      atext = @entry.text
+      if atext.is_a?(String) and (atext.size>2)
+        @search_thread ||= nil
+        if not @search_thread
+          @search_thread = Thread.new do
+            @positions = PandoraUtils.find_all_substr(@treeview.buffer.text, atext, @casesens_btn.active?)
+            if positions
+              @find_len = atext.size
+              @count_label.text = (@find_pos+1).to_s+'/'+@positions.size.to_s
+              move_to_find_pos(@find_pos)
+            else
+              @count_label.text = '0'
+            end
+            @search_thread = nil
+          end
+        end
+      else
+        @back_btn.sensitive = false if @back_btn
+        @forward_btn.sensitive = false if @forward_btn
+        @count_label.text = ''
+      end
+    end
+
+    def move_to_find_pos(pos, direction=nil)
+      if @positions and @find_len
+        max = @positions.size
         direction ||= 0
-        positions = PandoraUtils.scan_str_with_pos(@treeview.text, atext)
-        #count_label
         if direction>0
-        else
+          @find_pos += 1 if @find_pos<max-1
+        elsif direction<0
+          @find_pos -= 1 if @find_pos>0
+        end
+        @count_label.text = (@find_pos+1).to_s+'/'+positions.size.to_s
+
+        @back_btn.sensitive = @find_pos>0 if @back_btn
+        @forward_btn.sensitive = (@find_pos<max-1) if @forward_btn
+
+        pos = @positions[@find_pos]
+        if pos
+          iter = @treeview.buffer.get_iter_at_offset(pos)
+          iter2 = @treeview.buffer.get_iter_at_offset(pos+@find_len)
+          @treeview.scroll_to_iter(iter, 0.1, false, 0.0, 0.0)
+          @treeview.buffer.place_cursor(iter)
+          @treeview.buffer.move_mark('selection_bound', iter2)
         end
       end
     end
@@ -2948,10 +3077,7 @@ module PandoraGtk
 
     def show_hide_find_panel(replace=nil, may_hide=nil)
       @find_panel ||= nil
-      if @find_panel and @find_panel.destroyed?
-        @find_panel.destroy
-        @find_panel = nil
-      end
+      @find_panel = nil if (@find_panel and @find_panel.destroyed?)
       if (may_hide and @find_panel and @find_panel.visible? \
       and ((replace and @find_panel.replace_btn.active?) \
       or ((not replace) and (not @find_panel.replace_btn.active?))))
@@ -3789,6 +3915,7 @@ module PandoraGtk
       @body_win = abody_win
       @view_border = aview_border
       @raw_border = araw_border
+      @layout = nil
       super(aview_border)
       $font_desc ||= Pango::FontDescription.new('Monospace 11')
       signal_connect('expose-event') do |widget, event|
@@ -3817,13 +3944,13 @@ module PandoraGtk
             pixels = []
             count = get_lines(tv, first_y, last_y, pixels, numbers)
             # Draw fully internationalized numbers!
-            layout = widget.create_pango_layout
+            @layout ||= widget.create_pango_layout
             count.times do |i|
               x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
               str = numbers[i].to_s
-              layout.text = str
+              @layout.text = str
               widget.style.paint_layout(target, widget.state, false,
-                nil, widget, nil, 2, pos, layout)   #Gtk2 fails sometime!!!
+                nil, widget, nil, 2, pos, @layout)   #Gtk2 fails sometime!!!
             end
           end
         end

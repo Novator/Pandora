@@ -1,6 +1,6 @@
 "lang_code1=1049"
 "===FINAL lang_code=1049"
-"@filters=[#<PandoraGtk::FilterHBox:019E5AA8 ptr=027441C0>]"
+"@filters=[#<PandoraGtk::FilterHBox:017FEB78 ptr=027521C0>]"
 "select filter[sql,values]=\"IFNULL(panstate,0)&128=0\""
 "treeview is updated: Blob"
 "parse_url  [url, proto, obj_type, way]=[\"0c050c549510a09be1a460301f1cd036fc3472bae109\", \"pandora\", nil, \"0c050c549510a09be1a460301f1cd036fc3472bae109\"]"
@@ -12,7 +12,7 @@
 "parse_url  [url, proto, obj_type, way]=[\"0c05ec153bcca09bfaa2b2493691d9ab088407796160\", \"pandora\", nil, \"0c05ec153bcca09bfaa2b2493691d9ab088407796160\"]"
 "--save_image_to_cache  [img_obj, proto, obj_type, way]=[false, \"pandora\", nil, \"0c05ec153bcca09bfaa2b2493691d9ab088407796160\"]"
 "--save_image_to_cache  [img_obj, proto, obj_type, way]=[false, \"icon\", 45, \"\\f\\x05\\xEC\\x15;\\xCC\\xA0\\x9B\\xFA\\xA2\\xB2I6\\x91\\xD9\\xAB\\b\\x84\\aya`\"]"
-"path=#<Gtk::TreePath:01090470 ptr=02A7B000 own=true>"
+"path=#<Gtk::TreePath:01083D50 ptr=02807E70 own=true>"
 :blob
 :"gtk-home"
 :opinion
@@ -31,3 +31,5 @@
 "---show_page [page, tab_signal]=[7, nil]"
 :editor
 "Read file: C:/Progs/Pandora/pandora.rb"
+"---show_page [page, tab_signal]=[7, nil]"
+:editor
