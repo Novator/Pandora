@@ -655,7 +655,7 @@ module PandoraUtils
 
   # Scan string on substrings and return Array with positions
   # RU: Сканирует строку на подстроки и возвращает массив позиций
-  def self.find_all_substr(str, substr, case_sens=true)
+  def self.find_all_substr(str, substr, positions, max, case_sens=true)
     res = nil
     if str and substr
       if not case_sens
@@ -664,14 +664,16 @@ module PandoraUtils
       end
       len = str.size
       slen = substr.size
-      i = -1
-      while i and (i+slen <= len)
-        i = str.index(substr, i+slen)
-        if i
-          res ||= Array.new
-          res << i
+      i = 0
+      pos = -1
+      while pos and (pos+slen <= len) and (i<max)
+        pos = str.index(substr, pos+slen)
+        if pos
+          positions[i] = pos
+          i += 1
         end
       end
+      res = i
     end
     res
   end

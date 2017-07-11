@@ -2589,6 +2589,9 @@ module PandoraGtk
       buf.create_tag('quote', 'left_margin' => 20, 'background' => '#EFEFEF', \
         'style' => Pango::FontDescription::STYLE_ITALIC)
 
+      buf.create_tag('found', 'background' =>  '#FFFF00')
+      buf.create_tag('find', 'background' =>   '#FF9000')
+
       signal_connect('key-press-event') do |widget, event|
         res = false
         if event.state.control_mask?
@@ -2731,7 +2734,7 @@ module PandoraGtk
       hbox = Gtk::HBox.new
 
       @entry = Gtk::Entry.new
-      entry.width_request = 200
+      entry.width_request = PandoraGtk.num_char_width*30+8
       entry.max_length = 512
       #entry = Gtk::Combo.new  #Gtk::Entry.new
       #entry.set_popdown_strings(['word1', 'word2'])
@@ -2753,19 +2756,22 @@ module PandoraGtk
           #elsif event.keyval==65367 or (ctrl and event.keyval==65363) #Right
           #  right_mon_btn.clicked
           if event.keyval==65365 or event.keyval==65362 #PgUp, Up
-            if (@back_btn and @back_btn.sensitive?)
-              @back_btn.clicked
-              res = true
+            if ctrl
+              self.move_to_find_pos(-2)
+            else
+              self.move_to_find_pos(-1)
             end
+            res = true
           elsif (event.keyval==65366) or (event.keyval==65364) #PgDn, Down
             if (event.keyval==65364) and (not ctrl) and @replace_btn \
             and @replace_btn.active? and @replace_entry
               @replace_entry.grab_focus
-              res = true
-            elsif (@forward_btn and @forward_btn.sensitive?)
-              @forward_btn.clicked
-              res = true
+            elsif ctrl
+              self.move_to_find_pos(2)
+            else
+              self.move_to_find_pos(1)
             end
+            res = true
           end
         end
         res
@@ -2872,7 +2878,7 @@ module PandoraGtk
       back_btn.receives_default = false
       back_btn.tooltip_text = _('Back')
       back_btn.signal_connect('clicked') do |widget|
-        self.move_to_find_pos(entry.text, -1)
+        self.move_to_find_pos(-1)
         false
       end
 
@@ -2885,7 +2891,7 @@ module PandoraGtk
       forward_btn.receives_default = false
       forward_btn.tooltip_text = _('Forward')
       forward_btn.signal_connect('clicked') do |widget|
-        self.move_to_find_pos(entry.text, 1)
+        self.move_to_find_pos(1)
         false
       end
 
@@ -2914,7 +2920,7 @@ module PandoraGtk
       end
 
       @count_label = Gtk::Label.new('')
-      count_label.width_request = 40
+      count_label.width_request = PandoraGtk.num_char_width*8+8
 
       hbox.pack_start(back_btn, false, false, 0)
       hbox.pack_start(entry, false, false, 0)
@@ -2946,7 +2952,7 @@ module PandoraGtk
       self.signal_connect('key-press-event') do |widget, event|
         res = false
         if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
-          @forward_btn.clicked if (@forward_btn and @forward_btn.sensitive?)
+          self.move_to_find_pos(2)
         elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
           ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
           event.keyval) and event.state.control_mask?) #w, W, ц, Ц
@@ -2993,6 +2999,17 @@ module PandoraGtk
         true
       end
 
+      self.signal_connect('hide') do |widget|
+        if @treeview and (not @treeview.destroyed?)
+          buf = @treeview.buffer
+          if buf and (not buf.destroyed?)
+            buf.remove_tag('found', buf.start_iter, buf.end_iter)
+            buf.remove_tag('find', buf.start_iter, buf.end_iter)
+          end
+        end
+        false
+      end
+
       popwin.add(find_vbox)
 
       find_vbox.pack_start(hbox, false, false, 0)
@@ -3007,34 +3024,69 @@ module PandoraGtk
       #replace_btn.safe_set_active(replace)
       #self.activate_focus
 
+      self.show if (not self.visible?)
+
       pos = @treeview.window.origin
       all = @treeview.allocation.to_a
 
       awidth, aheight = @find_vbox.size_request
       self.move(pos[0]+all[2]-awidth-24, pos[1])  #all[3]+1
 
-      self.show if (not self.visible?)
-
       areplace = (not @replace_btn.active?) if areplace.nil?
 
       @replace_btn.active = areplace
 
+      if (@entry and (not @entry.destroyed?))
+        self.find_text(true)
+        @entry.select_region(0, @entry.text.size) if @entry.text.size>0
+      end
+
       self.present
     end
 
-    def find_text
-      @find_pos = 0
+    MaxFindPos = 300
+
+    def find_text(dont_move=false)
+      @find_pos = nil
       @find_len = 0
+      @max_pos = 0
       atext = @entry.text
+      buf = @treeview.buffer
       if atext.is_a?(String) and (atext.size>2)
         @search_thread ||= nil
         if not @search_thread
           @search_thread = Thread.new do
-            @positions = PandoraUtils.find_all_substr(@treeview.buffer.text, atext, @casesens_btn.active?)
-            if positions
+            buf.remove_tag('found', buf.start_iter, buf.end_iter)
+            buf.remove_tag('find', buf.start_iter, buf.end_iter)
+            @positions ||= Array.new
+            @max_pos = PandoraUtils.find_all_substr(@treeview.buffer.text, \
+              atext, @positions, MaxFindPos, @casesens_btn.active?)
+            if @max_pos>0
+              #@find_pos = max-1 if @find_pos>max-1
               @find_len = atext.size
-              @count_label.text = (@find_pos+1).to_s+'/'+@positions.size.to_s
-              move_to_find_pos(@find_pos)
+              cur_pos = buf.cursor_position
+              @find_pos = -1
+              i = 0
+              while i<@max_pos
+                pos = @positions[i]
+                if cur_pos and (cur_pos>pos)
+                  @find_pos = i
+                end
+                iter = buf.get_iter_at_offset(pos)
+                iter2 = buf.get_iter_at_offset(pos+@find_len)
+                buf.apply_tag('found', iter, iter2)
+                i += 1
+              end
+              @find_pos += 1
+              if dont_move
+                @count_label.text = '['+(@find_pos+1).to_s+']/'+@max_pos.to_s
+                @back_btn.sensitive = @find_pos>0 if @back_btn
+                @forward_btn.sensitive = (@find_pos<@max_pos) if @forward_btn
+                @find_pos = -(@find_pos+1)
+              else
+                #@count_label.text = (@find_pos+1).to_s+'/'+@max_pos.to_s
+                move_to_find_pos(0)
+              end
             else
               @count_label.text = '0'
             end
@@ -3045,30 +3097,51 @@ module PandoraGtk
         @back_btn.sensitive = false if @back_btn
         @forward_btn.sensitive = false if @forward_btn
         @count_label.text = ''
+        buf.remove_tag('found', buf.start_iter, buf.end_iter)
+        buf.remove_tag('find', buf.start_iter, buf.end_iter)
       end
     end
 
-    def move_to_find_pos(pos, direction=nil)
-      if @positions and @find_len
-        max = @positions.size
-        direction ||= 0
-        if direction>0
-          @find_pos += 1 if @find_pos<max-1
-        elsif direction<0
-          @find_pos -= 1 if @find_pos>0
+    def move_to_find_pos(direction=nil)
+      if @positions and @find_len and (@find_len>0) \
+      and @find_pos and @max_pos and (@max_pos>0)
+        if @find_pos<0
+          new_pos = -(@find_pos+1)
+          new_pos -= 1 if (direction<0)
+          @find_pos = new_pos if (new_pos>=0) and (new_pos<@max_pos)
+        else
+          direction ||= 0
+          if direction>0
+            if @find_pos<@max_pos-1
+              @find_pos += 1
+            elsif (direction==2)
+              @find_pos = 0
+            end
+          elsif direction<0
+            if @find_pos>0
+              @find_pos -= 1
+            elsif (direction==-2)
+              @find_pos = @max_pos-1
+            end
+          end
         end
-        @count_label.text = (@find_pos+1).to_s+'/'+positions.size.to_s
+        if (@find_pos>=0) and (@find_pos<@max_pos)
+          @count_label.text = (@find_pos+1).to_s+'/'+@max_pos.to_s
 
-        @back_btn.sensitive = @find_pos>0 if @back_btn
-        @forward_btn.sensitive = (@find_pos<max-1) if @forward_btn
+          @back_btn.sensitive = @find_pos>0 if @back_btn
+          @forward_btn.sensitive = (@find_pos<@max_pos-1) if @forward_btn
 
-        pos = @positions[@find_pos]
-        if pos
-          iter = @treeview.buffer.get_iter_at_offset(pos)
-          iter2 = @treeview.buffer.get_iter_at_offset(pos+@find_len)
-          @treeview.scroll_to_iter(iter, 0.1, false, 0.0, 0.0)
-          @treeview.buffer.place_cursor(iter)
-          @treeview.buffer.move_mark('selection_bound', iter2)
+          pos = @positions[@find_pos]
+          if pos
+            buf = @treeview.buffer
+            buf.remove_tag('find', buf.start_iter, buf.end_iter)
+            iter = buf.get_iter_at_offset(pos)
+            iter2 = buf.get_iter_at_offset(pos+@find_len)
+            @treeview.scroll_to_iter(iter, 0.1, false, 0.0, 0.0)
+            buf.place_cursor(iter)
+            #buf.move_mark('selection_bound', iter2)
+            buf.apply_tag('find', iter, iter2)
+          end
         end
       end
     end
@@ -4347,6 +4420,9 @@ module PandoraGtk
           'weight' => Pango::FontDescription::WEIGHT_BOLD})
         buf.create_tag('regex', {'foreground' => '#105090'})
 
+        buf.create_tag('found', 'background' =>  '#333300')
+        buf.create_tag('find', 'background' =>   '#551100')
+
         buf.signal_connect('changed') do |buf|  #modified-changed
           mark = buf.get_mark('insert')
           iter = buf.get_iter_at_mark(mark)
@@ -4410,7 +4486,7 @@ module PandoraGtk
               i += 1
             end
             i1 = i
-            i += 1 while (i<ss) and ident_char?(str[i])
+            i += 1 while (i<ss) and word_char?(str[i])
             i += 1 if (i<ss) and ('=?!'.include?(str[i]))
             i2 = i
             yield(:function, i1, i2)
