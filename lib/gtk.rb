@@ -2523,7 +2523,7 @@ module PandoraGtk
   # Window for view body (text or blob)
   # RU: Окно просмотра тела (текста или блоба)
   class SuperTextView < ExtTextView
-    #attr_accessor :format
+    attr_accessor :find_panel
 
     def format
       res = nil
@@ -2607,10 +2607,10 @@ module PandoraGtk
               res = true
             when Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter
               res = true
-            when Gdk::Keyval::GDK_f, Gdk::Keyval::GDK_F
+            when Gdk::Keyval::GDK_f, Gdk::Keyval::GDK_F, 1729, 1761
               show_hide_find_panel(false, false)
               res = true
-            when Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H
+            when Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H, 1746, 1778
               show_hide_find_panel(true, false)
               res = true
           end
@@ -2714,7 +2714,7 @@ module PandoraGtk
       :replace_hbox, :replace_btn, :replace_entry, \
       :find_image, :replace_image, :back_image, :forward_image, \
       :close_image, :all_image, :positions, :find_pos, :find_len, \
-      :back_btn, :forward_btn, :casesens_btn
+      :back_btn, :forward_btn, :casesens_btn, :find_line
 
     def initialize(atreeview, areplace, amodal=false)
       super()
@@ -2723,6 +2723,8 @@ module PandoraGtk
       popwin = self
       #@find_panel = popwin
       @replace_hbox = nil
+      @found_lines = nil
+      @find_line = nil
       #win_os = (PandoraUtils.os_family == 'windows')
       popwin.transient_for = $window #if win_os
       popwin.modal = amodal #(not win_os)
@@ -2967,11 +2969,11 @@ module PandoraGtk
           PandoraUI.do_menu_act('Quit')
         elsif event.state.control_mask?
           case event.keyval
-            when Gdk::Keyval::GDK_f, Gdk::Keyval::GDK_F
+            when Gdk::Keyval::GDK_f, Gdk::Keyval::GDK_F, 1729, 1761
               #show_hide_find_panel(false, false)
               show_and_set_replace_mode(false)
               res = true
-            when Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H
+            when Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H, 1746, 1778
               #show_hide_find_panel(true, false)
               show_and_set_replace_mode(nil)
               res = true
@@ -3047,59 +3049,84 @@ module PandoraGtk
     MaxFindPos = 300
 
     def find_text(dont_move=false)
-      @find_pos = nil
+      @find_pos = 0
       @find_len = 0
       @max_pos = 0
-      atext = @entry.text
-      buf = @treeview.buffer
-      if atext.is_a?(String) and (atext.size>2)
-        @search_thread ||= nil
-        if not @search_thread
-          @search_thread = Thread.new do
-            buf.remove_tag('found', buf.start_iter, buf.end_iter)
-            buf.remove_tag('find', buf.start_iter, buf.end_iter)
-            @positions ||= Array.new
-            @max_pos = PandoraUtils.find_all_substr(@treeview.buffer.text, \
-              atext, @positions, MaxFindPos, @casesens_btn.active?)
-            if @max_pos>0
-              #@find_pos = max-1 if @find_pos>max-1
-              @find_len = atext.size
-              cur_pos = buf.cursor_position
-              @find_pos = -1
-              i = 0
-              while i<@max_pos
-                pos = @positions[i]
-                if cur_pos and (cur_pos>pos)
-                  @find_pos = i
+      @found_lines = nil
+      @find_line = nil
+      if @entry and @treeview and @treeview.buffer
+        atext = @entry.text
+        buf = @treeview.buffer
+        if atext.is_a?(String) and (atext.size>2)
+          @search_thread ||= nil
+          if (not @search_thread)
+            @search_thread = Thread.new do
+              #@count_label.text = 'start'
+              buf.remove_tag('found', buf.start_iter, buf.end_iter)
+              buf.remove_tag('find', buf.start_iter, buf.end_iter)
+              @positions ||= Array.new
+              @max_pos = PandoraUtils.find_all_substr(@treeview.buffer.text, \
+                atext, @positions, MaxFindPos, @casesens_btn.active?)
+              #@count_label.text = 'start2'
+              if @max_pos>0
+                #@count_label.text = 'start3'
+                #@find_pos = max-1 if @find_pos>max-1
+                @find_len = atext.size
+                cur_pos = buf.cursor_position
+                @find_pos = -1
+                i = 0
+                #@count_label.text = 'start4'
+                while i<@max_pos
+                  pos = @positions[i]
+                  if cur_pos and (cur_pos>pos)
+                    @find_pos = i
+                  end
+                  iter = buf.get_iter_at_offset(pos)
+                  iter2 = buf.get_iter_at_offset(pos+@find_len)
+                  buf.apply_tag('found', iter, iter2)
+                  i += 1
                 end
-                iter = buf.get_iter_at_offset(pos)
-                iter2 = buf.get_iter_at_offset(pos+@find_len)
-                buf.apply_tag('found', iter, iter2)
-                i += 1
-              end
-              @find_pos += 1
-              if dont_move
-                @count_label.text = '['+(@find_pos+1).to_s+']/'+@max_pos.to_s
-                @back_btn.sensitive = @find_pos>0 if @back_btn
-                @forward_btn.sensitive = (@find_pos<@max_pos) if @forward_btn
-                @find_pos = -(@find_pos+1)
+                @find_pos += 1
+                if dont_move or (@find_pos<0) or (@find_pos>=@max_pos)
+                  #@count_label.text = 'st5 '+@find_pos.inspect
+                  @count_label.text = '['+(@find_pos+1).to_s+']/'+@max_pos.to_s
+                  @back_btn.sensitive = @find_pos>0 if @back_btn
+                  @forward_btn.sensitive = (@find_pos<@max_pos) if @forward_btn
+                  @find_pos = -(@find_pos+1)
+                else
+                  #@count_label.text = 'st6 '+@find_pos.inspect+'|'+@max_pos.inspect
+                  #@count_label.text = (@find_pos+1).to_s+'/'+@max_pos.to_s
+                  move_to_find_pos(0)
+                end
               else
-                #@count_label.text = (@find_pos+1).to_s+'/'+@max_pos.to_s
-                move_to_find_pos(0)
+                @count_label.text = '0'
               end
-            else
-              @count_label.text = '0'
+              @search_thread = nil
             end
-            @search_thread = nil
+          else
+            #@count_label.text = 'bizi'
           end
+        else
+          @count_label.text = ''
+          @back_btn.sensitive = false if @back_btn
+          @forward_btn.sensitive = false if @forward_btn
+          buf.remove_tag('found', buf.start_iter, buf.end_iter)
+          buf.remove_tag('find', buf.start_iter, buf.end_iter)
         end
-      else
-        @back_btn.sensitive = false if @back_btn
-        @forward_btn.sensitive = false if @forward_btn
-        @count_label.text = ''
-        buf.remove_tag('found', buf.start_iter, buf.end_iter)
-        buf.remove_tag('find', buf.start_iter, buf.end_iter)
       end
+    end
+
+    def get_found_lines
+      if (not @found_lines) and @treeview and @positions
+        i = 0
+        buf = @treeview.buffer
+        @found_lines = Array.new
+        @positions.each do |pos|
+          iter = buf.get_iter_at_offset(pos)
+          @found_lines << iter.line if (not @found_lines.include?(iter.line))
+        end
+      end
+      @found_lines
     end
 
     def move_to_find_pos(direction=nil)
@@ -3136,6 +3163,7 @@ module PandoraGtk
             buf = @treeview.buffer
             buf.remove_tag('find', buf.start_iter, buf.end_iter)
             iter = buf.get_iter_at_offset(pos)
+            @find_line = iter.line
             iter2 = buf.get_iter_at_offset(pos+@find_len)
             @treeview.scroll_to_iter(iter, 0.1, false, 0.0, 0.0)
             buf.place_cursor(iter)
@@ -4018,12 +4046,31 @@ module PandoraGtk
             count = get_lines(tv, first_y, last_y, pixels, numbers)
             # Draw fully internationalized numbers!
             @layout ||= widget.create_pango_layout
+            @gc = widget.style.fg_gc(Gtk::STATE_NORMAL)
+            afound_lines = nil
+            fp = self.find_panel
+            if fp and fp.visible? and fp.positions
+              afound_lines = fp.get_found_lines
+            end
             count.times do |i|
               x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
-              str = numbers[i].to_s
+              line_num = numbers[i]
+              str = line_num.to_s
+              bg = nil
+              if afound_lines and afound_lines.include?(line_num-1)
+                if fp.find_line and (fp.find_line==line_num-1)
+                  @find_bg ||= Gdk::Color.parse('#F19922')
+                  bg = @find_bg
+                else
+                  @found_bg ||= Gdk::Color.parse('#DDDD00')
+                  bg = @found_bg
+                end
+                #str << '+'
+              end
               @layout.text = str
-              widget.style.paint_layout(target, widget.state, false,
-                nil, widget, nil, 2, pos, @layout)   #Gtk2 fails sometime!!!
+              #widget.style.paint_layout(target, widget.state, false, \
+              #  nil, widget, nil, 2, pos, @layout)   #Gtk2 fails sometime!!!
+              target.draw_layout(@gc, 2, pos, @layout, nil, bg)
             end
           end
         end
@@ -4420,8 +4467,8 @@ module PandoraGtk
           'weight' => Pango::FontDescription::WEIGHT_BOLD})
         buf.create_tag('regex', {'foreground' => '#105090'})
 
-        buf.create_tag('found', 'background' =>  '#333300')
-        buf.create_tag('find', 'background' =>   '#551100')
+        buf.create_tag('found', 'background' =>  '#888800')
+        buf.create_tag('find', 'background' =>   '#AA5500')
 
         buf.signal_connect('changed') do |buf|  #modified-changed
           mark = buf.get_mark('insert')
@@ -4836,9 +4883,9 @@ module PandoraGtk
         unless ['markdown', 'bbcode', 'html', 'ruby', 'plain'].include?(@format)
           @format = 'bbcode' #if aformat=='auto' #need autodetect here
         end
-        @tv_style ||= tv.modifier_style
+        @tv_def_style ||= tv.modifier_style
         if view_mode
-          tv.modify_style(@tv_style)
+          tv.modify_style(@tv_def_style)
           tv.modify_font(nil)
 
           tv.tabs = @tab8_array if @tab8_array
@@ -4892,6 +4939,7 @@ module PandoraGtk
         fmt_btn.label = format if (fmt_btn and (fmt_btn.label != format))
         tv.show
         tv.grab_focus
+        tv.find_panel.find_text(true) if (tv.find_panel and tv.find_panel.visible?)
       end
     end
 
