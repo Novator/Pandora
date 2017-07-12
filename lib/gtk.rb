@@ -2718,12 +2718,14 @@ module PandoraGtk
 
     def initialize(atreeview, areplace, amodal=false)
       super()
+      @search_thread = nil
       @treeview = atreeview
       #popwin = Gtk::Window.new #(Gtk::Window::POPUP)
       popwin = self
       #@find_panel = popwin
       @replace_hbox = nil
       @found_lines = nil
+      @max_line = nil
       @find_line = nil
       #win_os = (PandoraUtils.os_family == 'windows')
       popwin.transient_for = $window #if win_os
@@ -3052,59 +3054,62 @@ module PandoraGtk
       @find_pos = 0
       @find_len = 0
       @max_pos = 0
-      @found_lines = nil
+      @max_line = nil
       @find_line = nil
       if @entry and @treeview and @treeview.buffer
         atext = @entry.text
         buf = @treeview.buffer
         if atext.is_a?(String) and (atext.size>2)
-          @search_thread ||= nil
-          if (not @search_thread)
-            @search_thread = Thread.new do
-              #@count_label.text = 'start'
-              buf.remove_tag('found', buf.start_iter, buf.end_iter)
-              buf.remove_tag('find', buf.start_iter, buf.end_iter)
-              @positions ||= Array.new
-              @max_pos = PandoraUtils.find_all_substr(@treeview.buffer.text, \
-                atext, @positions, MaxFindPos, @casesens_btn.active?)
-              #@count_label.text = 'start2'
-              if @max_pos>0
-                #@count_label.text = 'start3'
-                #@find_pos = max-1 if @find_pos>max-1
-                @find_len = atext.size
-                cur_pos = buf.cursor_position
-                @find_pos = -1
-                i = 0
-                #@count_label.text = 'start4'
-                while i<@max_pos
-                  pos = @positions[i]
-                  if cur_pos and (cur_pos>pos)
-                    @find_pos = i
-                  end
-                  iter = buf.get_iter_at_offset(pos)
-                  iter2 = buf.get_iter_at_offset(pos+@find_len)
-                  buf.apply_tag('found', iter, iter2)
-                  i += 1
-                end
-                @find_pos += 1
-                if dont_move or (@find_pos<0) or (@find_pos>=@max_pos)
-                  #@count_label.text = 'st5 '+@find_pos.inspect
-                  @count_label.text = '['+(@find_pos+1).to_s+']/'+@max_pos.to_s
-                  @back_btn.sensitive = @find_pos>0 if @back_btn
-                  @forward_btn.sensitive = (@find_pos<@max_pos) if @forward_btn
-                  @find_pos = -(@find_pos+1)
-                else
-                  #@count_label.text = 'st6 '+@find_pos.inspect+'|'+@max_pos.inspect
-                  #@count_label.text = (@find_pos+1).to_s+'/'+@max_pos.to_s
-                  move_to_find_pos(0)
-                end
-              else
-                @count_label.text = '0'
+          Thread.new(@search_thread) do |prev_thread|
+            @search_thread = Thread.current
+            $window.mutex.synchronize do
+              if prev_thread and prev_thread.alive?
+                prev_thread.kill
               end
-              @search_thread = nil
+              prev_thread = nil
             end
-          else
-            #@count_label.text = 'bizi'
+            #@count_label.text = 'start'
+            buf.remove_tag('found', buf.start_iter, buf.end_iter)
+            buf.remove_tag('find', buf.start_iter, buf.end_iter)
+            @positions ||= Array.new
+            sleep(0.1)
+            @max_pos = PandoraUtils.find_all_substr(@treeview.buffer.text, \
+              atext, @positions, MaxFindPos, @casesens_btn.active?)
+            #@count_label.text = 'start2'
+            if @max_pos>0
+              #@count_label.text = 'start3'
+              #@find_pos = max-1 if @find_pos>max-1
+              @find_len = atext.size
+              cur_pos = buf.cursor_position
+              @find_pos = -1
+              i = 0
+              #@count_label.text = 'start4'
+              while i<@max_pos
+                pos = @positions[i]
+                if cur_pos and (cur_pos>pos)
+                  @find_pos = i
+                end
+                iter = buf.get_iter_at_offset(pos)
+                iter2 = buf.get_iter_at_offset(pos+@find_len)
+                buf.apply_tag('found', iter, iter2)
+                i += 1
+              end
+              @find_pos += 1
+              if dont_move or (@find_pos<0) or (@find_pos>=@max_pos)
+                #@count_label.text = 'st5 '+@find_pos.inspect
+                @count_label.text = '['+(@find_pos+1).to_s+']/'+@max_pos.to_s
+                @back_btn.sensitive = @find_pos>0 if @back_btn
+                @forward_btn.sensitive = (@find_pos<@max_pos) if @forward_btn
+                @find_pos = -(@find_pos+1)
+              else
+                #@count_label.text = 'st6 '+@find_pos.inspect+'|'+@max_pos.inspect
+                #@count_label.text = (@find_pos+1).to_s+'/'+@max_pos.to_s
+                move_to_find_pos(0)
+              end
+            else
+              @count_label.text = '0'
+            end
+            @search_thread = nil
           end
         else
           @count_label.text = ''
@@ -3116,17 +3121,37 @@ module PandoraGtk
       end
     end
 
-    def get_found_lines
-      if (not @found_lines) and @treeview and @positions
-        i = 0
+    def has_line_found?(aline)
+      res = nil
+      i = 0
+      if (not @max_line) and @treeview and @positions \
+      and @max_pos and (@max_pos>0)
         buf = @treeview.buffer
-        @found_lines = Array.new
-        @positions.each do |pos|
-          iter = buf.get_iter_at_offset(pos)
-          @found_lines << iter.line if (not @found_lines.include?(iter.line))
+        @found_lines ||= Array.new
+        @max_line = 0
+        while i<@max_pos do
+          pos = @positions[i]
+          if pos
+            iter = buf.get_iter_at_offset(pos)
+            if iter
+              iline = iter.line
+              if (not has_line_found?(iline))
+                @found_lines[@max_line] = iline
+                @max_line += 1
+              end
+            end
+          end
+          i += 1
+        end
+        i = 0
+      end
+      if @found_lines and @max_line and aline
+        while (not res) and (i<@max_line)
+          res = (@found_lines[i] == aline)
+          i += 1
         end
       end
-      @found_lines
+      res
     end
 
     def move_to_find_pos(direction=nil)
@@ -3275,7 +3300,7 @@ module PandoraGtk
         str
       end
 
-      def get_tag_param(params, type=:string, retutn_tail=false)
+      def get_tag_param(params, type=:string, return_tail=false)
         res = nil
         getted = nil
         if (params.is_a? String) and (params.size>0)
@@ -3299,7 +3324,7 @@ module PandoraGtk
             end
           end
         end
-        if retutn_tail
+        if return_tail
           tail = nil
           if getted
             tail = params[getted..-1]
@@ -3990,13 +4015,14 @@ module PandoraGtk
   # Editor TextView
   # RU: TextView редактора
   class EditorTextView < SuperTextView
-    attr_accessor :body_win, :view_border, :raw_border
+    attr_accessor :body_win, :view_border, :raw_border, \
+      :scale_width, :scale_width_in_char
 
     def set_left_border_width(left_border=nil)
+      num_count = nil
       if (not left_border) or (left_border<0)
         add_nums = 0
         add_nums = -left_border if left_border and (left_border<0)
-        num_count = nil
         line_count = buffer.line_count
         num_count = (Math.log10(line_count).truncate+1) if line_count
         num_count = 1 if (num_count.nil? or (num_count<1))
@@ -4009,6 +4035,8 @@ module PandoraGtk
         end
         left_border = PandoraGtk.num_char_width*num_count+8
       end
+      @scale_width = left_border
+      @scale_width_in_char = num_count
       set_border_window_size(Gtk::TextView::WINDOW_LEFT, left_border)
     end
 
@@ -4017,6 +4045,8 @@ module PandoraGtk
       @view_border = aview_border
       @raw_border = araw_border
       @layout = nil
+      @scale_width = 0
+      @scale_width_in_char = nil
       super(aview_border)
       $font_desc ||= Pango::FontDescription.new('Monospace 11')
       signal_connect('expose-event') do |widget, event|
@@ -4049,15 +4079,15 @@ module PandoraGtk
             @gc = widget.style.fg_gc(Gtk::STATE_NORMAL)
             afound_lines = nil
             fp = self.find_panel
-            if fp and fp.visible? and fp.positions
-              afound_lines = fp.get_found_lines
+            if (not fp) or fp.destroyed? or (not fp.visible?) or (not fp.positions)
+              fp = nil
             end
             count.times do |i|
               x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
               line_num = numbers[i]
               str = line_num.to_s
               bg = nil
-              if afound_lines and afound_lines.include?(line_num-1)
+              if fp and fp.has_line_found?(line_num-1)
                 if fp.find_line and (fp.find_line==line_num-1)
                   @find_bg ||= Gdk::Color.parse('#F19922')
                   bg = @find_bg
@@ -4065,7 +4095,9 @@ module PandoraGtk
                   @found_bg ||= Gdk::Color.parse('#DDDD00')
                   bg = @found_bg
                 end
-                #str << '+'
+                #if @scale_width_in_char and (str.size<@scale_width_in_char)
+                #  str << '     '[0, @scale_width_in_char-str.size]
+                #end
               end
               @layout.text = str
               #widget.style.paint_layout(target, widget.state, false, \
@@ -10466,7 +10498,7 @@ module PandoraGtk
         store = treeview.model
         Gdk::Threads.synchronize do
           Gdk::Display.default.sync
-          $pool.mutex.synchronize do
+          $window.mutex.synchronize do
             path, column = treeview.cursor
             id0 = nil
             if path
@@ -12804,6 +12836,10 @@ module PandoraGtk
     end
 
     $pointoff = nil
+
+    def mutex
+      @mutex ||= Mutex.new
+    end
 
     # Show main Gtk window
     # RU: Показать главное окно Gtk
