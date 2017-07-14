@@ -2518,197 +2518,6 @@ module PandoraGtk
     attr_accessor :link
   end
 
-  $font_desc = nil
-
-  # Window for view body (text or blob)
-  # RU: Окно просмотра тела (текста или блоба)
-  class SuperTextView < ExtTextView
-    attr_accessor :find_panel
-
-    def format
-      res = nil
-      sw = parent
-      if (sw.is_a? BodyScrolledWindow)
-        res = sw.format
-      end
-      res ||= 'bbcode'
-      res
-    end
-
-    def initialize(left_border=nil, *args)
-      super(*args)
-      self.wrap_mode = Gtk::TextTag::WRAP_WORD
-
-      @hovering = false
-
-      buf = self.buffer
-      buf.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
-      buf.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
-      buf.create_tag('strike', 'strikethrough' => true)
-      buf.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
-      buf.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
-      buf.create_tag('link', 'foreground' => 'blue', \
-        'underline' => Pango::AttrUnderline::SINGLE)
-      buf.create_tag('linked', 'foreground' => 'navy', \
-        'underline' => Pango::AttrUnderline::SINGLE)
-      buf.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
-      buf.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
-      buf.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
-      buf.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
-      buf.create_tag('h1', 'weight' => Pango::FontDescription::WEIGHT_BOLD, \
-        'size' => 24 * Pango::SCALE, 'justification' => Gtk::JUSTIFY_CENTER)
-      buf.create_tag('h2', 'weight' => Pango::FontDescription::WEIGHT_BOLD, \
-        'size' => 21 * Pango::SCALE, 'justification' => Gtk::JUSTIFY_CENTER)
-      buf.create_tag('h3', 'weight' => Pango::FontDescription::WEIGHT_BOLD, \
-        'size' => 18 * Pango::SCALE)
-      buf.create_tag('h4', 'weight' => Pango::FontDescription::WEIGHT_BOLD, \
-        'size' => 15 * Pango::SCALE)
-      buf.create_tag('h5', 'weight' => Pango::FontDescription::WEIGHT_BOLD, \
-        'style' => Pango::FontDescription::STYLE_ITALIC, 'size' => 12 * Pango::SCALE)
-      buf.create_tag('h6', 'style' => Pango::FontDescription::STYLE_ITALIC, \
-        'size' => 12 * Pango::SCALE)
-      buf.create_tag('red', 'foreground' => 'red')
-      buf.create_tag('green', 'foreground' => 'green')
-      buf.create_tag('blue', 'foreground' => 'blue')
-      buf.create_tag('navy', 'foreground' => 'navy')
-      buf.create_tag('yellow', 'foreground' => 'yellow')
-      buf.create_tag('magenta', 'foreground' => 'magenta')
-      buf.create_tag('cyan', 'foreground' => 'cyan')
-      buf.create_tag('lime', 'foreground' =>   '#00FF00')
-      buf.create_tag('maroon', 'foreground' => 'maroon')
-      buf.create_tag('olive', 'foreground' =>  '#808000')
-      buf.create_tag('purple', 'foreground' => 'purple')
-      buf.create_tag('teal', 'foreground' =>   '#008080')
-      buf.create_tag('gray', 'foreground' => 'gray')
-      buf.create_tag('silver', 'foreground' =>   '#C0C0C0')
-      buf.create_tag('mono', 'family' => 'monospace', 'background' => '#EFEFEF')
-      buf.create_tag('sup', 'rise' => 7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
-      buf.create_tag('sub', 'rise' => -7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
-      buf.create_tag('small', 'scale' => Pango::AttrScale::XX_SMALL)
-      buf.create_tag('large', 'scale' => Pango::AttrScale::X_LARGE)
-      buf.create_tag('quote', 'left_margin' => 20, 'background' => '#EFEFEF', \
-        'style' => Pango::FontDescription::STYLE_ITALIC)
-
-      buf.create_tag('found', 'background' =>  '#FFFF00')
-      buf.create_tag('find', 'background' =>   '#FF9000')
-
-      signal_connect('key-press-event') do |widget, event|
-        res = false
-        if event.state.control_mask?
-          case event.keyval
-            when Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769
-              set_tag('bold')
-              res = true
-            when Gdk::Keyval::GDK_i, Gdk::Keyval::GDK_I, 1755, 1787
-              set_tag('italic')
-              res = true
-            when Gdk::Keyval::GDK_u, Gdk::Keyval::GDK_U, 1735, 1767
-              set_tag('undline')
-              res = true
-            when Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter
-              res = true
-            when Gdk::Keyval::GDK_f, Gdk::Keyval::GDK_F, 1729, 1761
-              show_hide_find_panel(false, false)
-              res = true
-            when Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H, 1746, 1778
-              show_hide_find_panel(true, false)
-              res = true
-          end
-        elsif (event.keyval==Gdk::Keyval::GDK_Escape)
-          @find_panel.hide if (@find_panel and (not @find_panel.destroyed?))
-        end
-        res
-      end
-
-      set_border_window_size(Gtk::TextView::WINDOW_LEFT, left_border) if left_border
-
-      signal_connect('event-after') do |tv, event|
-        if event.kind_of?(Gdk::EventButton) \
-        and (event.event_type == Gdk::Event::BUTTON_PRESS) and (event.button == 1)
-          buf = tv.buffer
-          # we shouldn't follow a link if the user has selected something
-          range = buf.selection_bounds
-          if range and (range[0].offset == range[1].offset)
-            x, y = tv.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, \
-              event.x, event.y)
-            iter = tv.get_iter_at_location(x, y)
-            follow_if_link(iter)
-          end
-        end
-        false
-      end
-
-      signal_connect('motion-notify-event') do |tv, event|
-        x, y = tv.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, \
-          event.x, event.y)
-        set_cursor_if_appropriate(tv, x, y)
-        tv.window.pointer
-        false
-      end
-
-      signal_connect('visibility-notify-event') do |tv, event|
-        window, wx, wy = tv.window.pointer
-        bx, by = tv.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, wx, wy)
-        set_cursor_if_appropriate(tv, bx, by)
-        false
-      end
-
-      self.has_tooltip = true
-      signal_connect('query-tooltip') do |textview, x, y, keyboard_tip, tooltip|
-        res = false
-        iter = nil
-        if keyboard_tip
-          iter = textview.buffer.get_iter_at_offset(textview.buffer.cursor_position)
-        else
-          bx, by = textview.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, x, y)
-          iter, trailing = textview.get_iter_at_position(bx, by)
-        end
-        pixbuf = iter.pixbuf   #.has_tag?(tag)  .char = 0xFFFC
-        if pixbuf
-          alt = pixbuf.tooltip
-          if (alt.is_a? String) and (alt.size>0)
-            tooltip.text = alt if ((not textview.destroyed?) and (not tooltip.destroyed?))
-            res = true
-          end
-        else
-          tags = iter.tags
-          link_tag = tags.find { |tag| (tag.is_a? LinkTag) }
-          if link_tag
-            tooltip.text = link_tag.link if not textview.destroyed?
-            res = true
-          end
-        end
-        res
-      end
-    end
-
-    def scrollwin
-      res = self.parent
-      res = res.parent if not res.is_a? Gtk::ScrolledWindow
-      res
-    end
-
-    def set_cursor_if_appropriate(tv, x, y)
-      iter = tv.get_iter_at_location(x, y)
-      hovering = false
-      tags = iter.tags
-      tags.each do |tag|
-        if tag.is_a? LinkTag
-          hovering = true
-          break
-        end
-      end
-      if hovering != @hovering
-        @hovering = hovering
-        window = tv.get_window(Gtk::TextView::WINDOW_TEXT)
-        if @hovering
-          window.cursor = $window.hand_cursor
-        else
-          window.cursor = $window.regular_cursor
-        end
-      end
-    end
-
   class FindPanel < Gtk::Window
     attr_accessor :treeview, :find_vbox, :entry, :count_label, \
       :replace_hbox, :replace_btn, :replace_entry, \
@@ -2979,6 +2788,12 @@ module PandoraGtk
               #show_hide_find_panel(true, false)
               show_and_set_replace_mode(nil)
               res = true
+            when Gdk::Keyval::GDK_g, Gdk::Keyval::GDK_G, 1744, 1776
+              self.hide
+              @treeview.show_line_panel
+              res = true
+            else
+              p event.keyval
           end
         end
         res
@@ -3059,7 +2874,7 @@ module PandoraGtk
       if @entry and @treeview and @treeview.buffer
         atext = @entry.text
         buf = @treeview.buffer
-        if atext.is_a?(String) and (atext.size>2)
+        if atext.is_a?(String) and (atext.size>0)
           Thread.new(@search_thread) do |prev_thread|
             @search_thread = Thread.current
             $window.mutex.synchronize do
@@ -3072,7 +2887,13 @@ module PandoraGtk
             buf.remove_tag('found', buf.start_iter, buf.end_iter)
             buf.remove_tag('find', buf.start_iter, buf.end_iter)
             @positions ||= Array.new
-            sleep(0.1)
+            if atext.size==1
+              sleep(3)
+            elsif atext.size==2
+              sleep(2)
+            else
+              sleep(0.1)
+            end
             @max_pos = PandoraUtils.find_all_substr(@treeview.buffer.text, \
               atext, @positions, MaxFindPos, @casesens_btn.active?)
             #@count_label.text = 'start2'
@@ -3188,18 +3009,389 @@ module PandoraGtk
             buf = @treeview.buffer
             buf.remove_tag('find', buf.start_iter, buf.end_iter)
             iter = buf.get_iter_at_offset(pos)
-            @find_line = iter.line
-            iter2 = buf.get_iter_at_offset(pos+@find_len)
-            @treeview.scroll_to_iter(iter, 0.1, false, 0.0, 0.0)
-            buf.place_cursor(iter)
-            #buf.move_mark('selection_bound', iter2)
-            buf.apply_tag('find', iter, iter2)
+            if iter
+              @find_line = iter.line
+              iter2 = buf.get_iter_at_offset(pos+@find_len)
+              @treeview.scroll_to_iter(iter, 0.1, false, 0.0, 0.0)
+              buf.place_cursor(iter)
+              #buf.move_mark('selection_bound', iter2)
+              buf.apply_tag('find', iter, iter2)
+            end
           end
         end
       end
     end
 
   end
+
+
+  class LinePanel < Gtk::Window
+    attr_accessor :treeview, :entry, :find_line
+
+    def initialize(atreeview, amodal=false)
+      super()
+      @treeview = atreeview
+      self.transient_for = $window #if win_os
+      self.modal = amodal #(not win_os)
+      self.decorated = false
+      self.skip_taskbar_hint = true
+      self.destroy_with_parent = true
+
+      @entry = IntegerEntry.new
+
+      awidth = 30
+      awidth = atreeview.scale_width-2 if atreeview.scale_width and atreeview.scale_width>18
+      entry.width_request = awidth
+      entry.max_length = atreeview.scale_width_in_char
+      #entry = Gtk::Combo.new  #Gtk::Entry.new
+      #entry.set_popdown_strings(['word1', 'word2'])
+      #entry.signal_connect('changed') do |widget, event|
+      #  self.goto_line
+      #  false
+      #end
+      entry.signal_connect('key-press-event') do |widget, event|
+        res = false
+        if (event.keyval==Gdk::Keyval::GDK_Tab)
+          self.goto_line
+          res = true
+        elsif (event.keyval>=65360) and (event.keyval<=65367)
+          if event.keyval==65365 or event.keyval==65362 #PgUp, Up
+            self.goto_line
+            res = true
+          elsif (event.keyval==65366) or (event.keyval==65364) #PgDn, Down
+            self.goto_line
+            res = true
+          end
+        end
+        res
+      end
+
+      entry.show_all
+      awidth, btn_height = entry.size_request
+
+      self.signal_connect('delete_event') { @self.destroy }
+
+      self.signal_connect('focus-out-event') do |win, event|
+        GLib::Timeout.add(100) do
+          win = nil if (win and win.destroyed?)
+          if win and win.treeview.destroyed?
+            win.destroy
+            win = nil
+          end
+          win.hide if win
+          false
+        end
+        false
+      end
+
+      self.signal_connect('key-press-event') do |widget, event|
+        res = false
+        if [Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter].include?(event.keyval)
+          self.goto_line
+        elsif (event.keyval==Gdk::Keyval::GDK_Escape) or \
+          ([Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
+          event.keyval) and event.state.control_mask?) #w, W, ц, Ц
+        then
+          widget.hide
+        elsif ([Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790].include?( \
+          event.keyval) and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, \
+          Gdk::Keyval::GDK_Q, 1738, 1770].include?(event.keyval) \
+          and event.state.control_mask?) #q, Q, й, Й
+        then
+          widget.destroy
+          PandoraUI.do_menu_act('Quit')
+        elsif event.state.control_mask?
+          case event.keyval
+            when Gdk::Keyval::GDK_f, Gdk::Keyval::GDK_F, 1729, 1761
+              self.hide
+              @treeview.show_hide_find_panel(false, false)
+              res = true
+            when Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H, 1746, 1778
+              self.hide
+              @treeview.show_hide_find_panel(true, false)
+              res = true
+          end
+        end
+        res
+      end
+
+      self.signal_connect('scroll-event') do |widget, event|
+        ctrl = (event.state.control_mask? or event.state.shift_mask?)
+        if (event.direction==Gdk::EventScroll::UP) \
+        or (event.direction==Gdk::EventScroll::LEFT)
+          if ctrl
+            left_year_btn.clicked
+          else
+            left_mon_btn.clicked
+          end
+        else
+          if ctrl
+            right_year_btn.clicked
+          else
+            right_mon_btn.clicked
+          end
+        end
+        true
+      end
+
+      self.add(entry)
+
+      @entry.grab_focus
+      show_and_move
+    end
+
+    def show_and_move
+      self.show if (not self.visible?)
+
+      pos = @treeview.window.origin
+      all = @treeview.allocation.to_a
+
+      awidth, aheight = @entry.size_request
+      self.move(pos[0], pos[1]+all[3]*0.33-aheight/2+2)
+
+      #if (@entry and (not @entry.destroyed?))
+      #  self.goto_line
+      #end
+
+      self.present
+      @entry.grab_focus
+    end
+
+    def goto_line
+      @line_pos = nil
+      if @entry and @treeview and @treeview.buffer
+        atext = @entry.text
+        if atext.size>0
+          line = atext.to_i
+          if line >= 0
+            line -= 1
+            line = 0 if line<0
+            buf = @treeview.buffer
+            line = buf.line_count-1 if (line>=buf.line_count)
+            @entry.text = (line+1).to_s
+            iter = buf.get_iter_at_line(line)
+            if iter
+              @treeview.scroll_to_iter(iter, 0.0, true, 0.0, 0.33)
+              buf.place_cursor(iter)
+              self.hide
+            end
+          end
+        end
+      end
+    end
+
+  end
+
+
+  $font_desc = nil
+
+  # Window for view body (text or blob)
+  # RU: Окно просмотра тела (текста или блоба)
+  class SuperTextView < ExtTextView
+    attr_accessor :find_panel
+
+    def format
+      res = nil
+      sw = parent
+      if (sw.is_a? BodyScrolledWindow)
+        res = sw.format
+      end
+      res ||= 'bbcode'
+      res
+    end
+
+    def initialize(left_border=nil, *args)
+      super(*args)
+      self.wrap_mode = Gtk::TextTag::WRAP_WORD
+
+      @hovering = false
+
+      buf = self.buffer
+      buf.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
+      buf.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
+      buf.create_tag('strike', 'strikethrough' => true)
+      buf.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
+      buf.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
+      buf.create_tag('link', 'foreground' => 'blue', \
+        'underline' => Pango::AttrUnderline::SINGLE)
+      buf.create_tag('linked', 'foreground' => 'navy', \
+        'underline' => Pango::AttrUnderline::SINGLE)
+      buf.create_tag('left', 'justification' => Gtk::JUSTIFY_LEFT)
+      buf.create_tag('center', 'justification' => Gtk::JUSTIFY_CENTER)
+      buf.create_tag('right', 'justification' => Gtk::JUSTIFY_RIGHT)
+      buf.create_tag('fill', 'justification' => Gtk::JUSTIFY_FILL)
+      buf.create_tag('h1', 'weight' => Pango::FontDescription::WEIGHT_BOLD, \
+        'size' => 24 * Pango::SCALE, 'justification' => Gtk::JUSTIFY_CENTER)
+      buf.create_tag('h2', 'weight' => Pango::FontDescription::WEIGHT_BOLD, \
+        'size' => 21 * Pango::SCALE, 'justification' => Gtk::JUSTIFY_CENTER)
+      buf.create_tag('h3', 'weight' => Pango::FontDescription::WEIGHT_BOLD, \
+        'size' => 18 * Pango::SCALE)
+      buf.create_tag('h4', 'weight' => Pango::FontDescription::WEIGHT_BOLD, \
+        'size' => 15 * Pango::SCALE)
+      buf.create_tag('h5', 'weight' => Pango::FontDescription::WEIGHT_BOLD, \
+        'style' => Pango::FontDescription::STYLE_ITALIC, 'size' => 12 * Pango::SCALE)
+      buf.create_tag('h6', 'style' => Pango::FontDescription::STYLE_ITALIC, \
+        'size' => 12 * Pango::SCALE)
+      buf.create_tag('red', 'foreground' => 'red')
+      buf.create_tag('green', 'foreground' => 'green')
+      buf.create_tag('blue', 'foreground' => 'blue')
+      buf.create_tag('navy', 'foreground' => 'navy')
+      buf.create_tag('yellow', 'foreground' => 'yellow')
+      buf.create_tag('magenta', 'foreground' => 'magenta')
+      buf.create_tag('cyan', 'foreground' => 'cyan')
+      buf.create_tag('lime', 'foreground' =>   '#00FF00')
+      buf.create_tag('maroon', 'foreground' => 'maroon')
+      buf.create_tag('olive', 'foreground' =>  '#808000')
+      buf.create_tag('purple', 'foreground' => 'purple')
+      buf.create_tag('teal', 'foreground' =>   '#008080')
+      buf.create_tag('gray', 'foreground' => 'gray')
+      buf.create_tag('silver', 'foreground' =>   '#C0C0C0')
+      buf.create_tag('mono', 'family' => 'monospace', 'background' => '#EFEFEF')
+      buf.create_tag('sup', 'rise' => 7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
+      buf.create_tag('sub', 'rise' => -7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
+      buf.create_tag('small', 'scale' => Pango::AttrScale::XX_SMALL)
+      buf.create_tag('large', 'scale' => Pango::AttrScale::X_LARGE)
+      buf.create_tag('quote', 'left_margin' => 20, 'background' => '#EFEFEF', \
+        'style' => Pango::FontDescription::STYLE_ITALIC)
+
+      buf.create_tag('found', 'background' =>  '#FFFF00')
+      buf.create_tag('find', 'background' =>   '#FF9000')
+
+      signal_connect('key-press-event') do |widget, event|
+        res = false
+        if event.state.control_mask?
+          case event.keyval
+            when Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769
+              set_tag('bold')
+              res = true
+            when Gdk::Keyval::GDK_i, Gdk::Keyval::GDK_I, 1755, 1787
+              set_tag('italic')
+              res = true
+            when Gdk::Keyval::GDK_u, Gdk::Keyval::GDK_U, 1735, 1767
+              set_tag('undline')
+              res = true
+            when Gdk::Keyval::GDK_Return, Gdk::Keyval::GDK_KP_Enter
+              res = true
+            when Gdk::Keyval::GDK_f, Gdk::Keyval::GDK_F, 1729, 1761
+              show_hide_find_panel(false, false)
+              res = true
+            when Gdk::Keyval::GDK_h, Gdk::Keyval::GDK_H, 1746, 1778
+              show_hide_find_panel(true, false)
+              res = true
+            #when Gdk::Keyval::GDK_l, Gdk::Keyval::GDK_L, 1736, 1768
+            when Gdk::Keyval::GDK_g, Gdk::Keyval::GDK_G, 1744, 1776
+              show_line_panel
+              res = true
+          end
+        elsif (event.keyval==Gdk::Keyval::GDK_Escape)
+          @find_panel.hide if (@find_panel and (not @find_panel.destroyed?))
+        end
+        res
+      end
+
+      set_border_window_size(Gtk::TextView::WINDOW_LEFT, left_border) if left_border
+
+      signal_connect('event-after') do |tv, event|
+        if event.kind_of?(Gdk::EventButton) \
+        and (event.event_type == Gdk::Event::BUTTON_PRESS) and (event.button == 1)
+          buf = tv.buffer
+          # we shouldn't follow a link if the user has selected something
+          range = buf.selection_bounds
+          if range and (range[0].offset == range[1].offset)
+            x, y = tv.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, \
+              event.x, event.y)
+            iter = tv.get_iter_at_location(x, y)
+            follow_if_link(iter)
+          end
+        end
+        false
+      end
+
+      signal_connect('motion-notify-event') do |tv, event|
+        x, y = tv.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, \
+          event.x, event.y)
+        set_cursor_if_appropriate(tv, x, y)
+        tv.window.pointer
+        false
+      end
+
+      signal_connect('visibility-notify-event') do |tv, event|
+        window, wx, wy = tv.window.pointer
+        bx, by = tv.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, wx, wy)
+        set_cursor_if_appropriate(tv, bx, by)
+        false
+      end
+
+      self.has_tooltip = true
+      signal_connect('query-tooltip') do |textview, x, y, keyboard_tip, tooltip|
+        res = false
+        iter = nil
+        if keyboard_tip
+          iter = textview.buffer.get_iter_at_offset(textview.buffer.cursor_position)
+        else
+          bx, by = textview.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, x, y)
+          iter, trailing = textview.get_iter_at_position(bx, by)
+        end
+        pixbuf = iter.pixbuf   #.has_tag?(tag)  .char = 0xFFFC
+        if pixbuf
+          alt = pixbuf.tooltip
+          if (alt.is_a? String) and (alt.size>0)
+            tooltip.text = alt if ((not textview.destroyed?) and (not tooltip.destroyed?))
+            res = true
+          end
+        else
+          tags = iter.tags
+          link_tag = tags.find { |tag| (tag.is_a? LinkTag) }
+          if link_tag
+            tooltip.text = link_tag.link if not textview.destroyed?
+            res = true
+          end
+        end
+        res
+      end
+    end
+
+    def scrollwin
+      res = self.parent
+      res = res.parent if not res.is_a? Gtk::ScrolledWindow
+      res
+    end
+
+    def set_cursor_if_appropriate(tv, x, y)
+      iter = tv.get_iter_at_location(x, y)
+      hovering = false
+      tags = iter.tags
+      tags.each do |tag|
+        if tag.is_a? LinkTag
+          hovering = true
+          break
+        end
+      end
+      if hovering != @hovering
+        @hovering = hovering
+        window = tv.get_window(Gtk::TextView::WINDOW_TEXT)
+        if @hovering
+          window.cursor = $window.hand_cursor
+        else
+          window.cursor = $window.regular_cursor
+        end
+      end
+    end
+
+    def show_line_panel(may_hide=nil)
+      @line_panel ||= nil
+      @line_panel = nil if (@line_panel and @line_panel.destroyed?)
+      if (may_hide and @line_panel and @line_panel.visible?)
+        @line_panel.hide
+      elsif @scale_width and (@scale_width>0)
+        if @line_panel
+          @line_panel.show_and_move
+        else
+          @line_panel = LinePanel.new(self)
+        end
+      end
+      @line_panel
+    end
 
     def show_hide_find_panel(replace=nil, may_hide=nil)
       @find_panel ||= nil
@@ -4535,9 +4727,12 @@ module PandoraGtk
       +' while unless do case when require yield rescue include').split
     RUBY_KEYWORDS2 = 'self nil true false not and or'.split
 
+    ValueTags = [:hexadec, :number, :identifer, :big_constant, :constant, \
+      :classvar, :instvar, :global]
+
     # Call a code block with the text
     # RU: Вызвать блок кода по тексту
-    def ruby_tag_line(str, index=0, mode=0)
+    def ruby_tag_line(str, index, mode)
 
       def ident_char?(c)
         ('a'..'z').include?(c) or ('A'..'Z').include?(c) or (c == '_')
@@ -4657,6 +4852,15 @@ module PandoraGtk
         [i, kw]
       end
 
+      def apply_tag(tag, start, last)
+        @last_tag = tag
+        @raw_buffer.apply_tag(tag.to_s, \
+          @raw_buffer.get_iter_at_offset(start), \
+          @raw_buffer.get_iter_at_offset(last))
+      end
+
+      @last_tag = nil
+
       ss = str.size
       if ss>0
         i = 0
@@ -4664,13 +4868,13 @@ module PandoraGtk
           if (str[0,4] == '=end')
             mode = 0
             i = 4
-            yield(:comment, index, index + i)
+            apply_tag(:comment, index, index + i)
           else
-            yield(:comment, index, index + ss)
+            apply_tag(:comment, index, index + ss)
           end
         elsif (mode == 0) and (str[0,6] == '=begin')
           mode = 1
-          yield(:comment, index, index + ss)
+          apply_tag(:comment, index, index + ss)
         elsif (mode != 1)
           i += 1 while (i<ss) and ((str[i] == ' ') or (str[i] == "\t"))
           pc = ' '
@@ -4679,9 +4883,10 @@ module PandoraGtk
             c = str[i]
             if (c != ' ') and (c != "\t")
               if (c == '#')
-                yield(:comment, index + i, index + ss)
+                apply_tag(:comment, index + i, index + ss)
                 break
-              elsif (c == "'") or (c == '"') or (c == '/')
+              elsif ((c == "'") or (c == '"') or ((c == '/') \
+              and (not ValueTags.include?(@last_tag))))
                 qc = c
                 i1 = i
                 i += 1
@@ -4699,10 +4904,10 @@ module PandoraGtk
                       end
                       c = str[i]
                       if (qc=='"') and (c=='{') and (pc=='#')
-                        yield(:string, index + i1, index + i - 1)
-                        yield(:operator, index + i - 1, index + i + 1)
+                        apply_tag(:string, index + i1, index + i - 1)
+                        apply_tag(:operator, index + i - 1, index + i + 1)
                         i, kw2 = rewind_ident(str, i, ss, ' ') do |tag, id1, id2|
-                          yield(tag, index + id1, index + id2)
+                          apply_tag(tag, index + id1, index + id2)
                         end
                         i1 = i
                       end
@@ -4712,37 +4917,39 @@ module PandoraGtk
                 end
                 if (qc == '/')
                   i += 1 while (i<ss) and ('imxouesn'.include?(str[i]))
-                  yield(:regex, index + i1, index + i)
+                  apply_tag(:regex, index + i1, index + i)
                 else
-                  yield(:string, index + i1, index + i)
+                  apply_tag(:string, index + i1, index + i)
                 end
               elsif ident_char?(c)
                 i, kw = rewind_ident(str, i, ss, pc, kw) do |tag, id1, id2|
-                  yield(tag, index + id1, index + id2)
+                  apply_tag(tag, index + id1, index + id2)
                 end
                 pc = ' '
               elsif (c=='$') and (i+1<ss) and ('~'.include?(str[i+1]))
                 i1 = i
                 i += 2
-                yield(:global, index + i1, index + i)
+                apply_tag(:global, index + i1, index + i)
                 pc = ' '
               elsif oper_char?(c) or ((pc==':') and (c==':'))
                 i1 = i
                 i1 -=1 if (i1>0) and (c==':')
                 i += 1
-                while (i<ss) and (oper_char?(str[i]) or (str[i]==':'))
-                  i += 1
+                if (i<ss) and not((c=='(') and (str[i]=='/'))
+                  while (i<ss) and (oper_char?(str[i]) or ((pc==':') and (str[i]==':')))
+                    i += 1
+                  end
                 end
                 if i<ss
                   pc = ' '
                   c = str[i]
                 end
-                yield(:operator, index + i1, index + i)
+                apply_tag(:operator, index + i1, index + i)
               elsif ((c==':') or (c=='$')) and (i+1<ss) and (ident_char?(str[i+1]))
                 i += 1
                 pc = c
                 i, kw2 = rewind_ident(str, i, ss, pc) do |tag, id1, id2|
-                  yield(tag, index + id1, index + id2)
+                  apply_tag(tag, index + id1, index + id2)
                 end
                 pc = ' '
               elsif ('0'..'9').include?(c)
@@ -4755,18 +4962,19 @@ module PandoraGtk
                     break unless (('0'..'9').include?(c) or ('A'..'F').include?(c))
                     i += 1
                   end
-                  yield(:hexadec, index + i1, index + i)
+                  apply_tag(:hexadec, index + i1, index + i)
                 else
                   while (i<ss)
                     c = str[i]
-                    break unless (('0'..'9').include?(c) or (c=='.') or (c=='e'))
+                    break unless (('0'..'9').include?(c) \
+                      or ((c=='.') and (str[i-1] != '.')) or (c=='e'))
                     i += 1
                   end
                   if i<ss
                     i -= 1 if str[i-1]=='.'
                     pc = ' '
                   end
-                  yield(:number, index + i1, index + i)
+                  apply_tag(:number, index + i1, index + i)
                 end
               else
                 #yield(:keyword, index + i, index + ss/2)
@@ -4883,11 +5091,7 @@ module PandoraGtk
             #buf.apply_tag('keyword', iter1, iter2)
             case @format
               when 'ruby'
-                mode = ruby_tag_line(text, offset1, mode) do |tag, start, last|
-                  buf.apply_tag(tag.to_s,
-                    buf.get_iter_at_offset(start),
-                    buf.get_iter_at_offset(last))
-                end
+                mode = ruby_tag_line(text, offset1, mode)
               when 'bbcode', 'html'
                 mode = bbcode_html_tag_line(text, offset1, mode, @format) do |tag, start, last|
                   buf.apply_tag(tag.to_s,
@@ -6420,7 +6624,7 @@ module PandoraGtk
       :dlg_talkview, :chat_talkview, :area_send, :area_recv, :recv_media_pipeline, \
       :appsrcs, :session, :ximagesink, :parent_notebook, :cab_notebook, \
       :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, \
-      :sender_box, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
+      :sender_box, :toolbar_sw, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
       :send_hpaned, :opt_btns, :cab_panhash, :session, \
       :bodywin, :fields, :obj_id, :edit, :property_box, :kind, :label_box, \
       :active_page, :dlg_stock, :its_blob, :has_blob
@@ -7671,11 +7875,13 @@ module PandoraGtk
       #toolbar_box.add(Gtk::SeparatorToolItem.new)
       add_btn_to_toolbar(nil, nil, nil, opt_btns)
 
-      toolbar_sw = Gtk::ScrolledWindow.new(nil, nil)
+      @toolbar_sw = Gtk::ScrolledWindow.new(nil, nil)
       toolbar_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_NEVER)
       toolbar_sw.border_width = 0
-      iw, iy = Gtk::IconSize.lookup(Gtk::IconSize::LARGE_TOOLBAR)
-      toolbar_sw.height_request = iy+9
+      #iw, iy = Gtk::IconSize.lookup(Gtk::IconSize::LARGE_TOOLBAR)
+      toolbar_box.show_all
+      iw, iy = toolbar_box.size_request
+      toolbar_sw.height_request = iy+6
       #toolbar_sw.add(toolbar_box)
       toolbar_sw.add_with_viewport(toolbar_box)
 
@@ -11678,12 +11884,12 @@ module PandoraGtk
     page = $window.notebook.page
     if (page >= 0)
       cur_page = $window.notebook.get_nth_page(page)
-      if (cur_page.is_a? PandoraGtk::CabinetBox) and cur_page.toolbar_box
+      if (cur_page.is_a? PandoraGtk::CabinetBox) and cur_page.toolbar_sw
         if need_show
-          cur_page.toolbar_box.visible = true if (not cur_page.toolbar_box.visible?)
-        elsif PandoraGtk.is_ctrl_shift_alt?(true) and cur_page.toolbar_box.visible?
-          cur_page.toolbar_box.visible = false
-          @last_cur_page_toolbar = cur_page.toolbar_box
+          cur_page.toolbar_sw.visible = true if (not cur_page.toolbar_sw.visible?)
+        elsif PandoraGtk.is_ctrl_shift_alt?(true) and cur_page.toolbar_sw.visible?
+          cur_page.toolbar_sw.visible = false
+          @last_cur_page_toolbar = cur_page.toolbar_sw
         end
       end
     end
@@ -11740,7 +11946,7 @@ module PandoraGtk
     $window.notebook.children.each do |child|
       if (child.is_a? PhraseEditorScrollWin)
         $window.notebook.page = $window.notebook.children.index(child)
-        child.update_btn.clicked
+        #child.update_btn.clicked
         return
       end
     end
