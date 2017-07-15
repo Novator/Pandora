@@ -2552,7 +2552,7 @@ module PandoraGtk
       #entry = Gtk::Combo.new  #Gtk::Entry.new
       #entry.set_popdown_strings(['word1', 'word2'])
       entry.signal_connect('changed') do |widget, event|
-        self.find_text
+        self.find_text(false, true)
         false
       end
       entry.signal_connect('key-press-event') do |widget, event|
@@ -2865,7 +2865,7 @@ module PandoraGtk
 
     MaxFindPos = 300
 
-    def find_text(dont_move=false)
+    def find_text(dont_move=false, lazy=false)
       @find_pos = 0
       @find_len = 0
       @max_pos = 0
@@ -2887,13 +2887,19 @@ module PandoraGtk
             buf.remove_tag('found', buf.start_iter, buf.end_iter)
             buf.remove_tag('find', buf.start_iter, buf.end_iter)
             @positions ||= Array.new
-            if atext.size==1
-              sleep(3)
-            elsif atext.size==2
-              sleep(2)
-            else
-              sleep(0.1)
+            sleep_time = 0.1
+            if lazy
+              if atext.size==1
+                sleep_time = 3
+              elsif atext.size==2
+                sleep_time = 2
+              else
+                sleep_time = 1
+              end
+            elsif dont_move
+              sleep_time = 1
             end
+            sleep(sleep_time)
             @max_pos = PandoraUtils.find_all_substr(@treeview.buffer.text, \
               atext, @positions, MaxFindPos, @casesens_btn.active?)
             #@count_label.text = 'start2'
@@ -3188,7 +3194,7 @@ module PandoraGtk
   # Window for view body (text or blob)
   # RU: Окно просмотра тела (текста или блоба)
   class SuperTextView < ExtTextView
-    attr_accessor :find_panel
+    attr_accessor :find_panel, :numbers, :pixels
 
     def format
       res = nil
@@ -3203,6 +3209,9 @@ module PandoraGtk
     def initialize(left_border=nil, *args)
       super(*args)
       self.wrap_mode = Gtk::TextTag::WRAP_WORD
+
+      @numbers = Array.new
+      @pixels = Array.new
 
       @hovering = false
 
@@ -3431,24 +3440,24 @@ module PandoraGtk
       end
     end
 
-    def get_lines(tv, first_y, last_y, y_coords, numbers, with_height=false)
+    def get_lines(first_y, last_y, with_height=false)
       # Get iter at first y
-      iter, top = tv.get_line_at_y(first_y)
-      # For each iter, get its location and add it to the arrays.
-      # Stop when we pass last_y
+      iter, top = self.get_line_at_y(first_y)
       line = iter.line
+      @numbers.clear
+      @pixels.clear
       count = 0
       size = 0
-      while (line < tv.buffer.line_count)
-        #iter = tv.buffer.get_iter_at_line(line)
-        y, height = tv.get_line_yrange(iter)
+      while (line < self.buffer.line_count)
+        #iter = self.buffer.get_iter_at_line(line)
+        y, height = self.get_line_yrange(iter)
         if with_height
-          y_coords << [y, height]
+          @pixels << [y, height]
         else
-          y_coords << y
+          @pixels << y
         end
         line += 1
-        numbers << line
+        @numbers << line
         count += 1
         break if (y + height) >= last_y
         iter.forward_line
@@ -4241,41 +4250,45 @@ module PandoraGtk
       @scale_width_in_char = nil
       super(aview_border)
       $font_desc ||= Pango::FontDescription.new('Monospace 11')
+
       signal_connect('expose-event') do |widget, event|
         tv = widget
         type = nil
         event_win = nil
         begin
           left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
-          #right_win = tv.get_window(Gtk::TextView::WINDOW_RIGHT)
+          right_win = tv.get_window(Gtk::TextView::WINDOW_TEXT)
           event_win = event.window
         rescue Exception
           event_win = nil
         end
-        if event_win and left_win and (event_win == left_win)
-          type = Gtk::TextView::WINDOW_LEFT
-          target = left_win
-          sw = tv.scrollwin
-          view_mode = true
-          view_mode = sw.view_mode if sw and (sw.is_a? BodyScrolledWindow)
-          if not view_mode
+        sw = tv.scrollwin
+        view_mode = true
+        view_mode = sw.view_mode if sw and (sw.is_a? BodyScrolledWindow)
+        if (not view_mode)
+          if event_win == left_win
+            type = Gtk::TextView::WINDOW_LEFT
             first_y = event.area.y
             last_y = first_y + event.area.height
             x, first_y = tv.window_to_buffer_coords(type, 0, first_y)
             x, last_y = tv.window_to_buffer_coords(type, 0, last_y)
-            numbers = []
-            pixels = []
-            count = get_lines(tv, first_y, last_y, pixels, numbers)
+            count = self.get_lines(first_y, last_y)
             # Draw fully internationalized numbers!
             @layout ||= widget.create_pango_layout
-            @gc = widget.style.fg_gc(Gtk::STATE_NORMAL)
+            @gc ||= widget.style.fg_gc(Gtk::STATE_NORMAL)
             afound_lines = nil
             fp = self.find_panel
             if (not fp) or fp.destroyed? or (not fp.visible?) or (not fp.positions)
               fp = nil
             end
+            cur_line = nil
+            #if not fp
+            #  buf = tv.buffer
+            #  iter = buf.get_iter_at_offset(buf.cursor_position)
+            #  cur_line = iter.line if iter
+            #end
             count.times do |i|
-              x, pos = tv.buffer_to_window_coords(type, 0, pixels[i])
+              x, pos = tv.buffer_to_window_coords(type, 0, @pixels[i])
               line_num = numbers[i]
               str = line_num.to_s
               bg = nil
@@ -4290,11 +4303,31 @@ module PandoraGtk
                 #if @scale_width_in_char and (str.size<@scale_width_in_char)
                 #  str << '     '[0, @scale_width_in_char-str.size]
                 #end
+              elsif cur_line and (cur_line==line_num-1)
+                @active_bg ||= Gdk::Color.parse('#A10000')
+                bg = @active_bg
               end
               @layout.text = str
               #widget.style.paint_layout(target, widget.state, false, \
               #  nil, widget, nil, 2, pos, @layout)   #Gtk2 fails sometime!!!
-              target.draw_layout(@gc, 2, pos, @layout, nil, bg)
+              left_win.draw_layout(@gc, 2, pos, @layout, nil, bg)
+            end
+            #draw_pixmap
+          elsif event_win == right_win
+            #@gc = widget.style.text_gc(Gtk::STATE_NORMAL)
+            @line_gc ||= nil
+            if not @line_gc
+              @line_gc = Gdk::GC.new(right_win)
+              @line_gc.rgb_fg_color = Gdk::Color.parse('#1A1A1A') #Gdk::Color.new(30000, 0, 30000)
+              #@line_gc.function = Gdk::GC::AND
+            end
+            buf = tv.buffer
+            iter = buf.get_iter_at_offset(buf.cursor_position)
+            if iter
+              y, line_hei = tv.get_line_yrange(iter)
+              x, y = tv.buffer_to_window_coords(Gtk::TextView::WINDOW_TEXT, 0, y)
+              wid, hei = right_win.size
+              right_win.draw_rectangle(@line_gc, true, x+1, y, wid-2, line_hei) if y<hei
             end
           end
         end
@@ -4304,7 +4337,7 @@ module PandoraGtk
   end
 
   class ChatTextView < SuperTextView
-    attr_accessor :mes_ids, :numbers, :pixels, :send_btn, :edit_box, \
+    attr_accessor :mes_ids, :send_btn, :edit_box, \
       :crypt_btn, :sign_btn, :smile_btn
 
     def initialize(*args)
@@ -4318,8 +4351,6 @@ module PandoraGtk
 
       super(*args)
       @mes_ids = Array.new
-      @numbers = Array.new
-      @pixels = Array.new
       @mes_model = PandoraUtils.get_model('Message')
       @sign_model = PandoraUtils.get_model('Sign')
 
@@ -4338,9 +4369,7 @@ module PandoraGtk
           last_y = first_y + event.area.height
           x, first_y = widget.window_to_buffer_coords(type, 0, first_y)
           x, last_y = widget.window_to_buffer_coords(type, 0, last_y)
-          pixels.clear
-          numbers.clear
-          count = get_lines(widget, first_y, last_y, pixels, numbers, true)
+          count = self.get_lines(first_y, last_y, true)
           cr = left_win.create_cairo_context
 
           count.times do |i|
@@ -4717,6 +4746,12 @@ module PandoraGtk
             set_tags(buf, line1, line2)
           end
           false
+        end
+
+        iter = buf.get_iter_at_offset(0)
+        if iter
+          #@treeview.scroll_to_iter(iter, 0.1, false, 0.0, 0.0)
+          buf.place_cursor(iter)
         end
       end
     end
