@@ -22,6 +22,8 @@
 #git add README.TXT
 #git commit -m "first commit"
 #git remote rm origin
+#git remote rename origin github
+#git remote add bitbuc https://bitbucket.org/robux/pandora.git
 #git remote add origin https://github.com/Novator/Pandora.git
 #git remote add robux ssh://user@git.site.biz:222/pandora
 #git clone --depth=1 git://git.site.biz/pandora
@@ -52,8 +54,6 @@
 echo "`./pandora.sh --version` `./pandora.sh --md5`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
 
 ## Push files from local to repository
-#git remote rename origin github
-#git remote add bitbuc https://bitbucket.org/robux/pandora.git
 #git add --all
 git commit -a -m "version 0.69 alpha"
 git push -u github master

@@ -2542,6 +2542,7 @@ module PandoraGtk
       popwin.decorated = false
       popwin.skip_taskbar_hint = true
       popwin.destroy_with_parent = true
+      popwin.border_width = 1
 
       @find_vbox = Gtk::VBox.new
       hbox = Gtk::HBox.new
@@ -2843,8 +2844,6 @@ module PandoraGtk
       #replace_btn.safe_set_active(replace)
       #self.activate_focus
 
-      self.show if (not self.visible?)
-
       pos = @treeview.window.origin
       all = @treeview.allocation.to_a
 
@@ -2859,6 +2858,8 @@ module PandoraGtk
         self.find_text(true)
         @entry.select_region(0, @entry.text.size) if @entry.text.size>0
       end
+
+      self.show if (not self.visible?)
 
       self.present
     end
@@ -3147,8 +3148,6 @@ module PandoraGtk
     end
 
     def show_and_move
-      self.show if (not self.visible?)
-
       pos = @treeview.window.origin
       all = @treeview.allocation.to_a
 
@@ -3158,6 +3157,8 @@ module PandoraGtk
       #if (@entry and (not @entry.destroyed?))
       #  self.goto_line
       #end
+
+      self.show if (not self.visible?)
 
       self.present
       @entry.grab_focus

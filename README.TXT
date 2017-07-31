@@ -173,9 +173,9 @@ in Windows download and install:
 
 9.5. Download Pandora to your hard disk via git command:
 
-  git clone --depth=1 https://github.com/YourNick/Pandora.git
+  git clone --depth=1 https://github.com/Novator/Pandora.git
 
-Warning: change "YourNick" to your login!
+Warning: change "Novator" to your github login!
 
 9.6. Correct a code with any text editor, for example Geany:
 
