@@ -474,3 +474,5 @@ Forward=>Вперёд
 Find and replace=>Найти и заменить
 Replace by=>Заменить на
 Replace all=>Заменить всё
+Case sensitive=>Различать регистр
+Close=>Закрыть
