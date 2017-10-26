@@ -2866,7 +2866,7 @@ module PandoraGtk
 
     MaxFindPos = 300
 
-    def find_text(dont_move=false, lazy=false)
+    def find_text(dont_move=false, slow=false)
       @find_pos = 0
       @find_len = 0
       @max_pos = 0
@@ -2889,7 +2889,7 @@ module PandoraGtk
             buf.remove_tag('find', buf.start_iter, buf.end_iter)
             @positions ||= Array.new
             sleep_time = 0.1
-            if lazy
+            if slow
               if atext.size==1
                 sleep_time = 3
               elsif atext.size==2
@@ -3046,10 +3046,16 @@ module PandoraGtk
 
       @entry = IntegerEntry.new
 
-      awidth = 30
-      awidth = atreeview.scale_width-2 if atreeview.scale_width and atreeview.scale_width>18
+      awidth = 50
+      #p '---LinePanel: atreeview.scale_width='+atreeview.scale_width.inspect
+      awidth = atreeview.scale_width-2 if (atreeview.scale_width and (atreeview.scale_width>30))
       entry.width_request = awidth
       entry.max_length = atreeview.scale_width_in_char
+      #entry.set_size_request(awidth, -1)
+      entry.show_all
+      #btn_width, btn_height = entry.size_request
+      #self.set_default_size(awidth+4, btn_height+4)
+      #self.resize(awidth+4, btn_height+4)
       #entry = Gtk::Combo.new  #Gtk::Entry.new
       #entry.set_popdown_strings(['word1', 'word2'])
       #entry.signal_connect('changed') do |widget, event|
@@ -3072,9 +3078,6 @@ module PandoraGtk
         end
         res
       end
-
-      entry.show_all
-      awidth, btn_height = entry.size_request
 
       self.signal_connect('delete_event') { @self.destroy }
 
