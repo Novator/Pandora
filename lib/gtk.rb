@@ -4288,30 +4288,32 @@ module PandoraGtk
             #  iter = buf.get_iter_at_offset(buf.cursor_position)
             #  cur_line = iter.line if iter
             #end
-            count.times do |i|
-              x, pos = tv.buffer_to_window_coords(type, 0, @pixels[i])
-              line_num = numbers[i]
-              str = line_num.to_s
-              bg = nil
-              if fp and fp.has_line_found?(line_num-1)
-                if fp.find_line and (fp.find_line==line_num-1)
-                  @find_bg ||= Gdk::Color.parse('#F19922')
-                  bg = @find_bg
-                else
-                  @found_bg ||= Gdk::Color.parse('#DDDD00')
-                  bg = @found_bg
+            if not self.destroyed?
+              count.times do |i|
+                x, pos = tv.buffer_to_window_coords(type, 0, @pixels[i])
+                line_num = numbers[i]
+                str = line_num.to_s
+                bg = nil
+                if fp and fp.has_line_found?(line_num-1)
+                  if fp.find_line and (fp.find_line==line_num-1)
+                    @find_bg ||= Gdk::Color.parse('#F19922')
+                    bg = @find_bg
+                  else
+                    @found_bg ||= Gdk::Color.parse('#DDDD00')
+                    bg = @found_bg
+                  end
+                  #if @scale_width_in_char and (str.size<@scale_width_in_char)
+                  #  str << '     '[0, @scale_width_in_char-str.size]
+                  #end
+                elsif cur_line and (cur_line==line_num-1)
+                  @active_bg ||= Gdk::Color.parse('#A10000')
+                  bg = @active_bg
                 end
-                #if @scale_width_in_char and (str.size<@scale_width_in_char)
-                #  str << '     '[0, @scale_width_in_char-str.size]
-                #end
-              elsif cur_line and (cur_line==line_num-1)
-                @active_bg ||= Gdk::Color.parse('#A10000')
-                bg = @active_bg
+                @layout.text = str
+                #widget.style.paint_layout(target, widget.state, false, \
+                #  nil, widget, nil, 2, pos, @layout)   #Gtk2 fails sometime!!!
+                left_win.draw_layout(@gc, 2, pos, @layout, nil, bg)
               end
-              @layout.text = str
-              #widget.style.paint_layout(target, widget.state, false, \
-              #  nil, widget, nil, 2, pos, @layout)   #Gtk2 fails sometime!!!
-              left_win.draw_layout(@gc, 2, pos, @layout, nil, bg)
             end
             #draw_pixmap
           elsif event_win == right_win
@@ -6150,65 +6152,68 @@ module PandoraGtk
       row ||= fields
       fields.each do |field|
         fld_id = field[PandoraUtils::FI_Id]
+        val = nil
         entry = field[PandoraUtils::FI_Widget]
-        val = entry.text
-        if (fld_id=='panhash_lang')
-          begin
-            lang = val.to_i if val.size>0
-          rescue
-            lang = nil
-          end
-        else
-          type = field[PandoraUtils::FI_Type]
-          view = field[PandoraUtils::FI_View]
-          if ((panobject.kind==PK_Relation) and val \
-          and ((fld_id=='first') or (fld_id=='second')))
-            PandoraModel.del_image_from_cache(val, true)
-          elsif (panobject.kind==PK_Parameter) and (fld_id=='value')
-            par_type = panobject.field_val('type', row)
-            setting = panobject.field_val('setting', row)
-            ps = PandoraUtils.decode_param_setting(setting)
-            view = ps['view']
-            view ||= PandoraUtils.pantype_to_view(par_type)
-          elsif file_way
-            p 'file_way2='+file_way.inspect
-            if (fld_id=='type')
-              val = PandoraUtils.detect_file_type(file_way) if (not val) or (val.size==0)
-            elsif (fld_id=='sha1')
-              if file_way_exist
-                sha1 = Digest::SHA1.file(file_way)
-                val = sha1.hexdigest
-              else
-                val = nil
-              end
-            elsif (fld_id=='md5')
-              if file_way_exist
-                md5 = Digest::MD5.file(file_way)
-                val = md5.hexdigest
-              else
-                val = nil
-              end
-            elsif (fld_id=='size')
-              val = File.size?(file_way)
-            end
-          end
-          #p 'fld, val, type, view='+[fld_id, val, type, view].inspect
-          val = PandoraUtils.view_to_val(val, type, view)
-          if (view=='blob') or (view=='text')
-            if val and (val.size>0)
-              file_way = PandoraUtils.absolute_path(val)
-              file_way_exist = File.exist?(file_way)
-              #p 'file_way1='+file_way.inspect
-              val = '@'+val
-              flds_hash[fld_id] = val
-              field[PandoraUtils::FI_Value] = val
-              #p '----TEXT ENTR!!!!!!!!!!!'
-            else
-              flds_hash[fld_id] = field[PandoraUtils::FI_Value]
+        if entry and (not entry.destroyed?)
+          val = entry.text
+          if (fld_id=='panhash_lang')
+            begin
+              lang = val.to_i if val.size>0
+            rescue
+              lang = nil
             end
           else
-            flds_hash[fld_id] = val
-            field[PandoraUtils::FI_Value] = val
+            type = field[PandoraUtils::FI_Type]
+            view = field[PandoraUtils::FI_View]
+            if ((panobject.kind==PK_Relation) and val \
+            and ((fld_id=='first') or (fld_id=='second')))
+              PandoraModel.del_image_from_cache(val, true)
+            elsif (panobject.kind==PK_Parameter) and (fld_id=='value')
+              par_type = panobject.field_val('type', row)
+              setting = panobject.field_val('setting', row)
+              ps = PandoraUtils.decode_param_setting(setting)
+              view = ps['view']
+              view ||= PandoraUtils.pantype_to_view(par_type)
+            elsif file_way
+              p 'file_way2='+file_way.inspect
+              if (fld_id=='type')
+                val = PandoraUtils.detect_file_type(file_way) if (not val) or (val.size==0)
+              elsif (fld_id=='sha1')
+                if file_way_exist
+                  sha1 = Digest::SHA1.file(file_way)
+                  val = sha1.hexdigest
+                else
+                  val = nil
+                end
+              elsif (fld_id=='md5')
+                if file_way_exist
+                  md5 = Digest::MD5.file(file_way)
+                  val = md5.hexdigest
+                else
+                  val = nil
+                end
+              elsif (fld_id=='size')
+                val = File.size?(file_way)
+              end
+            end
+            #p 'fld, val, type, view='+[fld_id, val, type, view].inspect
+            val = PandoraUtils.view_to_val(val, type, view)
+            if (view=='blob') or (view=='text')
+              if val and (val.size>0)
+                file_way = PandoraUtils.absolute_path(val)
+                file_way_exist = File.exist?(file_way)
+                #p 'file_way1='+file_way.inspect
+                val = '@'+val
+                flds_hash[fld_id] = val
+                field[PandoraUtils::FI_Value] = val
+                #p '----TEXT ENTR!!!!!!!!!!!'
+              else
+                flds_hash[fld_id] = field[PandoraUtils::FI_Value]
+              end
+            else
+              flds_hash[fld_id] = val
+              field[PandoraUtils::FI_Value] = val
+            end
           end
         end
       end
@@ -7212,7 +7217,7 @@ module PandoraGtk
           end
         end
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::JUMP_TO, 'Link') do
+      PandoraGtk.add_tool_btn(toolbar, :link, 'Link') do
         bodywin.insert_tag('link', 'http://priroda.su', 'Priroda.SU')
       end
 
@@ -7306,6 +7311,9 @@ module PandoraGtk
       btn.menu = menu
       add_menu_item(btn, menu, Gtk::Stock::FIND_AND_REPLACE) do
         bodywin.body_child.show_hide_find_panel(true, true)
+      end
+      add_menu_item(btn, menu, Gtk::Stock::JUMP_TO) do
+        bodywin.body_child.show_line_panel
       end
       menu.show_all
 
