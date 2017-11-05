@@ -12677,84 +12677,89 @@ module PandoraGtk
           preset_buf.copy_area(dX, dY, cellX, cellY, draft_buf, 0, 0)
           #draft_buf = Gdk::Pixbuf.new(preset_buf, 0, 0, 21, 24)
 
-          pixs = AsciiString.new(draft_buf.pixels)
-          pix_size = draft_buf.n_channels
-          width = draft_buf.width
-          height = draft_buf.height
-          w = width * pix_size  #buf.rowstride
-          #p '[pixs.bytesize, width, height, w]='+[pixs.bytesize, width, height, w].inspect
+          pixs = draft_buf.pixels
+          if pixs.is_a?(String)
+            pixs = AsciiString.new(draft_buf.pixels)
+            pix_size = draft_buf.n_channels
+            width = draft_buf.width
+            height = draft_buf.height
+            w = width * pix_size  #buf.rowstride
+            #p '[pixs.bytesize, width, height, w]='+[pixs.bytesize, width, height, w].inspect
 
-          bg = pixs[0, pix_size]   #top left pixel consider background
+            bg = pixs[0, pix_size]   #top left pixel consider background
 
-          # Find top border
-          top = 0
-          while (top<height)
-            x = 0
-            while (x<w) and transpix?(pixs[w*top+x, pix_size], bg)
-              x += pix_size
+            # Find top border
+            top = 0
+            while (top<height)
+              x = 0
+              while (x<w) and transpix?(pixs[w*top+x, pix_size], bg)
+                x += pix_size
+              end
+              if x<w
+                break
+              else
+                top += 1
+              end
             end
-            if x<w
-              break
+
+            # Find bottom border
+            bottom = height-1
+            while (bottom>top)
+              x = 0
+              while (x<w) and transpix?(pixs[w*bottom+x, pix_size], bg)
+                x += pix_size
+              end
+              if x<w
+                break
+              else
+                bottom -= 1
+              end
+            end
+
+            # Find left border
+            left = 0
+            while (left<w)
+              y = 0
+              while (y<height) and transpix?(pixs[w*y+left, pix_size], bg)
+                y += 1
+              end
+              if y<height
+                break
+              else
+                left += pix_size
+              end
+            end
+
+            # Find right border
+            right = w - pix_size
+            while (right>left)
+              y = 0
+              while (y<height) and transpix?(pixs[w*y+right, pix_size], bg)
+                y += 1
+              end
+              if y<height
+                break
+              else
+                right -= pix_size
+              end
+            end
+
+            left = left/pix_size
+            right = right/pix_size
+            #p '====[top,bottom,left,right]='+[top,bottom,left,right].inspect
+
+            width2 = right-left+1
+            height2 = bottom-top+1
+            #p '  ---[width2,height2]='+[width2,height2].inspect
+
+            if (width2>0) and (height2>0) \
+            and ((left>0) or (top>0) or (width2<width) or (height2<height))
+              # Crop borders
+              buf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, width2, height2)
+              draft_buf.copy_area(left, top, width2, height2, buf, 0, 0)
             else
-              top += 1
+              buf = draft_buf
             end
-          end
-
-          # Find bottom border
-          bottom = height-1
-          while (bottom>top)
-            x = 0
-            while (x<w) and transpix?(pixs[w*bottom+x, pix_size], bg)
-              x += pix_size
-            end
-            if x<w
-              break
-            else
-              bottom -= 1
-            end
-          end
-
-          # Find left border
-          left = 0
-          while (left<w)
-            y = 0
-            while (y<height) and transpix?(pixs[w*y+left, pix_size], bg)
-              y += 1
-            end
-            if y<height
-              break
-            else
-              left += pix_size
-            end
-          end
-
-          # Find right border
-          right = w - pix_size
-          while (right>left)
-            y = 0
-            while (y<height) and transpix?(pixs[w*y+right, pix_size], bg)
-              y += 1
-            end
-            if y<height
-              break
-            else
-              right -= pix_size
-            end
-          end
-
-          left = left/pix_size
-          right = right/pix_size
-          #p '====[top,bottom,left,right]='+[top,bottom,left,right].inspect
-
-          width2 = right-left+1
-          height2 = bottom-top+1
-          #p '  ---[width2,height2]='+[width2,height2].inspect
-
-          if (width2>0) and (height2>0) \
-          and ((left>0) or (top>0) or (width2<width) or (height2<height))
-            # Crop borders
-            buf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, width2, height2)
-            draft_buf.copy_area(left, top, width2, height2, buf, 0, 0)
           else
             buf = draft_buf
           end

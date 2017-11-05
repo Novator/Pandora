@@ -230,7 +230,7 @@ if not $poly_launch
                     command = nil
                   end
                   if ($window and command and (command != ''))
-                    $window.do_menu_act(command)
+                    PandoraUI.do_menu_act(command)
                   elsif (not psocket.closed?)
                     psocket.close
                     psocket = nil
