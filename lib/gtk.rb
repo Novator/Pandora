@@ -3594,7 +3594,7 @@ module PandoraGtk
       end
 
       aformat ||= 'auto'
-      unless ['markdown', 'bbcode', 'html', 'ruby', 'plain'].include?(aformat)
+      unless ['markdown', 'bbcode', 'html', 'ruby', 'python', 'plain', 'xml', 'ini'].include?(aformat)
         aformat = 'bbcode' #if aformat=='auto' #need autodetect here
       end
       #p 'str='+str
@@ -3618,12 +3618,12 @@ module PandoraGtk
               i = str.size
             end
           end
-        when 'bbcode', 'html'
+        when 'bbcode', 'ini', 'html', 'xml'
           open_coms = Array.new
           @open_coms = open_coms
           open_brek = '['
           close_brek = ']'
-          if aformat=='html'
+          if (aformat=='html') or (aformat=='xml')
             open_brek = '<'
             close_brek = '>'
           end
@@ -4148,7 +4148,7 @@ module PandoraGtk
       ltext = rtext = ''
       aformat ||= format
       case aformat
-        when 'bbcode', 'html'
+        when 'bbcode', 'ini', 'html', 'xml'
           noclose = (tag and (tag[-1]=='/'))
           tag = tag[0..-2] if noclose
           t = ''
@@ -4167,7 +4167,7 @@ module PandoraGtk
           end
           open_brek = '['
           close_brek = ']'
-          if aformat=='html'
+          if (aformat=='html') or (aformat=='xml')
             open_brek = '<'
             close_brek = '>'
           end
@@ -4626,16 +4626,19 @@ module PandoraGtk
                     #img_width, img_height)
                   bodywid = image
                   bodywin.link_name = link_name
-                elsif (['.txt','.rb','.xml','.py','.csv','.sh'].include? ext_dc)
+                #elsif (['.txt','.rb','.xml','.py','.csv','.sh','.ini'].include? ext_dc)
+                else
                   if ext_dc=='.rb'
                     @format = 'ruby'
+                  elsif ext_dc=='.py'
+                    @format = 'python'
                   end
                   p 'Read file: '+link_name
                   File.open(link_name, 'r') do |file|
                     field[PandoraUtils::FI_Value] = file.read
                   end
-                else
-                  ext = nil
+                #else
+                #  ext = nil
                 end
               end
               if not ext
@@ -4768,7 +4771,7 @@ module PandoraGtk
       +' while unless do case when require yield rescue include').split
     RUBY_KEYWORDS2 = 'self nil true false not and or'.split
 
-    ValueTags = [:hexadec, :number, :identifer, :big_constant, :constant, \
+    RubyValueTags = [:hexadec, :number, :identifer, :big_constant, :constant, \
       :classvar, :instvar, :global]
 
     # Call a code block with the text
@@ -4927,7 +4930,7 @@ module PandoraGtk
                 apply_tag(:comment, index + i, index + ss)
                 break
               elsif ((c == "'") or (c == '"') or ((c == '/') \
-              and (not ValueTags.include?(@last_tag))))
+              and (not RubyValueTags.include?(@last_tag))))
                 qc = c
                 i1 = i
                 i += 1
@@ -5033,12 +5036,319 @@ module PandoraGtk
       mode
     end
 
+    # Python key words
+    # Ключевые слова Python
+    PYTHON_KEYWORDS = ('as assert break class continue def del elif else' \
+      +' except exec finally for from global if import in is lambda pass' \
+      +' print raise return try while with yield').split
+    PYTHON_KEYWORDS2 = 'and not or self False None True'.split
+    PYTHON_IDENTS = ('ArithmeticError AssertionError AttributeError' \
+      +' BaseException BufferError BytesWarning DeprecationWarning' \
+      +' EOFError Ellipsis EnvironmentError Exception' \
+      +' FloatingPointError FutureWarning GeneratorExit IOError' \
+      +' ImportError ImportWarning IndentationError IndexError KeyError' \
+      +' KeyboardInterrupt LookupError MemoryError NameError' \
+      +' NotImplemented NotImplementedError OSError OverflowError' \
+      +' PendingDeprecationWarning ReferenceError RuntimeError' \
+      +' RuntimeWarning StandardError StopIteration SyntaxError' \
+      +' SyntaxWarning SystemError SystemExit TabError TypeError' \
+      +' UnboundLocalError UnicodeDecodeError UnicodeEncodeError' \
+      +' UnicodeError UnicodeTranslateError UnicodeWarning UserWarning' \
+      +' ValueError Warning ZeroDivisionError __debug__ __doc__' \
+      +' __import__ __name__ __package__ abs all any apply basestring' \
+      +' bin bool buffer bytearray bytes callable chr classmethod cmp' \
+      +' coerce compile complex copyright credits delattr dict dir' \
+      +' divmod enumerate eval execfile exit file filter float format' \
+      +' frozenset getattr globals hasattr hash help hex id input int' \
+      +' intern isinstance issubclass iter len license list locals long' \
+      +' map max min next object oct open ord pow print property quit' \
+      +' range raw_input reduce reload repr reversed round set setattr' \
+      +' slice sorted staticmethod str sum super tuple type unichr' \
+      +' unicode vars xrange zip').split
+
+    PythonValueTags = [:hexadec, :number, :identifer, :big_constant, :constant, \
+      :classvar, :instvar, :global]
+
+    # Call a code block with the text
+    # RU: Вызвать блок кода по тексту
+    def python_tag_line(str, index, mode)
+
+      def ident_char?(c)
+        ('a'..'z').include?(c) or ('A'..'Z').include?(c) or (c == '_')
+      end
+
+      def capt_char?(c)
+        ('A'..'Z').include?(c) or ('0'..'9').include?(c) or (c == '_')
+      end
+
+      def word_char?(c)
+        ('a'..'z').include?(c) or ('A'..'Z').include?(c) \
+        or ('0'..'9').include?(c) or (c == '_')
+      end
+
+      def oper_char?(c)
+        ".+,-=*:^%()<>&[]!?~{}|/\\".include?(c)
+      end
+
+      def rewind_ident(str, i, ss, pc, prev_kw=nil)
+
+        def check_func(prev_kw, c, i, ss, str)
+          if (prev_kw=='def') and (c.nil? or (c=='.'))
+            if not c.nil?
+              yield(:operator, i, i+1)
+              i += 1
+            end
+            i1 = i
+            i += 1 while (i<ss) and word_char?(str[i])
+            i += 1 if (i<ss) and ('=?!'.include?(str[i]))
+            i2 = i
+            yield(:function, i1, i2)
+          end
+          i
+        end
+
+        kw = nil
+        c = str[i]
+        fc = c
+        i1 = i
+        i += 1
+        big_cons = true
+        while (i<ss)
+          c = str[i]
+          if ('a'..'z').include?(c)
+            big_cons = false if big_cons
+          elsif not capt_char?(c)
+            break
+          end
+          i += 1
+        end
+        #p 'rewind_ident(str, i1, i, ss, pc)='+[str, i1, i, ss, pc].inspect
+        #i -= 1
+        i2 = i
+        if ('A'..'Z').include?(fc)
+          if prev_kw=='class'
+            yield(:class, i1, i2)
+          elsif prev_kw=='module'
+            yield(:module, i1, i2)
+          else
+            s = str[i1, i2-i1]
+            if PYTHON_KEYWORDS2.include?(s)
+              yield(:keyword2, i1, i2)
+            elsif PYTHON_IDENTS.include?(s)
+              yield(:global, i1, i2)
+            elsif big_cons
+              if ['TRUE', 'FALSE'].include?(s)
+                yield(:keyword2, i1, i2)
+              else
+                yield(:big_constant, i1, i2)
+              end
+            else
+              yield(:constant, i1, i2)
+            end
+            i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
+              yield(tag, id1, id2)
+            end
+          end
+        else
+          #if pc==':'
+          #  yield(:symbol, i1-1, i2)
+          if pc=='@'
+            if (i1-2>0) and (str[i1-2]=='@')
+              yield(:classvar, i1-2, i2)
+            else
+              yield(:instvar, i1-1, i2)
+            end
+          elsif pc=='$'
+            yield(:global, i1-1, i2)
+          else
+            can_keyw = (((i1<=0) or " \t\n({}[]=|+&,".include?(str[i1-1])) \
+              and ((i2>=ss) or " \t\n(){}[]=|+&,.:".include?(str[i2])))
+            s = str[i1, i2-i1]
+            if can_keyw and PYTHON_KEYWORDS.include?(s)
+              yield(:keyword, i1, i2)
+              kw = s
+            elsif can_keyw and PYTHON_KEYWORDS2.include?(s)
+              yield(:keyword2, i1, i2)
+              if (s=='self') and (prev_kw=='def')
+                i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
+                  yield(tag, id1, id2)
+                end
+              end
+            elsif PYTHON_IDENTS.include?(s)
+              yield(:global, i1, i2)
+              kw = s
+            else
+              i += 1 if (i<ss) and ('?!'.include?(str[i]))
+              if prev_kw=='def'
+                if (i<ss) and (str[i]=='.')
+                  yield(:identifer, i1, i)
+                  i = check_func(prev_kw, c, i, ss, str) do |tag, id1, id2|
+                    yield(tag, id1, id2)
+                  end
+                else
+                  i = check_func(prev_kw, nil, i1, ss, str) do |tag, id1, id2|
+                    yield(tag, id1, id2)
+                  end
+                end
+              else
+                if ((i<ss) and (str[i]=='('))
+                  yield(:instvar, i1, i)
+                else
+                  yield(:identifer, i1, i)
+                end
+              end
+            end
+          end
+        end
+        [i, kw]
+      end
+
+      def apply_tag(tag, start, last)
+        @last_tag = tag
+        @raw_buffer.apply_tag(tag.to_s, \
+          @raw_buffer.get_iter_at_offset(start), \
+          @raw_buffer.get_iter_at_offset(last))
+      end
+
+      @last_tag = nil
+
+      ss = str.size
+      if ss>0
+        i = 0
+        if (mode == 1)
+          if (str[0,4] == '=end')
+            mode = 0
+            i = 4
+            apply_tag(:comment, index, index + i)
+          else
+            apply_tag(:comment, index, index + ss)
+          end
+        elsif (mode == 0) and (str[0,6] == '=begin')
+          mode = 1
+          apply_tag(:comment, index, index + ss)
+        elsif (mode != 1)
+          i += 1 while (i<ss) and ((str[i] == ' ') or (str[i] == "\t"))
+          pc = ' '
+          kw, kw2 = nil
+          while (i<ss)
+            c = str[i]
+            if (c != ' ') and (c != "\t")
+              if (c == '#')
+                apply_tag(:comment, index + i, index + ss)
+                break
+              elsif ((c == "'") or (c == '"') or ((c == '/') \
+              and (not PythonValueTags.include?(@last_tag))))
+                qc = c
+                i1 = i
+                i += 1
+                if (i<ss)
+                  c = str[i]
+                  if c==qc
+                    i += 1
+                  else
+                    pc = ' '
+                    while (i<ss) and ((c != qc) or (pc == "\\") or (pc == qc))
+                      if (pc=="\\")
+                        pc = ' '
+                      else
+                        pc = c
+                      end
+                      c = str[i]
+                      if (qc=='"') and (c=='{') and (pc=='#')
+                        apply_tag(:string, index + i1, index + i - 1)
+                        apply_tag(:operator, index + i - 1, index + i + 1)
+                        i, kw2 = rewind_ident(str, i, ss, ' ') do |tag, id1, id2|
+                          apply_tag(tag, index + id1, index + id2)
+                        end
+                        i1 = i
+                      end
+                      i += 1
+                    end
+                  end
+                end
+                if (qc == '/')
+                  i += 1 while (i<ss) and ('imxouesn'.include?(str[i]))
+                  apply_tag(:regex, index + i1, index + i)
+                else
+                  apply_tag(:string, index + i1, index + i)
+                end
+              elsif ident_char?(c)
+                i, kw = rewind_ident(str, i, ss, pc, kw) do |tag, id1, id2|
+                  apply_tag(tag, index + id1, index + id2)
+                end
+                pc = ' '
+              elsif (c=='$') and (i+1<ss) and ('~'.include?(str[i+1]))
+                i1 = i
+                i += 2
+                apply_tag(:global, index + i1, index + i)
+                pc = ' '
+              elsif oper_char?(c) #or ((pc==':') and (c==':'))
+                i1 = i
+                #i1 -=1 if (i1>0) and (c==':')
+                i += 1
+                if (i<ss) and not((c=='(') and (str[i]=='/'))
+                  while (i<ss) and (oper_char?(str[i]) or ((pc==':') and (str[i]==':')))
+                    i += 1
+                  end
+                end
+                if i<ss
+                  pc = ' '
+                  c = str[i]
+                end
+                apply_tag(:operator, index + i1, index + i)
+              elsif ((c==':') or (c=='$')) and (i+1<ss) and (ident_char?(str[i+1]))
+                i += 1
+                pc = c
+                i, kw2 = rewind_ident(str, i, ss, pc) do |tag, id1, id2|
+                  apply_tag(tag, index + id1, index + id2)
+                end
+                pc = ' '
+              elsif ('0'..'9').include?(c)
+                i1 = i
+                i += 1
+                if (i<ss) and ((str[i]=='x') or (str[i]=='X'))
+                  i += 1
+                  while (i<ss)
+                    c = str[i]
+                    break unless (('0'..'9').include?(c) or ('A'..'F').include?(c))
+                    i += 1
+                  end
+                  apply_tag(:hexadec, index + i1, index + i)
+                else
+                  while (i<ss)
+                    c = str[i]
+                    break unless (('0'..'9').include?(c) \
+                      or ((c=='.') and (str[i-1] != '.')) or (c=='e'))
+                    i += 1
+                  end
+                  if i<ss
+                    i -= 1 if str[i-1]=='.'
+                    pc = ' '
+                  end
+                  apply_tag(:number, index + i1, index + i)
+                end
+              else
+                #yield(:keyword, index + i, index + ss/2)
+                #break
+                pc = c
+                i += 1
+              end
+            else
+              pc = c
+              i += 1
+            end
+          end
+        end
+      end
+      mode
+    end
+
     # Call a code block with the text
     # RU: Вызвать блок кода по тексту
     def bbcode_html_tag_line(str, index=0, mode=0, format='bbcode')
       open_brek = '['
       close_brek = ']'
-      if format=='html'
+      if (format=='html') or (format=='xml')
         open_brek = '<'
         close_brek = '>'
       end
@@ -5133,7 +5443,9 @@ module PandoraGtk
             case @format
               when 'ruby'
                 mode = ruby_tag_line(text, offset1, mode)
-              when 'bbcode', 'html'
+              when 'python'
+                mode = python_tag_line(text, offset1, mode)
+              when 'bbcode', 'ini', 'html', 'xml'
                 mode = bbcode_html_tag_line(text, offset1, mode, @format) do |tag, start, last|
                   buf.apply_tag(tag.to_s,
                     buf.get_iter_at_offset(start),
@@ -5157,7 +5469,7 @@ module PandoraGtk
         tv.hide
         text_changed = false
         @format ||= 'auto'
-        unless ['markdown', 'bbcode', 'html', 'ruby', 'plain'].include?(@format)
+        unless ['markdown', 'bbcode', 'html', 'xml', 'ini', 'ruby', 'python', 'plain'].include?(@format)
           @format = 'bbcode' #if aformat=='auto' #need autodetect here
         end
         @tv_def_style ||= tv.modifier_style
@@ -7097,7 +7409,7 @@ module PandoraGtk
       menu = Gtk::Menu.new
       btn.menu = menu
       ['auto', 'plain', 'markdown', 'bbcode', 'wiki', 'html', 'ruby', \
-      'python', 'xml'].each do |title|
+      'python', 'xml', 'ini'].each do |title|
         add_menu_item(btn, menu, title) do |mi|
           btn.label = mi.label
           bodywin.format = mi.label.to_s

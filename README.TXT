@@ -11,8 +11,7 @@ Contents
 6) preparation of Macosx
 7) manual installation or update
 8) console user interface
-9) join as developer
-10) getting help
+9) getting help
 
 
 1. OVERVIEW
@@ -147,59 +146,7 @@ It is recommended to setup all preferences in GUI mode on desktop
 computer, then move ./base/pandora.sqlite to remote computer.
 
 
-9. JOIN AS DEVELOPER
-
-9.1. See current technical tasks at file:
-
-  https://github.com/Novator/Pandora/blob/master/doc/todo.ru.txt
-
-9.2. Registrate on GitHub:
-
-  https://github.com/
-
-For example, your login is "YourNick".
-
-9.3. Push "Fork" button on top of Pandora github page:
-
-  https://github.com/Novator/Pandora/fork
-
-9.4. Install git in Ubuntu:
-
-  sudo apt-get -y install git
-
-in Windows download and install:
-
-  https://git-for-windows.github.io/
-
-9.5. Download Pandora to your hard disk via git command:
-
-  git clone --depth=1 https://github.com/Novator/Pandora.git
-
-Warning: change "Novator" to your github login!
-
-9.6. Correct a code with any text editor, for example Geany:
-
-  http://www.geany.org/Download/Releases
-
-9.7. Update your github repository:
-
-  git commit -a -m "your comment" && git push
-
-(see more useful git commands in the file "git.sh")
-
-9.8. Push "Pull Request" at your Pandora github page:
-
-  https://github.com/YourNick/Pandora/pull/new/master
-
-If your contribution will be rated as useful it will be added to next release.
-When you show yourself like active developer you will be added as collaborator.
-
-
-10. GETTING HELP
-
-Help to Pandora project like a programmer, translator, journalist or donator:
-
-  http://robux.biz/pandora.html
+9. GETTING HELP
 
 Communicate together in facebook or vkontakte:
 

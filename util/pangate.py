@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+#
 # The Pandora Gate collects connections for owner of gate
 # RU: Шлюз Пандоры собирает соединения для владельца шлюза
 #
