@@ -136,8 +136,10 @@ def logmes(mes, show=True, addr=None):
     mes = str(mes)
     if show: print('Log'+time_str[-11:]+': '+mes)
     if logfile:
-      addr = ''
-      if addr: addr = ' '+str(addr)
+      if addr:
+        addr = ' '+str(addr)
+      else:
+        addr = ''
       logline = time_str+': '+mes+addr+'\n'
       curlogsize += len(logline)
       if curlogsize >= max_size:

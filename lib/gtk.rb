@@ -2029,7 +2029,7 @@ module PandoraGtk
             fn = dialog.preview_filename
             ext = nil
             ext = File.extname(fn) if fn
-            if ext and (['.jpg','.gif','.png'].include? ext.downcase)
+            if ext and (['.jpg','.jpeg','.gif','.png', '.ico'].include? ext.downcase)
               begin
                 pixbuf = Gdk::Pixbuf.new(fn, 128, 128)
                 image.pixbuf = pixbuf
@@ -2085,11 +2085,12 @@ module PandoraGtk
       dialog = GoodFileChooserDialog.new(fn, true, nil, @window)
 
       filter = Gtk::FileFilter.new
-      filter.name = _('Pictures')+' (*.png,*.jpg,*.gif)'
+      filter.name = _('Pictures')+' (*.png,*.jpg,*.gif,*.ico)'
       filter.add_pattern('*.png')
       filter.add_pattern('*.jpg')
       filter.add_pattern('*.jpeg')
       filter.add_pattern('*.gif')
+      filter.add_pattern('*.ico')
       dialog.add_filter(filter)
 
       filter = Gtk::FileFilter.new
@@ -3594,7 +3595,7 @@ module PandoraGtk
       end
 
       aformat ||= 'auto'
-      unless ['markdown', 'bbcode', 'html', 'ruby', 'python', 'plain', 'xml', 'ini'].include?(aformat)
+      if not ['markdown', 'bbcode', 'html', 'ruby', 'python', 'plain', 'xml', 'ini'].include?(aformat)
         aformat = 'bbcode' #if aformat=='auto' #need autodetect here
       end
       #p 'str='+str
@@ -3618,12 +3619,12 @@ module PandoraGtk
               i = str.size
             end
           end
-        when 'bbcode', 'ini', 'html', 'xml'
+        when 'bbcode', 'html'
           open_coms = Array.new
           @open_coms = open_coms
           open_brek = '['
           close_brek = ']'
-          if (aformat=='html') or (aformat=='xml')
+          if (aformat=='html')
             open_brek = '<'
             close_brek = '>'
           end
@@ -4148,7 +4149,7 @@ module PandoraGtk
       ltext = rtext = ''
       aformat ||= format
       case aformat
-        when 'bbcode', 'ini', 'html', 'xml'
+        when 'bbcode', 'html'
           noclose = (tag and (tag[-1]=='/'))
           tag = tag[0..-2] if noclose
           t = ''
@@ -4167,7 +4168,7 @@ module PandoraGtk
           end
           open_brek = '['
           close_brek = ']'
-          if (aformat=='html') or (aformat=='xml')
+          if (aformat=='html')
             open_brek = '<'
             close_brek = '>'
           end
@@ -4616,29 +4617,40 @@ module PandoraGtk
               ext = File.extname(link_name)
               ext_dc = ext.downcase
               if ext
-                if (['.jpg','.gif','.png'].include? ext_dc)
-                  scale = nil
-                  #!!!img_width  = bodywin.parent.allocation.width-14
-                  #!!!img_height = bodywin.parent.allocation.height
-                  img_width  = bodywin.allocation.width-14
-                  img_height = bodywin.allocation.height
-                  image = PandoraGtk.start_image_loading(link_name, nil, scale)
-                    #img_width, img_height)
-                  bodywid = image
-                  bodywin.link_name = link_name
-                #elsif (['.txt','.rb','.xml','.py','.csv','.sh','.ini'].include? ext_dc)
-                else
-                  if ext_dc=='.rb'
+                case ext_dc
+                  when '.jpg','.jpeg','.gif','.png', '.ico'
+                    scale = nil
+                    #!!!img_width  = bodywin.parent.allocation.width-14
+                    #!!!img_height = bodywin.parent.allocation.height
+                    img_width  = bodywin.allocation.width-14
+                    img_height = bodywin.allocation.height
+                    image = PandoraGtk.start_image_loading(link_name, nil, scale)
+                      #img_width, img_height)
+                    bodywid = image
+                    bodywin.link_name = link_name
+                  when'.rb'
                     @format = 'ruby'
-                  elsif ext_dc=='.py'
+                  when '.py'
                     @format = 'python'
-                  end
-                  p 'Read file: '+link_name
-                  File.open(link_name, 'r') do |file|
-                    field[PandoraUtils::FI_Value] = file.read
-                  end
-                #else
-                #  ext = nil
+                  when '.xml'
+                    @format = 'xml'
+                  when '.htm', '.html'
+                    @format = 'html'
+                  when '.bbcode'
+                    @format = 'bbcode'
+                  when '.wiki'
+                    @format = 'wiki'
+                  when '.ini'
+                    @format = 'ini'
+                  when '.md', '.markdown'
+                    @format = 'markdown'
+                  #when '.csv','.sh'
+                  else
+                    @format = 'plain'
+                end
+                p '--fill_body1  Read file: ['+link_name+']  format='+@format
+                File.open(link_name, 'r') do |file|
+                  field[PandoraUtils::FI_Value] = file.read
                 end
               end
               if not ext
@@ -4666,7 +4678,13 @@ module PandoraGtk
               bodywin.add_with_viewport(bodywid)
             end
             fmt = get_fld_value_by_id('type')
-            bodywin.format = fmt.downcase if fmt.is_a? String
+            if fmt.is_a?(String) and (fmt.size>0)
+              fmt = fmt.downcase
+              if (not @format.is_a?(String)) or (@format.size==0) or (fmt != 'auto')
+                @format = fmt
+              end
+              p '--fill_body2  format='+@format
+            end
           end
           bodywin.body_child = bodywid
           if bodywid.is_a? Gtk::TextView
@@ -4690,7 +4708,7 @@ module PandoraGtk
       @@page_setup ||= nil
       super(*args)
       @property_box = aproperty_box
-      @format = nil
+      @format = 'auto'
       @view_mode = true
       @color_mode = true
       @fields = afields
@@ -5362,7 +5380,8 @@ module PandoraGtk
           k = ss
           if i
             k = i
-            yield(:operator, index + d + i , index + d + i + 1)
+            k -= 1 if (k>0) and (str[k-1] == '/')
+            yield(:operator, index + d + k, index + d + i + 1)
             i += 1
             mode = 0
           else
@@ -5372,12 +5391,12 @@ module PandoraGtk
             com = str[0, k]
             j = 0
             cs = com.size
-            j +=1 while (j<cs) and (not ' ='.index(com[j]))
+            j +=1 while ((j<cs) and (com[j] != ' ') and (com[j] != '='))
             comu = nil
             params = nil
             if (j<cs)
-              params = com[j+1..-1].strip
               comu = com[0, j]
+              params = com[j+1..-1].strip
             else
               comu = com
             end
@@ -5394,19 +5413,35 @@ module PandoraGtk
           end
         else
           # find open brek
-          i = str.index(open_brek)
-          #p 'open brek  [str,i,d]='+[str,i,d].inspect
-          if i
-            yield(:operator, index + d + i , index + d + i + 1)
-            i += 1
-            mode = 1
-            if (i<ss) and (str[i]=='/')
-              yield(:operator, index + d + i, index + d + i+1)
-              i += 1
-              mode = 2
-            end
-          else
+          if (format=='ini') and (str[0]==';')
             i = ss
+            yield(:comment, index + d, index + d + i)
+          else
+            i = str.index(open_brek)
+            #p 'open brek  [str,i,d]='+[str,i,d].inspect
+            if i
+              k = i
+              i += 1
+              mode = 1
+              if (i<ss) and (str[i]=='/')
+                i += 1
+                mode = 2
+              end
+              yield(:operator, index + d + k, index + d + i)
+            else
+              if format=='ini'
+                k = str.index('=')
+                j = str.index(';')
+                if k and ((not j) or (k<j))
+                  yield(:global, index + d, index + d + k)
+                  yield(:operator, index + d + k, index + d + k + 1)
+                end
+                if j
+                  yield(:comment, index + d + j, index + d + ss)
+                end
+              end
+              i = ss
+            end
           end
         end
         d += i
@@ -5468,10 +5503,11 @@ module PandoraGtk
       if tv and (tv.is_a? Gtk::TextView)
         tv.hide
         text_changed = false
+        p '----set_buffers1  @format='+@format.inspect
         @format ||= 'auto'
-        unless ['markdown', 'bbcode', 'html', 'xml', 'ini', 'ruby', 'python', 'plain'].include?(@format)
-          @format = 'bbcode' #if aformat=='auto' #need autodetect here
-        end
+        #if not ['markdown', 'bbcode', 'html', 'xml', 'ini', 'ruby', 'python', 'plain'].include?(@format)
+          #@format = 'bbcode' #if aformat=='auto' #need autodetect here
+        #end
         @tv_def_style ||= tv.modifier_style
         if view_mode
           tv.modify_style(@tv_def_style)
@@ -5525,7 +5561,8 @@ module PandoraGtk
           set_tags(raw_buffer, 0, raw_buffer.line_count)
         end
         fmt_btn = property_box.format_btn
-        fmt_btn.label = format if (fmt_btn and (fmt_btn.label != format))
+        p '----set_buffers2  [@format, fmt_btn]='+[@format, fmt_btn].inspect
+        fmt_btn.label = @format if (fmt_btn and (fmt_btn.label != @format))
         tv.show
         tv.grab_focus
         tv.find_panel.find_text(true) if (tv.find_panel and tv.find_panel.visible?)
@@ -7864,8 +7901,8 @@ module PandoraGtk
                   first_body_fld[PandoraUtils::FI_Widget2] = nil
                 end
                 if bodywin
-                  bodywin.fill_body
                   container.add(bodywin)
+                  bodywin.fill_body
                   bodywin.edit_btn.safe_set_active((not bodywin.view_mode)) if bodywin.edit_btn
                 end
               end

@@ -853,7 +853,7 @@ module PandoraModel
                     fn = blob[1..-1]
                     ext = nil
                     ext = File.extname(fn) if fn
-                    unless ext and (['.jpg','.gif','.png'].include? ext.downcase)
+                    if not (ext and (['.jpg','.jpeg','.gif','.png','.ico'].include?(ext.downcase)))
                       fn = nil
                     end
                   else
