@@ -389,6 +389,7 @@
     <time_history desc="Time history" type="String" section="view" />
     <delete_mode desc="Delete mode (0-ask,1-silent)" type="Integer" section="view" setting="0" />
     <tab_size desc="Tab symbol size in spaces for editor" type="Integer" section="view" setting="4" />
+    <max_color_lines desc="Maximum color lines for editor" type="Integer" section="view" setting="700" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
     <check_interval desc="Сheck interval (hour)" type="Integer" section="update" setting="1" />

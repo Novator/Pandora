@@ -3594,7 +3594,7 @@ module PandoraGtk
         child.destroy if child and (not child.destroyed?)
       end
 
-      aformat ||= 'auto'
+      aformat ||= 'bbcode'
       if not ['markdown', 'bbcode', 'html', 'ruby', 'python', 'plain', 'xml', 'ini'].include?(aformat)
         aformat = 'bbcode' #if aformat=='auto' #need autodetect here
       end
@@ -4598,6 +4598,10 @@ module PandoraGtk
       res
     end
 
+    def format_must_be_editable(aformat)
+      res = ['ruby', 'python', 'xml', 'ini'].include?(aformat)
+    end
+
     def fill_body
       if field
         link_name = field[PandoraUtils::FI_Widget].text
@@ -4691,8 +4695,16 @@ module PandoraGtk
             bodywin.init_view_buf(bodywin.body_child.buffer)
             atext = field[PandoraUtils::FI_Value].to_s
             bodywin.init_raw_buf(atext)
-            if atext and (atext.size==0)
+            if ((atext and (atext.size==0)) or format_must_be_editable(@format))
               bodywin.view_mode = false
+            end
+            @@max_color_lines ||= nil
+            if not @@max_color_lines
+              @@max_color_lines = PandoraUtils.get_param('max_color_lines')
+              @@max_color_lines ||= 700
+            end
+            if raw_buffer and (raw_buffer.line_count>@@max_color_lines)
+              bodywin.color_mode = false
             end
             bodywin.set_buffers
             #toolbar.show
@@ -4708,7 +4720,7 @@ module PandoraGtk
       @@page_setup ||= nil
       super(*args)
       @property_box = aproperty_box
-      @format = 'auto'
+      @format = 'bbcode'
       @view_mode = true
       @color_mode = true
       @fields = afields
@@ -5504,7 +5516,7 @@ module PandoraGtk
         tv.hide
         text_changed = false
         p '----set_buffers1  @format='+@format.inspect
-        @format ||= 'auto'
+        @format ||= 'bbcode'
         #if not ['markdown', 'bbcode', 'html', 'xml', 'ini', 'ruby', 'python', 'plain'].include?(@format)
           #@format = 'bbcode' #if aformat=='auto' #need autodetect here
         #end
@@ -5574,8 +5586,11 @@ module PandoraGtk
     def insert_tag(tag, params=nil, defval=nil)
       tv = body_child
       if tag and (tv.is_a? Gtk::TextView)
-        edit_btn.active = true if edit_btn if view_mode
-        tv.set_tag(tag, params, defval, format)
+        if (edit_btn and view_mode)
+          edit_btn.active = true
+        else
+          tv.set_tag(tag, params, defval, format)
+        end
       end
     end
 
@@ -7435,13 +7450,17 @@ module PandoraGtk
         end
       end
 
-      btn = add_btn_to_toolbar(Gtk::Stock::EDIT, 'Edit', false) do |btn|
+      view_mod = true
+      view_mod = false if bodywin and bodywin.view_mode.is_a?(FalseClass)
+      btn = add_btn_to_toolbar(Gtk::Stock::EDIT, 'Edit', (not view_mod)) do |btn|
         bodywin.view_mode = (not btn.active?)
         bodywin.set_buffers
       end
       bodywin.edit_btn = btn if bodywin
 
-      btn = add_btn_to_toolbar(nil, 'auto', 0)
+      format0 = 'bbcode'
+      format0 = bodywin.format if bodywin
+      btn = add_btn_to_toolbar(nil, format0, 0)
       pb.format_btn = btn
       menu = Gtk::Menu.new
       btn.menu = menu
@@ -7701,7 +7720,9 @@ module PandoraGtk
       end
       menu.show_all
 
-      PandoraGtk.add_tool_btn(toolbar, :tags, 'Color tags', true) do |btn|
+      col_mod = true
+      col_mod = false if (bodywin and bodywin.color_mode.is_a?(FalseClass))
+      @color_mode_btn = PandoraGtk.add_tool_btn(toolbar, :tags, 'Color tags', col_mod) do |btn|
         bodywin.color_mode = btn.active?
         bodywin.set_buffers
       end
@@ -7890,7 +7911,6 @@ module PandoraGtk
             #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
             #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
             @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit, nil, @tree_view)
-            fill_edit_toolbar
             if property_box.text_fields.size>0
               #p property_box.text_fields
               first_body_fld = property_box.text_fields[0]
@@ -7903,7 +7923,10 @@ module PandoraGtk
                 if bodywin
                   container.add(bodywin)
                   bodywin.fill_body
-                  bodywin.edit_btn.safe_set_active((not bodywin.view_mode)) if bodywin.edit_btn
+                  fill_edit_toolbar
+                  #if bodywin.edit_btn
+                  #  bodywin.edit_btn.safe_set_active((not bodywin.view_mode))
+                  #end
                 end
               end
             end
@@ -10957,12 +10980,23 @@ module PandoraGtk
         end
 
         if panobject or panhash0
-          page = PandoraUI::CPI_Property
-          page = PandoraUI::CPI_Profile if (action=='Profile')
-          page = PandoraUI::CPI_Chat if (action=='Chat')
-          page = PandoraUI::CPI_Dialog if (action=='Dialog')
-          page = PandoraUI::CPI_Opinions if (action=='Opinion')
           panhash0 ||= panobject
+          page = PandoraUI::CPI_Property
+          akind = PandoraModel.detect_panobject_kind(panhash0)
+          if (akind==PandoraModel::PK_Blob) and (action=='Edit')
+            page = PandoraUI::CPI_Editor
+          else
+            case action
+              when 'Profile'
+                page = PandoraUI::CPI_Profile
+              when 'Chat'
+                page = PandoraUI::CPI_Chat
+              when 'Dialog'
+                page = PandoraUI::CPI_Dialog
+              when 'Opinion'
+                page = PandoraUI::CPI_Opinions
+            end
+          end
           show_cabinet(panhash0, nil, nil, nil, nil, page, formfields, id, edit, tree_view)
         else
           dialog = FieldsDialog.new(panobject, tree_view, formfields, panhash0, id, \

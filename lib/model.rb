@@ -346,6 +346,18 @@ module PandoraModel
     trust
   end
 
+  # Detect Panobject kind by pointer or panhash
+  # RU: Определить тип Панобъекта по указателю или панхэшу
+  def self.detect_panobject_kind(pointer_or_panhash)
+    res = nil
+    if pointer_or_panhash.is_a?(String)
+      res = PandoraUtils.kind_from_panhash(pointer_or_panhash)
+    elsif pointer_or_panhash.is_a?(PandoraModel::Panobject)
+      res = pointer_or_panhash.kind
+    end
+    res
+  end
+
   # Float trust (-1..+1) to public level 21 (0..20)
   # RU: Дробное доверие в уровень публикации 21
   def self.trust2_to_pub21(trust)
