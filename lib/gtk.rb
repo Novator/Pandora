@@ -2515,6 +2515,15 @@ module PandoraGtk
     res
   end
 
+  def self.glib_object_set_properties(obj, properties)
+    if properties.is_a?(Hash)
+      properties.each do |n, v|
+        #obj.instance_variable_set(n, v)
+        obj.set_property(n, v)
+      end
+    end
+  end
+
   class LinkTag < Gtk::TextTag
     attr_accessor :link
   end
@@ -3263,8 +3272,8 @@ module PandoraGtk
       buf.create_tag('mono', 'family' => 'monospace', 'background' => '#EFEFEF')
       buf.create_tag('sup', 'rise' => 7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
       buf.create_tag('sub', 'rise' => -7 * Pango::SCALE, 'size' => 9 * Pango::SCALE)
-      buf.create_tag('small', 'scale' => Pango::AttrScale::XX_SMALL)
-      buf.create_tag('large', 'scale' => Pango::AttrScale::X_LARGE)
+      buf.create_tag('small', 'scale' => Pango::AttrScale::SMALL)
+      buf.create_tag('large', 'scale' => Pango::AttrScale::LARGE)
       buf.create_tag('quote', 'left_margin' => 20, 'background' => '#EFEFEF', \
         'style' => Pango::FontDescription::STYLE_ITALIC)
 
@@ -3488,8 +3497,7 @@ module PandoraGtk
       'IMG', 'IMAGE', 'SMILE', 'EMOT', 'VIDEO', 'AUDIO', 'FILE', 'SUB', 'SUP', \
       'ABBR', 'ACRONYM', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', \
       'LEFT', 'CENTER', 'RIGHT', 'FILL', 'IMAGES', 'SLIDE', 'SLIDESHOW', \
-      'TABLE', 'TR', 'TD', 'TH', \
-      'SMALL', 'LITTLE', 'X-SMALL', 'XX-SMALL', 'LARGE', 'BIG', 'X-LARGE', 'XX-LARGE']
+      'TABLE', 'TR', 'TD', 'TH', 'SMALL', 'LITTLE', 'LARGE', 'BIG']
 
     # Insert taget string to buffer
     # RU: Вставить тегированный текст в буфер
@@ -3591,9 +3599,34 @@ module PandoraGtk
         str
       end
 
-      def generate_tag(param_hash, comu=nil, tag_name=nil)
+      def read_justify_param(param_hash, js=nil)
+        js ||= param_hash['js']
+        js ||= param_hash['justify']
+        js ||= param_hash['justification']
+        js ||= param_hash['align']
+        js
+      end
+
+      def str_justify_to_val(js)
+        js_val = nil
+        if js.is_a?(String) and (js.size>0)
+          js = js[0, 1].upcase
+          if js=='L'  #LEFT
+            js_val = Gtk::JUSTIFY_LEFT
+          elsif js=='R'  #RIGHT
+            js_val = Gtk::JUSTIFY_RIGHT
+          elsif (js=='C') or (js=='M')  #CENTER or MIDDLE
+            js_val = Gtk::JUSTIFY_CENTER
+          elsif js=='F'  #FULL
+            js_val = Gtk::JUSTIFY_FILL
+          end
+        end
+        js_val
+      end
+
+      def generate_tag(param_hash, comu=nil, tag_name=nil, tag_params=nil)
         tag_name ||= ''
-        tag_params = {}
+        tag_params ||= {}
 
         fg = nil #blue, #1122FF
         bg = nil #yellow
@@ -3603,6 +3636,7 @@ module PandoraGtk
         wt = nil #bold
         st = nil #italic...
         und = nil  #single, double
+        strike = nil
 
         if (not comu.nil?)
           case comu
@@ -3615,12 +3649,14 @@ module PandoraGtk
             when 'I', 'EM'
               st = Pango::FontDescription::STYLE_ITALIC
             when 'S', 'STRIKE'
-              tag_name << '_st'
-              tag_params['strikethrough'] = true
+              strike = true
             when 'U'
               und = Pango::AttrUnderline::SINGLE
             when 'D'
               und = Pango::AttrUnderline::DOUBLE
+            when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', 'SPAN'
+              tag_params['family'] = 'monospace'
+              tag_params['background'] = '#EFEFEF'
             else
               sz = param_hash['tag']
             #end-case-when
@@ -3637,20 +3673,20 @@ module PandoraGtk
         bg ||= param_hash['bg']
         bg ||= param_hash['back']
         bg ||= param_hash['background']
-        js ||= param_hash['js']
-        js ||= param_hash['justify']
-        js ||= param_hash['justification']
-        js ||= param_hash['align']
+        js = read_justify_param(param_hash, js)
         fam ||= param_hash['fam']
         fam ||= param_hash['family']
         fam ||= param_hash['font']
         fam ||= param_hash['name']
         wt ||= param_hash['wt']
         wt ||= param_hash['weight']
+        wt ||= param_hash['width']
         wt ||= param_hash['bold']
         st ||= param_hash['st']
         st ||= param_hash['style']
         st ||= param_hash['italic']
+        strike ||= param_hash['strike']
+        strike ||= param_hash['deleted']
         und ||= param_hash['underline']
 
         fg = correct_color(fg)
@@ -3683,26 +3719,18 @@ module PandoraGtk
           tag_name << '_st'+st.to_s
           tag_params['style'] = st.to_i
         end
+        if strike
+          tag_name << '_st'
+          tag_params['strikethrough'] = true
+        end
         if und
           tag_name << '_'+und.to_s
           tag_params['underline'] = und.to_i
         end
-        if js.is_a?(String) and (js.size>0)
-          js = js[0, 1].upcase
-          jsv = nil
-          if js=='L'  #LEFT
-            jsv = Gtk::JUSTIFY_LEFT
-          elsif js=='R'  #RIGHT
-            jsv = Gtk::JUSTIFY_RIGHT
-          elsif (js=='C') or (js=='M')  #CENTER or MIDDLE
-            jsv = Gtk::JUSTIFY_CENTER
-          elsif js=='F'  #FULL
-            jsv = Gtk::JUSTIFY_FILL
-          end
-          if jsv
-            tag_name << '_js'+js
-            tag_params['justification'] = jsv
-          end
+        js_val = str_justify_to_val(js)
+        if js and js_val
+          tag_name << '_js'+js
+          tag_params['justification'] = js_val
         end
         [tag_name, tag_params]
       end
@@ -3786,12 +3814,14 @@ module PandoraGtk
                   end
                   comu = comu.strip.upcase if comu
                   p '===closetag  [comu,params]='+[comu,params].inspect
+                  p '---open_coms='+open_coms.inspect
                   p1 = dest_buf.end_iter.offset
                   p2 = p1
                   if ((strict_close_tag.nil? and BBCODES.include?(comu)) \
                   or ((not strict_close_tag.nil?) and (comu==strict_close_tag)))
                     strict_close_tag = nil
                     k = open_coms.index{ |ocf| ocf[0]==comu }
+                    #p '--111---k='+k.inspect
                     if k or (not close)
                       if k
                         rec = open_coms[k]
@@ -3801,19 +3831,10 @@ module PandoraGtk
                       else
                         k = 0
                       end
+                      #p '--222---comu,params='+[comu,params].inspect
                       #p '[comu, dest_buf.text]='+[comu, dest_buf.text].inspect
-                      p p1 -= k
+                      p1 -= k
                       case comu
-                        when 'B', 'STRONG'
-                          tv_tag = 'bold'
-                        when 'I', 'EM'
-                          tv_tag = 'italic'
-                        when 'S', 'STRIKE'
-                          tv_tag = 'strike'
-                        when 'U'
-                          tv_tag = 'undline'
-                        when 'D'
-                          tv_tag = 'dundline'
                         when 'BR', 'P'
                           dest_buf.insert(dest_buf.end_iter, "\n")
                           shift_coms(1)
@@ -3848,7 +3869,7 @@ module PandoraGtk
                                 #link_tag.underline = Pango::AttrUnderline::SINGLE
                                 link_tag.link = link_url
                                 if tag_params.size>0
-                                  link_tag.apply_attrs(tag_params)
+                                  PandoraGtk.glib_object_set_properties(link_tag, tag_params)
                                 end
                                 tv_tag = link_id
                               end
@@ -3883,20 +3904,117 @@ module PandoraGtk
                           add_child_at_anchor(expander, anchor)
                           shift_coms(1)
                           expander.show_all
-                        when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE'
-                          tv_tag = 'mono'
                         when 'IMG', 'IMAGE', 'SMILE', 'EMOT'
-                          params = str[0, i1] unless params and (params.size>0)
-                          p 'IMG params='+params.inspect
-                          params = get_tag_param(params) if params and (params.size>0)
+                          img_text = str[0, i1]
+                          img_url = nil
+                          js_val = nil
+                          tag_params = nil
                           if params and (params.size>0)
-                            img_buf = $window.get_icon_buf(params)
+                            param_hash = detect_params(params)
+                            img_url = param_hash['tag']
+                            img_url ||= param_hash['href']
+                            img_url ||= param_hash['url']
+                            img_url ||= param_hash['src']
+                            img_url ||= param_hash['link']
+                            js = read_justify_param(param_hash)
+                            tv_tag = js.downcase if js
+                          end
+                          img_url = img_text if not (img_url and (img_url.size>0))
+                          if img_url and (img_url.size>0)
+                            img_buf = $window.get_icon_buf(img_url)
                             if img_buf
                               show_text = false
-                              dest_buf.insert(dest_buf.end_iter, img_buf)
+                              dest_buf.insert(dest_buf.end_iter, img_buf, tv_tag)
                               shift_coms(1)
                             end
                           end
+                        when 'B', 'STRONG', 'I', 'EM', 'S', 'U', 'D', 'CODE', \
+                        'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', 'SPAN', 'DIV', \
+                        'FONT', 'STYLE', 'SIZE', \
+                        'FG', 'FORE', 'FOREGROUND', 'COLOR', 'COLOUR', \
+                        'BG', 'BACK', 'BACKGROUND', \
+                        'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LEFT', 'CENTER', \
+                        'RIGHT', 'FILL', 'SUB', 'SUP', 'RED', 'GREEN', 'BLUE', \
+                        'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', 'LIME', 'AQUA', \
+                        'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER', \
+                        'SMALL', 'LITTLE', 'LARGE', 'BIG'
+                          #p '--FONT-TAGS START!!! [comu, params]='+[comu, params].inspect
+                          if (params.nil? or (params.size==0))
+                            case comu
+                              when 'B', 'STRONG'
+                                tv_tag = 'bold'
+                              when 'I', 'EM'
+                                tv_tag = 'italic'
+                              when 'S', 'STRIKE'
+                                tv_tag = 'strike'
+                              when 'U'
+                                tv_tag = 'undline'
+                              when 'D'
+                                tv_tag = 'dundline'
+                              when 'SMALL', 'LITTLE'
+                                tv_tag = 'small'
+                              when 'LARGE', 'BIG'
+                                tv_tag = 'large'
+                              when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', 'SPAN'
+                                tv_tag = 'mono'
+                              when 'DIV'
+                                tv_tag = nil
+                              else
+                                comu = 'CYAN' if comu=='AQUA'
+                                tv_tag = comu.downcase
+                            end
+                          else
+                            param_hash = detect_params(params)
+                            tag_name, tag_params = generate_tag(param_hash, comu, 'text')
+                            p '--FONT-TAGS [tag_name, tag_params]='+[tag_name, tag_params].inspect
+                            case comu
+                              when 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LEFT', 'CENTER', \
+                              'RIGHT', 'FILL', 'SUB', 'SUP', 'RED', 'GREEN', 'BLUE', \
+                              'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', 'LIME', 'AQUA', \
+                              'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER', \
+                              'SMALL', 'LITTLE', 'LARGE', 'BIG'
+                                comu = 'CYAN' if comu=='AQUA'
+                                tv_tag = comu.downcase
+                                text_tag = dest_buf.tag_table.lookup(tv_tag)
+                                if text_tag
+                                  if tag_params.size>0
+                                    cur_name = tv_tag+'_'+tag_name
+                                    text_tag2 = dest_buf.tag_table.lookup(cur_name)
+                                    if text_tag2
+                                      tv_tag = cur_name
+                                    else
+                                      PandoraGtk.glib_object_set_properties(text_tag, tag_params)
+                                      if dest_buf.create_tag(cur_name, tag_params)
+                                        text_tag2 = dest_buf.tag_table.lookup(cur_name)
+                                        if text_tag2
+                                          p prev_props = text_tag.class.properties(false)
+                                          prev_props.each do |prop|
+                                            if prop != 'name'
+                                              text_tag2.set_property(prop, text_tag.get_property(prop))
+                                            end
+                                          end
+                                          tv_tag = cur_name
+                                        end
+                                      end
+                                    end
+                                  end
+                                else
+                                  tv_tag = nil
+                                end
+                              else
+                                p '===FONT  tag_params='+tag_params.inspect
+                                text_tag = dest_buf.tag_table.lookup(tag_name)
+                                if text_tag
+                                  tv_tag = text_tag.name
+                                elsif tag_params.size > 0
+                                  if dest_buf.create_tag(tag_name, tag_params)
+                                    tv_tag = tag_name
+                                  end
+                                end
+                            end
+                          end
+                        when 'TABLE', 'TR', 'TD', 'TH'
+                          tv_tag = 'mono'
                         when 'IMAGES', 'SLIDE', 'SLIDESHOW'
                           tv_tag = nil
                         when 'VIDEO', 'AUDIO', 'FILE', 'IMAGES', 'SLIDE', 'SLIDESHOW'
@@ -3910,36 +4028,6 @@ module PandoraGtk
                           shift_coms(count)
                           p2 += count
                           tv_tag = 'undline'
-                        when 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LEFT', 'CENTER', \
-                        'RIGHT', 'FILL', 'SUB', 'SUP', 'RED', 'GREEN', 'BLUE', \
-                        'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', 'LIME', 'AQUA', \
-                        'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER'
-                          comu = 'CYAN' if comu=='AQUA'
-                          tv_tag = comu.downcase
-                        when 'FONT', 'STYLE', 'SIZE', \
-                          'FG', 'FORE', 'FOREGROUND', 'COLOR', 'COLOUR', \
-                          'BG', 'BACK', 'BACKGROUND'
-
-                          param_hash = detect_params(params)
-                          tag_name, tag_params = generate_tag(param_hash, comu, 'font')
-                          p 'FONT-TAGS [tag_name, tag_params]='+[tag_name, tag_params].inspect
-
-                          text_tag = dest_buf.tag_table.lookup(tag_name)
-                          if text_tag
-                            tv_tag = text_tag.name
-                          elsif tag_params.size > 0
-                            if dest_buf.create_tag(tag_name, tag_params)
-                              tv_tag = tag_name
-                            end
-                          end
-                        when 'SPAN', 'DIV',
-                          tv_tag = 'mono'
-                        when 'TABLE', 'TR', 'TD', 'TH'
-                          tv_tag = 'mono'
-                        when 'SMALL', 'LITTLE', 'X-SMALL', 'XX-SMALL'
-                          tv_tag = 'small'
-                        when 'LARGE', 'BIG', 'X-LARGE', 'XX-LARGE'
-                          tv_tag = 'large'
                         #end-case-when
                       end
                     else
@@ -4000,50 +4088,86 @@ module PandoraGtk
                           if params and (params.size>0)
                             case comu
                               when 'IMG', 'IMAGE', 'EMOT', 'SMILE'
+                                #img_text = str[0, i1]
                                 def_proto = nil
                                 def_proto = 'smile' if (comu=='EMOT') or (comu=='SMILE')
                                 comu = nil
-                                param_hash = detect_params(params)
-                                #src = get_tag_param(params)
-                                src = param_hash['tag']
-                                src ||= param_hash['src']
-                                src ||= param_hash['link']
-                                src ||= param_hash['url']
-                                alt = param_hash['alt']
-                                alt ||= param_hash['tooltip']
-                                alt ||= param_hash['popup']
-                                alt ||= param_hash['name']
-                                title = param_hash['title']
-                                title ||= param_hash['caption']
-                                title ||= param_hash['name']
-                                pixbuf = PandoraModel.get_image_from_url(src, \
-                                  true, self, def_proto)
-                                if pixbuf
-                                  iter = dest_buf.end_iter
-                                  if pixbuf.is_a? Gdk::Pixbuf
-                                    alt ||= src
-                                    PandoraUtils.set_obj_property(pixbuf, 'tooltip', alt)
-                                    dest_buf.insert(iter, pixbuf)
-                                    #anchor = dest_buf.create_child_anchor(iter)
-                                    #img = Gtk::Image.new(img_res)
-                                    #body_child.add_child_at_anchor(img, anchor)
-                                    #img.show_all
-                                    shift_coms(1)
-                                    show_text = false
-                                    if (title.is_a? String) and (title.size>0)
-                                      title = "\n" + title
-                                      dest_buf.insert(dest_buf.end_iter, title, 'italic')
-                                      shift_coms(title.size)
-                                    end
-                                  else
-                                    errtxt ||= _('Unknown error')
-                                    dest_buf.insert(iter, errtxt)
-                                    shift_coms(errtxt.size)
+                                src = nil
+                                if params and (params.size>0)
+                                  param_hash = detect_params(params)
+                                  src = param_hash['tag']
+                                  src ||= param_hash['src']
+                                  src ||= param_hash['link']
+                                  src ||= param_hash['url']
+                                  src ||= param_hash['href']
+                                  alt = param_hash['alt']
+                                  alt ||= param_hash['tooltip']
+                                  alt ||= param_hash['popup']
+                                  alt ||= param_hash['name']
+                                  title = param_hash['title']
+                                  title ||= param_hash['caption']
+                                  title ||= param_hash['name']
+
+                                  if (not param_hash['style'])
+                                    param_hash['style'] = Pango::FontDescription::STYLE_ITALIC
                                   end
-                                  #anchor = dest_buf.create_child_anchor(iter)
-                                  #p 'IMG [wid, anchor]='+[wid, anchor].inspect
-                                  #body_child.add_child_at_anchor(wid, anchor)
-                                  #wid.show_all
+                                  #js = read_justify_param(param_hash)
+                                  tag_name, tag_params = generate_tag(param_hash, nil, 'text')
+                                  p 'IMG-TAGS [tag_name, tag_params]='+[tag_name, tag_params].inspect
+
+                                  text_tag = dest_buf.tag_table.lookup(tag_name)
+                                  if text_tag
+                                    tv_tag = text_tag.name
+                                  elsif (tag_params.size > 0)
+                                    if dest_buf.create_tag(tag_name, tag_params)
+                                      tv_tag = tag_name
+                                    end
+                                  end
+                                end
+                                #src = img_text if not (src and (src.size>0))
+                                if src and (src.size>0)
+                                  #img_buf = $window.get_icon_buf(src)
+                                  pixbuf = PandoraModel.get_image_from_url(src, \
+                                    true, self, def_proto)
+                                  #if img_buf
+                                  #  show_text = false
+                                  #  dest_buf.insert(dest_buf.end_iter, img_buf)
+                                  #  shift_coms(1)
+                                  #end
+                                  if pixbuf
+                                    iter = dest_buf.end_iter
+                                    if pixbuf.is_a? Gdk::Pixbuf
+                                      alt ||= src
+                                      PandoraUtils.set_obj_property(pixbuf, 'tooltip', alt)
+                                      p1 = iter.offset
+                                      dest_buf.insert(iter, pixbuf)
+                                      if tv_tag
+                                        p2 = p1 + 1
+                                        dest_buf.apply_tag(tv_tag, \
+                                          dest_buf.get_iter_at_offset(p1), \
+                                          dest_buf.get_iter_at_offset(p2))
+                                      end
+                                      #anchor = dest_buf.create_child_anchor(iter)
+                                      #img = Gtk::Image.new(img_res)
+                                      #body_child.add_child_at_anchor(img, anchor)
+                                      #img.show_all
+                                      shift_coms(1)
+                                      show_text = false
+                                      if (title.is_a? String) and (title.size>0)
+                                        title = "\n\n" + title
+                                        dest_buf.insert(dest_buf.end_iter, title, tv_tag)
+                                        shift_coms(title.size)
+                                      end
+                                    else
+                                      errtxt ||= _('Unknown error')
+                                      dest_buf.insert(iter, errtxt)
+                                      shift_coms(errtxt.size)
+                                    end
+                                    #anchor = dest_buf.create_child_anchor(iter)
+                                    #p 'IMG [wid, anchor]='+[wid, anchor].inspect
+                                    #body_child.add_child_at_anchor(wid, anchor)
+                                    #wid.show_all
+                                  end
                                 end
                               when 'BOX', 'PROPERTY', 'EDIT', 'ENTRY', 'INPUT', \
                               'SPIN', 'INTEGER', 'HEX', 'REAL', 'FLOAT', 'DATE', \
@@ -7483,6 +7607,28 @@ module PandoraGtk
       end
     end
 
+    def choose_and_set_color(bodywin, a_tag)
+      shift_or_ctrl = PandoraGtk.is_ctrl_shift_alt?(true, true)
+      dialog = Gtk::ColorSelectionDialog.new
+      dialog.set_transient_for(self)
+      colorsel = dialog.colorsel
+      color = Gdk::Color.parse(@selected_color)
+      colorsel.set_previous_color(color)
+      colorsel.set_current_color(color)
+      colorsel.set_has_palette(true)
+      if dialog.run == Gtk::Dialog::RESPONSE_OK
+        color = colorsel.current_color
+        if shift_or_ctrl
+          @selected_color = color.to_s
+        else
+          @selected_color = PandoraUtils.color_to_str(color)
+        end
+        @last_color_tag = a_tag
+        bodywin.insert_tag(a_tag, @selected_color)
+      end
+      dialog.destroy
+    end
+
     # Fill editor toolbar
     # RU: Заполнить панель редактора
     def fill_edit_toolbar
@@ -7566,30 +7712,17 @@ module PandoraGtk
       menu.show_all
 
       @selected_color = 'red'
+      @last_color_tag = 'color'
       btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SELECT_COLOR, nil, 0) do
-        bodywin.insert_tag('color', @selected_color)
+        bodywin.insert_tag(@last_color_tag, @selected_color)
       end
       menu = Gtk::Menu.new
       btn.menu = menu
       add_menu_item(btn, menu, Gtk::Stock::SELECT_COLOR) do
-        shift_or_ctrl = PandoraGtk.is_ctrl_shift_alt?(true, true)
-        dialog = Gtk::ColorSelectionDialog.new
-        dialog.set_transient_for(self)
-        colorsel = dialog.colorsel
-        color = Gdk::Color.parse(@selected_color)
-        colorsel.set_previous_color(color)
-        colorsel.set_current_color(color)
-        colorsel.set_has_palette(true)
-        if dialog.run == Gtk::Dialog::RESPONSE_OK
-          color = colorsel.current_color
-          if shift_or_ctrl
-            @selected_color = color.to_s
-          else
-            @selected_color = PandoraUtils.color_to_str(color)
-          end
-          bodywin.insert_tag('color', @selected_color)
-        end
-        dialog.destroy
+        choose_and_set_color(bodywin, 'color')
+      end
+      add_menu_item(btn, menu, Gtk::Stock::SELECT_COLOR, 'Background') do
+        choose_and_set_color(bodywin, 'bg')
       end
       @selected_font = 'Sans 10'
       add_menu_item(btn, menu, Gtk::Stock::SELECT_FONT) do
