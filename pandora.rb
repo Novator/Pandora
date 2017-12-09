@@ -352,7 +352,7 @@ def set_win_lang_codes(lcode)
   lcode[0x1004] = 'zh-sg;Chinese (Singapore)'
   lcode[0x041A] = 'hr;Croatian'
   lcode[0x0405] = 'cs;Czech'
-  lcode[0x0406] = 'the;Danish'
+  lcode[0x0406] = 'da;Danish'  #changed from "the"
   lcode[0x0413] = 'nl;Dutch (Netherlands)'
   lcode[0x0813] = 'nl-be;Dutch (Belgium)'
   lcode[0x0009] = 'en;English'
@@ -439,7 +439,7 @@ def set_win_lang_codes(lcode)
   lcode[0x0432] = 'tn;Tswana'
   lcode[0x041F] = 'tr;Turkish'
   lcode[0x0422] = 'uk;Ukrainian'
-  lcode[0x0420] = 'your;Urdu'
+  lcode[0x0420] = 'ur;Urdu'  #changed from "your"
   lcode[0x042A] = 'vi;Vietnamese'
   lcode[0x0434] = 'xh;Xhosa'
   lcode[0x043D] = 'ji;Yiddish'

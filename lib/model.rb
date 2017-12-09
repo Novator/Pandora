@@ -68,7 +68,13 @@ module PandoraModel
     name = "Объект Пандоры"
 
     def get_fields_as_view(row, edit=nil, panhash=nil, formfields=nil)
-      formfields ||= self.def_fields.clone
+      if formfields.nil?
+        a_def_fields = self.def_fields.dup
+        formfields = Array.new
+        a_def_fields.each do |field|
+          formfields << field.dup
+        end
+      end
       tab_flds = self.tab_fields
       formfields.each do |field|
         val = nil

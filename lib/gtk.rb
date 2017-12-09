@@ -3226,7 +3226,7 @@ module PandoraGtk
       buf.create_tag('strike', 'strikethrough' => true)
       buf.create_tag('undline', 'underline' => Pango::AttrUnderline::SINGLE)
       buf.create_tag('dundline', 'underline' => Pango::AttrUnderline::DOUBLE)
-      buf.create_tag('link', 'foreground' => 'blue', \
+      buf.create_tag('link', 'foreground' => '#000099', \
         'underline' => Pango::AttrUnderline::SINGLE)
       buf.create_tag('linked', 'foreground' => 'navy', \
         'underline' => Pango::AttrUnderline::SINGLE)
@@ -3431,13 +3431,17 @@ module PandoraGtk
             res = PandoraUtils.parse_url(link, 'http')
             if res
               proto, obj_type, way = res
-              if (proto == 'pandora') or (proto == 'sha1') or (proto == 'md5')
-                #PandoraGtk.internal_open(proto, obj_type, way)
-              else
-                url = way
-                url = proto+'://'+way if proto and proto=='http'
-                puts 'Go to link: ['+url+']'
-                PandoraUtils.external_open(url)
+              if proto and way
+                url = proto+'://'+way
+                if (proto == 'pandora') or (proto == 'sha1') or (proto == 'md5')
+                  puts 'Need do jump to: ['+url+']'
+                  #PandoraGtk.internal_open(proto, obj_type, way)
+                elsif (proto=='http') or (proto=='https')
+                  puts 'Go to link: ['+url+']'
+                  PandoraUtils.external_open(url)
+                else
+                  puts 'Unknown jump: ['+url+']'
+                end
               end
             end
           end
@@ -3475,8 +3479,8 @@ module PandoraGtk
       'FORE', 'FOREGROUND', 'FG', 'SPAN', 'DIV', 'P', \
       'RED', 'GREEN', 'BLUE', 'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', \
       'LIME', 'AQUA', 'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER', \
-      'URL', 'A', 'HREF', 'LINK', 'ANCHOR', 'QUOTE', 'BLOCKQUOTE', 'LIST', \
-      'CUT', 'SPOILER', 'CODE', 'INLINE', \
+      'URL', 'A', 'HREF', 'LINK', 'GOTO', 'ANCHOR', 'MARK', 'LABEL', 'QUOTE', \
+      'BLOCKQUOTE', 'LIST', 'CUT', 'SPOILER', 'CODE', 'INLINE', \
       'BOX', 'PROPERTY', 'EDIT', 'ENTRY', 'INPUT', \
       'BUTTON', 'SPIN', 'INTEGER', 'HEX', 'REAL', 'FLOAT', 'DATE', \
       'TIME', 'DATETIME', 'COORD', 'FILENAME', 'BASE64', 'PANHASH', 'BYTELIST', \
@@ -3585,6 +3589,122 @@ module PandoraGtk
           str = '#'+str
         end
         str
+      end
+
+      def generate_tag(param_hash, comu=nil, tag_name=nil)
+        tag_name ||= ''
+        tag_params = {}
+
+        fg = nil #blue, #1122FF
+        bg = nil #yellow
+        sz = nil #12, 14
+        js = nil #left, right...
+        fam = nil #arial
+        wt = nil #bold
+        st = nil #italic...
+        und = nil  #single, double
+
+        if (not comu.nil?)
+          case comu
+            when 'FG', 'FORE', 'FOREGROUND', 'COLOR', 'COLOUR'
+              fg = param_hash['tag']
+            when 'BG', 'BACK', 'BACKGROUND'
+              bg = param_hash['tag']
+            when 'B', 'STRONG'
+              wt = Pango::FontDescription::WEIGHT_BOLD
+            when 'I', 'EM'
+              st = Pango::FontDescription::STYLE_ITALIC
+            when 'S', 'STRIKE'
+              tag_name << '_st'
+              tag_params['strikethrough'] = true
+            when 'U'
+              und = Pango::AttrUnderline::SINGLE
+            when 'D'
+              und = Pango::AttrUnderline::DOUBLE
+            else
+              sz = param_hash['tag']
+            #end-case-when
+          end
+        end
+
+        sz ||= param_hash['size']
+        sz ||= param_hash['sz']
+        fg ||= param_hash['color']
+        fg ||= param_hash['colour']
+        fg ||= param_hash['fg']
+        fg ||= param_hash['fore']
+        fg ||= param_hash['foreground']
+        bg ||= param_hash['bg']
+        bg ||= param_hash['back']
+        bg ||= param_hash['background']
+        js ||= param_hash['js']
+        js ||= param_hash['justify']
+        js ||= param_hash['justification']
+        js ||= param_hash['align']
+        fam ||= param_hash['fam']
+        fam ||= param_hash['family']
+        fam ||= param_hash['font']
+        fam ||= param_hash['name']
+        wt ||= param_hash['wt']
+        wt ||= param_hash['weight']
+        wt ||= param_hash['bold']
+        st ||= param_hash['st']
+        st ||= param_hash['style']
+        st ||= param_hash['italic']
+        und ||= param_hash['underline']
+
+        fg = correct_color(fg)
+        bg = correct_color(bg)
+
+        if fam and (fam.is_a? String) and (fam.size>0)
+          fam_st = fam.upcase
+          fam_st.gsub!(' ', '_')
+          tag_name << '_'+fam_st
+          tag_params['family'] = fam
+        end
+        if fg
+          tag_name << '_'+fg
+          tag_params['foreground'] = fg
+        end
+        if bg
+          tag_name << '_bg'+bg
+          tag_params['background'] = bg
+        end
+        if sz
+          sz.gsub!(/[^0-9\.]/, '') if sz.is_a? String
+          tag_name << '_sz'+sz.to_s
+          tag_params['size'] = sz.to_i * Pango::SCALE
+        end
+        if wt
+          tag_name << '_wt'+wt.to_s
+          tag_params['weight'] = wt.to_i
+        end
+        if st
+          tag_name << '_st'+st.to_s
+          tag_params['style'] = st.to_i
+        end
+        if und
+          tag_name << '_'+und.to_s
+          tag_params['underline'] = und.to_i
+        end
+        if js.is_a?(String) and (js.size>0)
+          js = js[0, 1].upcase
+          jsv = nil
+          if js=='L'  #LEFT
+            jsv = Gtk::JUSTIFY_LEFT
+          elsif js=='R'  #RIGHT
+            jsv = Gtk::JUSTIFY_RIGHT
+          elsif (js=='C') or (js=='M')  #CENTER or MIDDLE
+            jsv = Gtk::JUSTIFY_CENTER
+          elsif js=='F'  #FULL
+            jsv = Gtk::JUSTIFY_FILL
+          end
+          if jsv
+            tag_name << '_js'+js
+            tag_params['justification'] = jsv
+          end
+        end
+        [tag_name, tag_params]
       end
 
       i = children.size
@@ -3697,14 +3817,25 @@ module PandoraGtk
                         when 'BR', 'P'
                           dest_buf.insert(dest_buf.end_iter, "\n")
                           shift_coms(1)
-                        when 'URL', 'A', 'HREF', 'LINK'
+                        when 'URL', 'A', 'HREF', 'LINK', 'GOTO'
                           tv_tag = 'link'
-                          #insert_link(buffer, iter, 'Go back', 1)
-                          params = str[0, i1] unless params and (params.size>0)
-                          params = get_tag_param(params) if params and (params.size>0)
+                          link_text = str[0, i1]
+                          link_url = nil
                           if params and (params.size>0)
-                            trunc_md5 = Digest::MD5.digest(params)[0, 10]
-                            link_id = 'link'+PandoraUtils.bytes_to_hex(trunc_md5)
+                            param_hash = detect_params(params)
+                            link_url = param_hash['tag']
+                            link_url ||= param_hash['href']
+                            link_url ||= param_hash['url']
+                            link_url ||= param_hash['src']
+                            link_url ||= param_hash['link']
+
+                            tag_name, tag_params = generate_tag(param_hash)
+                            p 'LINK [tag_name, tag_params]='+[tag_name, tag_params].inspect
+                          end
+                          link_url = link_text if not (link_url and (link_url.size>0))
+                          if link_url and (link_url.size>0)
+                            trunc_md5 = Digest::MD5.digest(link_url)[0, 10]
+                            link_id = 'link'+PandoraUtils.bytes_to_hex(trunc_md5)+tag_name
                             link_tag = dest_buf.tag_table.lookup(link_id)
                             #p '--[link_id, link_tag, params]='+[link_id, link_tag, params].inspect
                             if link_tag
@@ -3713,15 +3844,26 @@ module PandoraGtk
                               link_tag = LinkTag.new(link_id)
                               if link_tag
                                 dest_buf.tag_table.add(link_tag)
-                                link_tag.foreground = 'blue'
-                                link_tag.underline = Pango::AttrUnderline::SINGLE
-                                link_tag.link = params
+                                link_tag.foreground = '#000099'
+                                #link_tag.underline = Pango::AttrUnderline::SINGLE
+                                link_tag.link = link_url
+                                if tag_params.size>0
+                                  link_tag.apply_attrs(tag_params)
+                                end
                                 tv_tag = link_id
                               end
                             end
                           end
-                        when 'ANCHOR'
+                        when 'ANCHOR', 'MARK', 'LABEL'
                           tv_tag = nil
+                          params = str[0, i1] unless params and (params.size>0)
+                          if params and (params.size>0)
+                            lab_name = get_tag_param(params)
+                            iter = dest_buf.end_iter
+                            anchor = dest_buf.create_child_anchor(iter)
+                            @labels ||= nil
+                            @labels[lab_name] = anchor
+                          end
                         when 'QUOTE', 'BLOCKQUOTE'
                           tv_tag = 'quote'
                         when 'LIST'
@@ -3778,107 +3920,14 @@ module PandoraGtk
                           'FG', 'FORE', 'FOREGROUND', 'COLOR', 'COLOUR', \
                           'BG', 'BACK', 'BACKGROUND'
 
-                          fg = nil
-                          bg = nil
-                          sz = nil
-                          js = nil #left, right...
-                          fam = nil
-                          wt = nil #bold
-                          st = nil #italic...
-
-                          case comu
-                            when 'FG', 'FORE', 'FOREGROUND', 'COLOR', 'COLOUR'
-                              fg = get_tag_param(params)
-                            when 'BG', 'BACK', 'BACKGROUND'
-                              bg = get_tag_param(params)
-                            else
-                              sz = get_tag_param(params, :number)
-                              if not sz
-                                param_hash = detect_params(params)
-                                sz = param_hash['size']
-                                sz ||= param_hash['sz']
-                                fg = param_hash['color']
-                                fg ||= param_hash['colour']
-                                fg ||= param_hash['fg']
-                                fg ||= param_hash['fore']
-                                fg ||= param_hash['foreground']
-                                bg = param_hash['bg']
-                                bg ||= param_hash['back']
-                                bg ||= param_hash['background']
-                                js = param_hash['js']
-                                js ||= param_hash['justify']
-                                js ||= param_hash['justification']
-                                js ||= param_hash['align']
-                                fam = param_hash['fam']
-                                fam ||= param_hash['family']
-                                fam ||= param_hash['font']
-                                fam ||= param_hash['name']
-                                wt = param_hash['wt']
-                                wt ||= param_hash['weight']
-                                wt ||= param_hash['bold']
-                                st = param_hash['st']
-                                st ||= param_hash['style']
-                                st ||= param_hash['italic']
-                              end
-                            #end-case-when
-                          end
-
-                          fg = correct_color(fg)
-                          bg = correct_color(bg)
-
-                          tag_params = {}
-
-                          tag_name = 'font'
-                          if fam and (fam.is_a? String) and (fam.size>0)
-                            fam_st = fam.upcase
-                            fam_st.gsub!(' ', '_')
-                            tag_name << '_'+fam_st
-                            tag_params['family'] = fam
-                          end
-                          if fg
-                            tag_name << '_'+fg
-                            tag_params['foreground'] = fg
-                          end
-                          if bg
-                            tag_name << '_bg'+bg
-                            tag_params['background'] = bg
-                          end
-                          if sz
-                            sz.gsub!(/[^0-9\.]/, '') if sz.is_a? String
-                            tag_name << '_sz'+sz.to_s
-                            tag_params['size'] = sz.to_i * Pango::SCALE
-                          end
-                          if wt
-                            tag_name << '_wt'+wt.to_s
-                            tag_params['weight'] = wt.to_i
-                          end
-                          if st
-                            tag_name << '_st'+st.to_s
-                            tag_params['style'] = st.to_i
-                          end
-                          if js
-                            js = js.upcase
-                            jsv = nil
-                            if js=='LEFT'
-                              jsv = Gtk::JUSTIFY_LEFT
-                            elsif js=='RIGHT'
-                              jsv = Gtk::JUSTIFY_RIGHT
-                            elsif js=='CENTER'
-                              jsv = Gtk::JUSTIFY_CENTER
-                            elsif js=='FILL'
-                              jsv = Gtk::JUSTIFY_FILL
-                            end
-                            if jsv
-                              tag_name << '_js'+js
-                              tag_params['justification'] = jsv
-                            end
-                          end
+                          param_hash = detect_params(params)
+                          tag_name, tag_params = generate_tag(param_hash, comu, 'font')
+                          p 'FONT-TAGS [tag_name, tag_params]='+[tag_name, tag_params].inspect
 
                           text_tag = dest_buf.tag_table.lookup(tag_name)
-                          p '[tag_name, tag_params]='+[tag_name, tag_params].inspect
                           if text_tag
                             tv_tag = text_tag.name
-                          elsif tag_params.size != {}
+                          elsif tag_params.size > 0
                             if dest_buf.create_tag(tag_name, tag_params)
                               tv_tag = tag_name
                             end
@@ -6420,12 +6469,14 @@ module PandoraGtk
           @fields = panobject.get_fields_as_view(row, true, panhash, @fields)
           @fields.each do |form_fld|
             entry = form_fld[PandoraUtils::FI_Widget]
-            aview = form_fld[PandoraUtils::FI_View]
-            text = form_fld[PandoraUtils::FI_Value].to_s
-            if (aview=='blob') or (aview=='text')
-              entry.text = text[1..-1] if text and (text.size<1024) and (text[0]=='@')
-            else
-              entry.text = text
+            if entry and (not entry.destroyed?)
+              aview = form_fld[PandoraUtils::FI_View]
+              text = form_fld[PandoraUtils::FI_Value].to_s
+              if (aview=='blob') or (aview=='text')
+                entry.text = text[1..-1] if text and (text.size<1024) and (text[0]=='@')
+              else
+                entry.text = text
+              end
             end
           end
 
