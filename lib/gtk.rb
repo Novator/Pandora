@@ -1952,7 +1952,7 @@ module PandoraGtk
   # Good FileChooserDialog
   # RU: Правильный FileChooserDialog
   class GoodFileChooserDialog < Gtk::FileChooserDialog
-    def initialize(file_name, open=true, filters=nil, parent_win=nil, title=nil)
+    def initialize(file_name, open=true, filters=nil, parent_win=nil, title=nil, last_dirs=nil)
       action = nil
       act_btn = nil
       stock_id = nil
@@ -1981,7 +1981,14 @@ module PandoraGtk
       anicon = iconset.render_icon(style, Gtk::Widget::TEXT_DIR_LTR, \
         Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
       dialog.icon = anicon
-      dialog.add_shortcut_folder($pandora_files_dir)
+      last_dir = nil
+      last_dirs.each do |dn|
+        if Dir.exists?(dn)
+          dialog.add_shortcut_folder(dn)
+          last_dir ||= dn
+        end
+      end
+      last_dir ||= $pandora_files_dir
 
       dialog.signal_connect('key-press-event') do |widget, event|
         if [Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
@@ -2008,11 +2015,8 @@ module PandoraGtk
       dialog.add_filter(filter)
 
       if open
-        if file_name.nil? or (file_name=='')
-          dialog.current_folder = $pandora_files_dir
-        else
-          dialog.filename = file_name
-        end
+        dialog.current_folder = last_dir
+        dialog.filename = file_name if file_name and (file_name.size>0)
         scr = Gdk::Screen.default
         if (scr.height > 500)
           frame = Gtk::Frame.new
@@ -2047,7 +2051,7 @@ module PandoraGtk
           dialog.filename = file_name
         else
           dialog.current_name = File.basename(file_name) if file_name
-          dialog.current_folder = $pandora_files_dir
+          dialog.current_folder = last_dir
         end
         dialog.signal_connect('notify::filter') do |widget, param|
           aname = dialog.filter.name
@@ -2068,6 +2072,8 @@ module PandoraGtk
     end
   end
 
+  FileDialogHistorySize = 5
+
   # Entry for filename
   # RU: Поле выбора имени файла
   class FilenameBox < BtnEntry
@@ -2077,13 +2083,13 @@ module PandoraGtk
       super(Gtk::Entry, Gtk::Stock::OPEN, 'File', amodal, *args)
       @window = parent
       @entry.width_request = PandoraGtk.num_char_width*64+8
+      @@last_dirs ||= [$pandora_files_dir, $pandora_app_dir]
     end
 
     def do_on_click
       @entry.grab_focus
       fn = PandoraUtils.absolute_path(@entry.text)
-      dialog = GoodFileChooserDialog.new(fn, true, nil, @window)
-
+      dialog = GoodFileChooserDialog.new(fn, true, nil, @window, nil, @@last_dirs)
       filter = Gtk::FileFilter.new
       filter.name = _('Pictures')+' (*.png,*.jpg,*.gif,*.ico)'
       filter.add_pattern('*.png')
@@ -2101,7 +2107,15 @@ module PandoraGtk
 
       if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
         filename0 = @entry.text
-        @entry.text = PandoraUtils.relative_path(dialog.filename)
+        fn = dialog.filename
+        dn = nil
+        dn = File.dirname(fn) if fn
+        if Dir.exists?(dn) and (@@last_dirs[0] != dn)
+          @@last_dirs.delete(dn)
+          @@last_dirs.unshift(dn)
+          @@last_dirs.pop while @@last_dirs.count>FileDialogHistorySize
+        end
+        @entry.text = PandoraUtils.relative_path(fn)
         if @init_yield_block
           @init_yield_block.call(@entry.text, @entry, @button, filename0)
         end
@@ -6063,14 +6077,14 @@ module PandoraGtk
             entry = CoordBox.new(amodal, its_city)
           when 'filename', 'blob'
             entry = FilenameBox.new(window, amodal) do |filename, entry, button, filename0|
-              name_fld = @panobject.field_des('name')
+              name_fld = @panobject.field_des('name', @fields)
               if (name_fld.is_a? Array) and (name_fld[PandoraUtils::FI_Widget].is_a? Gtk::Entry)
                 name_ent = name_fld[PandoraUtils::FI_Widget]
                 old_name = File.basename(filename0)
                 old_name2 = File.basename(filename0, '.*')
                 new_name = File.basename(filename)
-                if (name_ent.text.size==0) or (name_ent.text==filename0) \
-                or (name_ent.text==old_name) or (name_ent.text==old_name2)
+                if ((name_ent.text=='') or (name_ent.text==filename0) \
+                or (name_ent.text==old_name) or (name_ent.text==old_name2))
                   name_ent.text = new_name
                 end
               end

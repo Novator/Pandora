@@ -1973,8 +1973,9 @@ module PandoraUtils
         res
       end
 
-      def field_des(fld_name)
-        df = def_fields.detect{ |e| (e.is_a? Array) \
+      def field_des(fld_name, fields=nil)
+        fields ||= def_fields
+        df = fields.detect{ |e| (e.is_a? Array) \
           and (e[FI_Id].to_s == fld_name) or (e.to_s == fld_name) }
       end
 
@@ -2596,8 +2597,8 @@ module PandoraUtils
       res
     end
 
-    def field_des(fld_name)
-      self.class.field_des(fld_name)
+    def field_des(fld_name, fields=nil)
+      self.class.field_des(fld_name, fields)
     end
 
     def field_title(fd)
