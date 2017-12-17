@@ -3497,9 +3497,9 @@ module PandoraGtk
       count
     end
 
-    BBCODES = ['B', 'I', 'U', 'S', 'EM', 'STRIKE', 'STRONG', 'D', 'BR', \
+    BBCODES = ['B', 'I', 'U', 'S', 'EM', 'STRIKE', 'DEL', 'STRONG', 'D', 'BR', \
       'FONT', 'SIZE', 'COLOR', 'COLOUR', 'STYLE', 'BACK', 'BACKGROUND', 'BG', \
-      'FORE', 'FOREGROUND', 'FG', 'SPAN', 'DIV', 'P', \
+      'FORE', 'FOREGROUND', 'FG', 'SPAN', 'DIV', 'UL', 'LI', 'P', \
       'RED', 'GREEN', 'BLUE', 'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', \
       'LIME', 'AQUA', 'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER', \
       'URL', 'A', 'HREF', 'LINK', 'GOTO', 'ANCHOR', 'MARK', 'LABEL', 'QUOTE', \
@@ -3511,7 +3511,7 @@ module PandoraGtk
       'IMG', 'IMAGE', 'SMILE', 'EMOT', 'VIDEO', 'AUDIO', 'FILE', 'SUB', 'SUP', \
       'ABBR', 'ACRONYM', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', \
       'LEFT', 'CENTER', 'RIGHT', 'FILL', 'IMAGES', 'SLIDE', 'SLIDESHOW', \
-      'TABLE', 'TR', 'TD', 'TH', 'SMALL', 'LITTLE', 'LARGE', 'BIG']
+      'TABLE', 'TR', 'TD', 'TH', 'TBODY', 'TT', 'DL', 'DD', 'DT', 'SMALL', 'LITTLE', 'LARGE', 'BIG']
 
     # Insert taget string to buffer
     # RU: Вставить тегированный текст в буфер
@@ -3662,13 +3662,13 @@ module PandoraGtk
               wt = Pango::FontDescription::WEIGHT_BOLD
             when 'I', 'EM'
               st = Pango::FontDescription::STYLE_ITALIC
-            when 'S', 'STRIKE'
+            when 'S', 'STRIKE', 'DEL'
               strike = true
             when 'U'
               und = Pango::AttrUnderline::SINGLE
             when 'D'
               und = Pango::AttrUnderline::DOUBLE
-            when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', 'SPAN'
+            when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', 'SPAN', 'UL', 'LI'
               tag_params['family'] = 'monospace'
               tag_params['background'] = '#EFEFEF'
             else
@@ -3700,6 +3700,7 @@ module PandoraGtk
         st ||= param_hash['style']
         st ||= param_hash['italic']
         strike ||= param_hash['strike']
+        strike ||= param_hash['del']
         strike ||= param_hash['deleted']
         und ||= param_hash['underline']
 
@@ -3894,10 +3895,12 @@ module PandoraGtk
                           params = str[0, i1] unless params and (params.size>0)
                           if params and (params.size>0)
                             lab_name = get_tag_param(params)
-                            iter = dest_buf.end_iter
-                            anchor = dest_buf.create_child_anchor(iter)
-                            @labels ||= nil
-                            @labels[lab_name] = anchor
+                            if not lab_name.nil?
+                              iter = dest_buf.end_iter
+                              anchor = dest_buf.create_child_anchor(iter)
+                              @labels ||= Hash.new
+                              @labels[lab_name] = anchor
+                            end
                           end
                         when 'QUOTE', 'BLOCKQUOTE'
                           tv_tag = 'quote'
@@ -3943,7 +3946,8 @@ module PandoraGtk
                             end
                           end
                         when 'B', 'STRONG', 'I', 'EM', 'S', 'U', 'D', 'CODE', \
-                        'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', 'SPAN', 'DIV', \
+                        'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', 'SPAN', \
+                        'DIV', 'UL', 'LI', \
                         'FONT', 'STYLE', 'SIZE', \
                         'FG', 'FORE', 'FOREGROUND', 'COLOR', 'COLOUR', \
                         'BG', 'BACK', 'BACKGROUND', \
@@ -3959,7 +3963,7 @@ module PandoraGtk
                                 tv_tag = 'bold'
                               when 'I', 'EM'
                                 tv_tag = 'italic'
-                              when 'S', 'STRIKE'
+                              when 'S', 'STRIKE', 'DEL'
                                 tv_tag = 'strike'
                               when 'U'
                                 tv_tag = 'undline'
@@ -3969,7 +3973,7 @@ module PandoraGtk
                                 tv_tag = 'small'
                               when 'LARGE', 'BIG'
                                 tv_tag = 'large'
-                              when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', 'SPAN'
+                              when 'CODE', 'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', 'SPAN', 'UL', 'LI'
                                 tv_tag = 'mono'
                               when 'DIV'
                                 tv_tag = nil
@@ -4027,7 +4031,7 @@ module PandoraGtk
                                 end
                             end
                           end
-                        when 'TABLE', 'TR', 'TD', 'TH'
+                        when 'TABLE', 'TR', 'TD', 'TH', 'TBODY', 'TT', 'DL', 'DD', 'DT'
                           tv_tag = 'mono'
                         when 'IMAGES', 'SLIDE', 'SLIDESHOW'
                           tv_tag = nil
@@ -4087,7 +4091,7 @@ module PandoraGtk
                     else
                       strict_close_tag = comu if comu=='CODE'
                       case comu
-                        when 'BR', 'P'
+                        when 'BR'
                           dest_buf.insert(dest_buf.end_iter, "\n")
                           shift_coms(1)
                         when 'HR'
@@ -4299,6 +4303,12 @@ module PandoraGtk
                                 widget.show_all
                               #end-case-when
                             end
+                          else #no params
+                            case comu
+                              when 'P'
+                                dest_buf.insert(dest_buf.end_iter, "\n")
+                                shift_coms(1)
+                            end
                           end
                           open_coms << [comu, 0, params] if comu
                         #end-case-when
@@ -4503,6 +4513,7 @@ module PandoraGtk
                 @layout.text = str
                 #widget.style.paint_layout(target, widget.state, false, \
                 #  nil, widget, nil, 2, pos, @layout)   #Gtk2 fails sometime!!!
+                left_win = tv.get_window(Gtk::TextView::WINDOW_LEFT)
                 left_win.draw_layout(@gc, 2, pos, @layout, nil, bg)
               end
             end
@@ -4842,6 +4853,7 @@ module PandoraGtk
                 p '--fill_body1  Read file: ['+link_name+']  format='+@format
                 File.open(link_name, 'r') do |file|
                   field[PandoraUtils::FI_Value] = file.read
+                  p 'Files is readed ok.'
                 end
               end
               if not ext
@@ -7703,7 +7715,7 @@ module PandoraGtk
       menu = Gtk::Menu.new
       btn.menu = menu
       add_menu_item(btn, menu, Gtk::Stock::UNDERLINE) do
-        insert_tag('undline')
+        bodywin.insert_tag('undline')
       end
       add_menu_item(btn, menu, Gtk::Stock::STRIKETHROUGH) do
         bodywin.insert_tag('strike')
@@ -10694,8 +10706,8 @@ module PandoraGtk
     end
   end
 
-  # List of fishers
-  # RU: Список рыбаков
+  # Language phrase editor
+  # RU: Редактор языковых фраз
   class PhraseEditorScrollWin < Gtk::ScrolledWindow
     #attr_accessor :update_btn
 
@@ -10724,7 +10736,7 @@ module PandoraGtk
       save_btn = Gtk::ToolButton.new(Gtk::Stock::SAVE, title)
       save_btn.tooltip_text = title
       save_btn.label = title
-      save_btn.sensitive = (not english)
+      save_btn.sensitive = false
 
       file_label = Gtk::Label.new('')
 
@@ -10769,6 +10781,7 @@ module PandoraGtk
             end
           end
         end
+        save_btn.sensitive = false
       end
 
       save_btn.signal_connect('clicked') do |*args|
@@ -10785,6 +10798,7 @@ module PandoraGtk
             file_label.text = lang_file
             PandoraUI.log_message(PandoraUI::LM_Info, _('Language file is saved')+\
               ' ['+lang_file+']')
+            save_btn.sensitive = false
           end
         end
       end
@@ -10793,6 +10807,11 @@ module PandoraGtk
       list_tree = Gtk::TreeView.new(list_store)
       list_tree.rules_hint = true
       list_tree.selection.mode = Gtk::SELECTION_SINGLE
+      #list_store.signal_connect('changed') do |widget, event|
+      #list_tree.signal_connect('row_activated') do |tree_view, path, column|
+      #  save_btn.sensitive = (not english)
+      #  false
+      #end
 
       renderer = Gtk::CellRendererText.new
       column = Gtk::TreeViewColumn.new(_('№'), renderer, 'text' => 0)
@@ -10833,7 +10852,10 @@ module PandoraGtk
       renderer.signal_connect('edited') do |ren, path_str, value|
         if path_str and (path_str.size>0)
           iter = list_tree.model.get_iter(path_str)
-          iter.set_value(2, value) if iter
+          if iter
+            iter.set_value(2, value)
+            save_btn.sensitive = (not english)
+          end
         end
         false
       end
@@ -10856,8 +10878,11 @@ module PandoraGtk
       list_sw.show_all
 
       self.add_with_viewport(vbox)
-      load_btn.clicked
-
+      if english
+        file_label.text = 'English language is embedded to the code'
+      else
+        load_btn.clicked
+      end
       list_tree.grab_focus
     end
   end

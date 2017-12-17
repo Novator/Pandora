@@ -803,7 +803,7 @@ module PandoraNet
 
     # Get a session by address (ip, port, protocol)
     # RU: Возвращает сессию для адреса
-    def sessions_of_address(node)
+    def sessions_of_node(node)
       host, port, proto = decode_node(node)
       res = sessions.select do |s|
         ((s.host_ip == host) or (s.host_name == host)) and (s.port == port) and (s.proto == proto)
@@ -813,7 +813,7 @@ module PandoraNet
 
     # Get a session by the node panhash
     # RU: Возвращает сессию по панхэшу узла
-    def sessions_of_node(panhash)
+    def sessions_of_panhash(panhash)
       res = sessions.select { |s| (s.node_panhash == panhash) \
         or (s.to_node and (s.to_node == panhash)) }
       res
@@ -1238,8 +1238,8 @@ module PandoraNet
       res = nil
       send_state_add ||= 0
       sessions = sessions_of_personkeybase(person, key_hash, base_id)
-      sessions << sessions_of_node(nodehash) if nodehash
-      sessions << sessions_of_address(addr) if addr
+      sessions << sessions_of_panhash(nodehash) if nodehash
+      sessions << sessions_of_node(addr) if addr
       sessions.flatten!
       sessions.uniq!
       sessions.compact!
@@ -1334,8 +1334,8 @@ module PandoraNet
       nodehash = PandoraUtils.first_array_element_or_val(nodehashs)
       sessions = Array.new
       sessions << session if session
-      sessions << sessions_of_node(nodehash) if nodehash
-      sessions << sessions_of_address(node) if node
+      sessions << sessions_of_panhash(nodehash) if nodehash
+      sessions << sessions_of_node(node) if node
       sessions << sessions_of_person(person) if person
       sessions.flatten!
       sessions.uniq!
@@ -1440,14 +1440,14 @@ module PandoraNet
 
     include PandoraUtils
 
-    attr_accessor :host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_mode2, \
-      :conn_state, :stage, :dialog, \
+    attr_accessor :host_name, :host_ip, :port, :proto, :node, \
+      :conn_mode, :conn_mode2, :conn_state, :stage, :dialog, \
       :send_thread, :read_thread, :socket, :read_state, :send_state, \
-      :send_models, :recv_models, :sindex, :read_queue, :send_queue, :confirm_queue, \
-      :params, :cipher, :ciphering, \
-      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, :s_encode, \
-      :r_encode, \
-      :media_send, :node_id, :node_panhash, :to_person, :to_key, :to_base_id, :to_node, \
+      :send_models, :recv_models, :sindex, :read_queue, :send_queue, \
+      :confirm_queue, :params, :cipher, :ciphering, \
+      :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, \
+      :s_encode, :r_encode, :media_send, :node_id, :node_panhash, \
+      :to_person, :to_key, :to_base_id, :to_node, \
       :captcha_sw, :hooks, :mr_ind, :sess_trust, :notice, :activity
 
     # Set socket options
