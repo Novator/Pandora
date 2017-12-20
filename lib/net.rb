@@ -67,7 +67,7 @@ module PandoraNet
   ECC_Auth_Simple      = 6
   ECC_Auth_Answer      = 7
 
-  ECC_Query_Rel        = 0
+  ECC_Query_Relation   = 0
   ECC_Query_Record     = 1
   ECC_Query_Fish       = 2
   ECC_Query_Search     = 3
@@ -285,8 +285,8 @@ module PandoraNet
   # Pool
   # RU: Пул
   class Pool
-    attr_accessor :sessions, :white_list, :time_now, \
-      :node_list, :mass_records, :mass_ind, :found_ind, :punnets, :ind_mutex
+    attr_accessor :sessions, :white_list, :time_now, :node_list, \
+      :mass_records, :mass_ind, :found_ind, :punnets, :ind_mutex
 
     MaxWhiteSize = 500
     FishQueueSize = 100
@@ -1201,8 +1201,8 @@ module PandoraNet
           #  [row_pson, row_pson.bytesize].inspect
           #row, len = PandoraUtils.pson_to_rubyobj(row_pson)
           #p log_mes+'****Send EC_Message: [len, row]='+[len, row].inspect
-          if add_mass_record(MK_Chat, dest, row_pson)
           #if add_send_segment(EC_Message, true, row_pson)
+          if add_mass_record(MK_Chat, dest, row_pson)
             res = message_model.update({:state=>2}, nil, {:id=>id})
             if res
               ids << id if ids
@@ -1395,7 +1395,7 @@ module PandoraNet
       end
     end
 
-  end
+  end  # class Pool
 
   $incoming_addr = nil
   $puzzle_bit_length = 0  #8..24  (recommended 14)
@@ -1891,7 +1891,7 @@ module PandoraNet
     # RU: Шлёт команду запроса панхэшей
     def set_relations_query(list, time, send_now=false)
       ascmd = EC_Query
-      ascode = ECC_Query_Rel
+      ascode = ECC_Query_Relation
       asbuf = [time].pack('N') + list
       if send_now
         if not add_send_segment(ascmd, true, asbuf, ascode)
@@ -3300,8 +3300,8 @@ module PandoraNet
                 #sleep 2
               when EC_Query
                 case rcode
-                  when ECC_Query_Rel
-                    #p log_mes+'===ECC_Query_Rel'
+                  when ECC_Query_Relation
+                    #p log_mes+'===ECC_Query_Relation'
                     from_time = rdata[0, 4].unpack('N')[0]
                     pankinds = rdata[4..-1]
                     trust = skey_trust
@@ -3568,11 +3568,11 @@ module PandoraNet
                         end
                       end
                     else
-                      PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: rec is found'))
-                      reqs = find_search_request(req[0], req[1])
-                      reqs.each do |sr|
-                        sr[SA_Answer] = answ
-                      end
+                      PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: rec is searching'))
+                      PandoraNet.find_search_request(kind, request)
+                      #reqs.each do |sr|
+                      #  sr[SA_Answer] = answ
+                      #end
                     end
                   when ECC_News_BigBlob
                     # есть запись, но она слишком большая
@@ -3633,7 +3633,7 @@ module PandoraNet
               when EC_Mass
                 kind = rcode
                 params, len = PandoraUtils.pson_to_rubyobj(rdata)
-                #p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
+                p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
                 if (params.is_a? Array) and (params.size>=5)
                   src_node, src_time, atrust, adepth, param1, \
                     param2, param3 = params
@@ -4787,7 +4787,7 @@ module PandoraNet
       #??
     end
 
-  end
+  end #class Session
 
   # Take next client socket from listener, or return nil
   # RU: Взять следующий сокет клиента со слушателя, или вернуть nil
@@ -5714,6 +5714,13 @@ module PandoraNet
       end
     end
     res
+  end
+
+  def self.find_search_request(kind, request)
+    mr = $pool.add_mass_record(MK_Search, kind, request)
+    if not mr
+      #
+    end
   end
 
 end

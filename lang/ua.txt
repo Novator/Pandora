@@ -1,4 +1,5 @@
 # Pandora language file EN=>UA
+# See full list of phrases in "ru.txt" file
 #!cognate=ru
 Profile=>Профіль
 Expenditures=>Освоєння
@@ -20,7 +21,6 @@ Michael Galyuk=>Михайло Галюк
 _About=>_Про програму
 Wizards=>Майстри
 Transfer=>Переміщення
-Nomenclatures=>Номенклатура
 Things=>Речі
 Addresses=>Адреси
 Free software=>Вільне ПЗ
@@ -34,9 +34,7 @@ Contributions=>Надходження
 Projects=>Проекти
 Clients=>Клієнти
 Workers=>Співробітники
-_Business=>_Дело
 Files=>Файли
-Words=>Слова
 Activities=>Діяльність
 Streets=>Вулиці
 Accounts=>Рахунки
@@ -52,7 +50,6 @@ Rights to logo are owned by 21th Century Fox=>Права на логотип н�
 Search=>Пошук
 Parameters=>Параметри
 Punishments=>Покарання
-People=>Люди
 "Pandora is licensed under GNU GPLv2.
 
 Fundamentals:
@@ -78,6 +75,5 @@ Contacts=>Контакти
 "Base directory: "=>"Каталог даних: "
 On line!=>Коннект!
 Resources=>Ресурси
-Currency=>Валюта
 Towns=>Міста
 States=>Країни

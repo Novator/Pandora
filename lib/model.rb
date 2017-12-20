@@ -829,8 +829,12 @@ module PandoraModel
         panhash_hex = PandoraUtils.bytes_to_hex(panhash)
       end
       $image_cache.delete_if do |key, val|
-        ((key.is_a? Array) and (way = key[2]) \
-          and ((way==panhash_hex) or (way==panhash)))
+        res = false
+        if key.is_a?(Array)
+          way = key[2]
+          res = ((way==panhash_hex) or (way==panhash))
+        end
+        res
       end
     end
     res

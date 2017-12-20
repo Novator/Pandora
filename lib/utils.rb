@@ -104,7 +104,7 @@ module PandoraUtils
     end
     cognate = nil
     langfile = get_lang_file(lang)
-    if File.exist?(langfile) and (cognate_call>0)
+    if File.exist?(langfile)
       scanmode = 0
       frase = ''
       trans = ''
@@ -122,6 +122,10 @@ module PandoraUtils
                   cognate = line[10..-1]
                   cognate.strip! if cognate
                   cognate.downcase! if cognate
+                  if ((cognate.is_a? String) and (cognate.size>0) \
+                  and (cognate != lang)  and (cognate_call == MaxCognateDeep))
+                    lang_trans['#!cognate'] ||= cognate
+                  end
                 end
               else
                 if line[0, 1] != '"'
@@ -184,10 +188,12 @@ module PandoraUtils
           end
         end
       end
+      if ((cognate.is_a? String) and (cognate.size>0) \
+      and (cognate != lang) and (cognate_call>0))
+        lang_trans['#!cognate'] ||= cognate
+        load_language(cognate, cognate_call-1)
+      end
       res = true
-    end
-    if (cognate.is_a? String) and (cognate.size>0) and (cognate != lang)
-      load_language(cognate, cognate_call-1)
     end
     res
   end
@@ -210,21 +216,40 @@ module PandoraUtils
     res = nil
     lang_trans = $lang_trans if not lang_trans
     langfile = get_lang_file(lang)
+
+    cognate = lang_trans['#!cognate']
+    cog_lang_trans = nil
+    if (cognate.is_a? String) and (cognate.size>0) and (cognate != lang)
+      cog_lang_trans = Hash.new
+      if not load_language(cognate, MaxCognateDeep-1, cog_lang_trans)
+        cog_lang_trans = nil
+      end
+    else
+      cognate = nil
+    end
+
     File.open(langfile, 'w') do |file|
       file.puts('# Pandora language file EN=>'+lang.upcase)
-      file.puts('# See full list of phrases in "ru.txt" file')
+      file.puts('# See full list of phrases in "ru.txt" file') if (lang != 'ru')
+      file.puts('#!cognate='+cognate) if cognate
       lang_trans.each do |key,val|
-        if key and (key.size>1) and val and (val.size>1)
-          str = ''
-          if (not key.index('"')) and (not val.index('"')) \
-            and (not key.index("\n")) and (not val.index("\n")) \
-            and (not end_space_exist?(key)) and (not end_space_exist?(val))
-          then
-            str = key+'=>'+val
-          else
-            str = '"'+slash_quotes(key)+'"=>"'+slash_quotes(val)+'"'
+        if key and (key.size>1) and val and (val.size>1) and (key != '#!cognate')
+          cog_equal = nil
+          if cog_lang_trans
+            cog_val = cog_lang_trans[key]
+            cog_equal = (cog_val and (cog_val == val))
           end
-          file.puts(str)
+          if (not cog_equal)
+            str = ''
+            if (key[0, 1]=='"' or val[0, 1]=='"' \
+            or key.index("\n") or val.index("\n") \
+            or end_space_exist?(key) or end_space_exist?(val))
+              str = '"'+slash_quotes(key)+'"=>"'+slash_quotes(val)+'"'
+            else
+              str = key+'=>'+val
+            end
+            file.puts(str)
+          end
         end
       end
       res = true
@@ -406,7 +431,7 @@ module PandoraUtils
   # RU: Панхэш нулевой?
   def self.panhash_nil?(panhash)
     res = true
-    if panhash.is_a? String
+    if panhash.is_a?(String)
       i = 2
       while res and (i<panhash.size)
         res = (panhash[i] == 0.chr)

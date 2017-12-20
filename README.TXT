@@ -17,10 +17,10 @@ Contents
 1. OVERVIEW
 
 Pandora is a free peer-to-peer (P2P) social network application.
-It affords functions of instant messenger, audio and video chat, trading
-platform, commercial system, payment system, distributed development
-system, file exchange and vote system. Pandora has its own binary protocol,
-uses a cryptography and a web of trust.
+It affords functions of instant messenger, audio and video chat,
+encyclopedia article and file exchange, trading platform, payment
+system, distributed development system and vote system. Pandora
+has its own binary protocol, uses a cryptography and a web of trust.
 
 Pandora is not yet another "geek thing". It is designed for ordinary people,
 has a graphical user interface (GUI) and works "out of the box".

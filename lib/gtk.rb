@@ -2538,6 +2538,15 @@ module PandoraGtk
     end
   end
 
+  def self.copy_glib_object_properties(src_obj, dest_obj)
+    prev_props = src_obj.class.properties(false)
+    prev_props.each do |prop|
+      if prop != 'name'
+        dest_obj.set_property(prop, src_obj.get_property(prop))
+      end
+    end
+  end
+
   class LinkTag < Gtk::TextTag
     attr_accessor :link
   end
@@ -3367,7 +3376,10 @@ module PandoraGtk
           iter = textview.buffer.get_iter_at_offset(textview.buffer.cursor_position)
         else
           bx, by = textview.window_to_buffer_coords(Gtk::TextView::WINDOW_TEXT, x, y)
-          iter, trailing = textview.get_iter_at_position(bx, by)
+          left_border = get_border_window_size(Gtk::TextView::WINDOW_LEFT)
+          #iter, trailing = textview.get_iter_at_position(bx, by)
+          #cent_win = textview.get_window(Gtk::TextView::WINDOW_TEXT)
+          iter, trailing = textview.get_iter_at_position(bx-left_border, by)
         end
         pixbuf = iter.pixbuf   #.has_tag?(tag)  .char = 0xFFFC
         if pixbuf
@@ -3456,7 +3468,13 @@ module PandoraGtk
               proto, obj_type, way = res
               if proto and way
                 url = proto+'://'+way
-                if (proto == 'pandora') or (proto == 'sha1') or (proto == 'md5')
+                if (proto == 'pandora')
+                  panhash = PandoraUtils.hex_to_bytes(way)
+                  if not PandoraUtils.panhash_nil?(panhash)
+                    PandoraGtk.show_cabinet(panhash, nil, nil, nil, \
+                      nil, PandoraUI::CPI_Profile)
+                  end
+                elsif ((proto == 'sha1') or (proto == 'md5'))
                   puts 'Need do jump to: ['+url+']'
                   #PandoraGtk.internal_open(proto, obj_type, way)
                 elsif (proto=='http') or (proto=='https')
@@ -4005,12 +4023,7 @@ module PandoraGtk
                                       if dest_buf.create_tag(cur_name, tag_params)
                                         text_tag2 = dest_buf.tag_table.lookup(cur_name)
                                         if text_tag2
-                                          p prev_props = text_tag.class.properties(false)
-                                          prev_props.each do |prop|
-                                            if prop != 'name'
-                                              text_tag2.set_property(prop, text_tag.get_property(prop))
-                                            end
-                                          end
+                                          PandoraGtk.copy_glib_object_properties(text_tag, text_tag2)
                                           tv_tag = cur_name
                                         end
                                       end
@@ -5953,32 +5966,117 @@ module PandoraGtk
     # Create fields dialog
     # RU: Создать форму с полями
     def initialize(apanobject, afields, apanhash0, an_id, an_edit=nil, anotebook=nil, \
-    atree_view=nil, width_loss=nil, height_loss=nil)
+    atree_view=nil, awidth_loss=nil, aheight_loss=nil)
       super()
-      if apanobject.is_a? Integer
+      kind = nil
+      if apanobject.is_a?(Integer)
         kind = apanobject
         panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
         if panobjectclass
           apanobject = PandoraUtils.get_model(panobjectclass.ider)
         end
+      elsif apanobject
+        kind = apanobject.kind
+      elsif apanhash0
+        kind = PandoraUtils.kind_from_panhash(apanhash0)
       end
+      @vbox = self
       @panobject = apanobject
       @notebook = anotebook
       @tree_view = atree_view
       @panhash0 = apanhash0
       @obj_id = an_id
       @edit = an_edit
-      if afields.nil? and @panobject
+      @width_loss = awidth_loss
+      @height_loss = aheight_loss
+      @fields = afields
+      init_fields
+
+      if afields.nil?
+        search_btn = Gtk::Button.new(_('Request the record'))
+        search_btn.width_request = 110
+        search_btn.signal_connect('clicked') do |*args|
+          PandoraNet.find_search_request(kind, @panhash0)
+          false
+        end
+        @vbox.pack_start(search_btn, false, false, 12)
+        search_btn = Gtk::Button.new(_('Request the record with avatar'))
+        search_btn.width_request = 110
+        search_btn.signal_connect('clicked') do |*args|
+          PandoraNet.find_search_request(kind, @panhash0)
+          false
+        end
+        @vbox.pack_start(search_btn, false, false, 2)
+        search_btn = Gtk::Button.new(_('Request the record with links'))
+        search_btn.width_request = 110
+        search_btn.signal_connect('clicked') do |*args|
+          PandoraNet.find_search_request(kind, @panhash0)
+          false
+        end
+        @vbox.pack_start(search_btn, false, false, 2)
+        search_btn = Gtk::Button.new(_('Request the record with comments'))
+        search_btn.width_request = 110
+        search_btn.signal_connect('clicked') do |*args|
+          PandoraNet.find_search_request(kind, @panhash0)
+          false
+        end
+        @vbox.pack_start(search_btn, false, false, 12)
+        search_btn = Gtk::Button.new(_('Request the record with links and avatar'))
+        search_btn.width_request = 110
+        search_btn.signal_connect('clicked') do |*args|
+          PandoraNet.find_search_request(kind, @panhash0)
+          false
+        end
+        @vbox.pack_start(search_btn, false, false, 2)
+        search_btn = Gtk::Button.new(_('Request the record with links and comments'))
+        search_btn.width_request = 110
+        search_btn.signal_connect('clicked') do |*args|
+          PandoraNet.find_search_request(kind, @panhash0)
+          false
+        end
+        @vbox.pack_start(search_btn, false, false, 2)
+        search_btn = Gtk::Button.new(_('Request the record with links, avatars and comments'))
+        search_btn.width_request = 110
+        search_btn.signal_connect('clicked') do |*args|
+          PandoraNet.find_search_request(kind, @panhash0)
+          false
+        end
+        @vbox.pack_start(search_btn, false, false, 2)
+        search_btn = Gtk::Button.new(_('Read the record'))
+        search_btn.width_request = 110
+        search_btn.signal_connect('clicked') do |*args|
+          init_fields
+          false
+        end
+        @vbox.pack_start(search_btn, false, false, 12)
+      end
+    end
+
+    def init_fields
+      if @fields.nil? and @panobject
         sel = PandoraModel.get_record_by_panhash(@panhash0)
         if sel.is_a?(Array) and (sel.size>0)
-          afields = @panobject.get_fields_as_view(sel[0], @edit, @panhash0)
+          @fields = @panobject.get_fields_as_view(sel[0], @edit, @panhash0)
         end
       end
-      @fields = afields
+      if @fields
+        init_field_widgets
+      end
+    end
 
-      @vbox = self
+    def init_field_widgets
+      @vbox.hide_all
+      @vbox.child_visible = false
+      @vbox.each do |child|
+        child.destroy
+      end
+      @vbox.child_visible = true
+      #@vbox.show_all
 
-      return if afields.nil?
+      page_sw = nil
+      page_sw = @tree_view.page_sw if @tree_view
+      dialog = nil
+      dialog = page_sw.parent.parent.parent if page_sw
 
       #@statusbar = Gtk::Statusbar.new
       #PandoraGtk.set_statusbar_text(statusbar, '')
@@ -6053,9 +6151,9 @@ module PandoraGtk
 
       # max window size
       scr = Gdk::Screen.default
-      width_loss = 40 if (width_loss.nil? or (width_loss<10))
-      height_loss = 150 if (height_loss.nil? or (height_loss<10))
-      @last_width, @last_height = [scr.width-width_loss-40, scr.height-height_loss-70]
+      @width_loss = 40 if (@width_loss.nil? or (@width_loss<10))
+      @height_loss = 150 if (@height_loss.nil? or (@height_loss<10))
+      @last_width, @last_height = [scr.width-@width_loss-40, scr.height-@height_loss-70]
 
       # compose first matrix, calc its geometry
       # create entries, set their widths/maxlen, remember them
@@ -6069,7 +6167,10 @@ module PandoraGtk
         aview = field[PandoraUtils::FI_View]
         atype = field[PandoraUtils::FI_Type]
         entry = nil
-        amodal = (not notebook.nil?)
+        amodal = false
+        if dialog and dialog.is_a?(AdvancedDialog) and dialog.okbutton
+          amodal = true #(not notebook.nil?)
+        end
         case aview
           when 'integer', 'byte', 'word'
             entry = IntegerEntry.new
@@ -6192,7 +6293,9 @@ module PandoraGtk
           rw, rh = 0, 0
         end
 
-        if ! [:up, :down, :left, :right].include?(field[PandoraUtils::FI_LabOr]) then field[PandoraUtils::FI_LabOr]=orient; end
+        if not [:up, :down, :left, :right].include?(field[PandoraUtils::FI_LabOr])
+          field[PandoraUtils::FI_LabOr] = orient
+        end
         orient = field[PandoraUtils::FI_LabOr]
 
         field_size = calc_field_size(field)
@@ -6340,7 +6443,7 @@ module PandoraGtk
     def on_resize(view_width=nil, view_height=nil, force=nil)
       view_width ||= parent.allocation.width
       view_height ||= parent.allocation.height
-      if (((view_width != last_width) or (view_height != last_height) or force) \
+      if (@fields and ((view_width != last_width) or (view_height != last_height) or force) \
       and (@pre_last_width.nil? or @pre_last_height.nil? \
       or ((view_width != @pre_last_width) and (view_height != @pre_last_height))))
         #p '----------RESIZE [view_width, view_height, last_width, last_height, parent]='+\
@@ -8078,11 +8181,13 @@ module PandoraGtk
             #dlg_image ||= $window.get_preset_image('dialog')
             dlg_image ||= dlg_stock
             dlg_image ||= Gtk::Stock::MEDIA_PLAY
-            if not (dlg_image.is_a? Gtk::Image)
+            if dlg_image.is_a?(Gtk::Image)
+              dlg_image.tooltip_text = _('Watch avatar')
+            else
               dlg_image = $window.get_preset_image(dlg_image, Gtk::IconSize::LARGE_TOOLBAR, nil)
+              dlg_image.tooltip_text = _('Set avatar')
             end
             dlg_image.height_request = 60 if not dlg_image.pixbuf
-            dlg_image.tooltip_text = _('Set avatar')
             dlg_image.signal_connect('realize') do |widget, event|
               awindow = widget.window
               awindow.cursor = $window.hand_cursor if awindow
@@ -8090,19 +8195,34 @@ module PandoraGtk
             end
             event_box = Gtk::EventBox.new.add(dlg_image)
             event_box.events = Gdk::Event::BUTTON_PRESS_MASK
-            event_box.signal_connect('button_press_event') do |widget, event|
-              dialog = PandoraGtk::PanhashDialog.new([PandoraModel::Blob])
-              dialog.choose_record do |img_panhash|
-                PandoraModel.act_relation(img_panhash, cab_panhash, RK_AvatarFor, \
-                  :delete, false)
-                PandoraModel.act_relation(img_panhash, cab_panhash, RK_AvatarFor, \
-                  :create, false)
-                dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, its_blob, 150)
-                if dlg_pixbuf
-                  dlg_image.height_request = -1
-                  dlg_image.pixbuf = dlg_pixbuf
+            event_box.signal_connect('button-press-event') do |widget, event|
+              res = false
+              if cab_panhash
+                avatar_hash = PandoraModel.find_relation(cab_panhash, RK_AvatarFor, true)
+                if (avatar_hash and (event.button == 1) \
+                and (not event.state.control_mask?) and (not event.state.shift_mask?))
+                  sw = PandoraGtk.show_cabinet(avatar_hash, nil, nil, nil, \
+                    nil, PandoraUI::CPI_Editor)
+                  res = true
+                end
+                if not res
+                  dialog = PandoraGtk::PanhashDialog.new([PandoraModel::Blob])
+                  dialog.choose_record do |img_panhash|
+                    PandoraModel.del_image_from_cache(cab_panhash)
+                    PandoraModel.act_relation(img_panhash, cab_panhash, RK_AvatarFor, \
+                      :delete, false)
+                    PandoraModel.act_relation(img_panhash, cab_panhash, RK_AvatarFor, \
+                      :create, false)
+                    dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, its_blob, 150)
+                    if dlg_pixbuf
+                      dlg_image.height_request = -1
+                      dlg_image.pixbuf = dlg_pixbuf
+                    end
+                  end
+                  res = true
                 end
               end
+              res
             end
 
             left_box.pack_start(event_box, false, false, 0)
@@ -8694,7 +8814,7 @@ module PandoraGtk
     # Put message to dialog
     # RU: Добавляет сообщение в диалог
     def add_mes_to_view(mes, id, panstate=nil, to_end=nil, \
-    key_or_panhash=nil, myname=nil, modified=nil, created=nil)
+    key_or_panhash=nil, myname=nil, modified=nil, created=nil, mine=nil)
       if mes
         encrypted = ((panstate.is_a? Integer) \
           and ((panstate & PandoraModel::PSF_Crypted) > 0))
@@ -8713,22 +8833,26 @@ module PandoraGtk
         time_style = 'you'
         name_style = 'you_bold'
         user_name = nil
-        if key_or_panhash
+        creator = key_or_panhash
+        if mine
+          user_name = myname
+        else
           if key_or_panhash.is_a?(String)
-            user_name = PandoraCrypto.short_name_of_person(nil, key_or_panhash, 0, myname)
-          else
-            user_name = PandoraCrypto.short_name_of_person(key_or_panhash, nil, 0, myname)
+            creator = key_or_panhash
+            user_name = PandoraCrypto.short_name_of_person(nil, creator, 0, myname)
+          elsif key_or_panhash.is_a?(Array)
+            key_vec = key_or_panhash
+            creator = key_vec[PandoraCrypto::KV_Creator]
+            user_name = PandoraCrypto.short_name_of_person(key_vec, nil, 0, myname)
           end
           time_style = 'dude'
           name_style = 'dude_bold'
           notice = (not to_end.is_a?(FalseClass))
-        else
-          user_name = myname
         end
-        user_name = 'noname' if (not user_name) or (user_name=='')
+        user_name = 'noname' if ((not user_name) or (user_name==''))
 
         time_now = Time.now
-        created = time_now if (not modified) and (not created)
+        created = time_now if ((not modified) and (not created))
 
         time_str = ''
         time_str << PandoraUtils.time_to_dialog_str(created, time_now) if created
@@ -8741,16 +8865,44 @@ module PandoraGtk
         talkview = @chat_talkview if chat_mode
 
         if talkview
+          buf = talkview.buffer
           talkview.before_addition(time_now) if (not to_end.is_a? FalseClass)
-          talkview.buffer.insert(talkview.buffer.end_iter, "\n") if (talkview.buffer.char_count>0)
-          talkview.buffer.insert(talkview.buffer.end_iter, time_str+' ', time_style)
-          talkview.buffer.insert(talkview.buffer.end_iter, user_name+':', name_style)
-
-          line = talkview.buffer.line_count
+          buf.insert(buf.end_iter, "\n") if (buf.char_count>0)
+          buf.insert(buf.end_iter, time_str+' ', time_style)
+          #creator name_style 'URL'
+          tv_tag = nil
+          #p '====++ creator='+[creator, PandoraUtils.panhash_nil?(creator)].inspect
+          if (not PandoraUtils.panhash_nil?(creator))
+            link_url = 'pandora://'+PandoraUtils.bytes_to_hex(creator)
+            trunc_md5 = Digest::MD5.digest(link_url)[0, 10]
+            link_id = 'link'+PandoraUtils.bytes_to_hex(trunc_md5)
+            link_tag = buf.tag_table.lookup(link_id)
+            #p '--[link_url, link_id, link_tag]='+[link_url, link_id, link_tag].inspect
+            if link_tag
+              tv_tag = link_tag.name
+            else
+              link_tag = LinkTag.new(link_id)
+              if link_tag
+                name_tag = buf.tag_table.lookup(name_style)
+                PandoraGtk.copy_glib_object_properties(name_tag, link_tag)
+                #link_tag.underline = Pango::AttrUnderline::SINGLE
+                buf.tag_table.add(link_tag)
+                link_tag.link = link_url
+                tv_tag = link_id
+              end
+            end
+          end
+          if tv_tag
+            buf.insert(buf.end_iter, user_name, tv_tag)
+            buf.insert(buf.end_iter, ':', name_style)
+          else
+            buf.insert(buf.end_iter, user_name+':', name_style)
+          end
+          line = buf.line_count
           talkview.mes_ids[line] = id
 
-          talkview.buffer.insert(talkview.buffer.end_iter, ' ')
-          talkview.insert_taged_str_to_buffer(mes, talkview.buffer, 'bbcode')
+          buf.insert(buf.end_iter, ' ')
+          talkview.insert_taged_str_to_buffer(mes, buf, 'bbcode')
           talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
           talkview.show_all
         end
@@ -8842,11 +8994,8 @@ module PandoraGtk
           modified = message[6]
           id = message[7]
 
-          key_or_panhash = nil
-          key_or_panhash = creator if (creator != mypanhash)
-
-          add_mes_to_view(mes, id, panstate, false, key_or_panhash, \
-            myname, modified, created)
+          add_mes_to_view(mes, id, panstate, false, creator, \
+            myname, modified, created, (creator == mypanhash))
 
           i += 1
         end
@@ -8935,7 +9084,7 @@ module PandoraGtk
               end
             end
             id = sel[0][0]
-            add_mes_to_view(crypt_text, id, panstate, true)
+            add_mes_to_view(crypt_text, id, panstate, true, creator, nil, nil, nil, true)
           else
             PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot read message')+' ['+text+']')
           end
@@ -10799,6 +10948,11 @@ module PandoraGtk
             PandoraUI.log_message(PandoraUI::LM_Info, _('Language file is saved')+\
               ' ['+lang_file+']')
             save_btn.sensitive = false
+            if PandoraGtk.show_dialog(_('Application will be restarted')+ \
+            ".\n"+_('Send your file')+': '+lang_file+"\n"+_('to email')+ \
+            ": robux@mail.ru\n"+_('for including in the next release'))
+              PandoraUtils.restart_app
+            end
           end
         end
       end
@@ -11840,7 +11994,7 @@ module PandoraGtk
 
     treeview.signal_connect('row_activated') do |tree_view, path, column|
       dialog = page_sw.parent.parent.parent
-      if dialog and (dialog.is_a? AdvancedDialog) and dialog.okbutton
+      if dialog and dialog.is_a?(AdvancedDialog) and dialog.okbutton
         dialog.okbutton.activate
       else
         if (panobject.is_a? PandoraModel::Person)
@@ -13931,12 +14085,23 @@ module PandoraGtk
       #vbox.pack_start(cvpaned, true, true, 0)
       vbox.pack_start(log_vpaned, true, true, 0)
       stat_sw = Gtk::ScrolledWindow.new(nil, nil)
+      #stat_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       stat_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_NEVER)
+      #stat_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_NEVER)
       stat_sw.border_width = 0
+      #stat_sw.shadow_type = Gtk::SHADOW_NONE
       iw, iy = Gtk::IconSize.lookup(Gtk::IconSize::MENU)
       stat_sw.height_request = iy+6
-      #stat_sw.add_with_viewport($statusbar)
+      stat_sw.border_width = 0
+      #stat_sw.shadow_type = Gtk::SHADOW_NONE
       stat_sw.add($statusbar)
+      #stat_sw.add_with_viewport($statusbar)
+      #stat_sw.children[0].shadow_type = Gtk::SHADOW_NONE
+      #stat_viewport = Gtk::Viewport.new(nil, nil)
+      #stat_viewport.border_width = 0
+      #stat_viewport.shadow_type = Gtk::SHADOW_NONE
+      #stat_viewport.add($statusbar)
+      #stat_sw.add(stat_viewport)
       vbox.pack_start(stat_sw, false, false, 0)
 
       $window.add(vbox)
