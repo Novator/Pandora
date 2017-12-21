@@ -13891,6 +13891,7 @@ module PandoraGtk
 
       @menubar = Gtk::MenuBar.new
       fill_menubar(menubar)
+      @menubar.set_size_request(0, -1)
 
       @toolbar = Gtk::Toolbar.new
       toolbar.show_arrow = true
@@ -14061,7 +14062,11 @@ module PandoraGtk
       resize_eb.signal_connect('motion-notify-event') do |widget, event|
         if $pointoff
           point = $window.window.pointer[1,2]
-          $window.resize((point[0]+$pointoff[0]), (point[1]+$pointoff[1]))
+          wid = point[0]+$pointoff[0]
+          hei = point[1]+$pointoff[1]
+          wid = 16 if wid<16
+          hei = 16 if hei<16
+          $window.resize(wid, hei)
         end
         false
       end
@@ -14084,25 +14089,9 @@ module PandoraGtk
       vbox.pack_start(toolbar, false, false, 0)
       #vbox.pack_start(cvpaned, true, true, 0)
       vbox.pack_start(log_vpaned, true, true, 0)
-      stat_sw = Gtk::ScrolledWindow.new(nil, nil)
-      #stat_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-      stat_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_NEVER)
-      #stat_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_NEVER)
-      stat_sw.border_width = 0
-      #stat_sw.shadow_type = Gtk::SHADOW_NONE
-      iw, iy = Gtk::IconSize.lookup(Gtk::IconSize::MENU)
-      stat_sw.height_request = iy+6
-      stat_sw.border_width = 0
-      #stat_sw.shadow_type = Gtk::SHADOW_NONE
-      stat_sw.add($statusbar)
-      #stat_sw.add_with_viewport($statusbar)
-      #stat_sw.children[0].shadow_type = Gtk::SHADOW_NONE
-      #stat_viewport = Gtk::Viewport.new(nil, nil)
-      #stat_viewport.border_width = 0
-      #stat_viewport.shadow_type = Gtk::SHADOW_NONE
-      #stat_viewport.add($statusbar)
-      #stat_sw.add(stat_viewport)
-      vbox.pack_start(stat_sw, false, false, 0)
+
+      $statusbar.set_size_request(0, -1)
+      vbox.pack_start($statusbar, false, false, 0)
 
       $window.add(vbox)
 
