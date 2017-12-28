@@ -793,15 +793,17 @@ module PandoraModel
     sel
   end
 
-  ImageCacheSize = 100
-  $image_cache = {}
+  ImageCacheSize = 100*4
+  $image_cache = []
 
   # Get pixbuf from cache by a way
   # RU: Взять pixbuf из кэша по пути
   def self.get_image_from_cache(proto, obj_type, way)
-    ind = [proto, obj_type, way]
+    #ind = [proto, obj_type, way]
     #p '--get_image_from_cache  [proto, obj_type, way]='+[proto, obj_type, way].inspect
-    res = $image_cache[ind]
+    res = $image_cache.detect{ |e| ((e[0]==proto) and (e[1]==obj_type) and (e[2]==way)) }
+    res = res[3] if res
+    res
   end
 
   # Save pixbuf to cache with a way
@@ -809,13 +811,12 @@ module PandoraModel
   def self.save_image_to_cache(img_obj, proto, obj_type, way)
     res = get_image_from_cache(proto, obj_type, way)
     if res.nil? #and (img_obj.is_a? Gdk::Pixbuf)
-      while $image_cache.size >= ImageCacheSize do
-        $image_cache.delete_at(0)
-      end
-      ind = [proto, obj_type, way]
+      over_count = ($image_cache.size - ImageCacheSize)
+      $image_cache.drop(over_count) if over_count>0
+      #ind = [proto, obj_type, way]
       img_obj ||= false
-      $image_cache[ind] = img_obj
-      p '--save_image_to_cache  [img_obj, proto, obj_type, way]='+[img_obj, proto, obj_type, way].inspect
+      $image_cache << [proto, obj_type, way, img_obj]
+      #p '--save_image_to_cache  [proto, obj_type, way, img_obj]='+[proto, obj_type, way, img_obj].inspect
     end
   end
 
@@ -828,10 +829,10 @@ module PandoraModel
       else #raw format
         panhash_hex = PandoraUtils.bytes_to_hex(panhash)
       end
-      $image_cache.delete_if do |key, val|
+      $image_cache.delete_if do |e|
         res = false
         if key.is_a?(Array)
-          way = key[2]
+          way = e[2]
           res = ((way==panhash_hex) or (way==panhash))
         end
         res

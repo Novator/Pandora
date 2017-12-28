@@ -208,7 +208,7 @@ if not $poly_launch
     if psocket
       psocket.send('Activate', 0)
       psocket.close
-      puts ANOTHER_COPY_MES
+      puts(ANOTHER_COPY_MES)
       Kernel.exit
     else
       begin
@@ -229,7 +229,7 @@ if not $poly_launch
                   rescue
                     command = nil
                   end
-                  if ($window and command and (command != ''))
+                  if $window and command.is_a?(String) and (command.size>0)
                     PandoraUI.do_menu_act(command)
                   elsif (not psocket.closed?)
                     psocket.close
@@ -268,8 +268,8 @@ KEY_ENUMERATE_SUB_KEYS = 0x0008
 KEY_NOTIFY = 0x0010
 KEY_READ = STANDARD_RIGHTS_READ | KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_NOTIFY
 
-# Read Windows HKLM registry value by path and key
-# RU: Читает значение HKLM реестра винды по пути и ключу
+# Read Windows registry value by path and key
+# RU: Читает значение реестра винды по пути и ключу
 def read_win_reg(path, key, root=nil, res_format=nil)
   res = nil
   if init_win32api

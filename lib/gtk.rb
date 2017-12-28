@@ -3252,6 +3252,8 @@ module PandoraGtk
 
       @hovering = false
 
+      set_border_window_size(Gtk::TextView::WINDOW_LEFT, left_border) if left_border
+
       buf = self.buffer
       buf.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
       buf.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
@@ -3335,7 +3337,17 @@ module PandoraGtk
         res
       end
 
-      set_border_window_size(Gtk::TextView::WINDOW_LEFT, left_border) if left_border
+      signal_connect('button-press-event') do |widget, event|
+        res = false
+        if event.window == self.get_window(Gtk::TextView::WINDOW_LEFT)
+          left_bor = self.get_border_window_size(Gtk::TextView::WINDOW_LEFT)
+          if (event.button == 1) and (event.x < left_bor)
+            show_line_panel
+            res = true
+          end
+        end
+        res
+      end
 
       signal_connect('event-after') do |tv, event|
         if event.kind_of?(Gdk::EventButton) \
@@ -3382,7 +3394,7 @@ module PandoraGtk
           iter, trailing = textview.get_iter_at_position(bx-left_border, by)
         end
         pixbuf = iter.pixbuf   #.has_tag?(tag)  .char = 0xFFFC
-        if pixbuf
+        if pixbuf.is_a?(Gtk::Image)
           alt = pixbuf.tooltip
           if (alt.is_a? String) and (alt.size>0)
             tooltip.text = alt if ((not textview.destroyed?) and (not tooltip.destroyed?))
@@ -3390,7 +3402,7 @@ module PandoraGtk
           end
         else
           tags = iter.tags
-          link_tag = tags.find { |tag| (tag.is_a? LinkTag) }
+          link_tag = tags.find { |tag| tag.is_a?(LinkTag) }
           if link_tag
             tooltip.text = link_tag.link if not textview.destroyed?
             res = true
@@ -4235,9 +4247,11 @@ module PandoraGtk
                                   type = 'LIST'
                                 end
 
-                                dest_buf.insert(dest_buf.end_iter, name, 'bold')
-                                dest_buf.insert(dest_buf.end_iter, ': ')
-                                shift_coms(name.size+2)
+                                if name and (name.size>0)
+                                  dest_buf.insert(dest_buf.end_iter, name, 'bold')
+                                  dest_buf.insert(dest_buf.end_iter, ': ')
+                                  shift_coms(name.size+2)
+                                end
 
                                 widget = nil
                                 if type=='EDIT'
@@ -7890,7 +7904,7 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(toolbar, :image, 'Image') do
         dialog = PandoraGtk::PanhashDialog.new([PandoraModel::Blob])
         dialog.choose_record('sha1','md5','name') do |panhash,sha1,md5,name|
-          params = ''
+          params = ' align="center"'
           if (name.is_a? String) and (name.size>0)
             params << ' alt="'+name+'" title="'+name+'"'
           end
