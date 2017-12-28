@@ -831,7 +831,7 @@ module PandoraModel
       end
       $image_cache.delete_if do |e|
         res = false
-        if key.is_a?(Array)
+        if e.is_a?(Array)
           way = e[2]
           res = ((way==panhash_hex) or (way==panhash))
         end

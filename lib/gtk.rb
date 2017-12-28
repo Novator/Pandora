@@ -1984,7 +1984,10 @@ module PandoraGtk
       last_dir = nil
       last_dirs.each do |dn|
         if Dir.exists?(dn)
-          dialog.add_shortcut_folder(dn)
+          begin
+            dialog.add_shortcut_folder(dn)
+          rescue
+          end
           last_dir ||= dn
         end
       end
@@ -6004,7 +6007,7 @@ module PandoraGtk
       @width_loss = awidth_loss
       @height_loss = aheight_loss
       @fields = afields
-      init_fields
+      init_fields(kind)
 
       if afields.nil?
         search_btn = Gtk::Button.new(_('Request the record'))
@@ -6066,7 +6069,7 @@ module PandoraGtk
       end
     end
 
-    def init_fields
+    def init_fields(kind)
       if @fields.nil? and @panobject
         sel = PandoraModel.get_record_by_panhash(@panhash0)
         if sel.is_a?(Array) and (sel.size>0)
@@ -6074,11 +6077,11 @@ module PandoraGtk
         end
       end
       if @fields
-        init_field_widgets
+        init_field_widgets(kind)
       end
     end
 
-    def init_field_widgets
+    def init_field_widgets(kind)
       @vbox.hide_all
       @vbox.child_visible = false
       @vbox.each do |child|
