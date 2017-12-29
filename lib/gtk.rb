@@ -3333,6 +3333,26 @@ module PandoraGtk
             when Gdk::Keyval::GDK_g, Gdk::Keyval::GDK_G, 1744, 1776
               show_line_panel
               res = true
+            when Gdk::Keyval::GDK_c, Gdk::Keyval::GDK_C, 1747, 1779
+              self.copy_clipboard
+              res = true
+            when Gdk::Keyval::GDK_x, Gdk::Keyval::GDK_X, 1758, 1790
+              self.cut_clipboard
+              res = true
+            when Gdk::Keyval::GDK_v, Gdk::Keyval::GDK_V, 1741, 1773
+              self.paste_clipboard
+              res = true
+            when Gdk::Keyval::GDK_a, Gdk::Keyval::GDK_A, 1734, 1766
+              self.select_all(true)
+              res = true
+            when Gdk::Keyval::GDK_s, Gdk::Keyval::GDK_S, 1753, 1785
+              sw = self.scrollwin
+              #p [sw, sw.property_box, sw.property_box.save_btn]
+              if sw and sw.is_a?(BodyScrolledWindow) and sw.property_box and sw.property_box.save_btn
+                sbtn = sw.property_box.save_btn
+                sbtn.clicked if sbtn.sensitive?
+                res = true
+              end
           end
         elsif (event.keyval==Gdk::Keyval::GDK_Escape)
           @find_panel.hide if (@find_panel and (not @find_panel.destroyed?))
@@ -3417,7 +3437,7 @@ module PandoraGtk
 
     def scrollwin
       res = self.parent
-      res = res.parent if not res.is_a? Gtk::ScrolledWindow
+      res = res.parent if (not res.is_a?(Gtk::ScrolledWindow))
       res
     end
 
@@ -5974,7 +5994,7 @@ module PandoraGtk
     include PandoraModel
 
     attr_accessor :panobject, :vbox, :fields, :text_fields, :statusbar, \
-      :rate_label, :lang_entry, :last_sw, :rate_btn, :format_btn, \
+      :rate_label, :lang_entry, :last_sw, :rate_btn, :format_btn, :save_btn, \
       :last_width, :last_height, :notebook, :tree_view, :edit, \
       :keep_btn, :follow_btn, :vouch0, :vouch_btn, :vouch_scale, :public0, \
       :public_btn, :public_scale, :ignore_btn, :arch_btn, :panhash0, :obj_id,
@@ -6936,8 +6956,13 @@ module PandoraGtk
 
             if file_way
               begin
-                File.open(file_way, 'w') do |file|
+                File.open(file_way, 'wb') do |file|
                   #p '---[file_way, file.methods, text.size]='+[file_way, file.methods, text.size].inspect
+                  if PandoraUtils.os_family == 'windows'
+                    text = PandoraUtils.correct_newline_codes(text, false)
+                  else
+                    text = AsciiString.new(text)
+                  end
                   file.write(text)
                 end
               rescue => err
@@ -6967,6 +6992,10 @@ module PandoraGtk
       end
 
       panhash = self.save_flds_with_form_flags(flds_hash, lang, created0)
+
+      if panhash.is_a?(String)
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Record saved')+' '+PandoraUtils.bytes_to_hex(panhash))
+      end
       panhash
     end
 
@@ -8059,7 +8088,7 @@ module PandoraGtk
 
       PandoraGtk.add_tool_btn(toolbar)
 
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE) do
+      pb.save_btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE) do
         pb.save_form_fields_with_flags_to_database
       end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) do
@@ -12711,7 +12740,7 @@ module PandoraGtk
       if (cur_page.is_a? PandoraGtk::CabinetBox) and cur_page.toolbar_sw
         if need_show
           cur_page.toolbar_sw.visible = true if (not cur_page.toolbar_sw.visible?)
-        elsif PandoraGtk.is_ctrl_shift_alt?(true) and cur_page.toolbar_sw.visible?
+        elsif (not PandoraGtk.is_ctrl_shift_alt?(true)) and cur_page.toolbar_sw.visible?
           cur_page.toolbar_sw.visible = false
           @last_cur_page_toolbar = cur_page.toolbar_sw
         end

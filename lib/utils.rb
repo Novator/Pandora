@@ -703,6 +703,20 @@ module PandoraUtils
     res
   end
 
+  CR_EOL = "\r"  #0x0D.chr
+  LF_EOL = "\n"  #0x0A.chr
+  CRLF_EOL = CR_EOL + LF_EOL
+
+  def self.correct_newline_codes(text, crlf=nil)
+    #res = text
+    res = AsciiString.new(text)
+    res.gsub!(CRLF_EOL, LF_EOL)
+    res.gsub!(CR_EOL, '')
+    res.gsub!(LF_EOL, CRLF_EOL) if crlf
+    #Utf8String.new(res)
+    res
+  end
+
   # Codes of data types in PSON
   # RU: Коды типов данных в PSON
   PT_Int   = 0

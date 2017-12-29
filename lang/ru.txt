@@ -480,3 +480,4 @@ Send your file=>Отправьте ваш файл
 to email=>на емейл
 for including in the next release=>для включения в следующий релиз
 Watch avatar=>Глядеть аватар
+Record saved=>Запись сохранена
