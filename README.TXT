@@ -111,6 +111,10 @@ Download and unpack master.zip (see the next chapter), run pandora.sh.
 
   https://github.com/Novator/Pandora/archive/master.zip
 
+or download the code with a git:
+
+  git clone --depth=1 https://github.com/Novator/Pandora.git
+
 7.2. Install needed packages if they still are not installed:
 
   ruby, ruby-sqlite3, ruby-gtk2, openssl, unzip, ruby-ncurses, ruby-gstreamer,

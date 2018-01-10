@@ -280,7 +280,7 @@ module PandoraGtk
           yield(@response) if block_given?
           res = true
         end
-        self.destroy
+        self.destroy if (not self.destroyed?)
       end
 
       res
@@ -4787,7 +4787,7 @@ module PandoraGtk
       end
     end
 
-    def initialize(an_image, title, child=nil, *args)
+    def initialize(an_image, title, achild=nil, *args)
       args ||= [false, 0]
       super(*args)
       @image = an_image
@@ -4798,8 +4798,9 @@ module PandoraGtk
       @image.set_padding(2, 0)
       self.pack_start(image, false, false, 0) if image
       @label = Gtk::Label.new(title)
-      self.pack_start(label, false, false, 0)
-      if child
+      #label.xalign = 0.0
+      self.pack_start(label, true, true, 0)
+      if achild
         btn = Gtk::Button.new
         btn.relief = Gtk::RELIEF_NONE
         btn.focus_on_click = false
@@ -4809,15 +4810,17 @@ module PandoraGtk
         btn.modify_style(style)
         wim,him = Gtk::IconSize.lookup(Gtk::IconSize::MENU)
         btn.set_size_request(wim+2,him+2)
+        @achild = achild
         btn.signal_connect('clicked') do |*args|
           yield if block_given?
-          ind = $window.notebook.children.index(child)
+          ind = $window.notebook.children.index(@achild)
           $window.notebook.remove_page(ind) if ind
-          self.destroy if not self.destroyed?
-          child.destroy if not child.destroyed?
+          @achild.destroy if (@achild and (not @achild.destroyed?))
+          self.destroy if (not self.destroyed?)
         end
-        close_image = Gtk::Image.new(Gtk::Stock::CLOSE, Gtk::IconSize::MENU)
-        btn.add(close_image)
+        #close_image = Gtk::Image.new(Gtk::Stock::CLOSE, Gtk::IconSize::MENU)
+        @@close_image ||= $window.get_preset_icon(Gtk::Stock::CLOSE, nil, wim)
+        btn.add(Gtk::Image.new(@@close_image))
         align = Gtk::Alignment.new(1.0, 0.5, 0.0, 0.0)
         align.add(btn)
         self.pack_start(align, false, false, 0)
@@ -13814,7 +13817,7 @@ module PandoraGtk
       ['>', nil, '_Wizards'],
       ['>Profile', Gtk::Stock::HOME, 'Profile'],
       ['>Exchange', 'exchange:m', 'Exchange'],
-      ['>Session', 'session:m', 'Sessions', '<control>S'],   #Gtk::Stock::JUSTIFY_FILL
+      ['>Session', 'session:m', 'Sessions'],   #Gtk::Stock::JUSTIFY_FILL
       ['>Fisher', 'fish:m', 'Fishers'],
       ['>Wizard', Gtk::Stock::PREFERENCES.to_s+':m', '_Wizards'],
       ['-', nil, '-'],
