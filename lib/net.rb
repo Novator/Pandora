@@ -25,7 +25,7 @@ module PandoraNet
 
   # Version of protocol
   # RU: Версия протокола
-  ProtocolVersion = 'pandora0.69'
+  ProtocolVersion = 'pandora0.70'
 
   DefTcpPort = 5577
   DefUdpPort = 5577
@@ -202,10 +202,11 @@ module PandoraNet
   MK_Presence   = 1
   MK_Chat       = 2
   MK_Search     = 3
-  MK_Fishing    = 4
-  MK_Cascade    = 5
-  MK_CiferBox   = 6
-  MK_BlockWeb   = 7
+  MK_Answer     = 4
+  MK_Fishing    = 5
+  MK_Cascade    = 6
+  MK_CiferBox   = 7
+  MK_BlockWeb   = 8
 
   # Node list indexes
   # RU: Индексы в списке узлов
@@ -281,6 +282,12 @@ module PandoraNet
   ST_Listener = 1
   ST_Fisher   = 2
 
+  # Search request options
+  # RU: Опции поискового запроса
+  SRO_Record   = 1
+  SRO_Avatar   = 2
+  SRO_Links    = 4
+  SRO_Comments = 8
 
   # Pool
   # RU: Пул
@@ -3707,8 +3714,30 @@ module PandoraNet
                           #MRS_Kind       = MR_Param1    #1
                           #MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
                           #MRA_Answer     = MR_Param3    #~22
-                          scr_baseid ||= @to_base_id
-                          resend = ((scr_baseid.nil?) or (scr_baseid != pool.base_id))
+                          akind = param1
+                          if akind.is_a?(Integer) and (akind>0) and (akind<255)
+                            anoptions = akind
+                            apanhash = param2
+                            pson = PandoraModel.get_record_by_panhash(panhash, nil, false, @recv_models)
+                            if pson                            
+                              #@scmd = EC_Record
+                              #@scode = kind
+                              #@sbuf = pson
+                              #lang = @sbuf[0].ord
+                              #values = PandoraUtils.namepson_to_hash(@sbuf[1..-1])
+                              param1 = src_node
+                              param2 = src_time  
+                              param3 = pson 
+
+                              pool.add_mass_record(MK_Answer, param1, param2, param3, nil, nil, \
+                                nil, nil, @to_node, nil, @recv_models)
+                              #p log_mes+'SEND RECORD !!! [pson, values]='+[pson, values].inspect
+                            else
+                              #record is not found
+                            end
+                          end
+                          #scr_baseid ||= @to_base_id
+                          #resend = ((scr_baseid.nil?) or (scr_baseid != pool.base_id))
                           #  p log_mes+'ADD search req to pool list'
                           #  pool.add_mass_record(MK_Search, params[MRS_Kind], \
                           #    params[MRS_Request], params[MRA_Answer], nil, nil, \

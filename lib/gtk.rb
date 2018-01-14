@@ -2544,7 +2544,7 @@ module PandoraGtk
   def self.copy_glib_object_properties(src_obj, dest_obj)
     prev_props = src_obj.class.properties(false)
     prev_props.each do |prop|
-      if prop != 'name'
+      if ((prop != 'name') and src_obj.class.property(prop).readwrite?)
         dest_obj.set_property(prop, src_obj.get_property(prop))
       end
     end
@@ -3353,6 +3353,14 @@ module PandoraGtk
                 sbtn.clicked if sbtn.sensitive?
                 res = true
               end
+            when Gdk::Keyval::GDK_z, Gdk::Keyval::GDK_Z, 1745, 1777
+              self.do_undo
+              res = true
+            when Gdk::Keyval::GDK_y, Gdk::Keyval::GDK_Y, 1742, 1774
+              self.do_redo
+              res = true
+            #else
+            #  p event.keyval
           end
         elsif (event.keyval==Gdk::Keyval::GDK_Escape)
           @find_panel.hide if (@find_panel and (not @find_panel.destroyed?))
@@ -3433,6 +3441,12 @@ module PandoraGtk
         end
         res
       end
+    end
+
+    def do_undo
+    end
+
+    def do_redo
     end
 
     def scrollwin
@@ -4503,7 +4517,7 @@ module PandoraGtk
       super(aview_border)
       $font_desc ||= Pango::FontDescription.new('Monospace 11')
 
-      signal_connect('expose-event') do |widget, event|
+      self.signal_connect('expose-event') do |widget, event|
         tv = widget
         type = nil
         event_win = nil
@@ -4514,7 +4528,7 @@ module PandoraGtk
         rescue Exception
           event_win = nil
         end
-        sw = tv.scrollwin
+        sw = @body_win #tv.scrollwin
         view_mode = true
         view_mode = sw.view_mode if sw and (sw.is_a? BodyScrolledWindow)
         if (not view_mode)
@@ -4589,6 +4603,58 @@ module PandoraGtk
         false
       end
     end
+
+    def iter_on_screen(iter, mark_str, buf)
+      buf.place_cursor(iter)
+      self.scroll_mark_onscreen(buf.get_mark(mark_str))
+    end
+
+    def color_tags(buf, off1, len)
+      line1 = buf.get_iter_at_offset(off1).line
+      line2 = buf.get_iter_at_offset(off1 + len).line
+      @body_win.set_tags(buf, line1, line2)
+    end
+
+    def do_undo
+      if (not @body_win.view_mode) and (@body_win.undopool.size>0)
+        action = @body_win.undopool.pop
+        case action[0]
+          when 'ins'
+            start_iter = @body_win.raw_buffer.get_iter_at_offset(action[1])
+            end_iter = @body_win.raw_buffer.get_iter_at_offset(action[2])
+            @body_win.raw_buffer.delete(start_iter, end_iter)
+          when 'del'
+            start_iter = @body_win.raw_buffer.get_iter_at_offset(action[1])
+            text = action[3]
+            off1 = start_iter.offset
+            @body_win.raw_buffer.insert(start_iter, text)
+            color_tags(@body_win.raw_buffer, off1, text.size)
+        end
+        iter_on_screen(start_iter, 'insert', @body_win.raw_buffer)
+        @body_win.redopool << action
+      end
+    end
+
+    def do_redo
+      if (not @body_win.view_mode) and (@body_win.redopool.size>0)
+        action = @body_win.redopool.pop
+        case action[0]
+          when 'ins'
+            start_iter = @body_win.raw_buffer.get_iter_at_offset(action[1])
+            text = action[3]
+            off1 = start_iter.offset
+            @body_win.raw_buffer.insert(start_iter, text)
+            color_tags(@body_win.raw_buffer, off1, text.size)
+          when 'del'
+            start_iter = @body_win.raw_buffer.get_iter_at_offset(action[1])
+            end_iter = @body_win.raw_buffer.get_iter_at_offset(action[2])
+            @body_win.raw_buffer.delete(start_iter, end_iter)
+        end
+        iter_on_screen(start_iter, 'insert', @body_win.raw_buffer)
+        @body_win.undopool << action
+      end
+    end
+
   end
 
   class ChatTextView < SuperTextView
@@ -4836,7 +4902,9 @@ module PandoraGtk
     include PandoraUtils
 
     attr_accessor :field, :link_name, :body_child, :format, :raw_buffer, :view_buffer, \
-      :view_mode, :color_mode, :fields, :property_box, :toolbar, :edit_btn
+      :view_mode, :color_mode, :fields, :property_box, :toolbar, :edit_btn, \
+      :undopool, :redopool, :user_action
+
 
     def parent_win
       res = parent.parent.parent
@@ -4976,6 +5044,9 @@ module PandoraGtk
       @view_mode = true
       @color_mode = true
       @fields = afields
+      @undopool = nil
+      @redopool = nil
+      @user_action = nil
     end
 
     def init_view_buf(buf)
@@ -5022,18 +5093,45 @@ module PandoraGtk
           false
         end
 
+        @undopool = Array.new
+        @redopool = Array.new
+
+        @view_buffer_off1 = nil
+
         buf.signal_connect('insert-text') do |buf, iter, text, len|
-          $view_buffer_off1 = iter.offset
+          it_of = iter.offset
+          @view_buffer_off1 = it_of
+          if @user_action
+            #@undopool <<  ['ins', iter.offset, iter.offset + text.scan(/./).size, text]
+            @undopool <<  ['ins', it_of, it_of + text.size, text]
+            @redopool.clear
+          end
           false
         end
 
+        buf.signal_connect('delete-range') do |buf, start_iter, end_iter|
+          if @user_action
+            text = buf.get_text(start_iter, end_iter)
+            @undopool <<  ['del', start_iter.offset, end_iter.offset, text]
+          end
+          false
+        end
+
+        buf.signal_connect('begin-user-action') do
+          @user_action = true
+        end
+        buf.signal_connect('end-user-action') do
+          @user_action = false
+        end
+
         buf.signal_connect('paste-done') do |buf|
-          if $view_buffer_off1
-            line1 = buf.get_iter_at_offset($view_buffer_off1).line
+          @view_buffer_off1 ||= buf.cursor_position
+          if @view_buffer_off1
+            line1 = buf.get_iter_at_offset(@view_buffer_off1).line
             mark = buf.get_mark('insert')
             iter = buf.get_iter_at_mark(mark)
             line2 = iter.line
-            $view_buffer_off1 = iter.offset
+            @view_buffer_off1 = iter.offset
             set_tags(buf, line1, line2)
           end
           false
@@ -6036,49 +6134,52 @@ module PandoraGtk
         search_btn = Gtk::Button.new(_('Request the record'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request(kind, @panhash0)
+          PandoraNet.find_search_request(PandoraNet::SRO_Record, @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 12)
         search_btn = Gtk::Button.new(_('Request the record with avatar'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request(kind, @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Avatar), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 2)
         search_btn = Gtk::Button.new(_('Request the record with links'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request(kind, @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Links), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 2)
         search_btn = Gtk::Button.new(_('Request the record with comments'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request(kind, @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Comments), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 12)
         search_btn = Gtk::Button.new(_('Request the record with links and avatar'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request(kind, @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Avatar | \
+            PandoraNet::SRO_Links), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 2)
         search_btn = Gtk::Button.new(_('Request the record with links and comments'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request(kind, @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Comments | \
+            PandoraNet::SRO_Links), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 2)
         search_btn = Gtk::Button.new(_('Request the record with links, avatars and comments'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request(kind, @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Comments | \
+            PandoraNet::SRO_Links | PandoraNet::SRO_Avatar), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 2)
@@ -8064,21 +8165,21 @@ module PandoraGtk
       menu.show_all
 
       btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::UNDO, nil, 0) do
-        #do undo
+        bodywid.do_undo
       end
       menu = Gtk::Menu.new
       btn.menu = menu
       add_menu_item(btn, menu, Gtk::Stock::REDO) do
-        #redo
+        bodywid.do_redo
       end
       add_menu_item(btn, menu, Gtk::Stock::COPY) do
-        #copy
+        bodywid.copy_clipboard
       end
       add_menu_item(btn, menu, Gtk::Stock::CUT) do
-        #cut
+        bodywid.cut_clipboard
       end
       add_menu_item(btn, menu, Gtk::Stock::PASTE) do
-        #paste
+        bodywid.paste_clipboard
       end
       menu.show_all
 

@@ -38,7 +38,7 @@ module PandoraUtils
 
   # Version of GUI application
   # RU: Версия GUI приложения
-  PandoraVersion  = '0.69'
+  PandoraVersion  = '0.70'
 
   $detected_os_family = nil
 

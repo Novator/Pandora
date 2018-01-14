@@ -1108,24 +1108,6 @@ class PoolThread(threading.Thread):
 # === Running the PanGate!
 # === RU: Запуск ПанГейта!
 
-#a = int(q)
-#s = [123, 'привет', False, 456.78, datetime.datetime.now()]
-#s = {'123': 456, 'aa': 'dfsf'}
-#print(s)
-#print('----------')
-#s = pythonobj_to_pson(s)
-#s = hash_to_namepson(s)
-#print(s + '|'+str(len(s)))
-#res = pson_to_pythonobj(s)
-#res = namepson_to_hash(s)
-#print(res)
-#v, size = res
-#print(v)
-#print(pythonobj_to_pson('123'))
-#print(pythonobj_to_pson([111, '2222']))
-#print(pythonobj_to_pson({'aa': 'asdsada', 'bb': 3432, 111: 222}))
-
-
 # Preparation for key capturing in terminal
 fd = sys.stdin.fileno()
 oldterm = termios.tcgetattr(fd)
@@ -1186,3 +1168,4 @@ finally:
   fcntl.fcntl(fd, fcntl.F_SETFL, oldflags)
   closelog
   sys.exit()
+
