@@ -209,20 +209,20 @@ module PandoraUI
               search_req = pool.mass_records[pool.found_ind]
               p '####  Search spider  [size, @found_ind, obj_id]='+[pool.mass_records.size, \
                 pool.found_ind, search_req.object_id].inspect
-              if search_req and (not search_req[PandoraNet::SA_Answer])
-                req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
-                p 'search_req3='+req.inspect
+              if search_req and (not search_req[PandoraNet::MRA_Answer])
+                #req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
+                #p 'search_req3='+req.inspect
                 answ = nil
-                if search_req[PandoraNet::SR_Kind]==PandoraModel::PK_BlobBody
-                  sha1 = search_req[PandoraNet::SR_Request]
+                if search_req[PandoraNet::MRS_Kind]==PandoraModel::PK_BlobBody
+                  sha1 = search_req[PandoraNet::MRS_Request]
                   fn_fs = $pool.blob_exists?(sha1, @shed_models, true)
                   if fn_fs.is_a? Array
                     fn_fs[0] = PandoraUtils.relative_path(fn_fs[0])
                     answ = fn_fs
                   end
                 else
-                  answ,kind = pool.search_in_local_bases(search_req[PandoraNet::SR_Request], \
-                    search_req[PandoraNet::SR_Kind])
+                  answ, kind = pool.search_in_local_bases(search_req[PandoraNet::MRS_Request], \
+                    search_req[PandoraNet::MRS_Kind], @shed_models)
                 end
                 p 'SEARCH answ='+answ.inspect
                 if answ

@@ -2544,7 +2544,8 @@ module PandoraGtk
   def self.copy_glib_object_properties(src_obj, dest_obj)
     prev_props = src_obj.class.properties(false)
     prev_props.each do |prop|
-      if ((prop != 'name') and src_obj.class.property(prop).readwrite?)
+      if ((prop != 'name') and src_obj.class.property(prop).readable? \
+      and src_obj.class.property(prop).readwrite?)
         dest_obj.set_property(prop, src_obj.get_property(prop))
       end
     end
@@ -6738,8 +6739,8 @@ module PandoraGtk
               field = @fields[index]
               label = field[PandoraUtils::FI_Label]
               entry = field[PandoraUtils::FI_Widget]
-              label.parent.remove(label)
-              entry.parent.remove(entry)
+              label.parent.remove(label) if label and label.parent
+              entry.parent.remove(entry) if entry and entry.parent
             end
             @vbox.each do |child|
               child.destroy
@@ -10680,7 +10681,7 @@ module PandoraGtk
           $pool.mass_records.each do |mr|
             p '---mr:'
             p mr[0..6]
-            anode = mr[PandoraNet::MR_Node]
+            anode = mr[PandoraNet::MR_SrcNode]
             akey, abaseid, aperson = $pool.get_node_params(anode)
             if aperson or akey
               sess_iter = list_store.append
@@ -10912,7 +10913,7 @@ module PandoraGtk
           if mr
             sess_iter = list_store.append
             sess_iter[0] = mr[PandoraNet::MR_Kind]
-            sess_iter[1] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_Node])
+            sess_iter[1] = PandoraUtils.bytes_to_hex(mr[PandoraNet::MR_SrcNode])
             sess_iter[2] = PandoraUtils.time_to_str(mr[PandoraNet::MR_CrtTime])
             sess_iter[3] = mr[PandoraNet::MR_Trust].inspect
             sess_iter[4] = mr[PandoraNet::MR_Depth].inspect

@@ -202,11 +202,11 @@ module PandoraNet
   MK_Presence   = 1
   MK_Chat       = 2
   MK_Search     = 3
-  MK_Answer     = 4
   MK_Fishing    = 5
   MK_Cascade    = 6
   MK_CiferBox   = 7
   MK_BlockWeb   = 8
+  MK_Answer     = 128
 
   # Node list indexes
   # RU: Индексы в списке узлов
@@ -218,7 +218,7 @@ module PandoraNet
   # Common field indexes of mass record array  #(size of field)
   # RU: Общие индексы полей в векторе массовых записей
   #==========================={head
-  MR_Node            = 0  #22
+  MR_SrcNode            = 0  #22
   MR_CrtTime         = 1  #4
   MR_Trust           = 2  #1
   MR_Depth           = 3  #1
@@ -233,6 +233,8 @@ module PandoraNet
   MR_KeepNodes       = 8  #(0-220) fill when register, not sending
   MR_ReqIndexes      = 9  #0-255
   MR_ReceiveState    = 10  #nil, Time или
+
+  MR_DstNode            = MR_Param1
 
   # Alive
   MRP_Nick           = MR_Param1  #~30    #sum: 33+(~30)= ~63
@@ -985,7 +987,7 @@ module PandoraNet
     def find_mass_record_by_time(src_node, src_time)
       res = nil
       res = @mass_records.find do |mr|
-        mr and ((mr[PandoraNet::MR_Node] == src_node) and \
+        mr and ((mr[PandoraNet::MR_SrcNode] == src_node) and \
         (mr[PandoraNet::MR_CrtTime] == src_time))
       end
       res
@@ -995,7 +997,7 @@ module PandoraNet
       res = nil
       param2 = AsciiString.new(param2) if akind==MK_Search
       res = @mass_records.find do |mr|
-        mr and ((mr[PandoraNet::MR_Node] == src_node) and \
+        mr and ((mr[PandoraNet::MR_SrcNode] == src_node) and \
         (param1.nil? or (mr[PandoraNet::MR_Param1] == param1)) and \
         (param2.nil? or (mr[PandoraNet::MR_Param2] == param2)) and \
         (param3.nil? or (mr[PandoraNet::MR_Param3] == param3)))
@@ -1042,7 +1044,7 @@ module PandoraNet
           end
           if src_time
             mr = Array.new
-            mr[MR_Node]     = src_node
+            mr[MR_SrcNode]     = src_node
             mr[MR_CrtTime]    = src_time
             mr[MR_KeepNodes] = [keep_node]
             yield(mr) if block_given?
@@ -1110,7 +1112,7 @@ module PandoraNet
 
     # Search in bases
     # RU: Поиск в базах
-    def search_in_local_bases(text, bases='auto', th=nil, from_id=nil, limit=nil)
+    def search_in_local_bases(arequest, akind='auto', models=nil, thread=nil, limit=nil)
 
       def name_filter(fld, val)
         res = nil
@@ -1124,51 +1126,80 @@ module PandoraNet
         [res, AsciiString.new(val)]
       end
 
-      model = nil
-      fields, sort, word1, word2, word3, words, word1dup, filter1, filter2 = nil
-      bases = 'Person' if (bases == 'auto')
-
-      if bases == 'Person'
-        model = PandoraUtils.get_model('Person')
-        fields = 'first_name, last_name, birth_day'
-        sort = 'first_name, last_name'
-        word1, word2, word3, words = text.split
-        #p [word1, word2, word3, words]
-        word1dup = word1.dup
-        filter1, word1 = name_filter('first_name', word1)
-        filter2, word2 = name_filter('last_name', word2) if word2
-        word4 = nil
-        if word3
-          word3, word4 = word3.split('-')
-          #p [word3, word4]
-          word3 = PandoraUtils.str_to_date(word3).to_i
-          word4 = PandoraUtils.str_to_date(word4).to_i if word4
-        end
-      end
-      limit ||= 100
-
       res = nil
-      while ((not th) or th[:processing]) and (not res) and model
-        if model
-          if word4
-            filter = [filter1+' AND '+filter2+' AND birth_day>=? AND birth_day<=?', word1, word2, word3, word4]
-            res = model.select(filter, false, fields, sort, limit)
-          elsif word3
-            filter = [filter1+' AND '+filter2+' AND birth_day=?', word1, word2, word3]
-            res = model.select(filter, false, fields, sort, limit)
-          elsif word2
-            filter = [filter1+' AND '+filter2, word1, word2]
-            res = model.select(filter, false, fields, sort, limit)
-          else
-            filter2, word1dup = name_filter('last_name', word1dup)
-            filter = [filter1+' OR '+filter2, word1, word1dup]
-            res = model.select(filter, false, fields, sort, limit)
+      models ||= @recv_models
+
+      if akind.is_a?(Integer) and (akind>0) and (akind<255) and false
+        anoptions = akind
+        apanhash = arequest
+        p '---MK_Search apanhash='+PandoraUtils.bytes_to_hex(apanhash)
+        pson = PandoraModel.get_record_by_panhash(panhash, nil, false, models)
+        if pson
+          #@scmd = EC_Record
+          #@scode = kind
+          #@sbuf = pson
+          #lang = @sbuf[0].ord
+          #values = PandoraUtils.namepson_to_hash(@sbuf[1..-1])
+          param1 = src_node
+          param2 = src_time
+          param3 = pson
+
+          pool.add_mass_record(MK_Answer, param1, param2, param3, nil, nil, \
+            nil, nil, nil, nil, models)
+          #pool.add_mass_record(MK_Answer, param1, param2, param3, nil, nil, src_node, \
+          #  nil, nil, @to_node, nil, @recv_models)
+          #p log_mes+'SEND RECORD !!! [pson, values]='+[pson, values].inspect
+        else
+          #record is not found
+        end
+      elsif akind.is_a?(String)
+
+        model = nil
+        fields, sort, word1, word2, word3, words, word1dup, filter1, filter2 = nil
+        bases = akind
+        bases = 'Person' if (bases == 'auto')
+
+        if bases == 'Person'
+          model = PandoraUtils.get_model('Person')
+          fields = 'first_name, last_name, birth_day'
+          sort = 'first_name, last_name'
+          word1, word2, word3, words = arequest.split
+          #p [word1, word2, word3, words]
+          word1dup = word1.dup
+          filter1, word1 = name_filter('first_name', word1)
+          filter2, word2 = name_filter('last_name', word2) if word2
+          word4 = nil
+          if word3
+            word3, word4 = word3.split('-')
+            #p [word3, word4]
+            word3 = PandoraUtils.str_to_date(word3).to_i
+            word4 = PandoraUtils.str_to_date(word4).to_i if word4
           end
         end
+        limit ||= 100
+
+        while ((not thread) or thread[:processing]) and (not res) and model
+          if model
+            if word4
+              filter = [filter1+' AND '+filter2+' AND birth_day>=? AND birth_day<=?', word1, word2, word3, word4]
+              res = model.select(filter, false, fields, sort, limit)
+            elsif word3
+              filter = [filter1+' AND '+filter2+' AND birth_day=?', word1, word2, word3]
+              res = model.select(filter, false, fields, sort, limit)
+            elsif word2
+              filter = [filter1+' AND '+filter2, word1, word2]
+              res = model.select(filter, false, fields, sort, limit)
+            else
+              filter2, word1dup = name_filter('last_name', word1dup)
+              filter = [filter1+' OR '+filter2, word1, word1dup]
+              res = model.select(filter, false, fields, sort, limit)
+            end
+          end
+        end
+        res ||= []
+        res.uniq!
+        res.compact!
       end
-      res ||= []
-      res.uniq!
-      res.compact!
       [res, bases]
     end
 
@@ -3715,22 +3746,25 @@ module PandoraNet
                           #MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
                           #MRA_Answer     = MR_Param3    #~22
                           akind = param1
-                          if akind.is_a?(Integer) and (akind>0) and (akind<255)
+                          if akind.is_a?(Integer) and (akind>0) and (akind<255) and false
                             anoptions = akind
                             apanhash = param2
+                            p '---MK_Search apanhash='+PandoraUtils.bytes_to_hex(apanhash)
                             pson = PandoraModel.get_record_by_panhash(panhash, nil, false, @recv_models)
-                            if pson                            
+                            if pson
                               #@scmd = EC_Record
                               #@scode = kind
                               #@sbuf = pson
                               #lang = @sbuf[0].ord
                               #values = PandoraUtils.namepson_to_hash(@sbuf[1..-1])
                               param1 = src_node
-                              param2 = src_time  
-                              param3 = pson 
+                              param2 = src_time
+                              param3 = pson
 
                               pool.add_mass_record(MK_Answer, param1, param2, param3, nil, nil, \
-                                nil, nil, @to_node, nil, @recv_models)
+                                nil, nil, nil, nil, @recv_models)
+                              #pool.add_mass_record(MK_Answer, param1, param2, param3, nil, nil, src_node, \
+                              #  nil, nil, @to_node, nil, @recv_models)
                               #p log_mes+'SEND RECORD !!! [pson, values]='+[pson, values].inspect
                             else
                               #record is not found
@@ -3760,7 +3794,7 @@ module PandoraNet
                         when MK_Cascade
                         when MK_CiferBox
                       end
-                      if resend
+                      if (resend and (not ((kind>=MK_Answer) and (param1==pool.self_node))))
                         pool.add_mass_record(kind, param1, param2, param3, src_node, \
                           src_time, atrust, adepth, keep_node, nil, @recv_models)
                       end
@@ -4621,12 +4655,12 @@ module PandoraNet
                   mass_rec = pool.mass_records[@mr_ind]
                   #p log_mes+'->>>MASSREC [@mr_ind, pool.mass_records.size, @sess_trust, mass_rec[MR_Trust], @to_node]=' \
                   #  +[@mr_ind, pool.mass_records.size, @sess_trust, PandoraModel.transform_trust(mass_rec[MR_Trust]), @to_node].inspect
-                  if (mass_rec and mass_rec[MR_Node] \
+                  if (mass_rec and mass_rec[MR_SrcNode] \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], \
-                  :auto_to_float)) and (mass_rec[MR_Node] != @to_node) and (mass_rec[MR_Depth]>0))
-                  #and (mass_rec[MR_Node] != pool.self_node) \
+                  :auto_to_float)) and (mass_rec[MR_SrcNode] != @to_node) and (mass_rec[MR_Depth]>0))
+                  #and (mass_rec[MR_SrcNode] != pool.self_node) \
                     kind = mass_rec[MR_Kind]
-                    params = mass_rec[MR_Node..MR_Param3]
+                    params = mass_rec[MR_SrcNode..MR_Param3]
                     case kind
                       when MK_Fishing
                         #line = fish_order[MR_Fisher..MR_Fish_key]
