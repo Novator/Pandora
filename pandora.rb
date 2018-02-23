@@ -11,9 +11,9 @@
 # RU: 2012 (c) Михаил Галюк
 
 require 'socket'
-require './lib/utils.rb'
-require './lib/model.rb'
-require './lib/ui.rb'
+require_relative 'lib/utils.rb'
+require_relative 'lib/model.rb'
+require_relative 'lib/ui.rb'
 
 # Default values of variables
 # RU: Значения переменных по умолчанию

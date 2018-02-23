@@ -11,7 +11,7 @@
 # RU: 2012 (c) Михаил Галюк
 
 require 'socket'
-require File.expand_path('../utils.rb',  __FILE__)
+require_relative 'utils.rb'
 
 $pool = nil
 

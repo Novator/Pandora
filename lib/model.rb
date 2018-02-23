@@ -10,7 +10,7 @@
 # 2012 (c) Michael Galyuk
 # RU: 2012 (c) Михаил Галюк
 
-require File.expand_path('../utils.rb',  __FILE__)
+require_relative 'utils.rb'
 
 module PandoraModel
 

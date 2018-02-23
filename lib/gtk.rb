@@ -11,8 +11,8 @@
 # RU: 2012 (c) Михаил Галюк
 
 require 'fileutils'
-require File.expand_path('../crypto.rb',  __FILE__)
-require File.expand_path('../net.rb',  __FILE__)
+require_relative 'crypto.rb'
+require_relative 'net.rb'
 
 # GTK is cross platform graphical user interface
 # RU: Кроссплатформенный оконный интерфейс
@@ -5150,7 +5150,7 @@ module PandoraGtk
     # Ключевые слова Ruby
     RUBY_KEYWORDS = ('begin end module class def if then else elsif' \
       +' while unless do case when require yield rescue include').split
-    RUBY_KEYWORDS2 = 'self nil true false not and or'.split
+    RUBY_KEYWORDS2 = 'self nil true false not and or super return require_relative'.split
 
     RubyValueTags = [:hexadec, :number, :identifer, :big_constant, :constant, \
       :classvar, :instvar, :global]

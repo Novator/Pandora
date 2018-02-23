@@ -268,7 +268,7 @@ module PandoraUtils
       case lang
         when 'ru'
           res = sname
-          p res
+          #p res
           if ['ка', 'га', 'ча'].include?(res[-2,2])
             res[-1] = 'и'
           elsif ['г', 'к'].include? res[-1]
@@ -299,16 +299,17 @@ module PandoraUtils
 
   $rubyzip = nil  # Flag of using Zip library
 
-  # Unzip archive via Zip library
-  # RU: Распаковывает архив с помощью библиотеки Zip
+  # Unzip archive via internal library
+  # RU: Распаковывает архив с помощью внутренней библиотеки
   def self.unzip_via_lib(arch, path, overwrite=true)
     res = nil
-    if not $rubyzip
+    if $rubyzip.nil?
       begin
         require 'rubygems'
         require 'zip/zip'
         $rubyzip = true
       rescue Exception
+        $rubyzip = false
       end
     end
     if $rubyzip
@@ -343,10 +344,10 @@ module PandoraUtils
     res
   end
 
-  $unziper = nil  # Zip utility
+  $unziper = nil  # Unzip utility
 
-  # Unzip archive via Zip utility
-  # RU: Распаковывает архив с помощью Zip утилиты
+  # Unzip archive via external utility
+  # RU: Распаковывает архив с помощью внешней утилиты
   def self.unzip_via_util(arch, path, overwrite=true)
     res = nil
     if File.exist?(arch) and Dir.exists?(path)
@@ -1132,7 +1133,7 @@ module PandoraUtils
   CoordRound = 2
 
   # Coil coordinate (4-byte integer) to geographical coordinate
-  # RU: Катушечную координату (4-байтовое целое) в Географическую координату
+  # RU: Катушечную координату (4-байтовое целое) в географическую координату
   def self.coil_coord_to_geo_coord(int)
     h = (int.fdiv(MultX)).truncate + 1
     s = int - (h-1)*MultX
@@ -1194,7 +1195,7 @@ module PandoraUtils
     [basetype, count, negative]
   end
 
-  # Convert ruby object to PSON (Pandora simple object notation)
+  # Convert ruby object to PSON (Pandora Simple Object Notation)
   # RU: Конвертирует объект руби в PSON
   def self.rubyobj_to_pson(rubyobj)
     type = PT_Nil

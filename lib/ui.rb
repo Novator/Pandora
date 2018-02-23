@@ -10,20 +10,20 @@
 # 2017 (c) Michael Galyuk
 # RU: 2017 (c) Михаил Галюк
 
-require File.expand_path('../utils.rb',  __FILE__)
-require File.expand_path('../crypto.rb',  __FILE__)
-require File.expand_path('../net.rb',  __FILE__)
+require_relative 'utils.rb'
+require_relative 'crypto.rb'
+require_relative 'net.rb'
 
 def require_gtk
   if not $gtk_is_active
-    require File.expand_path('../gtk.rb',  __FILE__)
+    require_relative 'gtk.rb'
   end
   res = $gtk_is_active
 end
 
 def require_ncurses
   if not $ncurses_is_active
-    require File.expand_path('../ncurses.rb',  __FILE__)
+    require_relative 'ncurses.rb'
   end
   res = $ncurses_is_active
 end
