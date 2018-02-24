@@ -203,55 +203,72 @@ module PandoraUI
 
           # Search robot
           # RU: Поисковый робот
-          if (pool.found_ind <= pool.mass_ind) and false #OFFFFF !!!!!
+          if (pool.mass_records.read_state($max_mass_count, Thread.current) != PandoraUtils::RoundQueue::QRS_Empty)
             processed = MassTrain
-            while (processed > 0) and (pool.found_ind <= pool.mass_ind)
-              search_req = pool.mass_records[pool.found_ind]
-              p '####  Search spider  [size, @found_ind, obj_id]='+[pool.mass_records.size, \
-                pool.found_ind, search_req.object_id].inspect
-              if search_req and (not search_req[PandoraNet::MRA_Answer])
-                #req = search_req[PandoraNet::SR_Request..PandoraNet::SR_BaseId]
-                #p 'search_req3='+req.inspect
-                answ = nil
-                if search_req[PandoraNet::MRS_Kind]==PandoraModel::PK_BlobBody
-                  sha1 = search_req[PandoraNet::MRS_Request]
-                  fn_fs = $pool.blob_exists?(sha1, @shed_models, true)
-                  if fn_fs.is_a? Array
-                    fn_fs[0] = PandoraUtils.relative_path(fn_fs[0])
-                    answ = fn_fs
+            while (processed > 0)
+              search_req = pool.mass_records.get_block_from_queue($max_mass_count, Thread.current)
+              p '####  Search spider obj.id='+search_req.object_id.inspect
+              if search_req
+                if ((search_req[PandoraNet::MR_Kind] == PandoraNet::MK_Search) \
+                and (not search_req[PandoraNet::MRA_Answer]) \
+                and (search_req[PandoraNet::MR_SrcNode] != pool.self_node))
+                  req = search_req[PandoraNet::MRS_Kind..PandoraNet::MRS_Request]
+                  p 'search par MRS_Kind-MRS_Request  ='+req.inspect
+                  answ = nil
+                  if search_req[PandoraNet::MRS_Kind]==PandoraModel::PK_BlobBody
+                    sha1 = search_req[PandoraNet::MRS_Request]
+                    fn_fs = $pool.blob_exists?(sha1, @shed_models, true)
+                    if fn_fs.is_a? Array
+                      fn_fs[0] = PandoraUtils.relative_path(fn_fs[0])
+                      answ = fn_fs
+                    end
+                  else
+                    answ, kind = pool.search_in_local_bases(search_req[PandoraNet::MRS_Request], \
+                      search_req[PandoraNet::MRS_Kind], @shed_models)
                   end
-                else
-                  answ, kind = pool.search_in_local_bases(search_req[PandoraNet::MRS_Request], \
-                    search_req[PandoraNet::MRS_Kind], @shed_models)
-                end
-                p 'SEARCH answ='+answ.inspect
-                if answ
-                  search_req[PandoraNet::SA_Answer] = answ
-                  answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
-                  session = search_req[PandoraNet::SR_Session]
-                  sessions = []
-                  if pool.sessions.include?(session)
-                    sessions << session
-                  end
-                  sessions.concat(pool.sessions_of_keybase(nil, \
-                    search_req[PandoraNet::SR_BaseId]))
-                  sessions.flatten!
-                  sessions.uniq!
-                  sessions.compact!
-                  sessions.each do |sess|
-                    if sess.active?
-                      sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
-                        PandoraNet::ECC_News_Answer)
+                  p 'SEARCH answ='+answ.inspect
+                  if answ
+                    search_req[PandoraNet::MRA_Answer] = answ
+                    src_node = search_req[PandoraNet::MR_SrcNode]
+                    sessions = pool.sessions_of_node(src_node)
+                    sessions.flatten!
+                    sessions.uniq!
+                    sessions.compact!
+                    answer_raw = nil
+                    direct_send = nil
+                    answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
+                    if sessions.size>0
+                      sessions.each do |sess|
+                        if sess.active?
+                          sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
+                            PandoraNet::ECC_News_Answer)
+                          direct_send = true
+                        end
+                      end
+                    end
+                    if not direct_send
+                      #@scmd = EC_Record
+                      #@scode = kind
+                      #@sbuf = pson
+                      #lang = @sbuf[0].ord
+                      #values = PandoraUtils.namepson_to_hash(@sbuf[1..-1])
+                      param1 = src_node
+                      param2 = search_req[PandoraNet::MR_CrtTime]
+                      param3 = answer_raw
+
+                      pool.add_mass_record(PandoraNet::MK_Answer, param1, param2, param3, nil, nil, \
+                        nil, nil, nil, nil, @shed_models)
+                      #pool.add_mass_record(MK_Answer, param1, param2, param3, nil, nil, src_node, \
+                      #  nil, nil, @to_node, nil,
                     end
                   end
+                  #p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
+                  #if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
                 end
-                #p log_mes+'[to_person, to_key]='+[@to_person, @to_key].inspect
-                #if search_req and (search_req[SR_Session] != self) and (search_req[SR_BaseId] != @to_base_id)
                 processed -= 1
               else
                 processed = 0
               end
-              pool.found_ind += 1
             end
           end
 

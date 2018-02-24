@@ -3120,79 +3120,100 @@ module PandoraUtils
 
     # Add block to queue
     # RU: Добавить блок в очередь
-    def add_block_to_queue(block, max=MaxQueue)
-      res = false
+    def add_block_to_queue(block, max=nil)
+      res = nil
+      max ||= MaxQueue
       if block
-        synchronize do
-          if write_ind<max
-            @write_ind += 1
+        self.synchronize do
+          res = @write_ind
+          if res<max
+            res += 1
           else
-            @write_ind = 0
+            res = 0
           end
-          queue[write_ind] = block
+          @queue[res] = block
+          @write_ind = res
         end
         res = true
       end
       res
     end
 
-    # Queue state with single reader
-    # RU: Состояние очереди с одним читальщиком
-    SQS_Empty     = 0
-    SQS_NotEmpty  = 1
-    SQS_Full      = 2
+    # Reader state
+    # RU: Состояние читальщика
+    QRS_Empty     = 0
+    QRS_NotEmpty  = 1
+    QRS_Full      = 2
 
-    # State of single queue
-    # RU: Состояние одиночной очереди
-    def single_read_state(max=MaxQueue)
-      res = SQS_NotEmpty
-      if @read_ind.is_a? Integer
-        if (@read_ind == write_ind)
-          res = SQS_Empty
-        else
-          wind = write_ind
-          if wind<max
-            wind += 1
-          else
-            wind = 0
+    # State of reader
+    # RU: Состояние читателя
+    def read_state(max=nil, reader=nil)
+      res = QRS_Empty
+      max ||= MaxQueue
+      if @write_ind>=0
+        rind = @read_ind
+        if not reader.nil?
+          rind = rind[reader]
+          rind ||= -1
+        end
+        if rind.is_a?(Integer) and (rind>=0)
+          wind = @write_ind
+          if (rind != wind)
+            if wind<max
+              wind += 1
+            else
+              wind = 0
+            end
+            if (rind == wind)
+              res = QRS_Full
+            else
+              res = QRS_NotEmpty
+            end
           end
-          res = SQS_Full if (@read_ind == wind)
+        else
+          res = QRS_NotEmpty
         end
       end
       res
     end
 
-    # Get block from queue (set "reader" like 0,1,2..)
-    # RU: Взять блок из очереди (задавай "reader" как 0,1,2..)
-    def get_block_from_queue(max=MaxQueue, reader=nil, move_ptr=true)
+    # Get block from queue ("reader" is any object)
+    # RU: Взять блок из очереди ("reader" - любой объект)
+    def get_block_from_queue(max=nil, reader=nil, move_ptr=true)
       block = nil
-      pointers = nil
-      synchronize do
-        ind = @read_ind
-        if reader
-          pointers = ind
-          ind = pointers[reader]
-          ind ||= -1
+      max ||= MaxQueue
+      ind = @read_ind
+      if not reader.nil?
+        ind = @read_ind[reader]
+        ind ||= -1
+      end
+      #p 'get_block_from_queue:  [reader, ind, write_ind]='+[reader, ind, write_ind].inspect
+      if ind != @write_ind
+        if ind<max
+          ind += 1
+        else
+          ind = 0
         end
-        #p 'get_block_from_queue:  [reader, ind, write_ind]='+[reader, ind, write_ind].inspect
-        if ind != write_ind
-          if ind<max
-            ind += 1
+        block = queue[ind]
+        if move_ptr
+          if reader.nil?
+            @read_ind = ind
           else
-            ind = 0
-          end
-          block = queue[ind]
-          if move_ptr
-            if reader
-              pointers[reader] = ind
-            else
-              @read_ind = ind
-            end
+            @read_ind[reader] = ind
           end
         end
       end
       block
     end
+
+    # Delete a read pointer from the pointer list
+    # RU: Удалить указатель чтения из списка указателей
+    def delete_read_pointer(reader=nil, limit=nil)
+      if @read_ind.is_a?(Hash) and (limit.nil? or (@read_ind.size>limit))
+        @read_ind.delete(reader)
+      end
+    end
+
   end
 
   CapSymbols = '123456789qertyupasdfghkzxvbnmQRTYUPADFGHJKLBNM'

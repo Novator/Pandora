@@ -206,6 +206,7 @@ module PandoraNet
   MK_Cascade    = 6
   MK_CiferBox   = 7
   MK_BlockWeb   = 8
+  # Direct mass recs (it has destination node in Param1)
   MK_Answer     = 128
 
   # Node list indexes
@@ -291,11 +292,48 @@ module PandoraNet
   SRO_Links    = 4
   SRO_Comments = 8
 
+  # Number of messages per cicle
+  # RU: Число сообщений за цикл
+  $mes_block_count = 5
+  # Number of media blocks per cicle
+  # RU: Число медиа блоков за цикл
+  $media_block_count = 10
+  # Number of requests per cicle
+  # RU: Число запросов за цикл
+  $inquire_block_count = 1
+  # Max count of mass send
+  # RU: Максимальное число массовых рассылок
+  $max_mass_count = 200
+  # Node state history
+  # RU: История состояний узлов
+  $node_state_history = 500
+  # Number of mass send per cicle
+  # RU: Число массовых рассылок за цикл
+  $mass_per_cicle = 2
+  # Search request live time (sec)
+  # RU: Время жизни поискового запроса
+  $search_live_time = 10*60
+  # Number of fragment requests per cicle
+  # RU: Число запросов фрагментов за цикл
+  $frag_block_count = 2
+  # Reconnection period in sec
+  # RU: Период переподключения в сек
+  $conn_period       = 5
+  # Exchange timeout in sec
+  # RU: Таймаут обмена в секундах
+  $exchange_timeout = 5
+  # Timeout after message in sec
+  # RU: Таймаут после сообщений в секундах
+  $dialog_timeout = 10*60
+  # Timeout for captcha in sec
+  # RU: Таймаут для капчи в секундах
+  $captcha_timeout = 2*60
+
   # Pool
   # RU: Пул
   class Pool
     attr_accessor :sessions, :white_list, :time_now, :node_list, \
-      :mass_records, :mass_ind, :found_ind, :punnets, :ind_mutex
+      :mass_records, :punnets, :ind_mutex
 
     MaxWhiteSize = 500
     FishQueueSize = 100
@@ -306,9 +344,7 @@ module PandoraNet
       @sessions = Array.new
       @white_list = Array.new
       @node_list = Hash.new
-      @mass_records = Array.new #PandoraUtils::RoundQueue.new(true)
-      @mass_ind = -1
-      @found_ind = 0
+      @mass_records = PandoraUtils::RoundQueue.new(true) #Array.new
       @ind_mutex = Mutex.new
       @punnets = Hash.new
     end
@@ -790,7 +826,7 @@ module PandoraNet
     # Delete the session from list
     # RU: Удаляет сессию из списка
     def del_session(conn)
-      if sessions.delete(conn)
+      if @sessions.delete(conn)
         PandoraUI.update_conn_status(conn, conn.conn_type, -1)
       end
     end
@@ -878,6 +914,12 @@ module PandoraNet
       res.uniq!
       res.compact!
       res
+    end
+
+    def clear_offline_node_history
+      @mass_records.read_ind.delete_if do |key,val|
+        res = (key.is_a?(String) and self.sessions_of_node(key))
+      end
     end
 
     # Close all session
@@ -974,19 +1016,19 @@ module PandoraNet
       res
     end
 
-    $mass_rec_life_sec = 5*60
+    #$mass_rec_life_sec = 5*60
 
-    def delete_old_mass_records(cur_time=nil)
-      cur_time ||= Time.now.to_i
-      @mass_records.delete_if do |mr|
-        (mr.is_a? Array) and (mr[PandoraNet::MR_CrtTime].nil? \
-          or (mr[PandoraNet::MR_CrtTime] < cur_time-$mass_rec_life_sec))
-      end
-    end
+    #def delete_old_mass_records(cur_time=nil)
+    #  cur_time ||= Time.now.to_i
+    #  @mass_records.delete_if do |mr|
+    #    (mr.is_a? Array) and (mr[PandoraNet::MR_CrtTime].nil? \
+    #      or (mr[PandoraNet::MR_CrtTime] < cur_time-$mass_rec_life_sec))
+    #  end
+    #end
 
     def find_mass_record_by_time(src_node, src_time)
       res = nil
-      res = @mass_records.find do |mr|
+      res = @mass_records.queue.find do |mr|
         mr and ((mr[PandoraNet::MR_SrcNode] == src_node) and \
         (mr[PandoraNet::MR_CrtTime] == src_time))
       end
@@ -996,7 +1038,7 @@ module PandoraNet
     def find_mass_record_by_params(src_node, akind, param1, param2=nil, param3=nil)
       res = nil
       param2 = AsciiString.new(param2) if akind==MK_Search
-      res = @mass_records.find do |mr|
+      res = @mass_records.queue.find do |mr|
         mr and ((mr[PandoraNet::MR_SrcNode] == src_node) and \
         (param1.nil? or (mr[PandoraNet::MR_Param1] == param1)) and \
         (param2.nil? or (mr[PandoraNet::MR_Param2] == param2)) and \
@@ -1020,35 +1062,46 @@ module PandoraNet
       end
       if not mr
         ind_mutex.synchronize do
-          while @mass_records.size>=$max_mass_count do
-            @mass_records.delete_at(0)
-          end
-          if (not src_time) and (src_node==self_node)
-            src_time = Time.now.to_i
-          end
+          #while @mass_records.queue.size>=$max_mass_count do
+          #  @mass_records.delete_at(0)
+          #end
+          src_time ||= Time.now.to_i if (src_node==self_node)
           if src_time
-            i = @mass_records.size
-            while i>0 do
-              i =- 1
-              mrI = @mass_records[i]
-              if mrI
-                perv_time = mrI[MR_CrtTime]
-                if perv_time and (perv_time==src_time)
-                  src_time -= 1
-                  if (i==0) and (@mass_records.size>=$max_mass_count-1)
-                    src_time -= 60*2
+            ind = @mass_records.write_ind
+            step = @mass_records.queue.size
+            while (ind>=0) and (step>0)
+              mr2 = @mass_records.queue[ind]
+              if mr2
+                src_node2 = mr2[MR_SrcNode]
+                if src_node2==src_node
+                  src_time2 = mr2[MR_CrtTime]
+                  if src_time2
+                    if src_time2<src_time
+                      step = 0
+                    elsif src_time == src_time2
+                      src_time -= 1
+                    end
                   end
+                end
+              end
+              if step>0
+                step -= 1
+                if ind > 0
+                  ind -= 1
+                else
+                  ind = @mass_records.queue.size-1
                 end
               end
             end
           end
           if src_time
             mr = Array.new
-            mr[MR_SrcNode]     = src_node
+            mr[MR_SrcNode]    = src_node
             mr[MR_CrtTime]    = src_time
             mr[MR_KeepNodes] = [keep_node]
             yield(mr) if block_given?
-            @mass_records << mr
+            #@mass_records << mr
+            @mass_records.add_block_to_queue(mr, $max_mass_count)
           end
         end
       end
@@ -1086,19 +1139,19 @@ module PandoraNet
           if mr
             case akind
               when MK_Presence
-                PandoraUI.set_status_field(PandoraUI::SF_Radar, @mass_records.size.to_s)
+                PandoraUI.set_status_field(PandoraUI::SF_Radar, @mass_records.queue.size.to_s)
                 PandoraUI.update_or_show_radar_panel
               when MK_Fishing
-                PandoraUI.set_status_field(PandoraUI::SF_Fisher, @mass_records.size.to_s)
+                PandoraUI.set_status_field(PandoraUI::SF_Fisher, @mass_records.queue.size.to_s)
                 info = ''
                 fish = param1
                 fish_key = param2
                 info << PandoraUtils.bytes_to_hex(fish) if fish
                 info << ', '+PandoraUtils.bytes_to_hex(fish_key) if fish_key.is_a? String
                 PandoraUI.log_message(PandoraUI::LM_Trace, _('Bob is generated')+ \
-                  ' '+@mass_ind.to_s+':['+info+']')
+                  ' '+0.to_s+':['+info+']')
               when MK_Search
-                PandoraUI.set_status_field(PandoraUI::SF_Search, @mass_records.size.to_s)
+                PandoraUI.set_status_field(PandoraUI::SF_Search, @mass_records.queue.size.to_s)
                 PandoraNet.start_hunt if hunt
               when MK_Chat
                 #
@@ -1129,23 +1182,24 @@ module PandoraNet
       res = nil
       models ||= @recv_models
 
-      if akind.is_a?(Integer) and (akind>0) and (akind<255) and false
+      if akind.is_a?(Integer) and (akind>0) and (akind<255)
         anoptions = akind
         apanhash = arequest
-        p '---MK_Search apanhash='+PandoraUtils.bytes_to_hex(apanhash)
-        pson = PandoraModel.get_record_by_panhash(panhash, nil, false, models)
+        p '---search_in_local_bases  [opt,apanhash]='+[anoptions, PandoraUtils.bytes_to_hex(apanhash)].inspect
+        pson = PandoraModel.get_record_by_panhash(apanhash, nil, false, models)
         if pson
+          res = pson
           #@scmd = EC_Record
           #@scode = kind
           #@sbuf = pson
           #lang = @sbuf[0].ord
           #values = PandoraUtils.namepson_to_hash(@sbuf[1..-1])
-          param1 = src_node
-          param2 = src_time
-          param3 = pson
+          #param1 = src_node
+          #param2 = src_time
+          #param3 = pson
 
-          pool.add_mass_record(MK_Answer, param1, param2, param3, nil, nil, \
-            nil, nil, nil, nil, models)
+          #pool.add_mass_record(MK_Answer, param1, param2, param3, nil, nil, \
+          #  nil, nil, nil, nil, models)
           #pool.add_mass_record(MK_Answer, param1, param2, param3, nil, nil, src_node, \
           #  nil, nil, @to_node, nil, @recv_models)
           #p log_mes+'SEND RECORD !!! [pson, values]='+[pson, values].inspect
@@ -1153,7 +1207,6 @@ module PandoraNet
           #record is not found
         end
       elsif akind.is_a?(String)
-
         model = nil
         fields, sort, word1, word2, word3, words, word1dup, filter1, filter2 = nil
         bases = akind
@@ -1199,8 +1252,9 @@ module PandoraNet
         res ||= []
         res.uniq!
         res.compact!
+        akind = bases
       end
-      [res, bases]
+      [res, akind]
     end
 
     def send_chat_messages(message_model=nil, models=nil)
@@ -1480,13 +1534,13 @@ module PandoraNet
 
     attr_accessor :host_name, :host_ip, :port, :proto, :node, \
       :conn_mode, :conn_mode2, :conn_state, :stage, :dialog, \
-      :send_thread, :read_thread, :socket, :read_state, :send_state, \
+      :send_thread, :read_thread, :socket, :send_state, \
       :send_models, :recv_models, :sindex, :read_queue, :send_queue, \
       :confirm_queue, :params, :cipher, :ciphering, \
       :rcmd, :rcode, :rdata, :scmd, :scode, :sbuf, :log_mes, :skey, \
       :s_encode, :r_encode, :media_send, :node_id, :node_panhash, \
       :to_person, :to_key, :to_base_id, :to_node, \
-      :captcha_sw, :hooks, :mr_ind, :sess_trust, :notice, :activity
+      :captcha_sw, :hooks, :sess_trust, :notice, :activity
 
     # Set socket options
     # RU: Установить опции сокета
@@ -1883,10 +1937,10 @@ module PandoraNet
         else
           asbuf = param
       end
-      if (@send_queue.single_read_state != PandoraUtils::RoundQueue::SQS_Full)
+      if (@send_queue.read_state != PandoraUtils::RoundQueue::QRS_Full)
         res = @send_queue.add_block_to_queue([ascmd, ascode, asbuf])
       else
-        #p '--add_send_segment: @send_queue OVERFLOW !!!'
+        p '--add_send_segment: @send_queue OVERFLOW !!!'
       end
       if ascmd != EC_Media
         asbuf ||= '';
@@ -3221,7 +3275,7 @@ module PandoraNet
                     values['panhash'] = panhash
                     res = model.update(values, nil, nil)
                     if res and (id0.is_a? Integer)
-                      while (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) do
+                      while (@confirm_queue.read_state == PandoraUtils::RoundQueue::QRS_Full) do
                         sleep(0.02)
                       end
                       @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
@@ -3517,8 +3571,8 @@ module PandoraNet
                         end
                       else
                         #p '!!это узел-посредник, пробросить по истории заявок'
-                        mass_records = pool.find_mass_record(MK_Fishing, *line[0..4])
-                        mass_records.each do |fo|
+                        res_mass_records = pool.find_mass_record(MK_Fishing, *line[0..4])
+                        res_mass_records.each do |fo|
                           sess = mr[PandoraNet::MR_Session]
                           if sess
                             sess.add_send_segment(EC_News, true, fish_lure.chr + line_raw, \
@@ -3577,9 +3631,9 @@ module PandoraNet
                   when ECC_News_Answer
                     #p log_mes + '==ECC_News_Answer'
                     req_answer, len = PandoraUtils.pson_to_rubyobj(rdata)
-                    req,answ = req_answer
+                    req, answ = req_answer
                     #p log_mes+'req,answ='+[req,answ].inspect
-                    request,kind,base_id = req
+                    kind, request = req
                     if kind==PandoraModel::PK_BlobBody
                       PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: blob is found'))
                       sha1 = request
@@ -3607,6 +3661,10 @@ module PandoraNet
                       end
                     else
                       PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: rec is searching'))
+
+                      mr = pool.find_mass_record_by_params111(src_node, kind, \
+                        param1, param2, param3))
+
                       PandoraNet.find_search_request(kind, request)
                       #reqs.each do |sr|
                       #  sr[SA_Answer] = answ
@@ -3746,30 +3804,7 @@ module PandoraNet
                           #MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
                           #MRA_Answer     = MR_Param3    #~22
                           akind = param1
-                          if akind.is_a?(Integer) and (akind>0) and (akind<255) and false
-                            anoptions = akind
-                            apanhash = param2
-                            p '---MK_Search apanhash='+PandoraUtils.bytes_to_hex(apanhash)
-                            pson = PandoraModel.get_record_by_panhash(panhash, nil, false, @recv_models)
-                            if pson
-                              #@scmd = EC_Record
-                              #@scode = kind
-                              #@sbuf = pson
-                              #lang = @sbuf[0].ord
-                              #values = PandoraUtils.namepson_to_hash(@sbuf[1..-1])
-                              param1 = src_node
-                              param2 = src_time
-                              param3 = pson
-
-                              pool.add_mass_record(MK_Answer, param1, param2, param3, nil, nil, \
-                                nil, nil, nil, nil, @recv_models)
-                              #pool.add_mass_record(MK_Answer, param1, param2, param3, nil, nil, src_node, \
-                              #  nil, nil, @to_node, nil, @recv_models)
-                              #p log_mes+'SEND RECORD !!! [pson, values]='+[pson, values].inspect
-                            else
-                              #record is not found
-                            end
-                          end
+                          p '---MK_Search akind,apanhash='+[akind, PandoraUtils.bytes_to_hex(param2)].inspect
                           #scr_baseid ||= @to_base_id
                           #resend = ((scr_baseid.nil?) or (scr_baseid != pool.base_id))
                           #  p log_mes+'ADD search req to pool list'
@@ -3793,10 +3828,41 @@ module PandoraNet
                           end
                         when MK_Cascade
                         when MK_CiferBox
+                        when MK_Answer
+                          if param1 = pool.self_node
+                            req_answer, len = PandoraUtils.pson_to_rubyobj(rdata)
+                            req, answ = req_answer
+                            p log_mes+'-----MK_Answer::::  req, answ='+[req, answ].inspect
+                            kind, request = req
+                            if kind.is_a?(Integer)
+                            end
+                            resend = false
+                          else
+                            sessions = pool.sessions_of_node(src_node)
+                            sessions.flatten!
+                            sessions.uniq!
+                            sessions.compact!
+                            answer_raw = nil
+                            direct_send = nil
+                            answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
+                            if sessions.size>0
+                              sessions.each do |sess|
+                                if sess.active?
+                                  sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
+                                    PandoraNet::ECC_News_Answer)
+                                  direct_send = true
+                                end
+                              end
+                            end
+                            resend = false if direct_send
+                          end
                       end
-                      if (resend and (not ((kind>=MK_Answer) and (param1==pool.self_node))))
+                      if (resend and ((kind<MK_Answer) or (param1 != pool.self_node)))
+                        p 'MASS resend'
                         pool.add_mass_record(kind, param1, param2, param3, src_node, \
                           src_time, atrust, adepth, keep_node, nil, @recv_models)
+                      else
+                        p 'No MASS resend'
                       end
                     else
                       PandoraUI.log_message(PandoraUI::LM_Trace, \
@@ -3863,40 +3929,6 @@ module PandoraNet
       res
     end
 
-    # Number of messages per cicle
-    # RU: Число сообщений за цикл
-    $mes_block_count = 5
-    # Number of media blocks per cicle
-    # RU: Число медиа блоков за цикл
-    $media_block_count = 10
-    # Number of requests per cicle
-    # RU: Число запросов за цикл
-    $inquire_block_count = 1
-    # Max count of mass send
-    # RU: Максимальное число массовых рассылок
-    $max_mass_count = 200
-    # Number of mass send per cicle
-    # RU: Число массовых рассылок за цикл
-    $mass_per_cicle = 2
-    # Search request live time (sec)
-    # RU: Время жизни поискового запроса
-    $search_live_time = 10*60
-    # Number of fragment requests per cicle
-    # RU: Число запросов фрагментов за цикл
-    $frag_block_count = 2
-    # Reconnection period in sec
-    # RU: Период переподключения в сек
-    $conn_period       = 5
-    # Exchange timeout in sec
-    # RU: Таймаут обмена в секундах
-    $exchange_timeout = 5
-    # Timeout after message in sec
-    # RU: Таймаут после сообщений в секундах
-    $dialog_timeout = 10*60
-    # Timeout for captcha in sec
-    # RU: Таймаут для капчи в секундах
-    $captcha_timeout = 2*60
-
     # Starts three session cicle: read from queue, read from socket, send (common)
     # RU: Запускает три цикла сессии: чтение из очереди, чтение из сокета, отправка (общий)
     def initialize(asocket, ahost_name, ahost_ip, aport, aproto, \
@@ -3909,10 +3941,8 @@ module PandoraNet
       @conn_mode   = aconn_mode
       @conn_mode   ||= 0
       @conn_mode2  = 0
-      @read_state  = 0
       send_state_add  ||= 0
       @send_state     = send_state_add
-      @mr_ind     = 0
       @punnet_ind   = 0
       @frag_ind     = 0
       #@fishes         = Array.new
@@ -4089,7 +4119,6 @@ module PandoraNet
             #@conn_mode      = aconn_mode
             @conn_state     = CS_Connected
             @last_conn_mode = 0
-            @read_state     = 0
             @send_state     = send_state_add
             @sindex         = 0
             @params         = {}
@@ -4262,7 +4291,7 @@ module PandoraNet
                         @last_recv_time = pool.time_now
                         process_media_segment(rkcode, rkdata)
                       else
-                        while (@read_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) \
+                        while (@read_queue.read_state == PandoraUtils::RoundQueue::QRS_Full) \
                         and (@conn_state == CS_Connected)
                           sleep(0.03)
                           Thread.pass
@@ -4328,7 +4357,7 @@ module PandoraNet
                   #p log_mes+'--**** after accept: [scmd, scode, sbuf]='+[@scmd, @scode, len].inspect
 
                   if @scmd != EC_Data
-                    while (@send_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Full) \
+                    while (@send_queue.read_state == PandoraUtils::RoundQueue::QRS_Full) \
                     and (@conn_state == CS_Connected)
                       sleep(0.03)
                       Thread.pass
@@ -4548,7 +4577,7 @@ module PandoraNet
                     ids = [] if talkview
                     while sel and (i<sel.size) and (processed<$mes_block_count) \
                     and (@conn_state == CS_Connected) \
-                    and (@send_queue.single_read_state != PandoraUtils::RoundQueue::SQS_Full)
+                    and (@send_queue.read_state != PandoraUtils::RoundQueue::QRS_Full)
                       processed += 1
                       row = sel[i]
                       panstate = row[4]
@@ -4640,25 +4669,18 @@ module PandoraNet
               end
 
               # рассылка массовых записей
-              if (@sess_mode.is_a? Integer) and ((@sess_mode & CM_MassExch)>0) \
+              if ((@sess_mode.is_a? Integer) and ((@sess_mode & CM_MassExch)>0) \
               and @to_key and @to_person and @to_base_id and @sess_trust \
-              and (questioner_step>QS_ResetMessage) and (@stage>=ES_Exchange)
+              and (questioner_step>QS_ResetMessage) and (@stage>=ES_Exchange))
                 processed = 0
-                if @mr_ind+$max_mass_count < pool.mass_records.size
-                  @mr_ind = pool.mass_records.size - $max_mass_count
-                end
-                @mr_ind = pool.mass_records.size if @mr_ind > pool.mass_records.size
-                while (@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
-                and (@mr_ind < pool.mass_records.size) \
-                and (processed<$mass_per_cicle)
+                while ((@conn_state == CS_Connected) and (@stage>=ES_Exchange) \
+                and (pool.mass_records.read_state($max_mass_count, @to_node) != PandoraUtils::RoundQueue::QRS_Empty) \
+                and (processed<$mass_per_cicle))
                 #and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
-                  mass_rec = pool.mass_records[@mr_ind]
-                  #p log_mes+'->>>MASSREC [@mr_ind, pool.mass_records.size, @sess_trust, mass_rec[MR_Trust], @to_node]=' \
-                  #  +[@mr_ind, pool.mass_records.size, @sess_trust, PandoraModel.transform_trust(mass_rec[MR_Trust]), @to_node].inspect
+                  mass_rec = pool.mass_records.get_block_from_queue($max_mass_count, @to_node)
                   if (mass_rec and mass_rec[MR_SrcNode] \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], \
                   :auto_to_float)) and (mass_rec[MR_SrcNode] != @to_node) and (mass_rec[MR_Depth]>0))
-                  #and (mass_rec[MR_SrcNode] != pool.self_node) \
                     kind = mass_rec[MR_Kind]
                     params = mass_rec[MR_SrcNode..MR_Param3]
                     case kind
@@ -4686,7 +4708,6 @@ module PandoraNet
                     end
                     processed += 1
                   end
-                  @mr_ind += 1
                 end
               end
 
@@ -4712,7 +4733,7 @@ module PandoraNet
 
               # проверка флагов соединения и состояния сокета
               if (socket and socket.closed?) or (@conn_state == CS_StopRead) \
-              and (@confirm_queue.single_read_state == PandoraUtils::RoundQueue::SQS_Empty)
+              and (@confirm_queue.read_state == PandoraUtils::RoundQueue::QRS_Empty)
                 @conn_state = CS_Disconnected
               elsif @activity == 0
                 #p log_mes+'[pool.time_now, @last_recv_time, @last_send_time, cm, cm2]=' \
@@ -4838,6 +4859,13 @@ module PandoraNet
           attempt += 1
         end
         pool.del_session(self)
+
+        if @mass_records.read_ind.size>$node_state_history
+          pool.clear_offline_node_history
+        end
+
+        @mass_records.delete_read_pointer(@to_node, $node_state_history)
+
         if dialog and (not dialog.destroyed?) #and (not dialog.online_btn.destroyed?)
           dialog.set_session(self, false)
           #dialog.online_btn.active = false
@@ -5777,13 +5805,6 @@ module PandoraNet
       end
     end
     res
-  end
-
-  def self.find_search_request(kind, request)
-    mr = $pool.add_mass_record(MK_Search, kind, request)
-    if not mr
-      #
-    end
   end
 
 end

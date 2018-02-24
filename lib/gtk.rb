@@ -10481,12 +10481,11 @@ module PandoraGtk
             sess_iter[4] = session.conn_mode
             sess_iter[5] = session.conn_state
             sess_iter[6] = session.stage
-            sess_iter[7] = session.read_state
-            sess_iter[8] = session.send_state
+            sess_iter[7] = session.send_state
           end
 
           #:host_name, :host_ip, :port, :proto, :node, :conn_mode, :conn_state,
-          #:stage, :dialog, :send_thread, :read_thread, :socket, :read_state, :send_state,
+          #:stage, :dialog, :send_thread, :read_thread, :socket, :send_state,
           #:send_models, :recv_models, :sindex,
           #:read_queue, :send_queue, :confirm_queue, :params, :rcmd, :rcode, :rdata,
           #:scmd, :scode, :sbuf, :log_mes, :skey, :rkey, :s_encode, :r_encode, :media_send,
@@ -10535,13 +10534,8 @@ module PandoraGtk
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('read_state'), renderer, 'text' => 7)
+      column = Gtk::TreeViewColumn.new(_('send_state'), renderer, 'text' => 7)
       column.set_sort_column_id(7)
-      list_tree.append_column(column)
-
-      renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('send_state'), renderer, 'text' => 8)
-      column.set_sort_column_id(8)
       list_tree.append_column(column)
 
       list_tree.signal_connect('row_activated') do |tree_view, path, column|
