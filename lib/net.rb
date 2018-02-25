@@ -1186,7 +1186,7 @@ module PandoraNet
         anoptions = akind
         apanhash = arequest
         p '---search_in_local_bases  [opt,apanhash]='+[anoptions, PandoraUtils.bytes_to_hex(apanhash)].inspect
-        pson = PandoraModel.get_record_by_panhash(apanhash, nil, false, models)
+        pson = PandoraModel.get_record_by_panhash(apanhash, nil, true, models)
         if pson
           res = pson
           #@scmd = EC_Record
@@ -3663,7 +3663,7 @@ module PandoraNet
                       PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: rec is searching'))
 
                       mr = pool.find_mass_record_by_params111(src_node, kind, \
-                        param1, param2, param3))
+                        param1, param2, param3)
 
                       PandoraNet.find_search_request(kind, request)
                       #reqs.each do |sr|
@@ -3830,11 +3830,16 @@ module PandoraNet
                         when MK_CiferBox
                         when MK_Answer
                           if param1 = pool.self_node
-                            req_answer, len = PandoraUtils.pson_to_rubyobj(rdata)
+                            req_answer, len = PandoraUtils.pson_to_rubyobj(param3)
                             req, answ = req_answer
-                            p log_mes+'-----MK_Answer::::  req, answ='+[req, answ].inspect
-                            kind, request = req
-                            if kind.is_a?(Integer)
+                            opt, apanhash = req
+                            p log_mes+'-----MK_Answer::::  req, answ, opt, apanhash='+[req, answ, opt, apanhash].inspect
+                            if opt.is_a?(Integer)
+                              akind = answ[0].ord
+                              alang = answ[1].ord
+                              avalues = PandoraUtils.namepson_to_hash(answ[2..-1])
+                              p log_mes+'Answer-SaVE  akind, alang, avalues='+[akind, alang, avalues].inspect
+                              res = PandoraModel.save_record(akind, alang, avalues, @recv_models, apanhash, :auto)
                             end
                             resend = false
                           else
@@ -4860,11 +4865,11 @@ module PandoraNet
         end
         pool.del_session(self)
 
-        if @mass_records.read_ind.size>$node_state_history
+        if pool.mass_records.read_ind.size>$node_state_history
           pool.clear_offline_node_history
         end
 
-        @mass_records.delete_read_pointer(@to_node, $node_state_history)
+        pool.mass_records.delete_read_pointer(@to_node, $node_state_history)
 
         if dialog and (not dialog.destroyed?) #and (not dialog.online_btn.destroyed?)
           dialog.set_session(self, false)
@@ -5805,6 +5810,13 @@ module PandoraNet
       end
     end
     res
+  end
+
+  def self.find_search_request(kind, request)
+    mr = $pool.add_mass_record(MK_Search, kind, request)
+    if not mr
+      #
+    end
   end
 
 end
