@@ -54,7 +54,7 @@ fi
 # Make an action according to command line arguments
 case "$PARAMS" in
   help|h|--help|?|/?)
-    echo "Script Pandora params:"
+    echo "Shell script Pandora params:"
     echo "  $CURFILE --help     - show this help"
     echo "  $CURFILE --init     - install necessary packets with apt-get (recommended)"
     echo "  $CURFILE --gem-init - install minimum packets, install ruby packet with rubygem"

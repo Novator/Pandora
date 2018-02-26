@@ -38,7 +38,7 @@ module PandoraUtils
 
   # Version of GUI application
   # RU: Версия GUI приложения
-  PandoraVersion  = '0.70'
+  PandoraVersion  = '0.71'
 
   $detected_os_family = nil
 
@@ -3194,7 +3194,7 @@ module PandoraUtils
         else
           ind = 0
         end
-        block = queue[ind]
+        block = @queue[ind]
         if move_ptr
           if reader.nil?
             @read_ind = ind
@@ -3514,6 +3514,8 @@ module PandoraUtils
     res = PandoraVersion
   end
 
+  LIB_LIST = ['crypto', 'gtk', 'model', 'ncurses', 'net', 'ui', 'utils']
+
   # Calc hex md5 of Pandora files
   # RU: Вычисляет шестнадцатиричный md5 файлов Пандоры
   def self.pandora_md5_sum
@@ -3523,19 +3525,22 @@ module PandoraUtils
       res = md5.digest
     rescue
     end
-    ['crypto', 'gtk', 'model', 'net', 'utils', 'cui'].each do |alib|
-      begin
-        md5 = Digest::MD5.file(File.join($pandora_lib_dir, alib+'.rb'))
-        res2 = md5.digest
-        i = 0
-        res2.each_byte do |c|
-          res[i] = (c ^ res[i].ord).chr
-          i += 1
+    LIB_LIST.each do |alib|
+      fn = File.join($pandora_lib_dir, alib+'.rb')
+      if File.exist?(fn)
+        begin
+          md5 = Digest::MD5.file(fn)
+          res2 = md5.digest
+          i = 0
+          res2.each_byte do |c|
+            res[i] = (res[i].ord ^ c).chr
+            i += 1
+          end
+        rescue
         end
-      rescue
       end
     end
-    if (res.is_a? String)
+    if res.is_a?(String)
       res = PandoraUtils.bytes_to_hex(res)
     else
       res = 'fail'

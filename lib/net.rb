@@ -287,10 +287,10 @@ module PandoraNet
 
   # Search request options
   # RU: Опции поискового запроса
-  SRO_Record   = 1
-  SRO_Avatar   = 2
-  SRO_Links    = 4
-  SRO_Comments = 8
+  SRO_Record     = 1
+  SRO_Avatars    = 2
+  SRO_Relations  = 4
+  SRO_Opinions   = 8
 
   # Number of messages per cicle
   # RU: Число сообщений за цикл
@@ -3734,6 +3734,7 @@ module PandoraNet
                   src_node, src_time, atrust, adepth, param1, \
                     param2, param3 = params
                   if src_node != pool.self_node
+                    p log_mes+' **** Mass PROCESS src_node,param1='+[PandoraUtils.bytes_to_hex(src_node), param1].inspect
                     src_key = nil
                     scr_baseid = nil
                     scr_person = nil
@@ -3803,8 +3804,7 @@ module PandoraNet
                           #MRS_Kind       = MR_Param1    #1
                           #MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
                           #MRA_Answer     = MR_Param3    #~22
-                          akind = param1
-                          p '---MK_Search akind,apanhash='+[akind, PandoraUtils.bytes_to_hex(param2)].inspect
+                          p '  ~~~MK_Search param1,param2='+[param1, PandoraUtils.bytes_to_hex(param2)].inspect
                           #scr_baseid ||= @to_base_id
                           #resend = ((scr_baseid.nil?) or (scr_baseid != pool.base_id))
                           #  p log_mes+'ADD search req to pool list'
@@ -3829,11 +3829,11 @@ module PandoraNet
                         when MK_Cascade
                         when MK_CiferBox
                         when MK_Answer
-                          if param1 = pool.self_node
+                          if param1 == pool.self_node
                             req_answer, len = PandoraUtils.pson_to_rubyobj(param3)
                             req, answ = req_answer
                             opt, apanhash = req
-                            p log_mes+'-----MK_Answer::::  req, answ, opt, apanhash='+[req, answ, opt, apanhash].inspect
+                            p log_mes+'  ~~~MY MK_Answer::::  param1, opt, apanhash='+[PandoraUtils.bytes_to_hex(param1), opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
                             if opt.is_a?(Integer)
                               akind = answ[0].ord
                               alang = answ[1].ord
@@ -3843,6 +3843,7 @@ module PandoraNet
                             end
                             resend = false
                           else
+                            p log_mes+'  ~~~ALIAN MK_Answer::::  param1, opt, apanhash='+[PandoraUtils.bytes_to_hex(param1), opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
                             sessions = pool.sessions_of_node(src_node)
                             sessions.flatten!
                             sessions.uniq!
@@ -3863,7 +3864,7 @@ module PandoraNet
                           end
                       end
                       if (resend and ((kind<MK_Answer) or (param1 != pool.self_node)))
-                        p 'MASS resend'
+                        p 'ADD MASS (resend)  [src_node,param1]='+[PandoraUtils.bytes_to_hex(src_node),param1].inspect
                         pool.add_mass_record(kind, param1, param2, param3, src_node, \
                           src_time, atrust, adepth, keep_node, nil, @recv_models)
                       else
@@ -4683,6 +4684,8 @@ module PandoraNet
                 and (processed<$mass_per_cicle))
                 #and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
                   mass_rec = pool.mass_records.get_block_from_queue($max_mass_count, @to_node)
+                  p log_mes+'## FOUND mass_rec [scr,trust,depth ='+[PandoraUtils.bytes_to_hex(mass_rec[MR_SrcNode]), mass_rec[MR_Trust], \
+                    mass_rec[MR_Depth]].inspect if mass_rec
                   if (mass_rec and mass_rec[MR_SrcNode] \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], \
                   :auto_to_float)) and (mass_rec[MR_SrcNode] != @to_node) and (mass_rec[MR_Depth]>0))
@@ -4707,7 +4710,7 @@ module PandoraNet
                       when MK_Chat
                     end
                     if params
-                      #p log_mes+'-->>>> MR SEND [kind, params]'+[kind, params].inspect
+                      p log_mes+'-->>>> MR SEND [kind, params]'+[kind, params].inspect
                       params_pson = PandoraUtils.rubyobj_to_pson(params)
                       add_send_segment(EC_Mass, true, params_pson, kind)
                     end

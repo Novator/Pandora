@@ -6132,55 +6132,55 @@ module PandoraGtk
       init_fields(kind)
 
       if afields.nil?
-        search_btn = Gtk::Button.new(_('Request the record'))
+        search_btn = Gtk::Button.new(_('Request the record only'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
           PandoraNet.find_search_request(PandoraNet::SRO_Record, @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 12)
-        search_btn = Gtk::Button.new(_('Request the record with avatar'))
+        search_btn = Gtk::Button.new(_('Request the record with avatars'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Avatar), @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Avatars), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 2)
-        search_btn = Gtk::Button.new(_('Request the record with links'))
+        search_btn = Gtk::Button.new(_('Request the record with relations'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Links), @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Relations), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 2)
-        search_btn = Gtk::Button.new(_('Request the record with comments'))
+        search_btn = Gtk::Button.new(_('Request the record with opinions'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Comments), @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Opinions), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 12)
-        search_btn = Gtk::Button.new(_('Request the record with links and avatar'))
+        search_btn = Gtk::Button.new(_('Request the record with relations and avatars'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Avatar | \
-            PandoraNet::SRO_Links), @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Avatars | \
+            PandoraNet::SRO_Relations), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 2)
-        search_btn = Gtk::Button.new(_('Request the record with links and comments'))
+        search_btn = Gtk::Button.new(_('Request the record with relations and opinions'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Comments | \
-            PandoraNet::SRO_Links), @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Opinions | \
+            PandoraNet::SRO_Relations), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 2)
-        search_btn = Gtk::Button.new(_('Request the record with links, avatars and comments'))
+        search_btn = Gtk::Button.new(_('Request the record with relations, avatars and opinions'))
         search_btn.width_request = 110
         search_btn.signal_connect('clicked') do |*args|
-          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Comments | \
-            PandoraNet::SRO_Links | PandoraNet::SRO_Avatar), @panhash0)
+          PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Opinions | \
+            PandoraNet::SRO_Relations | PandoraNet::SRO_Avatars), @panhash0)
           false
         end
         @vbox.pack_start(search_btn, false, false, 2)
@@ -6851,14 +6851,14 @@ module PandoraGtk
 
       if res
         filter ||= {:panhash => panhash, :modified => time_now}
-        sel = panobject.select(filter, true)
-        if sel[0]
+        sel = panobject.select(filter, true, nil, 'id DESC', 1)
+        if sel and sel[0]
           row = sel[0]
           #p 'panobject.namesvalues='+panobject.namesvalues.inspect
           #p 'panobject.matter_fields='+panobject.matter_fields.inspect
 
-          @obj_id = panobject.field_val('id', row)  #panobject.namesvalues['id']
-          @obj_id = obj_id.to_i
+          id = panobject.field_val('id', row)  #panobject.namesvalues['id']
+          @obj_id = id.to_i
 
           #put saved values to widgets
           @fields = panobject.get_fields_as_view(row, true, panhash, @fields)
@@ -6949,6 +6949,9 @@ module PandoraGtk
           end
 
         end
+        @panhash0 = panhash
+      else
+        panhash = nil
       end
       panhash
     end
@@ -8194,10 +8197,10 @@ module PandoraGtk
       PandoraGtk.add_tool_btn(toolbar)
 
       pb.save_btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE) do
-        pb.save_form_fields_with_flags_to_database
+        @cab_panhash = pb.save_form_fields_with_flags_to_database
       end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) do
-        pb.save_form_fields_with_flags_to_database
+        @cab_panhash = pb.save_form_fields_with_flags_to_database
         self.destroy
       end
 
@@ -8228,6 +8231,22 @@ module PandoraGtk
         @zoom_100.safe_set_active(false)
         true
       end
+    end
+
+    def fill_profile_toolbar
+      add_btn_to_toolbar(Gtk::Stock::REFRESH, 'Request the record with relations, avatars and opinions') do
+        PandoraNet.find_search_request((PandoraNet::SRO_Record | PandoraNet::SRO_Opinions | \
+          PandoraNet::SRO_Relations | PandoraNet::SRO_Avatars), cab_panhash)
+        true
+      end
+      #add_btn_to_toolbar
+      #add_btn_to_toolbar(Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
+      #add_btn_to_toolbar(Gtk::Stock::CANCEL, 'Cancel') { |*args| self.destroy }
+      #PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) do
+      #  pb.save_form_fields_with_flags_to_database
+      #  self.destroy
+      #end
+      #add_btn_to_toolbar(Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
     end
 
     def grab_def_widget
@@ -8386,7 +8405,7 @@ module PandoraGtk
             list_sw.show_all
             container.def_widget = list_tree
 
-            fill_view_toolbar
+            fill_profile_toolbar
             container.add(hpaned)
           when PandoraUI::CPI_Editor
             #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
@@ -10128,7 +10147,7 @@ module PandoraGtk
       pool = $pool
       if reqs or (not @last_mass_ind) or (@last_mass_ind < pool.mass_ind)
         @list_store.clear
-        reqs ||= pool.mass_records
+        reqs ||= pool.mass_records.queue
         p '-----------reqs='+reqs.inspect
         reqs.each do |mr|
           if (mr.is_a? Array) and (mr[PandoraNet::MR_Kind] == PandoraNet::MK_Search)
@@ -10672,7 +10691,7 @@ module PandoraGtk
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
         if $pool
-          $pool.mass_records.each do |mr|
+          $pool.mass_records.queue.each do |mr|
             p '---mr:'
             p mr[0..6]
             anode = mr[PandoraNet::MR_SrcNode]

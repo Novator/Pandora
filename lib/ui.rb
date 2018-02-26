@@ -207,8 +207,8 @@ module PandoraUI
             processed = MassTrain
             while (processed > 0)
               search_req = pool.mass_records.get_block_from_queue($max_mass_count, Thread.current)
-              p '####  Search spider obj.id='+search_req.object_id.inspect
               if search_req
+                p '####  Search spider obj.id='+search_req.object_id.inspect
                 if ((search_req[PandoraNet::MR_Kind] == PandoraNet::MK_Search) \
                 and (not search_req[PandoraNet::MRA_Answer]) \
                 and (search_req[PandoraNet::MR_SrcNode] != pool.self_node))
@@ -226,10 +226,10 @@ module PandoraUI
                     answ, kind = pool.search_in_local_bases(search_req[PandoraNet::MRS_Request], \
                       search_req[PandoraNet::MRS_Kind], @shed_models)
                   end
-                  p 'SEARCH answ='+answ.inspect
+                  src_node = search_req[PandoraNet::MR_SrcNode]
+                  p '+++SEARCH answ for src_node='+[answ, PandoraUtils.bytes_to_hex(src_node)].inspect
                   if answ
                     search_req[PandoraNet::MRA_Answer] = answ
-                    src_node = search_req[PandoraNet::MR_SrcNode]
                     sessions = pool.sessions_of_node(src_node)
                     sessions.flatten!
                     sessions.uniq!
@@ -237,15 +237,15 @@ module PandoraUI
                     answer_raw = nil
                     direct_send = nil
                     answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
-                    if sessions.size>0
-                      sessions.each do |sess|
-                        if sess.active?
-                          sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
-                            PandoraNet::ECC_News_Answer)
-                          direct_send = true
-                        end
-                      end
-                    end
+                    #if sessions.size>0
+                    #  sessions.each do |sess|
+                    #    if sess.active?
+                    #      sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
+                    #        PandoraNet::ECC_News_Answer)
+                    #      direct_send = true
+                    #    end
+                    #  end
+                    #end
                     if not direct_send
                       #@scmd = EC_Record
                       #@scode = kind
@@ -255,6 +255,8 @@ module PandoraUI
                       param1 = src_node
                       param2 = search_req[PandoraNet::MR_CrtTime]
                       param3 = answer_raw
+
+                      p '&&Search MK_Answer send [param1, answer_raw.size]='+[PandoraUtils.bytes_to_hex(param1),answer_raw.size].inspect
 
                       pool.add_mass_record(PandoraNet::MK_Answer, param1, param2, param3, nil, nil, \
                         nil, nil, nil, nil, @shed_models)

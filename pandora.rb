@@ -137,7 +137,7 @@ while (ARGVdup.size>0) or next_arg
     when '-m', '--md5'
       puts PandoraUtils.pandora_md5_sum
       Kernel.exit(0)
-    when '--version'
+    when '-v', '--version'
       puts PandoraUtils.pandora_version
       Kernel.exit(0)
     when '-pl', '--poly', '--poly-launch'
@@ -147,20 +147,26 @@ while (ARGVdup.size>0) or next_arg
     when '-s','--screen'
       $cui_mode = true
       $screen_mode = true
-    when '--shell', '--help', '/?', '-?'
-      runit = '  '
-      if arg=='--shell' then
-        runit += 'pandora.sh'
-      else
-        runit += 'ruby pandora.rb'
+    else
+      if (arg.size>0)
+        runit = '  '
+        if arg=='--shell' then
+          runit += 'pandora.sh'
+        else
+          runit += 'ruby pandora.rb'
+        end
+        runit += ' '
+        puts 'Ruby script Pandora params (examples):'
+        puts runit+'-h localhost     - listen address'
+        puts runit+'-p '+PandoraNet::DefTcpPort.to_s+'          - listen TCP/UDP port'
+        puts runit+'-b base/pandora2.sqlite  - set filename of database'
+        puts runit+'-l ua|--lang ua  - set Ukrainian language'
+        puts runit+'-m|--md5         - calc MD5 of all Pandora scripts'
+        puts runit+'-v|--version     - show Pandora version'
+        puts runit+'-pl|--poly       - allow poly (many) launch'
+        puts runit+'-c|--cui         - console user interface (CUI) with ncurses'
+        Kernel.exit!
       end
-      runit += ' '
-      puts 'Оriginal Pandora params for examples:'
-      puts runit+'-h localhost    - set listen address'
-      puts runit+'-p '+PandoraNet::DefTcpPort.to_s+'         - set listen port'
-      puts runit+'-b base/pandora2.sqlite  - set filename of database'
-      puts runit+'-l ua           - set Ukrainian language'
-      Kernel.exit!
   end
   val = nil
 end
