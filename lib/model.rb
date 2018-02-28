@@ -426,6 +426,25 @@ module PandoraModel
     res
   end
 
+  # Get active (last) sign of panobject by the panhash
+  # RU: Возвращает актуальную (последнюю) подпись для панобъекта по заданному панхэшу
+  def self.get_active_sign_of_panobject(obj_hash, creator=nil, models=nil)
+    res = nil
+    if not PandoraUtils.panhash_nil?(obj_hash)
+      creator ||= current_user_or_key(true, false)
+      sign_model = PandoraUtils.get_model('Sign', models)
+      filter = {:obj_hash=>obj_hash}
+      filter[:creator] = creator if creator
+      panhash = nil
+      sel = sign_model.select(filter, false, 'panhash', 'created DESC', 1)
+      panhash = sel[0][0] if sel and (sel.size>0)
+      if panhash
+        res = PandoraModel.get_record_by_panhash(panhash, nil, false, models)
+      end
+    end
+    res
+  end
+
   # Read record by sha1 or md5 hash
   # RU: Читает запись по sha1 или md5 хэшу
   def self.get_record_by_hash(hash, kind=nil, pson_with_kind=nil, models=nil, \

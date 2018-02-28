@@ -230,22 +230,24 @@ module PandoraUI
                   p '+++SEARCH answ for src_node='+[answ, PandoraUtils.bytes_to_hex(src_node)].inspect
                   if answ
                     search_req[PandoraNet::MRA_Answer] = answ
-                    sessions = pool.sessions_of_node(src_node)
-                    sessions.flatten!
-                    sessions.uniq!
-                    sessions.compact!
-                    answer_raw = nil
+                    sessions = pool.sessions_of_panhash(src_node)
+                    #sessions.flatten!
+                    #sessions.uniq!
+                    #sessions.compact!
                     direct_send = nil
                     answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
-                    #if sessions.size>0
-                    #  sessions.each do |sess|
-                    #    if sess.active?
-                    #      sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
-                    #        PandoraNet::ECC_News_Answer)
-                    #      direct_send = true
-                    #    end
-                    #  end
-                    #end
+                    if sessions.size>0
+                      p 'sessions.size>0'
+                      sessions.each do |sess|
+                        if sess.active?
+                          p '@@Search MK_Answer DIR-send [src_node, answer_raw.size]='+[PandoraUtils.bytes_to_hex(src_node),\
+                            answer_raw.size].inspect
+                          sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
+                            PandoraNet::ECC_News_Answer)
+                          direct_send = true
+                        end
+                      end
+                    end
                     if not direct_send
                       #@scmd = EC_Record
                       #@scode = kind
@@ -256,7 +258,8 @@ module PandoraUI
                       param2 = search_req[PandoraNet::MR_CrtTime]
                       param3 = answer_raw
 
-                      p '&&Search MK_Answer send [param1, answer_raw.size]='+[PandoraUtils.bytes_to_hex(param1),answer_raw.size].inspect
+                      p '&&Search MK_Answer MASS-send [param1, answer_raw.size]='+[PandoraUtils.bytes_to_hex(param1), \
+                        answer_raw.size].inspect
 
                       pool.add_mass_record(PandoraNet::MK_Answer, param1, param2, param3, nil, nil, \
                         nil, nil, nil, nil, @shed_models)

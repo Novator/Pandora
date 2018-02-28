@@ -246,12 +246,22 @@ module PandoraNet
   MRC_Dest     = MR_Param1   #22 (panhash)
   MRC_MesRow   = MR_Param2   #~140 (panhash or message)   #sum: 33+22+(~140)= ~125
 
-  # MesRow (chat message row) parameters
+  # Dialog message row parameters
+  # RU: Параметры сообщения диалога
+  DMP_Id       = 0
+  DMP_Creator  = 1
+  DMP_Created  = 2
+  DMP_Text     = 3
+  DMP_PanState = 4
+  DMP_SignRec  = 5
+
+  # Chat message row parameters
   # RU: Параметры сообщения чата
-  MCM_Creator  = 0
-  MCM_Created  = 1
-  MCM_Text     = 2
-  MCM_PanState = 3
+  CMP_Creator  = 0
+  CMP_Created  = 1
+  CMP_Text     = 2
+  CMP_PanState = 3
+  CMP_SignRec  = 4
 
   # Search request and answer field indexes
   # RU: Индексы полей в поисковом и ответом запросе
@@ -848,8 +858,8 @@ module PandoraNet
 
     # Get a session by address (ip, port, protocol)
     # RU: Возвращает сессию для адреса
-    def sessions_of_node(node)
-      host, port, proto = decode_node(node)
+    def sessions_of_address(addr)
+      host, port, proto = decode_address(addr)
       res = sessions.select do |s|
         ((s.host_ip == host) or (s.host_name == host)) and (s.port == port) and (s.proto == proto)
       end
@@ -917,8 +927,8 @@ module PandoraNet
     end
 
     def clear_offline_node_history
-      @mass_records.read_ind.delete_if do |key,val|
-        res = (key.is_a?(String) and self.sessions_of_node(key))
+      @mass_records.read_ind.delete_if do |k,v|
+        res = (key.is_a?(String) and self.sessions_of_address(k))
       end
     end
 
@@ -1259,7 +1269,7 @@ module PandoraNet
 
     def send_chat_messages(message_model=nil, models=nil)
       filter = 'state=0 AND IFNULL(panstate,0)&'+PandoraModel::PSF_ChatMes.to_s+'>0'
-      fields = 'creator, created, text, panstate, id, destination'
+      fields = 'creator, created, text, panstate, id, destination, panhash'
       message_model ||= PandoraUtils.get_model('Message', models)
       sel = message_model.select(filter, false, fields, 'created', \
         $mes_block_count)
@@ -1272,15 +1282,25 @@ module PandoraNet
         ids = [] if talkview
         while sel and (i<sel.size)
           row = sel[i]
-          panstate = row[MCM_PanState]
-          if panstate
-            row[MCM_PanState] = (panstate & (PandoraModel::PSF_Support | \
-              PandoraModel::PSF_Crypted | PandoraModel::PSF_Verified | \
-              PandoraModel::PSF_ChatMes))
-          end
-          #creator = row[1]
+          creator = row[CMP_Creator]
+          panstate = row[CMP_PanState]
           id = row[4]
           dest = row[5]
+          panhash = row[6]
+          last_ind = CMP_PanState
+          if panstate
+            panstate = (panstate & (PandoraModel::PSF_Support | \
+              PandoraModel::PSF_Crypted | PandoraModel::PSF_Verified | \
+              PandoraModel::PSF_ChatMes))
+            if panstate and ((panstate & PandoraModel::PSF_Verified)>0)
+              sign = PandoraModel.get_active_sign_of_panobject(panhash, creator, models)
+              if sign
+                row[CMP_SignRec] = sign
+                last_ind = CMP_SignRec
+              end
+            end
+            row[CMP_PanState] = panstate
+          end
           #text = row[4]
           #if ((panstate & PandoraModel::PSF_Crypted)>0) and text
           #  dest_key = @skey[PandoraCrypto::KV_Panhash]
@@ -1288,7 +1308,7 @@ module PandoraNet
           #  row[4] = text
           #end
           #p '---Add MASS Mes: row='+row.inspect
-          row_pson = PandoraUtils.rubyobj_to_pson(row[MCM_Creator..MCM_PanState])
+          row_pson = PandoraUtils.rubyobj_to_pson(row[CMP_Creator..last_ind])
           #p log_mes+'%%%Send EC_Message: [row_pson, row_pson.len]='+\
           #  [row_pson, row_pson.bytesize].inspect
           #row, len = PandoraUtils.pson_to_rubyobj(row_pson)
@@ -1331,7 +1351,7 @@ module PandoraNet
       send_state_add ||= 0
       sessions = sessions_of_personkeybase(person, key_hash, base_id)
       sessions << sessions_of_panhash(nodehash) if nodehash
-      sessions << sessions_of_node(addr) if addr
+      sessions << sessions_of_address(addr) if addr
       sessions.flatten!
       sessions.uniq!
       sessions.compact!
@@ -1376,7 +1396,7 @@ module PandoraNet
           if sel and (sel.size==0)
             host = tport = nil
             if addr
-              host, tport, proto = decode_node(addr)
+              host, tport, proto = decode_address(addr)
               addr = host
             end
 
@@ -1418,7 +1438,7 @@ module PandoraNet
 
     # Stop session with a node
     # RU: Останавливает соединение с заданным узлом
-    def stop_session(node=nil, persons=nil, nodehashs=nil, disconnect=nil, \
+    def stop_session(addr=nil, persons=nil, nodehashs=nil, disconnect=nil, \
     session=nil)  #, wait_disconnect=true)
       res = false
       #p 'stop_session1 nodehashs='+nodehashs.inspect
@@ -1427,7 +1447,7 @@ module PandoraNet
       sessions = Array.new
       sessions << session if session
       sessions << sessions_of_panhash(nodehash) if nodehash
-      sessions << sessions_of_node(node) if node
+      sessions << sessions_of_address(addr) if addr
       sessions << sessions_of_person(person) if person
       sessions.flatten!
       sessions.uniq!
@@ -1445,25 +1465,25 @@ module PandoraNet
       res
     end
 
-    # Form node marker
-    # RU: Формирует маркер узла
-    def encode_addr(host, port, proto)
+    # Form address marker of node
+    # RU: Формирует маркер адреса узла
+    def encode_address(host, port, proto)
       host ||= ''
       port ||= ''
       proto ||= ''
-      node = host+'='+port.to_s+proto
+      address = host+'='+port.to_s+proto
     end
 
-    # Unpack node marker
-    # RU: Распаковывает маркер узла
-    def decode_node(node)
-      i = node.index('=')
+    # Unpack address from node marker
+    # RU: Распаковывает адрес из маркера узла
+    def decode_address(addr)
+      i = addr.index('=')
       if i
-        host = node[0, i]
-        port = node[i+1, node.size-4-i].to_i
-        proto = node[node.size-3, 3]
+        host = addr[0, i]
+        port = addr[i+1, addr.size-4-i].to_i
+        proto = addr[addr.size-3, 3]
       else
-        host = node
+        host = addr
         port = PandoraNet::DefTcpPort
         proto = 'tcp'
       end
@@ -1476,7 +1496,7 @@ module PandoraNet
       res = false
       #p 'check_incoming_addr  [addr, host_ip]='+[addr, host_ip].inspect
       if (addr.is_a? String) and (addr.size>0)
-        host, port, proto = decode_node(addr)
+        host, port, proto = decode_address(addr)
         host.strip!
         host = host_ip if (not host) or (host=='')
         #p 'check_incoming_addr  [host, port, proto]='+[host, port, proto].inspect
@@ -2296,7 +2316,7 @@ module PandoraNet
 
           inaddr = params['addr']
           if inaddr and (inaddr != '')
-            host, port, proto = pool.decode_node(inaddr)
+            host, port, proto = pool.decode_address(inaddr)
             #p log_mes+'ADDR [addr, host, port, proto]='+[addr, host, port, proto].inspect
             if ((adomain.nil? or (adomain.size==0)) and (host and (host.size>0) \
             and (not PandoraNet.is_address_ip?(host))))
@@ -2355,7 +2375,7 @@ module PandoraNet
       def process_media_segment(cannel, mediabuf)
         if not dialog
           @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
-          #node = PandoraNet.encode_addr(host_ip, port, proto)
+          #node = PandoraNet.encode_address(host_ip, port, proto)
           panhash = @skey[PandoraCrypto::KV_Creator]
           @dialog = PandoraUI.show_cabinet(panhash, self, conn_type, \
             nil, nil, PandoraUI::CPI_Dialog)
@@ -3242,7 +3262,7 @@ module PandoraNet
                   #PandoraUtils.play_mp3('online')
                 end
                 if rcmd==EC_Message
-                  if rdata.is_a? String
+                  if rdata.is_a?(String)
                     row, len = PandoraUtils.pson_to_rubyobj(rdata)
                     time_now = Time.now.to_i
                     id0 = nil
@@ -3251,16 +3271,18 @@ module PandoraNet
                     destination = pool.person
                     text = nil
                     panstate = 0
+                    sign = nil
                     if row.is_a? Array
-                      id0 = row[0]
-                      creator  = row[1]
-                      created  = row[2]
-                      text     = row[3]
-                      panstate = row[4]
+                      id0      = row[DMP_Id]
+                      creator  = row[DMP_Creator]
+                      created  = row[DMP_Created]
+                      text     = row[DMP_Text]
+                      panstate = row[DMP_PanState]
                       panstate ||= 0
                       panstate = (panstate & (PandoraModel::PSF_Crypted | \
                         PandoraModel::PSF_Verified))
                       panstate = (panstate | PandoraModel::PSF_Support)
+                      sign = row[DMP_SignRec]
                     else
                       creator = @skey[PandoraCrypto::KV_Creator]
                       created = time_now
@@ -3274,12 +3296,20 @@ module PandoraNet
                     panhash = model.calc_panhash(values)
                     values['panhash'] = panhash
                     res = model.update(values, nil, nil)
-                    if res and (id0.is_a? Integer)
-                      while (@confirm_queue.read_state == PandoraUtils::RoundQueue::QRS_Full) do
-                        sleep(0.02)
+                    if res
+                      if sign.is_a?(String) and (sign.bytesize>0)
+                        alang = sign[0].ord
+                        avalues = PandoraUtils.namepson_to_hash(sign[1..-1])
+                        p log_mes+'EC_Message  sign values='+avalues.inspect
+                        res = PandoraModel.save_record(PandoraModel::PK_Sign, alang, avalues, @recv_models)
                       end
-                      @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
-                        +[id0].pack('N'))
+                      if id0.is_a?(Integer)
+                        while (@confirm_queue.read_state == PandoraUtils::RoundQueue::QRS_Full) do
+                          sleep(0.02)
+                        end
+                        @confirm_queue.add_block_to_queue([PandoraModel::PK_Message].pack('C') \
+                          +[id0].pack('N'))
+                      end
                     end
                     talkview = nil
                     talkview = @dialog.dlg_talkview if @dialog
@@ -3629,10 +3659,10 @@ module PandoraNet
                     #p log_mes + 'ECC_News_SessMode'
                     @conn_mode2 = rdata[0].ord if rdata.bytesize>0
                   when ECC_News_Answer
-                    #p log_mes + '==ECC_News_Answer'
+                    p log_mes + '==ECC_News_Answer'
                     req_answer, len = PandoraUtils.pson_to_rubyobj(rdata)
                     req, answ = req_answer
-                    #p log_mes+'req,answ='+[req,answ].inspect
+                    p log_mes+'req,answ='+[req,answ].inspect
                     kind, request = req
                     if kind==PandoraModel::PK_BlobBody
                       PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: blob is found'))
@@ -3659,16 +3689,18 @@ module PandoraNet
                           pool.close_punnet(punnet, sha1, @send_models)
                         end
                       end
-                    else
-                      PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: rec is searching'))
-
-                      mr = pool.find_mass_record_by_params111(src_node, kind, \
-                        param1, param2, param3)
-
-                      PandoraNet.find_search_request(kind, request)
-                      #reqs.each do |sr|
-                      #  sr[SA_Answer] = answ
-                      #end
+                    else  #MK_Answer
+                      #PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: rec is searching'))
+                      req, answ = req_answer
+                      opt, apanhash = req
+                      p log_mes+'  !!!MY DirAnswer::::  opt, apanhash='+[opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
+                      if opt.is_a?(Integer)
+                        akind = answ[0].ord
+                        alang = answ[1].ord
+                        avalues = PandoraUtils.namepson_to_hash(answ[2..-1])
+                        p log_mes+'Answer-SAVE  akind, alang, avalues='+[akind, alang, avalues].inspect
+                        res = PandoraModel.save_record(akind, alang, avalues, @recv_models, apanhash, :auto)
+                      end
                     end
                   when ECC_News_BigBlob
                     # есть запись, но она слишком большая
@@ -3756,13 +3788,14 @@ module PandoraNet
                           row, len = PandoraUtils.pson_to_rubyobj(params[MRC_MesRow])
                           #p '---MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
                           #  MRC_MesRow, params[MRC_MesRow], row].inspect
-                          creator  = row[MCM_Creator]
-                          created  = row[MCM_Created]
-                          text     = row[MCM_Text]
-                          panstate = row[MCM_PanState]
+                          creator  = row[CMP_Creator]
+                          created  = row[CMP_Created]
+                          text     = row[CMP_Text]
+                          panstate = row[CMP_PanState]
                           panstate ||= 0
                           panstate = (panstate & (PandoraModel::PSF_Crypted | \
                             PandoraModel::PSF_Verified))
+                          sign = row[CMP_SignRec]
                           panstate = (panstate | PandoraModel::PSF_ChatMes)
                           time_now = Time.now.to_i
                           values = {:destination=>destination, :text=>text, :state=>2, \
@@ -3778,6 +3811,12 @@ module PandoraNet
                               nil, nil, nil, PandoraUI::CPI_Chat)
                               #@conn_type, nil, nil, CPI_Chat)
                             res = model.update(values, nil, nil)
+                            if res and sign.is_a?(String) and (sign.bytesize>0)
+                              alang = sign[0].ord
+                              avalues = PandoraUtils.namepson_to_hash(sign[1..-1])
+                              p log_mes+'MK_Chat  sign values='+avalues.inspect
+                              res = PandoraModel.save_record(PandoraModel::PK_Sign, alang, avalues, @recv_models)
+                            end
                             Thread.pass
                             sleep(0.05)
                             Thread.pass
@@ -3829,10 +3868,11 @@ module PandoraNet
                         when MK_Cascade
                         when MK_CiferBox
                         when MK_Answer
+                          answer_raw = param3
+                          req_answer, len = PandoraUtils.pson_to_rubyobj(answer_raw)
+                          req, answ = req_answer
+                          opt, apanhash = req
                           if param1 == pool.self_node
-                            req_answer, len = PandoraUtils.pson_to_rubyobj(param3)
-                            req, answ = req_answer
-                            opt, apanhash = req
                             p log_mes+'  ~~~MY MK_Answer::::  param1, opt, apanhash='+[PandoraUtils.bytes_to_hex(param1), opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
                             if opt.is_a?(Integer)
                               akind = answ[0].ord
@@ -3843,14 +3883,13 @@ module PandoraNet
                             end
                             resend = false
                           else
-                            p log_mes+'  ~~~ALIAN MK_Answer::::  param1, opt, apanhash='+[PandoraUtils.bytes_to_hex(param1), opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
-                            sessions = pool.sessions_of_node(src_node)
-                            sessions.flatten!
-                            sessions.uniq!
-                            sessions.compact!
-                            answer_raw = nil
+                            p log_mes+'  ~~~ALIAN MK_Answer::::  param1, opt, apanhash='+[PandoraUtils.bytes_to_hex(param1), \
+                              opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
+                            sessions = pool.sessions_of_panhash(param1)
+                            #sessions.flatten!
+                            #sessions.uniq!
+                            #sessions.compact!
                             direct_send = nil
-                            answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
                             if sessions.size>0
                               sessions.each do |sess|
                                 if sess.active?
@@ -4111,7 +4150,7 @@ module PandoraNet
             @host_ip      = ahost_ip
             @port         = aport
             @proto        = aproto
-            @node         = pool.encode_addr(@host_ip, @port, @proto)
+            @node         = pool.encode_address(@host_ip, @port, @proto)
             @node_id      = anode_id
           end
 
@@ -4571,7 +4610,7 @@ module PandoraNet
                 if @skey and receiver
                   filter = {'destination'=>receiver, 'state'=>0, \
                     'IFNULL(panstate,0)&'+PandoraModel::PSF_ChatMes.to_s=>0}
-                  fields = 'id, creator, created, text, panstate'
+                  fields = 'id, creator, created, text, panstate, panhash'
                   sel = message_model.select(filter, false, fields, 'created', \
                     $mes_block_count)
                   if sel and (sel.size>0)
@@ -4586,26 +4625,36 @@ module PandoraNet
                     and (@send_queue.read_state != PandoraUtils::RoundQueue::QRS_Full)
                       processed += 1
                       row = sel[i]
-                      panstate = row[4]
+                      panstate = row[DMP_PanState]
                       if panstate
-                        row[4] = (panstate & (PandoraModel::PSF_Support | \
+                        row[DMP_PanState] = (panstate & (PandoraModel::PSF_Support | \
                           PandoraModel::PSF_Crypted | PandoraModel::PSF_Verified))
                       end
-                      creator = row[1]
-                      text = row[3]
+                      creator = row[DMP_Creator]
+                      text = row[DMP_Text]
                       if ((panstate & PandoraModel::PSF_Crypted)>0) and text
                         dest_key = @skey[PandoraCrypto::KV_Panhash]
                         text = PandoraCrypto.recrypt_mes(text, nil, dest_key)
-                        row[3] = text
+                        row[DMP_Text] = text
+                      end
+                      panhash = row[DMP_SignRec]
+                      row[DMP_SignRec] = nil
+                      last_ind = DMP_PanState
+                      if panstate and ((panstate & PandoraModel::PSF_Verified)>0)
+                        sign = PandoraModel.get_active_sign_of_panobject(panhash, creator, @send_models)
+                        if sign
+                          row[DMP_SignRec] = sign
+                          last_ind = DMP_SignRec
+                        end
                       end
                       #p log_mes+'---Send EC_Message: row='+row.inspect
-                      row_pson = PandoraUtils.rubyobj_to_pson(row)
+                      row_pson = PandoraUtils.rubyobj_to_pson(row[0..last_ind])
                       #p log_mes+'%%%Send EC_Message: [row_pson, row_pson.len]='+\
                       #  [row_pson, row_pson.bytesize].inspect
                       row, len = PandoraUtils.pson_to_rubyobj(row_pson)
                       #p log_mes+'****Send EC_Message: [len, row]='+[len, row].inspect
                       if add_send_segment(EC_Message, true, row_pson)
-                        id = row[0]
+                        id = row[DMP_Id]
                         res = message_model.update({:state=>1}, nil, {:id=>id})
                         if res
                           ids << id if ids
@@ -5166,7 +5215,7 @@ module PandoraNet
                       ((far_person_hash != person_hash) or (far_key_hash != key_hash) or \
                       (far_base_id != $base_id)) # or true)
                     then
-                      addr = $pool.encode_addr(far_ip, far_port, 'tcp')
+                      addr = $pool.encode_address(far_ip, far_port, 'tcp')
                       $pool.init_session(addr, nil, 0, nil, nil, far_person_hash, \
                         far_key_hash, far_base_id)
                     end
@@ -5476,7 +5525,7 @@ module PandoraNet
                   #tport = PandoraNet::DefTcpPort if (not tport) or (tport==0) or (tport=='')
                   domain = addr if ((not domain) or (domain == ''))
                   if (not PandoraNet.is_address_ip6?(domain)) or $last_ip6
-                    addr = $pool.encode_addr(domain, tport, 'tcp')
+                    addr = $pool.encode_address(domain, tport, 'tcp')
                     if Thread.current[:active]
                       $pool.init_session(addr, panhash, 0, nil, node_id, person, \
                         key_hash, base_id)

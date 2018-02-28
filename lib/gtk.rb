@@ -12595,14 +12595,16 @@ module PandoraGtk
     dlg.transient_for = $window
     dlg.icon = $window.icon
     dlg.name = $window.title
+    dlg.program_name = dlg.name
     dlg.version = PandoraUtils.pandora_version + ' [' + PandoraUtils.pandora_md5_sum[0, 6] + ']'
     dlg.logo = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.png'))
+    dlg.website = 'https://github.com/Novator/Pandora'
+    dlg.skip_taskbar_hint = true
     dlg.authors = ['© '+_('Michael Galyuk')+' <robux@mail.ru>']
-    #dlg.documenters = dlg.authors
-    #dlg.translator_credits = dlg.authors.join("\n")
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
     dlg.comments = _('P2P planetary network')
     dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
+    gpl_text = nil
     begin
       file = File.open(File.join($pandora_app_dir, 'LICENSE.TXT'), 'r')
       gpl_text = '================='+_('Full text')+" LICENSE.TXT==================\n"+file.read
@@ -12610,6 +12612,7 @@ module PandoraGtk
     rescue
       gpl_text = _('Full text is in the file')+' LICENSE.TXT.'
     end
+    gpl_text ||= ''
     dlg.license = _("Pandora is licensed under GNU GPLv2.\n"+
       "\nFundamentals:\n"+
       "- program code is open, distributed free and without warranty;\n"+
@@ -12617,9 +12620,17 @@ module PandoraGtk
       "- you can change the code, sent to the authors for inclusion in the next release;\n"+
       "- your own release you must distribute with another name and only licensed under GPL;\n"+
       "- if you do not understand the GPL or disagree with it, you have to uninstall the program.\n\n")+gpl_text
-    dlg.website = 'https://github.com/Novator/Pandora'
-    dlg.program_name = dlg.name
-    dlg.skip_taskbar_hint = true
+    dlg.wrap_license = true
+    sponsor_text = nil
+    begin
+      file = File.open(File.join($pandora_doc_dir, 'sponsors.txt'), 'r')
+      sponsor_text = file.read
+      file.close
+    rescue
+      sponsor_text = nil
+    end
+    #dlg.documenters = dlg.authors
+    dlg.translator_credits = sponsor_text if sponsor_text
     dlg.signal_connect('key-press-event') do |widget, event|
       if [Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
         event.keyval) and event.state.control_mask? #w, W, ц, Ц
