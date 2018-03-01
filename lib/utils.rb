@@ -38,7 +38,7 @@ module PandoraUtils
 
   # Version of GUI application
   # RU: Версия GUI приложения
-  PandoraVersion  = '0.71'
+  PandoraVersion  = '0.72'
 
   $detected_os_family = nil
 
@@ -448,7 +448,7 @@ module PandoraUtils
   # RU: Убрать тип и язык из панхэша
   def self.phash(panhash, len=nil)
     res = nil
-    if (panhash.is_a? String) and (panhash.size>2)
+    if (panhash.is_a? String) and (panhash.bytesize>2)
       len ||= 20
       res = panhash[2, len]
     end

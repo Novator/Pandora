@@ -66,6 +66,7 @@ Products=>Товары
 Events=>События
 Contacts=>Контакты
 Profile=>Профиль
+Cabinet=>Кабинет
 Clients=>Клиенты
 Parameters=>Параметры
 Free software=>Свободный софт

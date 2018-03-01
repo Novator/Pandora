@@ -25,6 +25,7 @@ module PandoraModel
   PK_Key       = 221
   PK_Sign      = 222
   PK_Parameter = 220
+  PK_Node      = 223
   PK_Message   = 227
   PK_BlobBody  = 255
 
@@ -48,12 +49,12 @@ module PandoraModel
 
   def self.find_person_by_key(akey, models=nil)
     res = nil
-    sign_model = PandoraUtils.get_model('Sign', models)
-    sel = sign_model.select({:key_hash => akey}, false, 'creator', 'id ASC', 1)
+    key_model = PandoraUtils.get_model('Key', models)
+    sel = key_model.select({:panhash => akey}, false, 'creator', 'id DESC', 1)
     res = sel[0][0] if (sel and (sel.size>0))
     if not res
-      key_model = PandoraUtils.get_model('Key', models)
-      sel = kmodel.select({:panhash => akey}, false, 'creator', 'id ASC', 1)
+      sign_model = PandoraUtils.get_model('Sign', models)
+      sel = sign_model.select({:key_hash => akey}, false, 'creator', 'id DESC', 1)
       res = sel[0][0] if (sel and (sel.size>0))
     end
     res

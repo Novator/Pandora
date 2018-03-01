@@ -500,24 +500,6 @@ module PandoraGtk
         end
       end
 
-      if PandoraUtils.os_family=='windows'
-        @button = GoodButton.new(stock, nil, nil) do
-          do_on_click
-        end
-      else
-        $window.register_stock(stock)
-        @button = Gtk::Button.new(stock)
-        PandoraGtk.set_button_text(@button)
-
-        tooltip ||= stock.to_s.capitalize
-        @button.tooltip_text = _(tooltip)
-        @button.signal_connect('clicked') do |*args|
-          do_on_click
-        end
-      end
-
-      @button.can_focus = false
-
       @entry.instance_variable_set('@button', @button)
 
       #def @entry.key_event(widget, event)
@@ -536,12 +518,37 @@ module PandoraGtk
       end
 
       self.pack_start(entry, true, true, 0)
+
+      @button = self.add_button(stock, tooltip) do
+        do_on_click
+      end
+    end
+
+    def add_button(stock, tooltip=nil)
+      btn = nil
+      if PandoraUtils.os_family=='windows'
+        btn = GoodButton.new(stock, nil, nil) do |*args|
+          yield(*args)
+        end
+      else
+        $window.register_stock(stock)
+        btn = Gtk::Button.new(stock)
+        PandoraGtk.set_button_text(btn)
+
+        tooltip ||= stock.to_s.capitalize
+        btn.tooltip_text = _(tooltip)
+        btn.signal_connect('clicked') do |*args|
+          yield(*args)
+        end
+      end
+      btn.can_focus = false
       align = Gtk::Alignment.new(0.5, 0.5, 0.0, 0.0)
-      align.add(@button)
+      align.add(btn)
       self.pack_start(align, false, false, 1)
-      esize = entry.size_request
+      esize = @entry.size_request
       h = esize[1]-2
-      @button.set_size_request(h, h)
+      btn.set_size_request(h, h)
+      btn
     end
 
     def do_on_click
@@ -1857,7 +1864,7 @@ module PandoraGtk
   # Entry for panhash
   # RU: Поле ввода панхэша
   class PanhashBox < BtnEntry
-    attr_accessor :types, :panclasses
+    attr_accessor :types, :panclasses, :view_button
 
     def initialize(panhash_type, amodal=nil, *args)
       @panclasses = nil
@@ -1884,6 +1891,16 @@ module PandoraGtk
       stock = stock.to_sym
       title ||= 'Panhash'
       super(HexEntry, stock, title, amodal=nil, *args)
+      @view_button = self.add_button(Gtk::Stock::HOME, 'Cabinet') do
+        panhash = @entry.text
+        if (panhash.bytesize>4) and PandoraUtils.hex?(panhash)
+          panhash = PandoraUtils.hex_to_bytes(panhash)
+          if not PandoraUtils.panhash_nil?(panhash)
+            PandoraGtk.show_cabinet(panhash, nil, nil, nil, \
+              nil, PandoraUI::CPI_Profile)
+          end
+        end
+      end
       @entry.max_length = 44
       @entry.width_request = PandoraGtk.num_char_width*(@entry.max_length+1)+8
     end
@@ -2532,7 +2549,9 @@ module PandoraGtk
     res
   end
 
-  def self.glib_object_set_properties(obj, properties)
+  # Apply property values to the GLib object
+  # RU: Применяет значения свойств к объекту GLib
+  def self.apply_properties_to_glib_object(properties, obj)
     if properties.is_a?(Hash)
       properties.each do |n, v|
         #obj.instance_variable_set(n, v)
@@ -2541,20 +2560,32 @@ module PandoraGtk
     end
   end
 
+  # Copy properties from one GLib object to another (using for TextTag)
+  # RU: Копирует свойства одного объекта GLib к другому (используется для TextTag)
   def self.copy_glib_object_properties(src_obj, dest_obj)
-    prev_props = src_obj.class.properties(false)
-    prev_props.each do |prop|
-      if ((prop != 'name') and src_obj.class.property(prop).readable? \
-      and src_obj.class.property(prop).readwrite?)
-        dest_obj.set_property(prop, src_obj.get_property(prop))
+    if src_obj and dest_obj
+      #p '---copy_glib_object_properties  [src_obj, dest_obj]='+[src_obj, dest_obj].inspect
+      prev_props = src_obj.class.properties(false)
+      prev_props.each do |prop|
+        #p prop
+        if (prop and (prop != 'name') and (prop != 'tabs') \
+        and src_obj.class.property(prop).readable? \
+        and dest_obj.class.property(prop).writable?)
+          val = src_obj.get_property(prop)
+          dest_obj.set_property(prop, val) #if val
+        end
       end
     end
   end
 
+  # TextView tag with url field
+  # RU: Тег TextView с полем ссылки
   class LinkTag < Gtk::TextTag
     attr_accessor :link
   end
 
+  # Search panel for the text editor
+  # RU: Панель поиска для текстового редактора
   class FindPanel < Gtk::Window
     attr_accessor :treeview, :find_vbox, :entry, :count_label, \
       :replace_hbox, :replace_btn, :replace_entry, \
@@ -3952,7 +3983,7 @@ module PandoraGtk
                                 #link_tag.underline = Pango::AttrUnderline::SINGLE
                                 link_tag.link = link_url
                                 if tag_params.size>0
-                                  PandoraGtk.glib_object_set_properties(link_tag, tag_params)
+                                  PandoraGtk.apply_properties_to_glib_object(tag_params, link_tag)
                                 end
                                 tv_tag = link_id
                               end
@@ -4069,7 +4100,7 @@ module PandoraGtk
                                     if text_tag2
                                       tv_tag = cur_name
                                     else
-                                      PandoraGtk.glib_object_set_properties(text_tag, tag_params)
+                                      PandoraGtk.apply_properties_to_glib_object(tag_params, text_tag)
                                       if dest_buf.create_tag(cur_name, tag_params)
                                         text_tag2 = dest_buf.tag_table.lookup(cur_name)
                                         if text_tag2
@@ -10148,7 +10179,7 @@ module PandoraGtk
       if reqs or (not @last_mass_ind) or (@last_mass_ind < pool.mass_ind)
         @list_store.clear
         reqs ||= pool.mass_records.queue
-        p '-----------reqs='+reqs.inspect
+        #p '-----------reqs='+reqs.inspect
         reqs.each do |mr|
           if (mr.is_a? Array) and (mr[PandoraNet::MR_Kind] == PandoraNet::MK_Search)
             user_iter = @list_store.append
@@ -10618,8 +10649,7 @@ module PandoraGtk
     menuitem
   end
 
-  # List of fishes
-  # RU: Список рыб
+  # Radar list
   class RadarScrollWin < Gtk::ScrolledWindow
     attr_accessor :update_btn
 
@@ -10627,8 +10657,6 @@ module PandoraGtk
 
     MASS_KIND_ICONS = ['hunt', 'chat', 'request', 'fish']
 
-    # Show fishes window
-    # RU: Показать окно рыб
     def initialize
       super(nil, nil)
 
@@ -10692,11 +10720,11 @@ module PandoraGtk
         list_store.clear
         if $pool
           $pool.mass_records.queue.each do |mr|
-            p '---mr:'
-            p mr[0..6]
+            p '---Radar mass_rec='+mr[0..6].inspect
             anode = mr[PandoraNet::MR_SrcNode]
-            akey, abaseid, aperson = $pool.get_node_params(anode)
-            if aperson or akey
+            if anode
+              akey, abaseid, aperson = $pool.get_node_params(anode)
+              p 'anode, akey, abaseid, aperson='+[anode, akey, abaseid, aperson].inspect
               sess_iter = list_store.append
               akind = mr[PandoraNet::MR_Kind]
               anick = nil
@@ -11507,7 +11535,7 @@ module PandoraGtk
           end
         end
       elsif panobject or (action=='Dialog') or (action=='Opinion') \
-      or (action=='Chat') or (action=='Profile')
+      or (action=='Chat') or (action=='Cabinet')
         # Edit or Insert
 
         edit = ((not new_act) and (action != 'Copy'))
@@ -11528,7 +11556,7 @@ module PandoraGtk
             page = PandoraUI::CPI_Editor
           else
             case action
-              when 'Profile'
+              when 'Cabinet'
                 page = PandoraUI::CPI_Profile
               when 'Chat'
                 page = PandoraUI::CPI_Chat
@@ -12621,16 +12649,28 @@ module PandoraGtk
       "- your own release you must distribute with another name and only licensed under GPL;\n"+
       "- if you do not understand the GPL or disagree with it, you have to uninstall the program.\n\n")+gpl_text
     dlg.wrap_license = true
-    sponsor_text = nil
+    credits = nil
     begin
       file = File.open(File.join($pandora_doc_dir, 'sponsors.txt'), 'r')
-      sponsor_text = file.read
+      credits = file.read
       file.close
     rescue
-      sponsor_text = nil
+      credits = nil
+    end
+    changelog = nil
+    begin
+      file = File.open(File.join($pandora_doc_dir, 'changelog.txt'), 'r')
+      changelog = file.read
+      file.close
+    rescue
+      changelog = nil
+    end
+    if changelog
+      credits ||= ''
+      credits << changelog
     end
     #dlg.documenters = dlg.authors
-    dlg.translator_credits = sponsor_text if sponsor_text
+    dlg.translator_credits = credits if credits
     dlg.signal_connect('key-press-event') do |widget, event|
       if [Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(\
         event.keyval) and event.state.control_mask? #w, W, ц, Ц
@@ -13941,7 +13981,7 @@ module PandoraGtk
       ['Radar', :radar, 'Radar', '<control>R', :check],  #Gtk::Stock::GO_FORWARD
       ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
       ['>', nil, '_Wizards'],
-      ['>Profile', Gtk::Stock::HOME, 'Profile'],
+      ['>Cabinet', Gtk::Stock::HOME, 'Cabinet'],
       ['>Exchange', 'exchange:m', 'Exchange'],
       ['>Session', 'session:m', 'Sessions'],   #Gtk::Stock::JUSTIFY_FILL
       ['>Fisher', 'fish:m', 'Fishers'],

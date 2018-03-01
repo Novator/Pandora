@@ -1010,7 +1010,7 @@ module PandoraUI
         if $gtk_is_active
           PandoraGtk.show_log_bar(80)
         end
-      when 'Profile'
+      when 'Cabinet'
         current_user = PandoraCrypto.current_user_or_key(true, true)
         if current_user
           PandoraUI.show_cabinet(current_user, nil, nil, nil, nil, PandoraUI::CPI_Profile)

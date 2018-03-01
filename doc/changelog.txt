@@ -1,0 +1,30 @@
+===ChangeLog on: 02.03.2018
+
+
+---Version 0.72 [1b6154] 02.03.2018 (alpha):
+
+Features:
+* Key generation RSA-2048 with password on AES-256/Sha2-256
+* Private dialog with sign (RSA-2048) and cifer (RSA-2048[+AES-256])
+* Public chat with sign
+* Avatar in Cabinet
+* Editor in Cabinet with BBCODE and HTML markup
+* Highlights of code in editor: Ruby, Python, XLS and INI
+* Picture preview in editor of Cabinet
+* Two button in PanhashBox: choose from list, watch in cabinet
+* Record mass request button in Cabinet (only record without Relations)
+* Pared-down ncurses interface
+* Radar shows raw data from mass record list
+* Language translations in txt-files and GUI table for editing
+* Video (VP8) and audio (Vorbis) works only with GStreamer 0.1
+
+Broken:
+~ Torrent mechanism for file request and collecting
+~ Collecting of records by "public" and "follow" relations
+
+
+---Version 0.1 27.12.2012 (alpha):
+
+Features:
+* First prototype with raw GUI interface
+

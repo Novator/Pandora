@@ -205,16 +205,16 @@ module PandoraNet
   MK_Fishing    = 5
   MK_Cascade    = 6
   MK_CiferBox   = 7
-  MK_BlockWeb   = 8
+  MK_BlockNet   = 8
   # Direct mass recs (it has destination node in Param1)
   MK_Answer     = 128
 
   # Node list indexes
   # RU: Индексы в списке узлов
-  NL_Key             = 1  #22
-  NL_BaseId          = 2  #16
-  NL_Person          = 3  #22
-  NL_Time            = 4  #4
+  NL_Key             = 0  #22
+  NL_BaseId          = 1  #16
+  NL_Person          = 2  #22
+  NL_Time            = 3  #4
 
   # Common field indexes of mass record array  #(size of field)
   # RU: Общие индексы полей в векторе массовых записей
@@ -989,6 +989,7 @@ module PandoraNet
 
     def add_node_to_list(akey, abaseid, aperson=nil, cur_time=nil)
       node = nil
+      p '==add_node_to_list  akey, abaseid, aperson='+[akey, abaseid, aperson].inspect
       if akey and abaseid
         node = PandoraModel.calc_node_panhash(akey, abaseid)
         if node
@@ -1008,18 +1009,25 @@ module PandoraNet
 
     def get_node_params(node, models=nil)
       res = nil
-      if (node.is_a? String) and (node.bytesize>0)
+      p '--get_node_params  node='+PandoraUtils.bytes_to_hex(node)
+      if node.is_a?(String) and (node.bytesize>0)
         res = @node_list[node]
+        p 'res='+res.inspect
         if not res
           node_model = PandoraUtils.get_model('Node', models)
-          sel = node_model.select({:panhash => node}, false, 'key_hash, base_id', 'id ASC', 1)
+          nodehash = PandoraModel::PK_Node.chr+0.chr+node
+          sel = node_model.select({:panhash => nodehash}, false, 'key_hash, base_id', 'id ASC', 1)
+          p sel
           if sel and (sel.size>0)
             row = sel[0]
             akey = row[0]
-            abaseid = row[0]
+            abaseid = row[1]
             aperson = PandoraModel.find_person_by_key(akey, models)
             node = add_node_to_list(akey, abaseid, aperson)
+            p '#get_node_params  node, akey, abaseid, aperson='+[node, akey, abaseid, aperson].inspect
             res = @node_list[node] if node
+          elsif node==self.self_node
+            res = [self.key_hash, self.base_id, self.person]
           end
         end
       end
@@ -1411,7 +1419,7 @@ module PandoraNet
               host = row[2]
               host.strip! if host
               key_hash_i = row[3]
-              key_hash_i.strip! if key_hash_i.is_a? String
+              #key_hash_i.strip! if key_hash_i.is_a? String
               key_hash_i ||= key_hash
               node_id_i = row[4]
               node_id_i ||= node_id
@@ -1420,6 +1428,7 @@ module PandoraNet
                 aconn_mode = (aconn_mode | PandoraNet::CM_Captcha)
               end
               aconn_mode = (CM_Hunter | aconn_mode)
+              person = PandoraModel.find_person_by_key(key_hash_i) if key_hash_i
               session = Session.new(nil, host, addr, port, proto, \
                 aconn_mode, node_id_i, dialog, send_state_add, nodehash, \
                 person, key_hash_i, base_id)
@@ -2215,7 +2224,7 @@ module PandoraNet
         #  +[skey_panhash, sbase_id, trust, session_key].inspect
 
         skey_creator = @skey[PandoraCrypto::KV_Creator]
-        init_and_check_node(skey_creator, skey_panhash, sbase_id)
+        init_and_check_node(skey_creator, skey_panhash, sbase_id, @recv_models)
 
         creator = PandoraCrypto.current_user_or_key(true)
         if hunter? or (not skey_creator) or (skey_creator != creator)
@@ -2950,7 +2959,7 @@ module PandoraNet
                   OpenSSL::Digest::SHA384.digest(params['sphrase']), rsign)
                     trust = @skey[PandoraCrypto::KV_Trust]
                     skey_hash = @skey[PandoraCrypto::KV_Panhash]
-                    init_and_check_node(@skey[PandoraCrypto::KV_Creator], skey_hash, sbase_id)
+                    init_and_check_node(@skey[PandoraCrypto::KV_Creator], skey_hash, sbase_id, @recv_models)
                     if ((@conn_mode & CM_Double) == 0)
                       if (not hunter?)
                         if ($trust_for_unknown.is_a? Float) and ($trust_for_unknown > -1.0001)
@@ -3947,14 +3956,20 @@ module PandoraNet
       recieved
     end
 
-    def init_and_check_node(a_to_person, a_to_key, a_to_base_id)
+    def init_and_check_node(a_to_person, a_to_key, a_to_base_id, models=nil)
+      p '++init_and_check_node [a_to_person, a_to_key, a_to_base_id]='+[a_to_person, a_to_key, a_to_base_id].inspect
       @to_person = a_to_person if a_to_person
       @to_key = a_to_key if a_to_key
       @to_base_id = a_to_base_id if a_to_base_id
-      @to_node = pool.add_node_to_list(a_to_key, a_to_base_id, a_to_person)
-      if to_person and to_key and to_base_id
+      if (not @to_person) and @to_key
+        p '??find person  @to_key='+PandoraUtils.bytes_to_hex(@to_key)
+        @to_person = PandoraModel.find_person_by_key(@to_key, models)
+      end
+      p '!!init_and_check_node [@to_person, @to_key, @to_base_id]='+[@to_person, @to_key, @to_base_id].inspect
+      @to_node = pool.add_node_to_list(@to_key, @to_base_id, @to_person)
+      if @to_key and @to_base_id and @to_person
         key = PandoraCrypto.current_user_or_key(false)
-        sessions = pool.sessions_of_personkeybase(to_person, to_key, to_base_id)
+        sessions = pool.sessions_of_personkeybase(@to_person, @to_key, @to_base_id)
         if (sessions.is_a? Array) and (sessions.size>1) and (key != to_key)
           @conn_mode = (@conn_mode | CM_Double)
         end
@@ -4009,6 +4024,7 @@ module PandoraNet
       #  aconn_mode, anode_id, a_dialog, send_state_add, nodehash, to_person, \
       #  to_key, to_base_id].inspect
 
+      p '@@@ init_and_check_node 111'
       init_and_check_node(to_person, to_key, to_base_id)
       pool.add_session(self)
 

@@ -55,7 +55,7 @@ echo "`./pandora.sh --version` `./pandora.sh --md5`  `date +"%d.%m.%Y %T"`" >> .
 
 ## Push files from local to repository
 #git add --all
-git commit -a -m "version 0.71 alpha"
+git commit -a -m "version 0.72 alpha"
 git push -u github master
 git push -u bitbuc master
 #git push -u github develop
