@@ -6883,13 +6883,27 @@ module PandoraGtk
       if res
         filter ||= {:panhash => panhash, :modified => time_now}
         sel = panobject.select(filter, true, nil, 'id DESC', 1)
-        if sel and sel[0]
+        if sel and (sel.size>0)
           row = sel[0]
+          id = panobject.field_val('id', row)  #panobject.namesvalues['id']
+
+          if filter[:id].nil? and @edit and panhash0 and (panhash != panhash0)
+            p '==The record is changed'
+            if (panstate & PandoraModel::PSF_Archive)>0
+              p 'This is an archive record. Old record is deleting'
+              res = panobject.update(nil, nil, {:panhash => panhash0})
+            else
+              p 'This is work record. Old record is moving to archive'
+              PandoraModel.set_panstate_for_panhash(panhash0, nil, \
+                PandoraModel::PSF_Archive, PandoraModel::PSF_Support)
+            end
+          end
+
           #p 'panobject.namesvalues='+panobject.namesvalues.inspect
           #p 'panobject.matter_fields='+panobject.matter_fields.inspect
 
-          id = panobject.field_val('id', row)  #panobject.namesvalues['id']
-          @obj_id = id.to_i
+          @obj_id = id.to_i if (id and ((not @edit) or @obj_id.nil?))
+          @edit = true
 
           #put saved values to widgets
           @fields = panobject.get_fields_as_view(row, true, panhash, @fields)

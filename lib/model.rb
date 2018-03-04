@@ -483,6 +483,33 @@ module PandoraModel
     res
   end
 
+  # Save (flags=nil) or change (flags<>nil) panstate for records with panhash
+  # RU: Задать или изменить panstate для записей с panhash
+  def self.set_panstate_for_panhash(panhash, panstate0, set_flags=nil, reset_flags=nil, models=nil)
+    res = nil
+    if not PandoraUtils.panhash_nil?(panhash)
+      kind = panhash[0].ord
+      panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+      if panobjectclass
+        phh = {:panhash=>panhash}
+        model = PandoraUtils.get_model(panobjectclass.ider, models)
+        if (not set_flags.nil?) or (not reset_flags.nil?)
+          if panstate0.nil?
+            sel = model.select(phh, false, 'panstate', 'created DESC', 1)
+            if sel and (sel.size>0)
+              panstate0 = sel[0][0]
+            end
+            panstate0 ||= 0
+          end
+          panstate0 &= (~ reset_flags) if reset_flags
+          panstate0 |= set_flags if set_flags
+        end
+        res = model.update({:panstate=>panstate0}, nil, phh)
+      end
+    end
+    res
+  end
+
   $keep_for_trust  = 0.5      # set "Support" flag for records with creator trust
   $max_relative_path_depth = 2
 
