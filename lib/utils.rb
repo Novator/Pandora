@@ -38,7 +38,7 @@ module PandoraUtils
 
   # Version of GUI application
   # RU: Версия GUI приложения
-  PandoraVersion  = '0.72'
+  PandoraVersion  = '0.73'
 
   $detected_os_family = nil
 
@@ -1197,7 +1197,7 @@ module PandoraUtils
 
   # Convert ruby object to PSON (Pandora Simple Object Notation)
   # RU: Конвертирует объект руби в PSON
-  def self.rubyobj_to_pson(rubyobj)
+  def self.rubyobj_to_pson(rubyobj, sort_hash=nil)
     type = PT_Nil
     count = 0
     neg = false
@@ -1235,7 +1235,7 @@ module PandoraUtils
         elem_size = rubyobj.size
         type, count, neg = encode_pson_type(PT_Array, elem_size)
       when Hash
-        rubyobj = rubyobj.sort_by {|k,v| k.to_s}
+        rubyobj = rubyobj.sort_by {|k,v| k.to_s} if sort_hash
         elem_size = 0
         rubyobj.each do |a|
           data << rubyobj_to_pson(a[0]) << rubyobj_to_pson(a[1])
@@ -1303,7 +1303,7 @@ module PandoraUtils
             if basetype == PT_Sym
               val = val.to_sym
             elsif basetype == PT_Real
-              val = val.unpack('D')
+              val = val.unpack('D')[0]
             end
           when PT_Array, PT_Hash
             val = Array.new
@@ -1339,11 +1339,11 @@ module PandoraUtils
 
   # Pack PanObject fields to Name-PSON binary format
   # RU: Пакует поля панобъекта в бинарный формат Name-PSON
-  def self.hash_to_namepson(fldvalues, pack_empty=false)
+  def self.hash_to_namepson(fldvalues, pack_empty=false, sort_key=true)
     #bytes = ''
     #bytes.force_encoding('ASCII-8BIT')
     bytes = AsciiString.new
-    fldvalues = fldvalues.sort_by {|k,v| k.to_s } # sort by key
+    fldvalues = fldvalues.sort_by {|k,v| k.to_s } if sort_key
     fldvalues.each { |nam, val|
       if pack_empty or (not value_is_empty?(val))
         nam = nam.to_s

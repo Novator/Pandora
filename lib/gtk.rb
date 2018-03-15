@@ -8691,7 +8691,7 @@ module PandoraGtk
             pbox = PandoraGtk::PanobjScrolledWindow.new
             panhash = PandoraUtils.bytes_to_hex(cab_panhash)
             PandoraGtk.show_panobject_list(PandoraModel::Message, nil, pbox, false, \
-              'destination='+panhash)
+              'destination='+panhash+' AND panstate>'+(PandoraModel::PSF_Opinion-1).to_s)
             container.add(pbox)
           when PandoraUI::CPI_Relations
             pbox = PandoraGtk::PanobjScrolledWindow.new
@@ -8703,7 +8703,7 @@ module PandoraGtk
             pbox = PandoraGtk::PanobjScrolledWindow.new
             panhash = PandoraUtils.bytes_to_hex(cab_panhash)
             PandoraGtk.show_panobject_list(PandoraModel::Sign, nil, pbox, false, \
-              'obj_hash='+panhash)
+              'creator='+panhash+' OR obj_hash='+panhash)
             container.add(pbox)
         end
       else

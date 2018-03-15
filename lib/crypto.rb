@@ -1189,8 +1189,8 @@ module PandoraCrypto
           bitlen = klen_to_bitlen(klen)
           #p 'bitlen='+bitlen.inspect
           max_len = bitlen/8
-          #p '--max_len='+max_len.inspect
-          if data_len>max_len
+          p '--encrypt, data_len, max_len='+[encrypt, data_len, max_len].inspect
+          if data_len > max_len
             if encrypt
               cipher ||= (KT_Aes | KL_bit256)   #default cipher
               ciphlen = klen_to_bitlen(cipher)/8

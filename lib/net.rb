@@ -25,7 +25,7 @@ module PandoraNet
 
   # Version of protocol
   # RU: Версия протокола
-  ProtocolVersion = 'pandora0.70'
+  ProtocolVersion = 'pandora0.73'
 
   DefTcpPort = 5577
   DefUdpPort = 5577
@@ -3220,7 +3220,7 @@ module PandoraNet
                     model = PandoraUtils.get_model(panobjectclass.ider, @recv_models)
                     prev_kind = kind
                   end
-                  id = confirms[i+1, 4].unpack('N')
+                  id = confirms[i+1, 4].unpack('N')[0]
                   #p log_mes+'update confirm  kind,id='+[kind, id].inspect
                   res = model.update({:state=>2}, nil, {:id=>id})
                   if res
@@ -3746,7 +3746,7 @@ module PandoraNet
                   else
                     #p "news more!!!!"
                     pkind = rcode
-                    pnoticecount = rdata.unpack('N')
+                    pnoticecount = rdata.unpack('N')[0]
                     @scmd = EC_Sync
                     @scode = 0
                     @sbuf = ''
@@ -5315,7 +5315,7 @@ module PandoraNet
   $last_ip4 = nil
   $last_ip6 = nil
 
-  WrongUrl = 'http://robux.biz/panreg.php?node=[node]&amp;ips=[ips]'
+  WrongUrl = 'http://robux.perm.ru/panreg.php?node=[node]&amp;ips=[ips]'
   ExceptIp4List = ['147.146.146.49']
 
   def self.register_node_ips(listening=nil, quit_programm=nil)

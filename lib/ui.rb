@@ -1007,6 +1007,14 @@ module PandoraUI
         end
         PandoraNet.start_or_stop_hunt(continue)
       when 'Wizard'
+        #val = ['Hello', 1500, 3.14, true, {:name=>'Michael', :family=>'Jackson'}]
+        val = {:name=>'Michael', 'family'=>'Jackson', 'birthday'=>Time.parse('29.08.1958'), :sex=>1}
+        #str = PandoraUtils.rubyobj_to_pson(val)
+        str = PandoraUtils.hash_to_namepson(val)
+        puts [val, str.bytesize].inspect
+        #val2, len = PandoraUtils.pson_to_rubyobj(str)
+        val2, len = PandoraUtils.namepson_to_hash(str)
+        puts [val2, len].inspect
         if $gtk_is_active
           PandoraGtk.show_log_bar(80)
         end

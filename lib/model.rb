@@ -33,6 +33,18 @@ module PandoraModel
   # RU: Длина панхэша
   PanhashSize = 22
 
+  # Panobject state flags
+  # RU: Флаги состояния объекта/записи
+  PSF_Support    = 1      # must keep on this node (else will be deleted by GC)
+  PSF_Verified   = 2      # signature was verified
+  PSF_Crypted    = 4      # record is encrypted
+  PSF_BlockNet   = 8      # record is in BlockNet
+  PSF_ChatMes    = 16     # chat message (not dialog)
+  PSF_SentOut    = 32     # record has went outside of node
+  PSF_Harvest    = 64     # download by pieces in progress
+  PSF_Opinion    = 128    # this is opinion
+  PSF_Archive    = 256    # marked to delete
+
   def self.hex_to_panhash(hexstr)
     res = PandoraUtils.hex_to_bytes(hexstr)
     res = PandoraUtils.fill_zeros_from_right(res, PanhashSize)
@@ -1243,17 +1255,6 @@ module PandoraModel
     act_relation(nil, panhash, RK_MinPublic, :delete, creator_for_nil, init, models)
     PandoraCrypto.unsign_panobject(panhash, true) if unsign
   end
-
-  # Panobject state flags
-  # RU: Флаги состояния объекта/записи
-  PSF_Support    = 1      # must keep on this node (else will be deleted by GC)
-  PSF_Verified   = 2      # signature was verified
-  PSF_Crypted    = 4      # record is encrypted
-  PSF_BlockWeb   = 8     # record is in BlockWeb
-  PSF_ChatMes    = 16      # chat message (not dialog)
-  PSF_SentOut    = 32      # record has went outside of node
-  PSF_Harvest    = 64     # download by pieces in progress
-  PSF_Archive    = 128    # marked to delete
 
 end
 

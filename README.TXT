@@ -162,6 +162,7 @@ Ask author for help:
   http://facebook.com/robux
   http://vk.com/robux
   robux@mail.ru
+  tox: D7A2E3FAFA7F001B80EC0676B2F6E57A9E89FA9424A1B5F9C10347418F174D387825CF48196F
   Michael Galyuk
 
 Support development:
