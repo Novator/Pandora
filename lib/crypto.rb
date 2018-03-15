@@ -1101,7 +1101,7 @@ module PandoraCrypto
   # RU: Активировать ключ по заданному панхэшу
   def self.open_key(panhash, models=nil, init=true)
     key_vec = nil
-    if panhash.is_a? String
+    if panhash.is_a?(String)
       key_vec = $open_keys[panhash]
       #p 'openkey key='+key_vec.inspect+' $open_keys.size='+$open_keys.size.inspect
       if key_vec
@@ -1110,7 +1110,7 @@ module PandoraCrypto
       elsif ($open_keys.size<$max_opened_keys)
         model = PandoraUtils.get_model('Key', models)
         filter = {:panhash => panhash}
-        sel = model.select(filter, false)
+        sel = model.select(filter, false, nil, 'created DESC', 2)
         #p 'openkey sel='+sel.inspect
         if (sel.is_a? Array) and (sel.size>0)
           sel.each do |row|

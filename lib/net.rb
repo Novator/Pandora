@@ -1524,7 +1524,8 @@ module PandoraNet
   $captcha_length = 4     #4..8   (recommended 6)
   $captcha_attempts = 2
   $trust_for_captchaed = true
-  $trust_for_listener = true
+  $trust_listener = true
+  $trust_for_listener = 0.01
   $trust_for_unknown = nil
   $low_conn_trust = 0.0
 
@@ -2929,7 +2930,7 @@ module PandoraNet
                 #p log_mes+'recived captcha='+captcha if captcha
                 if captcha.downcase==params['captcha']
                   @stage = ES_Greeting
-                  if not (@skey[PandoraCrypto::KV_Trust].is_a? Float)
+                  if not @skey[PandoraCrypto::KV_Trust].is_a?(Float)
                     if $trust_for_captchaed
                       @skey[PandoraCrypto::KV_Trust] = 0.01
                     else
@@ -2961,16 +2962,18 @@ module PandoraNet
                     skey_hash = @skey[PandoraCrypto::KV_Panhash]
                     init_and_check_node(@skey[PandoraCrypto::KV_Creator], skey_hash, sbase_id, @recv_models)
                     if ((@conn_mode & CM_Double) == 0)
-                      if (not hunter?)
-                        if ($trust_for_unknown.is_a? Float) and ($trust_for_unknown > -1.0001)
-                          trust = $trust_for_unknown
+                      if not trust.is_a?(Float)
+                        if (not hunter?)
+                          if ($trust_for_unknown.is_a?(Float)) and ($trust_for_unknown > -1.0001)
+                            trust = $trust_for_unknown
+                            @skey[PandoraCrypto::KV_Trust] = trust
+                          else
+                            trust = 0 if (not trust) and $trust_for_captchaed
+                          end
+                        elsif $trust_listener and $trust_for_listener.is_a?(Float)
+                          trust = $trust_for_listener
                           @skey[PandoraCrypto::KV_Trust] = trust
-                        else
-                          trust = 0 if (not trust) and $trust_for_captchaed
                         end
-                      elsif $trust_for_listener and (not (trust.is_a? Float))
-                        trust = 0.01
-                        @skey[PandoraCrypto::KV_Trust] = trust
                       end
                       #p log_mes+'ECC_Auth_Sign trust='+trust.inspect
                       if ($captcha_length>0) and $gtk_is_active \
@@ -2986,7 +2989,7 @@ module PandoraNet
                         #@scmd = EC_Data
                         #@scode = 0
                         #@sbuf = nil
-                      elsif trust.is_a? Float
+                      elsif trust.is_a?(Float)
                         if trust>=$low_conn_trust
                           set_trust_and_notice(trust)
                           if not hunter?
@@ -3817,7 +3820,7 @@ module PandoraNet
                           sel = model.select({:panhash=>panhash}, false, 'id', nil, 1)
                           if (not sel) or (sel.size == 0)
                             chat_dialog = PandoraUI.show_cabinet(destination, nil, \
-                              nil, nil, nil, PandoraUI::CPI_Chat)
+                              true, nil, nil, PandoraUI::CPI_Chat)
                               #@conn_type, nil, nil, CPI_Chat)
                             res = model.update(values, nil, nil)
                             if res and sign.is_a?(String) and (sign.bytesize>0)

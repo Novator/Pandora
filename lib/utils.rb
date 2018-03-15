@@ -1195,9 +1195,46 @@ module PandoraUtils
     [basetype, count, negative]
   end
 
+  def self.sort_complex_array(array)
+    res = array.sort do |a, b|
+      com = 0
+      if ((a.is_a?(Numeric) and b.is_a?(Numeric)) or (a.is_a?(Time) and b.is_a?(Time)))
+        com = (a <=> b)
+      else
+        a = a.to_s if a.is_a?(Symbol)
+        b = b.to_s if b.is_a?(Symbol)
+        if a.is_a?(String) and b.is_a?(String)
+          com = (a <=> b)
+        else
+          if a.is_a?(Numeric)
+            com = -1
+          elsif b.is_a?(Numeric)
+            com = 1
+          elsif a.is_a?(Time)
+            com = -1
+          elsif b.is_a?(Time)
+            com = 1
+          elsif a.is_a?(String)
+            com = -1
+          elsif b.is_a?(String)
+            com = 1
+          elsif (a.class == b.class)
+            com = (a.inspect <=> b.inspect)
+          else
+            com = (a.class.name <=> b.class.name)
+          end
+        end
+      end
+      com
+    end
+    res
+  end
+
   # Convert ruby object to PSON (Pandora Simple Object Notation)
   # RU: Конвертирует объект руби в PSON
-  def self.rubyobj_to_pson(rubyobj, sort_hash=nil)
+  # sort_mode: nil or false - don't sort, 1 - sort array, 2 - sort hash
+  # 3 or true - sort arrays and hashes
+  def self.rubyobj_to_pson(rubyobj, sort_mode=nil)
     type = PT_Nil
     count = 0
     neg = false
@@ -1229,16 +1266,19 @@ module PandoraUtils
         elem_size = data.bytesize
         type, count, neg = encode_pson_type(PT_Real, elem_size)
       when Array
+        if (sort_mode and ((not sort_mode.is_a?(Integer)) or ((sort_mode & 1)>0)))
+          rubyobj = self.sort_complex_array(rubyobj)
+        end
         rubyobj.each do |a|
-          data << rubyobj_to_pson(a)
+          data << rubyobj_to_pson(a, sort_mode)
         end
         elem_size = rubyobj.size
         type, count, neg = encode_pson_type(PT_Array, elem_size)
       when Hash
-        rubyobj = rubyobj.sort_by {|k,v| k.to_s} if sort_hash
+        rubyobj = rubyobj.sort_by {|k,v| k.to_s} if (sort_mode and ((not sort_mode.is_a?(Integer)) or ((sort_mode & 2)>0)))
         elem_size = 0
         rubyobj.each do |a|
-          data << rubyobj_to_pson(a[0]) << rubyobj_to_pson(a[1])
+          data << rubyobj_to_pson(a[0], sort_mode) << rubyobj_to_pson(a[1], sort_mode)
           elem_size += 1
         end
         type, count, neg = encode_pson_type(PT_Hash, elem_size)
@@ -1339,21 +1379,21 @@ module PandoraUtils
 
   # Pack PanObject fields to Name-PSON binary format
   # RU: Пакует поля панобъекта в бинарный формат Name-PSON
-  def self.hash_to_namepson(fldvalues, pack_empty=false, sort_key=true)
+  def self.hash_to_namepson(fldvalues, pack_empty=false, sort_mode=2)
     #bytes = ''
     #bytes.force_encoding('ASCII-8BIT')
     bytes = AsciiString.new
-    fldvalues = fldvalues.sort_by {|k,v| k.to_s } if sort_key
-    fldvalues.each { |nam, val|
+    fldvalues = fldvalues.sort_by {|k,v| k.inspect } if sort_mode
+    fldvalues.each do |nam, val|
       if pack_empty or (not value_is_empty?(val))
         nam = nam.to_s
         nsize = nam.bytesize
         nsize = 255 if nsize>255
         bytes << [nsize].pack('C') + nam[0, nsize]
-        pson_elem = rubyobj_to_pson(val)
+        pson_elem = rubyobj_to_pson(val, sort_mode)
         bytes << pson_elem
       end
-    }
+    end
     bytes = AsciiString.new(bytes)
   end
 

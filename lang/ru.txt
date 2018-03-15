@@ -489,3 +489,5 @@ Request the record with opinions=>Запросить запись с мнени�
 Request the record with relations and avatars=>Запросить запись со связями и аватарами
 Request the record with relations and opinions=>Запросить запись со связями и мнениями
 Request the record with relations, avatars and opinions=>Запросить запись со связями, аватарами и мнениями
+Load more history=>Подгрузить ещё истории
+Clear history=>Очистить историю

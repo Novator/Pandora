@@ -7519,6 +7519,10 @@ module PandoraGtk
 
   end
 
+  $load_history_count = 6
+  $sort_history_mode = 0
+  $load_more_history_count = 50
+
   CabPageInfo = [[Gtk::Stock::PROPERTIES, 'Basic'], \
     [Gtk::Stock::HOME, 'Profile'], \
     [:opinion, 'Opinions'], \
@@ -7820,7 +7824,16 @@ module PandoraGtk
 
       if not chat_mode
         require_sign_btn = add_btn_to_toolbar(:require, 'Require sign', false)
+      end
 
+      add_btn_to_toolbar(Gtk::Stock::CLEAR, 'Clear history') do |widget|
+        clear_history(chat_mode)
+      end
+      add_btn_to_toolbar(:message, 'Load more history|('+$load_more_history_count.to_s+')') do |widget|
+        load_history($load_more_history_count, $sort_history_mode, chat_mode)
+      end
+
+      if not chat_mode
         add_btn_to_toolbar
 
         is_online = (@session != nil)
@@ -7922,7 +7935,7 @@ module PandoraGtk
     # RU: Добавляет пункт меню
     def add_menu_item(btn, menu, stock, text=nil)
       mi = nil
-      if stock.is_a? String
+      if stock.is_a?(String)
         mi = Gtk::MenuItem.new(stock)
       else
         $window.register_stock(stock)
@@ -9026,10 +9039,27 @@ module PandoraGtk
       res
     end
 
+    def buf_insert(buf, str, styl, offset)
+      iter = nil
+      if offset.nil?
+        iter = buf.end_iter
+      else
+        iter = buf.get_iter_at_offset(offset)
+        offset += str.size
+      end
+      if styl
+        buf.insert(iter, str, styl)
+      else
+        buf.insert(iter, str)
+      end
+      offset
+    end
+
     # Put message to dialog
     # RU: Добавляет сообщение в диалог
     def add_mes_to_view(mes, id, panstate=nil, to_end=nil, \
-    key_or_panhash=nil, myname=nil, modified=nil, created=nil, mine=nil)
+    key_or_panhash=nil, myname=nil, modified=nil, created=nil, \
+    mine=nil, insert_above=nil)
       if mes
         encrypted = ((panstate.is_a? Integer) \
           and ((panstate & PandoraModel::PSF_Crypted) > 0))
@@ -9082,8 +9112,14 @@ module PandoraGtk
         if talkview
           buf = talkview.buffer
           talkview.before_addition(time_now) if (not to_end.is_a? FalseClass)
-          buf.insert(buf.end_iter, "\n") if (buf.char_count>0)
-          buf.insert(buf.end_iter, time_str+' ', time_style)
+
+          not_empty = (buf.char_count>0)
+          buf.insert(buf.end_iter, "\n") if (not insert_above) and not_empty
+
+          offset = nil
+          offset = 0 if insert_above
+          offset = buf_insert(buf, time_str+' ', time_style, offset)
+
           #creator name_style 'URL'
           tv_tag = nil
           #p '====++ creator='+[creator, PandoraUtils.panhash_nil?(creator)].inspect
@@ -9107,17 +9143,25 @@ module PandoraGtk
               end
             end
           end
+
           if tv_tag
-            buf.insert(buf.end_iter, user_name, tv_tag)
-            buf.insert(buf.end_iter, ':', name_style)
+            offset = buf_insert(buf, user_name, tv_tag, offset)
+            offset = buf_insert(buf, ':', name_style, offset)
           else
-            buf.insert(buf.end_iter, user_name+':', name_style)
+            offset = buf_insert(buf, user_name+':', name_style, offset)
           end
+
           line = buf.line_count
           talkview.mes_ids[line] = id
 
-          buf.insert(buf.end_iter, ' ')
-          talkview.insert_taged_str_to_buffer(mes, buf, 'bbcode')
+          offset = buf_insert(buf, ' ', nil, offset)
+
+          if insert_above
+            offset = buf_insert(buf, mes+"\n", nil, offset)
+          else
+            talkview.insert_taged_str_to_buffer(mes, buf, 'bbcode')
+          end
+
           talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
           talkview.show_all
         end
@@ -9133,30 +9177,49 @@ module PandoraGtk
       talkview = @dlg_talkview
       talkview = @chat_talkview if chat_mode
       if talkview and max_message and (max_message>0)
-        messages = []
+        #messages = []
         fields = 'creator, created, destination, state, text, panstate, modified, id'
 
         mypanhash = PandoraCrypto.current_user_or_key(true)
         myname = PandoraCrypto.short_name_of_person(nil, mypanhash)
 
         nil_create_time = false
-        person = cab_panhash
         model = PandoraUtils.get_model('Message')
         max_message2 = max_message
-        max_message2 = max_message * 2 if (person == mypanhash)
+        #max_message2 = max_message * 2 if (cab_panhash == mypanhash)
+
         chatbit = PandoraModel::PSF_ChatMes.to_s
-        filter = [['destination=', person]]
-        chat_filter = nil
+
+        chat_sign = '>'
+        first_id = nil
+        cond = 'destination=?'
+        args = [cab_panhash]
         if chat_mode
-          chat_filter = ['IFNULL(panstate,0)&'+chatbit+'>', 0]
+          @chat_first_id ||= nil
+          first_id = @chat_first_id
         else
-          filter << ['creator=', mypanhash]
-          chat_filter = ['IFNULL(panstate,0)&'+chatbit+'=', 0]
+          @dialog_first_id ||= nil
+          first_id = @dialog_first_id
+          cond << ' AND creator=?'
+          args << mypanhash
+          if (cab_panhash != mypanhash)
+            cond = '(('+cond+') OR (creator=? AND destination=?))'
+            args << cab_panhash
+            args << mypanhash
+          end
+          chat_sign = '='
         end
-        filter << chat_filter if chat_filter
+        if first_id
+          cond << ' AND id<?'
+          args << first_id
+        end
+        p filter = [cond+' AND IFNULL(panstate,0)&'+chatbit+chat_sign+'0', *args]
+        #return
+
         sel = model.select(filter, false, fields, 'id DESC', max_message2)
         sel.reverse!
-        if (person == mypanhash)
+
+        if false #!!! (cab_panhash == mypanhash)
           i = sel.size-1
           while i>0 do
             i -= 1
@@ -9175,13 +9238,15 @@ module PandoraGtk
             end
           end
         end
-        messages += sel
-        if (not chat_mode) and (person != mypanhash)
-          filter = [['creator=', person], ['destination=', mypanhash]]
-          filter << chat_filter if chat_filter
-          sel = model.select(filter, false, fields, 'id DESC', max_message)
-          messages += sel
-        end
+        messages = sel
+
+        #if (not chat_mode) and (cab_panhash != mypanhash)
+        #  filter = [['creator=', cab_panhash], ['destination=', mypanhash]]
+        #  filter << chat_filter if chat_filter
+        #  sel = model.select(filter, false, fields, 'id DESC', max_message)
+        #  messages += sel
+        #end
+
         if nil_create_time or (sort_mode==0) #sort by created
           messages.sort! do |a,b|
             res = (a[6]<=>b[6])
@@ -9197,29 +9262,67 @@ module PandoraGtk
         end
 
         talkview.before_addition
-        i = (messages.size-max_message)
-        i = 0 if i<0
+
+        buf = nil
+        first_id0 = first_id
+        if first_id0
+          buf = talkview.buffer
+        end
+
+        added = 0
+        i = 0
         while i<messages.size do
           message = messages[i]
-
-          creator = message[0]
-          created = message[1]
-          mes = message[4]
-          panstate = message[5]
-          modified = message[6]
           id = message[7]
+          if id and (first_id0.nil? or (id<first_id0))
+            if (added==0) and buf
+              buf.insert(buf.end_iter, "\n----------from_id="+id.to_s)
+            end
+            creator = message[0]
+            created = message[1]
+            mes = message[4]
+            panstate = message[5]
+            modified = message[6]
 
-          add_mes_to_view(mes, id, panstate, false, creator, \
-            myname, modified, created, (creator == mypanhash))
+            first_id = id if (first_id.nil? or (id<first_id))
 
+            add_mes_to_view(mes, id, panstate, false, creator, \
+              myname, modified, created, (creator == mypanhash))
+            added += 1
+          end
           i += 1
         end
+        if buf and (added>0)
+          buf.insert(buf.end_iter, "\n=========id<"+first_id0.to_s)
+        end
+
+        if chat_mode
+          @chat_first_id = first_id
+        else
+          @dialog_first_id = first_id
+        end
+
         talkview.after_addition(true)
         talkview.show_all
         # Scroll because of the unknown gtk bug
         mark = talkview.buffer.create_mark(nil, talkview.buffer.end_iter, false)
         talkview.scroll_to_mark(mark, 0, true, 0.0, 1.0)
         talkview.buffer.delete_mark(mark)
+      end
+    end
+
+    def clear_history(chat_mode)
+      talkview = nil
+      if chat_mode
+        talkview = @chat_talkview
+        @chat_first_id = nil
+      else
+        talkview = @dlg_talkview
+        @dialog_first_id = nil
+      end
+      if talkview
+        talkview.mes_ids.clear
+        talkview.buffer.text = ''
       end
     end
 
@@ -9328,7 +9431,7 @@ module PandoraGtk
       if tab_widget
         curpage ||= $window.notebook.get_nth_page($window.notebook.page)
         # interrupt reading thread (if exists)
-        if $last_page and ($last_page.is_a? CabinetBox) \
+        if $last_page and $last_page.is_a?(CabinetBox) \
         and $last_page.read_thread and (curpage != $last_page)
           $last_page.read_thread.exit
           $last_page.read_thread = nil
@@ -9378,7 +9481,7 @@ module PandoraGtk
           end
         end
         # set focus to edit_box
-        if curpage and (curpage.is_a? CabinetBox) #and curpage.edit_box
+        if curpage and curpage.is_a?(CabinetBox) #and curpage.edit_box
           curpage.grab_def_widget
         end
       end
@@ -12612,6 +12715,7 @@ module PandoraGtk
   # RU: Взять параметры вида
   def self.get_view_params
     $load_history_count = PandoraUtils.get_param('load_history_count')
+    $load_more_history_count = PandoraUtils.get_param('load_more_history_count')
     $sort_history_mode = PandoraUtils.get_param('sort_history_mode')
   end
 
@@ -12785,14 +12889,15 @@ module PandoraGtk
     notebook ||= $window.notebook
     if room_id and notebook
       notebook.children.each do |child|
-        if ((child.is_a? CabinetBox) and ((child.room_id==room_id) \
+        if (child.is_a?(CabinetBox) and ((child.room_id==room_id) \
         or (session and (child.session==session))))
           #child.targets = targets
           #child.online_btn.safe_set_active(nodehash != nil)
           #child.online_btn.inconsistent = false
           notebook.page = notebook.children.index(child) if conntype.nil?
           sw = child
-          if page
+          if (page and ((page != PandoraUI::CPI_Chat) \
+          or (not conntype.is_a?(TrueClass)) or (not child.chat_talkview)))
             sw.show_page(page)
             sleep(0.01)
           end
@@ -13235,7 +13340,7 @@ module PandoraGtk
           page = $window.notebook.page
           if (page >= 0)
             cur_page = $window.notebook.get_nth_page(page)
-            if cur_page.is_a? PandoraGtk::CabinetBox
+            if cur_page.is_a?(PandoraGtk::CabinetBox)
               cur_page.update_state(false, cur_page)
             end
           else
@@ -14480,12 +14585,12 @@ module PandoraGtk
               if toplevel and $window.visible?
                 $window.notebook.children.each do |child|
                   if (child.is_a? CabinetBox) and (child.has_unread)
-                    $window.notebook.page = $window.notebook.children.index(child)
+                    #$window.notebook.page = $window.notebook.children.index(child)
                     break
                   end
                 end
                 curpage = $window.notebook.get_nth_page($window.notebook.page)
-                if (curpage.is_a? PandoraGtk::CabinetBox) and toplevel
+                if curpage.is_a?(PandoraGtk::CabinetBox) and toplevel
                   curpage.update_state(false, curpage)
                 else
                   PandoraGtk.update_treeview_if_need(curpage)

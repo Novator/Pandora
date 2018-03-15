@@ -380,6 +380,7 @@
     <linux_mp3_player desc="Linux mp3 player" type="String" section="view" setting="" />
     <win_mp3_player desc="Windows mp3 player" type="String" section="view" setting="" />
     <load_history_count desc="Load message history count" type="Integer" section="view" setting="6" />
+    <load_more_history_count desc="Load more history count" type="Integer" section="view" setting="50" />
     <sort_history_mode desc="Sort history mode (0-receive, 1-create)" type="Integer" section="view" setting="0" />
     <def_smiles desc="Default smiles" type="String" section="view" setting="qip" />
     <icons_qip desc="Qip smile file" type="String" section="view" setting="smiles-qip.png:8x5:1p:1p|smile|sad|wink|cry|lol|shock|halo|kiss|glass|angry|tong|annoy|shame|thumb|ok|dance|music|stop|rose|kissed|sos|secret|hug|heart|cool|gun|work|dead|bomb|vomit|pardon|crazy|drink|fight|hurt|confuse|discontent|joy|fall|bingo" />
