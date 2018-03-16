@@ -1230,6 +1230,21 @@ module PandoraUtils
     res
   end
 
+  def self.sort_complex_hash(hash)
+    res = hash.sort_by do |k,v|
+      com = k
+      if not k.is_a?(String)
+        if (k.is_a?(Symbol) or k.is_a?(Numeric) or k.is_a?(Time))
+          com = k.to_s
+        else
+          com = k.inspect
+        end
+      end
+      com
+    end
+    res
+  end
+
   # Convert ruby object to PSON (Pandora Simple Object Notation)
   # RU: Конвертирует объект руби в PSON
   # sort_mode: nil or false - don't sort, 1 - sort array, 2 - sort hash
@@ -1275,7 +1290,10 @@ module PandoraUtils
         elem_size = rubyobj.size
         type, count, neg = encode_pson_type(PT_Array, elem_size)
       when Hash
-        rubyobj = rubyobj.sort_by {|k,v| k.to_s} if (sort_mode and ((not sort_mode.is_a?(Integer)) or ((sort_mode & 2)>0)))
+        if (sort_mode and ((not sort_mode.is_a?(Integer)) or ((sort_mode & 2)>0)))
+          #rubyobj = rubyobj.sort_by {|k,v| k.to_s}
+          rubyobj = self.sort_complex_hash(rubyobj)
+        end
         elem_size = 0
         rubyobj.each do |a|
           data << rubyobj_to_pson(a[0], sort_mode) << rubyobj_to_pson(a[1], sort_mode)
@@ -1383,7 +1401,7 @@ module PandoraUtils
     #bytes = ''
     #bytes.force_encoding('ASCII-8BIT')
     bytes = AsciiString.new
-    fldvalues = fldvalues.sort_by {|k,v| k.inspect } if sort_mode
+    fldvalues = fldvalues.sort_by {|k,v| k.to_s } if sort_mode
     fldvalues.each do |nam, val|
       if pack_empty or (not value_is_empty?(val))
         nam = nam.to_s
