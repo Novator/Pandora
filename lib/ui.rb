@@ -726,8 +726,8 @@ module PandoraUI
         update_period = 1
       end
       time_now = Time.now.to_i
-      ok_version = (time_now - last_update.to_i) < update_period*24*3600
-      need_check = ((time_now - last_check.to_i) >= check_interval*24*3600)
+      ok_version = ((time_now - last_update.to_i) < update_period*24*3600)
+      need_check = ((time_now - last_check.to_i) >= check_interval*3600)
       if ok_version
         PandoraUI.set_status_field(PandoraUI::SF_Update, 'Ok', need_check)
       elsif need_check

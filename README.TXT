@@ -55,7 +55,7 @@ Do commands in terminal:
 
 4. INSTALLATION IN WINDOWS
 
-Download an installation and run it with administrator:
+Download the installator and run it with administrator:
 
   https://github.com/Novator/Pandora/releases/download/0.6-alpha/pandora_setup.exe
   http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe (not recommended)
