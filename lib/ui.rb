@@ -899,6 +899,10 @@ module PandoraUI
         end
       when 'Activate'
         if $gtk_is_active
+          if $hide_on_start
+            $window.show_all
+            $hide_on_start = false
+          end
           $window.deiconify
           #self.visible = true if (not self.visible?)
           $window.present

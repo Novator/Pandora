@@ -25,6 +25,7 @@ $autodetect_lang = true
 $pandora_parameters = []
 $cui_mode = false
 $screen_mode = false
+$hide_on_start = false
 
 # Paths and files
 # RU: Пути и файлы
@@ -142,6 +143,8 @@ while (ARGVdup.size>0) or next_arg
       Kernel.exit(0)
     when '-pl', '--poly', '--poly-launch'
       $poly_launch = true
+    when '-n', '--hide', '--minimize'
+      $hide_on_start = true
     when '-c','--cui', '--console'
       $cui_mode = true
     when '-s','--screen'
@@ -164,6 +167,7 @@ while (ARGVdup.size>0) or next_arg
         puts runit+'-m|--md5         - calc MD5 of all Pandora scripts'
         puts runit+'-v|--version     - show Pandora version'
         puts runit+'-pl|--poly       - allow poly (many) launch'
+        puts runit+'-n|--hide        - start hidden and minimized'
         puts runit+'-c|--cui         - console user interface (CUI) with ncurses'
         Kernel.exit!
       end

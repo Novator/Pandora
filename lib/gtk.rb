@@ -7495,6 +7495,31 @@ module PandoraGtk
     btn
   end
 
+  # Add menu item
+  # RU: Добавляет пункт меню
+  def self.add_menu_item(btn, menu, stock, text=nil)
+    mi = nil
+    if stock.is_a?(String)
+      mi = Gtk::MenuItem.new(stock)
+    else
+      $window.register_stock(stock)
+      mi = Gtk::ImageMenuItem.new(stock)
+      if text
+        text, keyb = text.split('|')
+        if keyb
+          keyb = ' '+keyb
+        else
+          keyb = ''
+        end
+        mi.label = _(text) + keyb
+      end
+    end
+    menu.append(mi)
+    mi.signal_connect('activate') do |mi|
+      yield(mi) if block_given?
+    end
+  end
+
   class CabViewport < Gtk::Viewport
     attr_accessor :def_widget
 
@@ -7826,12 +7851,21 @@ module PandoraGtk
         require_sign_btn = add_btn_to_toolbar(:require, 'Require sign', false)
       end
 
-      add_btn_to_toolbar(Gtk::Stock::CLEAR, 'Clear history') do |widget|
-        clear_history(chat_mode)
-      end
-      add_btn_to_toolbar(:message, 'Load more history|('+$load_more_history_count.to_s+')') do |widget|
+      btn = add_btn_to_toolbar(:message, 'Load more history|('+$load_more_history_count.to_s+')', 0) do |widget|
         load_history($load_more_history_count, $sort_history_mode, chat_mode)
       end
+      menu = Gtk::Menu.new
+      btn.menu = menu
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::CLEAR, 'Clear screen') do |mi|
+        clear_history(chat_mode)
+      end
+      PandoraGtk.add_menu_item(btn, menu, :message, 'Load more history|('+($load_more_history_count*4).to_s+')') do |mi|
+        load_history($load_more_history_count*4, $sort_history_mode, chat_mode)
+      end
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::DELETE, 'Delete messages from database') do |mi|
+        clear_history(chat_mode, true)
+      end
+      menu.show_all
 
       if not chat_mode
         add_btn_to_toolbar
@@ -7931,23 +7965,6 @@ module PandoraGtk
       talkview.send_btn = send_btn
     end
 
-    # Add menu item
-    # RU: Добавляет пункт меню
-    def add_menu_item(btn, menu, stock, text=nil)
-      mi = nil
-      if stock.is_a?(String)
-        mi = Gtk::MenuItem.new(stock)
-      else
-        $window.register_stock(stock)
-        mi = Gtk::ImageMenuItem.new(stock)
-        mi.label = _(text) if text
-      end
-      menu.append(mi)
-      mi.signal_connect('activate') do |mi|
-        yield(mi) if block_given?
-      end
-    end
-
     def choose_and_set_color(bodywin, a_tag)
       shift_or_ctrl = PandoraGtk.is_ctrl_shift_alt?(true, true)
       dialog = Gtk::ColorSelectionDialog.new
@@ -8004,7 +8021,7 @@ module PandoraGtk
       btn.menu = menu
       ['auto', 'plain', 'markdown', 'bbcode', 'wiki', 'html', 'ruby', \
       'python', 'xml', 'ini'].each do |title|
-        add_menu_item(btn, menu, title) do |mi|
+        PandoraGtk.add_menu_item(btn, menu, title) do |mi|
           btn.label = mi.label
           bodywin.format = mi.label.to_s
           bodywin.set_buffers
@@ -8029,25 +8046,25 @@ module PandoraGtk
       end
       menu = Gtk::Menu.new
       btn.menu = menu
-      add_menu_item(btn, menu, Gtk::Stock::UNDERLINE) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::UNDERLINE) do
         bodywin.insert_tag('undline')
       end
-      add_menu_item(btn, menu, Gtk::Stock::STRIKETHROUGH) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::STRIKETHROUGH) do
         bodywin.insert_tag('strike')
       end
-      add_menu_item(btn, menu, Gtk::Stock::UNDERLINE) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::UNDERLINE) do
         bodywin.insert_tag('d')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Sub') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Sub') do
         bodywin.insert_tag('sub')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Sup') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Sup') do
         bodywin.insert_tag('sup')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Small') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Small') do
         bodywin.insert_tag('small')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Large') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Large') do
         bodywin.insert_tag('large')
       end
       menu.show_all
@@ -8059,14 +8076,14 @@ module PandoraGtk
       end
       menu = Gtk::Menu.new
       btn.menu = menu
-      add_menu_item(btn, menu, Gtk::Stock::SELECT_COLOR) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::SELECT_COLOR) do
         choose_and_set_color(bodywin, 'color')
       end
-      add_menu_item(btn, menu, Gtk::Stock::SELECT_COLOR, 'Background') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::SELECT_COLOR, 'Background') do
         choose_and_set_color(bodywin, 'bg')
       end
       @selected_font = 'Sans 10'
-      add_menu_item(btn, menu, Gtk::Stock::SELECT_FONT) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::SELECT_FONT) do
         dialog = Gtk::FontSelectionDialog.new
         dialog.font_name = @selected_font
         #dialog.preview_text = 'P2P planetary network Pandora'
@@ -8088,13 +8105,13 @@ module PandoraGtk
       end
       menu = Gtk::Menu.new
       btn.menu = menu
-      add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_RIGHT) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_RIGHT) do
         bodywin.insert_tag('right')
       end
-      add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_FILL) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_FILL) do
         bodywin.insert_tag('fill')
       end
-      add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_LEFT) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::JUSTIFY_LEFT) do
         bodywin.insert_tag('left')
       end
       menu.show_all
@@ -8122,19 +8139,19 @@ module PandoraGtk
       end
       menu = Gtk::Menu.new
       btn.menu = menu
-      add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h2') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h2') do
         bodywin.insert_tag('h2')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h3') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h3') do
         bodywin.insert_tag('h3')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h4') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h4') do
         bodywin.insert_tag('h4')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h5') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h5') do
         bodywin.insert_tag('h5')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h6') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDENT, 'h6') do
         bodywin.insert_tag('h6')
       end
       menu.show_all
@@ -8144,56 +8161,56 @@ module PandoraGtk
       end
       menu = Gtk::Menu.new
       btn.menu = menu
-      add_menu_item(btn, menu, :quote, 'Quote') do
+      PandoraGtk.add_menu_item(btn, menu, :quote, 'Quote') do
         bodywin.insert_tag('quote')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Cut') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Cut') do
         bodywin.insert_tag('cut', _('Expand'))
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'HR') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'HR') do
         bodywin.insert_tag('hr/', '150')
       end
-      add_menu_item(btn, menu, :table, 'Table') do
+      PandoraGtk.add_menu_item(btn, menu, :table, 'Table') do
         bodywin.insert_tag('table')
       end
       menu.append(Gtk::SeparatorMenuItem.new)
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Edit') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Edit') do
         bodywin.insert_tag('edit/', 'Edit value="Text" size="40"')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Spin') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Spin') do
         bodywin.insert_tag('spin/', 'Spin values="42,48,52" default="48"')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Integer') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Integer') do
         bodywin.insert_tag('integer/', 'Integer value="42" width="70"')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Hex') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Hex') do
         bodywin.insert_tag('hex/', 'Hex value="01a5ff" size="20"')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Real') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Real') do
         bodywin.insert_tag('real/', 'Real value="0.55"')
       end
-      add_menu_item(btn, menu, :date, 'Date') do
+      PandoraGtk.add_menu_item(btn, menu, :date, 'Date') do
         bodywin.insert_tag('date/', 'Date value="current"')
       end
-      add_menu_item(btn, menu, :time, 'Time') do
+      PandoraGtk.add_menu_item(btn, menu, :time, 'Time') do
         bodywin.insert_tag('time/', 'Time value="current"')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Coord') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Coord') do
         bodywin.insert_tag('coord/', 'Coord')
       end
-      add_menu_item(btn, menu, Gtk::Stock::OPEN, 'Filename') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::OPEN, 'Filename') do
         bodywin.insert_tag('filename/', 'Filename value="./picture1.jpg"')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Base64') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Base64') do
         bodywin.insert_tag('base64/', 'Base64 value="SGVsbG8=" size="30"')
       end
-      add_menu_item(btn, menu, :panhash, 'Panhash') do
+      PandoraGtk.add_menu_item(btn, menu, :panhash, 'Panhash') do
         bodywin.insert_tag('panhash/', 'Panhash kind="Person,Community,Blob"')
       end
-      add_menu_item(btn, menu, :list, 'Bytelist') do
+      PandoraGtk.add_menu_item(btn, menu, :list, 'Bytelist') do
         bodywin.insert_tag('bytelist/', 'List values="red, green, blue"')
       end
-      add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Button') do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Button') do
         bodywin.insert_tag('button/', 'Button value="Order"')
       end
       menu.show_all
@@ -8205,10 +8222,10 @@ module PandoraGtk
       end
       menu = Gtk::Menu.new
       btn.menu = menu
-      add_menu_item(btn, menu, Gtk::Stock::FIND_AND_REPLACE) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::FIND_AND_REPLACE) do
         bodywin.body_child.show_hide_find_panel(true, true)
       end
-      add_menu_item(btn, menu, Gtk::Stock::JUMP_TO) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::JUMP_TO) do
         bodywin.body_child.show_line_panel
       end
       menu.show_all
@@ -8218,10 +8235,10 @@ module PandoraGtk
       end
       menu = Gtk::Menu.new
       btn.menu = menu
-      add_menu_item(btn, menu, Gtk::Stock::PRINT) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::PRINT) do
         bodywin.run_print_operation
       end
-      add_menu_item(btn, menu, Gtk::Stock::PAGE_SETUP) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::PAGE_SETUP) do
         bodywin.set_page_setup
       end
       menu.show_all
@@ -8231,16 +8248,16 @@ module PandoraGtk
       end
       menu = Gtk::Menu.new
       btn.menu = menu
-      add_menu_item(btn, menu, Gtk::Stock::REDO) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::REDO) do
         bodywid.do_redo
       end
-      add_menu_item(btn, menu, Gtk::Stock::COPY) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::COPY) do
         bodywid.copy_clipboard
       end
-      add_menu_item(btn, menu, Gtk::Stock::CUT) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::CUT) do
         bodywid.cut_clipboard
       end
-      add_menu_item(btn, menu, Gtk::Stock::PASTE) do
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::PASTE) do
         bodywid.paste_clipboard
       end
       menu.show_all
@@ -8836,7 +8853,7 @@ module PandoraGtk
           end
         end
         if btn_down
-          add_menu_item(btn_down, btn_down.menu, stock, text) do
+          PandoraGtk.add_menu_item(btn_down, btn_down.menu, stock, text) do
             show_page(index)
           end
         end
@@ -9311,18 +9328,47 @@ module PandoraGtk
       end
     end
 
-    def clear_history(chat_mode)
+    def clear_history(chat_mode, clear_database=nil)
       talkview = nil
-      if chat_mode
-        talkview = @chat_talkview
-        @chat_first_id = nil
-      else
-        talkview = @dlg_talkview
-        @dialog_first_id = nil
+      if clear_database
+        mypanhash = PandoraCrypto.current_user_or_key(true)
+        if mypanhash and PandoraGtk.show_dialog(\
+        _('All messages of this conversation will be deleted from your database')+ \
+        ".\n\n"+_('Sure?'), true, 'Deletion', :question)
+          model = PandoraUtils.get_model('Message')
+          chatbit = PandoraModel::PSF_ChatMes.to_s
+          chat_sign = '>'
+          cond = 'destination=?'
+          args = [cab_panhash]
+          if not chat_mode
+            cond << ' AND creator=?'
+            args << mypanhash
+            if (cab_panhash != mypanhash)
+              cond = '(('+cond+') OR (creator=? AND destination=?))'
+              args << cab_panhash
+              args << mypanhash
+            end
+            chat_sign = '='
+          end
+          filter = [cond+' AND IFNULL(panstate,0)&'+chatbit+chat_sign+'0', *args]
+          p '---Delete messages: filter='+filter.inspect
+          res = model.update(nil, nil, filter)
+        else
+          talkview = true
+        end
       end
-      if talkview
-        talkview.mes_ids.clear
-        talkview.buffer.text = ''
+      if talkview.nil?
+        if chat_mode
+          talkview = @chat_talkview
+          @chat_first_id = nil
+        else
+          talkview = @dlg_talkview
+          @dialog_first_id = nil
+        end
+        if talkview
+          talkview.mes_ids.clear
+          talkview.buffer.text = ''
+        end
       end
     end
 
@@ -12897,7 +12943,8 @@ module PandoraGtk
           notebook.page = notebook.children.index(child) if conntype.nil?
           sw = child
           if (page and ((page != PandoraUI::CPI_Chat) \
-          or (not conntype.is_a?(TrueClass)) or (not child.chat_talkview)))
+          or (not conntype.is_a?(TrueClass)) or (not child.chat_talkview) \
+          or (notebook.page != notebook.children.index(child))))
             sw.show_page(page)
             sleep(0.01)
           end
@@ -14561,7 +14608,7 @@ module PandoraGtk
       $window.window_position = Gtk::Window::POS_CENTER
 
       $window.maximize
-      $window.show_all
+      $window.show_all if (not $hide_on_start)
 
       @radar_hpaned.position = @radar_hpaned.max_position
       @log_vpaned.position = @log_vpaned.max_position
