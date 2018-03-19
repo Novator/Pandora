@@ -660,10 +660,11 @@ module PandoraCrypto
 
     # Read a key from database
     # RU: Считывает ключ из базы
-    def self.read_key_and_set_pass(panhash, passwd, key_model)
+    def self.read_key_and_set_pass(panhash, passwd=nil, key_model=nil)
       key_vec = nil
       cipher = nil
       if panhash and (panhash != '')
+        key_model ||= PandoraUtils.get_model('Key')
         filter = {:panhash => panhash}
         sel = key_model.select(filter, false)
         if sel and (sel.size>1)

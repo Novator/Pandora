@@ -415,8 +415,9 @@ module PandoraModel
           filter[0] << ' AND cipher<>'+PandoraCrypto::KT_Priv.to_s
         end
         pson = (pson_with_kind != nil)
-        #p 'filter='+filter.inspect
+        #p '--get_record_by_panhash   filter, getfields='+[filter, getfields].inspect
         sel = model.select(filter, pson, getfields, nil, 1)
+        p sel
         if sel and (sel.size>0)
           if pson
             #namesvalues = panobject.namesvalues

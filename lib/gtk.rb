@@ -500,6 +500,11 @@ module PandoraGtk
         end
       end
 
+      self.pack_start(entry, true, true, 0)
+
+      @button = self.add_button(stock, tooltip) do
+        do_on_click
+      end
       @entry.instance_variable_set('@button', @button)
 
       #def @entry.key_event(widget, event)
@@ -508,19 +513,13 @@ module PandoraGtk
           or event.state.mod1_mask?) \
           and (event.keyval==65364)))  # Space, Shift+Down or Alt+Down
         if res
-          if @button.is_a? GoodButton
-            parent.do_on_click
-          else
+          if @button.is_a?(PandoraGtk::GoodButton)
+            @button.do_on_click
+          elsif not @button.nil?
             @button.activate
           end
         end
         false
-      end
-
-      self.pack_start(entry, true, true, 0)
-
-      @button = self.add_button(stock, tooltip) do
-        do_on_click
       end
     end
 
@@ -1267,6 +1266,7 @@ module PandoraGtk
     Saturay_Contries = ['EG', 'LY', 'IR', 'AF', 'SY', 'DZ', 'SA', 'YE', 'IQ', 'JO']
 
     def init_days_box
+      focus_btn = nil
       labs_parent = @days_frame
       if @@days_box
         evbox = @@days_box
@@ -1292,6 +1292,8 @@ module PandoraGtk
       start_time = month_d1 - (start+1)*3600*24
       start_day = Time.gm(start_time.year, start_time.month, start_time.day)
 
+      lab_evbox = nil
+
       if evbox
         resize(100, 100)
         if evbox.parent and (not evbox.parent.destroyed?)
@@ -1314,7 +1316,6 @@ module PandoraGtk
         labs_parent.add(evbox)
 
         vbox = Gtk::VBox.new
-        focus_btn = nil
 
         7.times do |week|
           row = Gtk::HBox.new
@@ -1382,17 +1383,24 @@ module PandoraGtk
             end
           end
           bg = nil
+          tooltip = nil
+          tooltip = _('Today') if curr_day
           if bg_type==:work
             bg = '#DDEEFF'
+            tooltip ||= _('Workday')
           elsif bg_type==:rest
             bg = '#5050A0'
+            tooltip ||= _('Weekend')
           elsif bg_type==:holi
             bg = '#B05050'
+            tooltip ||= _('Holiday')
           else
             bg = '#FFFFFF'
           end
 
           lab = @labs[week*7+day]
+          lab.tooltip_text = tooltip
+
           if lab.use_markup?
             if bg_type==:capt
               lab.set_markup('<b>'+text+'</b>')
@@ -1417,6 +1425,14 @@ module PandoraGtk
           lab_evbox = lab.parent
           lab_evbox.bg = bg
           lab_evbox.can_focus = (bg_type != :capt)
+          lab.can_focus = lab_evbox.can_focus?
+          if lab_evbox.can_focus? and ((bg_type==:work) or bg_type.nil?)
+            if date and (cal_day.month == date.month) and (cal_day.year == date.year)
+              focus_btn = lab_evbox if chsd_day
+            elsif curr_day
+              focus_btn = lab_evbox
+            end
+          end
         end
       end
 
@@ -1448,7 +1464,12 @@ module PandoraGtk
       move(@x, @y)
       show_all
       present
-      month_btn.grab_focus
+      p focus_btn
+      if focus_btn
+        focus_btn.grab_focus
+      else
+        month_btn.grab_focus
+      end
     end
 
   end
@@ -6141,14 +6162,17 @@ module PandoraGtk
       kind = nil
       if apanobject.is_a?(Integer)
         kind = apanobject
-        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
-        if panobjectclass
-          apanobject = PandoraUtils.get_model(panobjectclass.ider)
-        end
+        apanobject = nil
       elsif apanobject
         kind = apanobject.kind
       elsif apanhash0
         kind = PandoraUtils.kind_from_panhash(apanhash0)
+      end
+      if apanobject.nil?
+        panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
+        if panobjectclass
+          apanobject = PandoraUtils.get_model(panobjectclass.ider)
+        end
       end
       @vbox = self
       @panobject = apanobject
@@ -6226,9 +6250,9 @@ module PandoraGtk
     end
 
     def init_fields(kind)
-      if @fields.nil? and @panobject
-        sel = PandoraModel.get_record_by_panhash(@panhash0)
-        if sel.is_a?(Array) and (sel.size>0)
+      if @fields.nil?
+        sel = PandoraModel.get_record_by_panhash(@panhash0, kind)
+        if sel.is_a?(Array) and (sel.size>0) and @panobject
           @fields = @panobject.get_fields_as_view(sel[0], @edit, @panhash0)
         end
       end
@@ -7158,7 +7182,7 @@ module PandoraGtk
   # RU: Запросить пользователя и пароль для генерации ключевой пары
   def self.ask_user_and_password(rights=nil)
     dialog = PandoraGtk::AdvancedDialog.new(_('Key generation'))
-    dialog.set_default_size(420, 250)
+    dialog.set_default_size(450, 250)
     dialog.icon = $window.get_preset_icon('key')
 
     vbox = Gtk::VBox.new
@@ -7230,7 +7254,7 @@ module PandoraGtk
   # RU: Запросить ключ и пароль для авторизации
   def self.ask_key_and_password(alast_auth_key=nil, cipher=nil)
     dialog = PandoraGtk::AdvancedDialog.new(_('Key init'))
-    dialog.set_default_size(420, 190)
+    dialog.set_default_size(450, 190)
     dialog.icon = $window.get_preset_icon('auth')
 
     vbox = Gtk::VBox.new
@@ -7257,11 +7281,13 @@ module PandoraGtk
         dialog_timer = GLib::Timeout.add(1000) do
           if not key_entry.destroyed?
             panhash2 = PandoraModel.hex_to_panhash(key_entry.text)
-            key_vec2, cipher = read_key_and_set_pass(panhash2, \
-              passwd, key_model)
+            key_vec2, cipher = PandoraCrypto.read_key_and_set_pass( \
+              panhash2)
             nopass = ((not cipher) or (cipher == 0))
+            if nopass and pass_entry.sensitive?
+              pass_entry.text = ''
+            end
             PandoraGtk.set_readonly(pass_entry, nopass)
-            pass_entry.grab_focus if not nopass
             dialog_timer = nil
           end
           false
@@ -7304,9 +7330,19 @@ module PandoraGtk
       new_align.visible = changebtn.active?
       if changebtn.active?
         #dialog.set_size_request(420, 250)
-        dialog.resize(420, 240)
+        dialog.resize(dialog.allocation.width, 240)
+        if pass_entry.sensitive? and (pass_entry.text=='')
+          pass_entry.grab_focus
+        else
+          new_pass_entry.grab_focus
+        end
       else
-        dialog.resize(420, 190)
+        dialog.resize(dialog.allocation.width, 190)
+        if pass_entry.sensitive?
+          pass_entry.grab_focus
+        else
+          key_entry.entry.grab_focus
+        end
       end
     end
     dialog.hbox.pack_start(changebtn, false, false, 0)
@@ -8395,11 +8431,20 @@ module PandoraGtk
 
             list_store = Gtk::ListStore.new(String)
 
-            user_iter = list_store.append
-            user_iter[0] = _('Info')
-            user_iter = list_store.append
-            user_iter[0] = _('Feed')
-
+            kind = PandoraUtils.kind_from_panhash(cab_panhash)
+            if kind==PandoraModel::PK_Person
+              user_iter = list_store.append
+              user_iter[0] = _('Resume')
+              user_iter = list_store.append
+              user_iter[0] = _('Biography')
+              user_iter = list_store.append
+              user_iter[0] = _('Feed')
+            else
+              user_iter = list_store.append
+              user_iter[0] = _('Info')
+              user_iter = list_store.append
+              user_iter[0] = _('Description')
+            end
             # create tree view
             list_tree = Gtk::TreeView.new(list_store)
             list_tree.headers_visible = false
@@ -8411,14 +8456,47 @@ module PandoraGtk
             column.set_sort_column_id(0)
             list_tree.append_column(column)
 
-            list_tree.signal_connect('row_activated') do |tree_view, path, column|
-              # download and go to record
+            right_sw = Gtk::ScrolledWindow.new(nil, nil)
+            right_sw.shadow_type = Gtk::SHADOW_NONE
+            right_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC)
+
+            list_tree.signal_connect('cursor-changed') do |treeview|
+              path, column = treeview.cursor
+              if path
+                row_ind = path.indices[0]
+                cur_wd = nil
+                right_child = right_sw.child
+                case row_ind
+                  when 0
+                    @info_wd ||= PandoraGtk::ChatTextView.new
+                    cur_wd = @info_wd
+                  when 1
+                    #@desc_wd ||= PandoraGtk::ChatTextView.new
+                    cur_wd = @desc_wd
+                  when 2
+                    #@feed_wd ||= PandoraGtk::ChatTextView.new
+                    cur_wd = @feed_wd
+                end
+                if cur_wd
+                  if right_child and (right_child != cur_wd)
+                    right_sw.remove(right_child)
+                    right_child = nil
+                  end
+                  if right_child.nil?
+                    right_sw.add(cur_wd)
+                    cur_wd.reparent(right_sw)
+                    right_sw.show_all
+                  end
+                else
+                  right_sw.remove(right_child) if right_child
+                end
+              end
             end
+
             list_tree.set_cursor(Gtk::TreePath.new(0), nil, false)
             list_sw.add(list_tree)
 
             left_box = Gtk::VBox.new
-
             dlg_pixbuf = PandoraModel.get_avatar_icon(cab_panhash, self, its_blob, 150)
             #buf = PandoraModel.scale_buf_to_size(buf, icon_size, center)
             dlg_image = nil
@@ -8473,10 +8551,8 @@ module PandoraGtk
             left_box.pack_start(event_box, false, false, 0)
             left_box.pack_start(list_sw, true, true, 0)
 
-            feed = PandoraGtk::ChatTextView.new
-
             hpaned.pack1(left_box, false, true)
-            hpaned.pack2(feed, true, true)
+            hpaned.pack2(right_sw, true, true)
             list_sw.show_all
             container.def_widget = list_tree
 
@@ -8485,8 +8561,9 @@ module PandoraGtk
           when PandoraUI::CPI_Editor
             #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
             #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+            p [kind, @fields, PandoraUtils.bytes_to_hex(cab_panhash)]
             @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit, nil, @tree_view)
-            if property_box.text_fields.size>0
+            if property_box.text_fields and (property_box.text_fields.size>0)
               #p property_box.text_fields
               first_body_fld = property_box.text_fields[0]
               if first_body_fld

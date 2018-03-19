@@ -336,27 +336,29 @@ module PandoraUI
               end
 
               if @base_garb_model
+                filter = 'id>=? AND modified<? AND IFNULL(panstate,0)&?=0 AND IFNULL(panstate,0)&?'
                 if @base_garb_mode == :arch
                   arch_time = Time.now.to_i - @base_garbage_term
-                  filter = ['id>=? AND modified<? AND IFNULL(panstate,0)=0', \
-                    @base_garb_id, arch_time]
+                  filter = [filter+'=0', @base_garb_id, arch_time, \
+                    PandoraModel::PSF_Support, PandoraModel::PSF_Archive]
                 else # :purge
                   purge_time = Time.now.to_i - @base_purge_term
-                  filter = ['id>=? AND modified<? AND panstate>=?', @base_garb_id, \
-                    purge_time, PandoraModel::PSF_Archive]
+                  filter = [filter+'>0', @base_garb_id, purge_time, \
+                    PandoraModel::PSF_Support, PandoraModel::PSF_Archive]
                 end
                 #p 'Base garbager [ider,mode,filt]: '+[@base_garb_model.ider, @base_garb_mode, filter].inspect
-                sel = @base_garb_model.select(filter, false, 'id', 'id ASC', train_tail)
+                sel = @base_garb_model.select(filter, false, 'id, panstate', 'id ASC', train_tail)
                 #p 'base_garb_sel='+sel.inspect
                 if sel and (sel.size>0)
                   sel.each do |row|
                     id = row[0]
+                    panstate = row[1]
                     @base_garb_id = id
                     #p '@base_garb_id='+@base_garb_id.inspect
                     values = nil
                     if @base_garb_mode == :arch
-                      # mark the record as deleted, else purge it
-                      values = {:panstate=>PandoraModel::PSF_Archive}
+                      panstate ||= 0
+                      values = {:panstate=>(panstate | PandoraModel::PSF_Archive)}
                     end
                     @base_garb_model.update(values, nil, {:id=>id})
                   end
@@ -853,7 +855,8 @@ module PandoraUI
     if $ncurses_is_active
       PandoraCui.set_status_field(index, text, enabled, toggle)
     elsif $gtk_is_active
-      $window.set_status_field(index, text, enabled, toggle)
+      $window.set_status_field(index, text, enabled, toggle) if $window \
+        and (not $window.destroyed?)
     end
   end
 
