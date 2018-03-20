@@ -2088,6 +2088,7 @@ module PandoraGtk
           end
         end
       else #save
+        dialog.do_overwrite_confirmation = true
         if File.exist?(file_name)
           dialog.filename = file_name
         else
@@ -6842,6 +6843,9 @@ module PandoraGtk
     # Save raw fields with form flags, sign and relations
     # RU: Сохранить сырые поля с флагами формы, подписью и связями
     def save_flds_with_form_flags(flds_hash, lang=nil, created0=nil)
+
+      p '---save_flds_with_form_flags   flds_hash='+flds_hash.inspect
+
       time_now = Time.now.to_i
       if (panobject.is_a? PandoraModel::Created)
         if created0 and flds_hash['created'] \
@@ -6857,22 +6861,24 @@ module PandoraGtk
       flds_hash['modified'] = time_now
 
       @panstate = flds_hash['panstate']
-      panstate ||= 0
-      if keep_btn and keep_btn.sensitive?
-        if keep_btn.active?
-          panstate = (panstate | PandoraModel::PSF_Support)
-        else
-          panstate = (panstate & (~ PandoraModel::PSF_Support))
+      if keep_btn or arch_btn
+        @panstate ||= 0
+        if keep_btn and keep_btn.sensitive?
+          if keep_btn.active?
+            @panstate = (@panstate | PandoraModel::PSF_Support)
+          else
+            @panstate = (@panstate & (~ PandoraModel::PSF_Support))
+          end
         end
-      end
-      if arch_btn and arch_btn.sensitive?
-        if arch_btn.active?
-          panstate = (panstate | PandoraModel::PSF_Archive)
-        else
-          panstate = (panstate & (~ PandoraModel::PSF_Archive))
+        if arch_btn and arch_btn.sensitive?
+          if arch_btn.active?
+            @panstate = (@panstate | PandoraModel::PSF_Archive)
+          else
+            @panstate = (@panstate & (~ PandoraModel::PSF_Archive))
+          end
         end
+        flds_hash['panstate'] = @panstate
       end
-      flds_hash['panstate'] = panstate
 
       lang ||= 0
       if (panobject.is_a? PandoraModel::Key)
@@ -6913,7 +6919,7 @@ module PandoraGtk
 
           if filter[:id].nil? and @edit and panhash0 and (panhash != panhash0)
             p '==The record is changed'
-            if (panstate & PandoraModel::PSF_Archive)>0
+            if (@panstate & PandoraModel::PSF_Archive)>0
               p 'This is an archive record. Old record is deleting'
               res = panobject.update(nil, nil, {:panhash => panhash0})
             else
@@ -7858,6 +7864,7 @@ module PandoraGtk
 
       add_btn_to_toolbar(Gtk::Stock::SAVE) do |btn|
         @cab_panhash = pb.save_form_fields_with_flags_to_database
+        @kind = PandoraUtils.kind_from_panhash(@cab_panhash)
         construct_cab_title
       end
       add_btn_to_toolbar(Gtk::Stock::OK) do |btn|
@@ -7897,6 +7904,9 @@ module PandoraGtk
       end
       PandoraGtk.add_menu_item(btn, menu, :message, 'Load more history|('+($load_more_history_count*4).to_s+')') do |mi|
         load_history($load_more_history_count*4, $sort_history_mode, chat_mode)
+      end
+      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::SAVE, 'Save to file') do |mi|
+        save_history(chat_mode)
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::DELETE, 'Delete messages from database') do |mi|
         clear_history(chat_mode, true)
@@ -8309,9 +8319,10 @@ module PandoraGtk
 
       pb.save_btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE) do
         @cab_panhash = pb.save_form_fields_with_flags_to_database
+        @kind = PandoraUtils.kind_from_panhash(@cab_panhash)
       end
       PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) do
-        @cab_panhash = pb.save_form_fields_with_flags_to_database
+        pb.save_form_fields_with_flags_to_database
         self.destroy
       end
 
@@ -8367,7 +8378,8 @@ module PandoraGtk
     end
 
     def show_page(page=PandoraUI::CPI_Dialog, tab_signal=nil)
-      p '---show_page [page, tab_signal]='+[page, tab_signal].inspect
+      p '---show_page [page, tab_signal, kind, @kind]='+[page, tab_signal, kind, @kind].inspect
+      #kind ||= PandoraUtils.kind_from_panhash(cab_panhash)
       if ((page == PandoraUI::CPI_Dialog) and (kind != PandoraModel::PK_Person))
         page = PandoraUI::CPI_Chat
       end
@@ -8431,7 +8443,6 @@ module PandoraGtk
 
             list_store = Gtk::ListStore.new(String)
 
-            kind = PandoraUtils.kind_from_panhash(cab_panhash)
             if kind==PandoraModel::PK_Person
               user_iter = list_store.append
               user_iter[0] = _('Resume')
@@ -8561,7 +8572,7 @@ module PandoraGtk
           when PandoraUI::CPI_Editor
             #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
             #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-            p [kind, @fields, PandoraUtils.bytes_to_hex(cab_panhash)]
+            #p [kind, @fields, PandoraUtils.bytes_to_hex(cab_panhash)]
             @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit, nil, @tree_view)
             if property_box.text_fields and (property_box.text_fields.size>0)
               #p property_box.text_fields
@@ -8787,7 +8798,7 @@ module PandoraGtk
               init_video_receiver(false, false)
             end
 
-            chat_mode = ((page==PandoraUI::CPI_Chat) or (kind != PandoraModel::PK_Person))
+            chat_mode = (page==PandoraUI::CPI_Chat) #or (kind != PandoraModel::PK_Person))
 
             fill_dlg_toolbar(page, atalkview, chat_mode)
             load_history($load_history_count, $sort_history_mode, chat_mode)
@@ -9160,8 +9171,8 @@ module PandoraGtk
         chat_mode = ((panstate & PandoraModel::PSF_ChatMes) > 0)
         mes = PandoraCrypto.recrypt_mes(mes) if encrypted
 
-        p '---add_mes_to_view [mes, id, pstate to_end, key_or_phash, myname, modif, created]=' + \
-          [mes, id, panstate, to_end, key_or_panhash, myname, modified, created].inspect
+        #p '---add_mes_to_view [mes, id, pstate to_end, key_or_phash, myname, modif, created]=' + \
+        #  [mes, id, panstate, to_end, key_or_panhash, myname, modified, created].inspect
 
         notice = false
         if not myname
@@ -9267,9 +9278,9 @@ module PandoraGtk
     # Load history of messages
     # RU: Подгрузить историю сообщений
     def load_history(max_message=6, sort_mode=0, chat_mode=false)
-      p '---- load_history [max_message, sort_mode]='+[max_message, sort_mode].inspect
       talkview = @dlg_talkview
       talkview = @chat_talkview if chat_mode
+      p '---- load_history [max_message, sort_mode, chat_mode, talkview]='+[max_message, sort_mode, chat_mode, talkview].inspect
       if talkview and max_message and (max_message>0)
         #messages = []
         fields = 'creator, created, destination, state, text, panstate, modified, id'
@@ -9307,11 +9318,12 @@ module PandoraGtk
           cond << ' AND id<?'
           args << first_id
         end
-        p filter = [cond+' AND IFNULL(panstate,0)&'+chatbit+chat_sign+'0', *args]
+        filter = [cond+' AND IFNULL(panstate,0)&'+chatbit+chat_sign+'0', *args]
+        #filter = [cond, *args]
         #return
 
-        sel = model.select(filter, false, fields, 'id DESC', max_message2)
-        sel.reverse!
+        messages = model.select(filter, false, fields, 'id DESC', max_message2)
+        messages.reverse!
 
         if false #!!! (cab_panhash == mypanhash)
           i = sel.size-1
@@ -9332,7 +9344,6 @@ module PandoraGtk
             end
           end
         end
-        messages = sel
 
         #if (not chat_mode) and (cab_panhash != mypanhash)
         #  filter = [['creator=', cab_panhash], ['destination=', mypanhash]]
@@ -9446,6 +9457,66 @@ module PandoraGtk
           talkview.mes_ids.clear
           talkview.buffer.text = ''
         end
+      end
+    end
+
+    def save_history(chat_mode)
+      talkview = @dlg_talkview
+      fn = _('Dialog')
+      if chat_mode
+        talkview = @chat_talkview
+        fn = _('Chat')
+      end
+      if talkview and (talkview.buffer.line_count>0)
+        if cab_panhash.is_a?(String)
+          user_name = nil
+          if PandoraUtils.kind_from_panhash(cab_panhash)==PandoraModel::PK_Person
+            user_name = PandoraCrypto.short_name_of_person(nil, cab_panhash, 1)
+          end
+          user_name ||= PandoraUtils.bytes_to_hex(cab_panhash[0, 14])
+          fn += ' '+user_name
+          mypanhash = PandoraCrypto.current_user_or_key(true, false)
+          if mypanhash and (cab_panhash != mypanhash)
+            myname = PandoraCrypto.short_name_of_person(nil, mypanhash, 1)
+            if myname and (myname.size>0)
+              if chat_mode
+                fn << ' (saved '+myname+')'
+              else
+                fn << ' - '+myname
+              end
+            end
+          end
+        end
+        fn += ' ['+Time.now.strftime('%d.%m.%y %R') + '].txt'
+        @@last_dirs ||= [$pandora_files_dir, $pandora_app_dir]
+        dialog = GoodFileChooserDialog.new(fn, false, nil, $window, nil, @@last_dirs)
+        filter = Gtk::FileFilter.new
+        filter.name = _('Text files')+' (*.txt)'
+        filter.add_pattern('*.txt')
+        dialog.add_filter(filter)
+        if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
+          fn = dialog.filename
+          begin
+            File.open(fn, 'wb') do |file|
+              file.write(talkview.buffer.text)
+            end
+          rescue => err
+            PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot save text to file')+\
+              '['+fn+']: '+Utf8String.new(err.message))
+            fn = nil
+          end
+          if fn
+            PandoraUI.log_message(PandoraUI::LM_Info, _('Messages are saved')+' ['+fn+']')
+            dn = nil
+            dn = File.dirname(fn) if fn
+            if Dir.exists?(dn) and (@@last_dirs[0] != dn)
+              @@last_dirs.delete(dn)
+              @@last_dirs.unshift(dn)
+              @@last_dirs.pop while @@last_dirs.count>FileDialogHistorySize
+            end
+          end
+        end
+        dialog.destroy if not dialog.destroyed?
       end
     end
 

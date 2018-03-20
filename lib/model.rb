@@ -143,6 +143,8 @@ module PandoraModel
       lang ||= 0
       field[PandoraUtils::FI_Value] = lang.to_s
 
+      #p '---get_fields_as_view formfields='+formfields.inspect
+
       formfields
     end
 

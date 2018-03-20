@@ -389,7 +389,6 @@ def hash_to_namepson(fldvalues, pack_empty=False):
       buf += pson_elem
   return buf
 
-
 # Convert Name-PSON block to PanObject fields
 # RU: Преобразует Name-PSON блок в поля панобъекта
 def namepson_to_hash(pson):

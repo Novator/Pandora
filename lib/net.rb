@@ -3284,7 +3284,7 @@ module PandoraNet
                     text = nil
                     panstate = 0
                     sign = nil
-                    if row.is_a? Array
+                    if row.is_a?(Array)
                       id0      = row[DMP_Id]
                       creator  = row[DMP_Creator]
                       created  = row[DMP_Created]
@@ -3293,13 +3293,13 @@ module PandoraNet
                       panstate ||= 0
                       panstate = (panstate & (PandoraModel::PSF_Crypted | \
                         PandoraModel::PSF_Verified))
-                      panstate = (panstate | PandoraModel::PSF_Support)
                       sign = row[DMP_SignRec]
                     else
                       creator = @skey[PandoraCrypto::KV_Creator]
                       created = time_now
                       text = rdata
                     end
+                    panstate = (panstate | PandoraModel::PSF_Support)
                     values = {:destination=>destination, :text=>text, :state=>2, \
                       :creator=>creator, :created=>created, :modified=>time_now, \
                       :panstate=>panstate}

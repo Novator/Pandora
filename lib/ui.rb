@@ -352,11 +352,11 @@ module PandoraUI
                 if sel and (sel.size>0)
                   sel.each do |row|
                     id = row[0]
-                    panstate = row[1]
                     @base_garb_id = id
                     #p '@base_garb_id='+@base_garb_id.inspect
                     values = nil
                     if @base_garb_mode == :arch
+                      panstate = row[1]
                       panstate ||= 0
                       values = {:panstate=>(panstate | PandoraModel::PSF_Archive)}
                     end
