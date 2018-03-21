@@ -38,7 +38,7 @@ module PandoraUtils
 
   # Version of GUI application
   # RU: Версия GUI приложения
-  PandoraVersion  = '0.73'
+  PandoraVersion  = '0.74'
 
   $detected_os_family = nil
 
@@ -413,7 +413,7 @@ module PandoraUtils
       i += 1 while (i<2) and url and (i<url.size) and (url[i]=='/')
       url = url[i..-1] if i>0
       case proto
-        when 'pandora', 'smile'
+        when 'pandora', 'smile', 'reply'
           i = url.index('/')
           if i
             obj_type = url[0, i]

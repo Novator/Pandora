@@ -3563,9 +3563,9 @@ module PandoraGtk
     def follow_if_link(iter)
       tags = iter.tags
       tags.each do |tag|
-        if tag.is_a? LinkTag
+        if tag.is_a?(LinkTag)
           link = tag.link
-          if (link.is_a? String) and (link.size>0)
+          if link.is_a?(String) and (link.size>0)
             res = PandoraUtils.parse_url(link, 'http')
             if res
               proto, obj_type, way = res
@@ -3583,6 +3583,10 @@ module PandoraGtk
                 elsif (proto=='http') or (proto=='https')
                   puts 'Go to link: ['+url+']'
                   PandoraUtils.external_open(url)
+                elsif (proto=='reply') and self.is_a?(ChatTextView)
+                  puts 'Reply to link: ['+obj_type+']'
+                  p [self, self.parent, self.parent.parent]
+                  self.set_reply_message(PandoraUtils.hex_to_bytes(obj_type), way)
                 else
                   puts 'Unknown jump: ['+url+']'
                 end
@@ -4713,7 +4717,7 @@ module PandoraGtk
 
   class ChatTextView < SuperTextView
     attr_accessor :mes_ids, :send_btn, :edit_box, \
-      :crypt_btn, :sign_btn, :smile_btn
+      :crypt_btn, :sign_btn, :smile_btn, :reply_box, :reply_mes
 
     def initialize(*args)
       @@save_buf ||= $window.get_icon_scale_buf('save', 'pan', 14)
@@ -4819,6 +4823,46 @@ module PandoraGtk
       if need_redraw
         left_win = self.get_window(Gtk::TextView::WINDOW_LEFT)
         left_win.invalidate(left_win.frame_extents, true)
+      end
+    end
+
+    def set_reply_message(mes_panhash=nil, mes=nil)
+      p '----set_reply_message   self, mes_panhash, mes='+[self, mes_panhash, mes].inspect
+      if @send_btn
+        toolbar_box = @send_btn.parent
+        cabinet = toolbar_box.parent.parent.parent
+        if @reply_box and @reply_box.destroyed?
+          cabinet.remove_widget_from_toolbar(@reply_box)
+          @reply_box = nil
+          @reply_mes = nil
+        end
+        if mes_panhash
+          mes_panhash = @reply_mes if (not mes_panhash.is_a?(String))
+          if toolbar_box and mes_panhash.is_a?(String)
+            @reply_mes = mes_panhash
+            mes ||= PandoraUtils.bytes_to_hex(mes_panhash[2, 10])
+            atext = mes
+            mes = _('Reply to')+': '+mes
+            if @reply_box
+              reply_box.set_label(atext)
+              reply_box.tooltip_text = mes
+            else
+              @reply_box = GoodButton.new(Gtk::Stock::CLOSE, atext, \
+              nil, mes) do |*args|
+                cabinet.remove_widget_from_toolbar(@reply_box)
+                @reply_box = nil
+                @reply_mes = nil
+              end
+              toolbar_box.pack_start(reply_box, false, false, 5)
+              cabinet.add_widget_to_toolbar(reply_box)
+              reply_box.show_all
+            end
+          end
+        else
+          cabinet.remove_widget_from_toolbar(reply_box)
+          @reply_box = nil
+          @reply_mes = nil
+        end
       end
     end
 
@@ -7765,9 +7809,9 @@ module PandoraGtk
 
     def add_btn_to_toolbar(stock=nil, title=nil, toggle=nil, page=nil)
       btns = nil
-      if page.is_a? Array
+      if page.is_a?(Array)
         btns = page
-      elsif page.is_a? FalseClass
+      elsif page.is_a?(FalseClass)
         btns = nil
       else
         page ||= @active_page
@@ -7782,6 +7826,23 @@ module PandoraGtk
       end
       btns << btn if (not btns.nil?)
       btn
+    end
+
+    def add_widget_to_toolbar(widget, page=nil)
+      if (not widget.nil?)
+        page ||= @active_page
+        btns = @add_toolbar_btns[page]
+        btns << widget if (not btns.nil?)
+      end
+    end
+
+    def remove_widget_from_toolbar(widget, page=nil)
+      if (not widget.nil?)
+        page ||= @active_page
+        btns = @add_toolbar_btns[page]
+        btns.delete(widget) if (not btns.nil?)
+        widget.destroy if (not widget.destroyed?)
+      end
     end
 
     def fill_property_toolbar(pb)
@@ -7877,7 +7938,7 @@ module PandoraGtk
 
     end
 
-    def fill_dlg_toolbar(page, talkview, chat_mode=false)
+    def fill_dlg_toolbar(page, atalkview, chat_mode=false)
       if (page==PandoraUI::CPI_Dialog)
         crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', false)
       end
@@ -7978,9 +8039,9 @@ module PandoraGtk
       def_smiles = PandoraUtils.get_param('def_smiles')
       smile_btn = SmileButton.new(def_smiles) do |preset, label|
         smile_img = '[emot='+preset+'/'+label+']'
-        text = talkview.edit_box.buffer.text
+        text = atalkview.edit_box.buffer.text
         smile_img = ' '+smile_img if (text.size>0) and (text[-1] != ' ')
-        talkview.edit_box.buffer.insert_at_cursor(smile_img)
+        atalkview.edit_box.buffer.insert_at_cursor(smile_img)
       end
       smile_btn.tooltip_text = _('Smile')+' (Alt+Down)'
       add_btn_to_toolbar(smile_btn)
@@ -7992,23 +8053,26 @@ module PandoraGtk
       end
 
       send_btn = add_btn_to_toolbar(:send, 'Send') do |widget|
-        mes = talkview.edit_box.buffer.text
+        mes = atalkview.edit_box.buffer.text
         if mes != ''
           sign_trust = nil
           sign_trust = sign_scale.scale.value if sign_btn.active?
           crypt = nil
           crypt = crypt_btn.active? if crypt_btn
-          if send_mes(mes, crypt, sign_trust, chat_mode)
-            talkview.edit_box.buffer.text = ''
+          if send_mes(mes, crypt, sign_trust, chat_mode, atalkview.reply_mes)
+            atalkview.edit_box.buffer.text = ''
+            atalkview.set_reply_message(nil)
           end
         end
         false
       end
       send_btn.sensitive = false
-      talkview.crypt_btn = crypt_btn
-      talkview.sign_btn = sign_btn
-      talkview.smile_btn = smile_btn
-      talkview.send_btn = send_btn
+      atalkview.crypt_btn = crypt_btn
+      atalkview.sign_btn = sign_btn
+      atalkview.smile_btn = smile_btn
+      atalkview.send_btn = send_btn
+
+      atalkview.set_reply_message(true)
     end
 
     def choose_and_set_color(bodywin, a_tag)
@@ -8655,6 +8719,7 @@ module PandoraGtk
                 res = true
               elsif (Gdk::Keyval::GDK_Escape==event.keyval)
                 edit_box.buffer.text = ''
+                atalkview.set_reply_message(nil)
               elsif ((event.state.shift_mask? or event.state.mod1_mask?) \
               and (event.keyval==65364))  # Shift+Down or Alt+Down
                 atalkview.smile_btn.clicked
@@ -9160,15 +9225,20 @@ module PandoraGtk
       offset
     end
 
+    ReplyInfoLen = 18
+
     # Put message to dialog
     # RU: Добавляет сообщение в диалог
     def add_mes_to_view(mes, id, panstate=nil, to_end=nil, \
     key_or_panhash=nil, myname=nil, modified=nil, created=nil, \
-    mine=nil, insert_above=nil)
-      if mes
+    mine=nil, insert_above=nil, mes_panhash=nil)
+      chat_mode = (panstate.nil? or ((panstate & PandoraModel::PSF_ChatMes) > 0))
+      talkview = @dlg_talkview
+      talkview = @chat_talkview if chat_mode
+      if mes and talkview
+
         encrypted = ((panstate.is_a? Integer) \
           and ((panstate & PandoraModel::PSF_Crypted) > 0))
-        chat_mode = ((panstate & PandoraModel::PSF_ChatMes) > 0)
         mes = PandoraCrypto.recrypt_mes(mes) if encrypted
 
         #p '---add_mes_to_view [mes, id, pstate to_end, key_or_phash, myname, modif, created]=' + \
@@ -9206,70 +9276,91 @@ module PandoraGtk
 
         time_str = ''
         time_str << PandoraUtils.time_to_dialog_str(created, time_now) if created
+
         if modified and ((not created) or ((modified.to_i-created.to_i).abs>30))
           time_str << ' ' if (time_str != '')
           time_str << '('+PandoraUtils.time_to_dialog_str(modified, time_now)+')'
         end
 
-        talkview = @dlg_talkview
-        talkview = @chat_talkview if chat_mode
+        buf = talkview.buffer
+        talkview.before_addition(time_now) if (not to_end.is_a? FalseClass)
 
-        if talkview
-          buf = talkview.buffer
-          talkview.before_addition(time_now) if (not to_end.is_a? FalseClass)
+        not_empty = (buf.char_count>0)
+        buf.insert(buf.end_iter, "\n") if (not insert_above) and not_empty
 
-          not_empty = (buf.char_count>0)
-          buf.insert(buf.end_iter, "\n") if (not insert_above) and not_empty
+        offset = nil
+        offset = 0 if insert_above
 
-          offset = nil
-          offset = 0 if insert_above
-          offset = buf_insert(buf, time_str+' ', time_style, offset)
-
-          #creator name_style 'URL'
-          tv_tag = nil
-          #p '====++ creator='+[creator, PandoraUtils.panhash_nil?(creator)].inspect
-          if (not PandoraUtils.panhash_nil?(creator))
-            link_url = 'pandora://'+PandoraUtils.bytes_to_hex(creator)
-            trunc_md5 = Digest::MD5.digest(link_url)[0, 10]
-            link_id = 'link'+PandoraUtils.bytes_to_hex(trunc_md5)
-            link_tag = buf.tag_table.lookup(link_id)
-            #p '--[link_url, link_id, link_tag]='+[link_url, link_id, link_tag].inspect
+        tv_tag = time_style
+        if mes_panhash
+          link_url = Utf8String.new(mes)
+          link_url = link_url[0, ReplyInfoLen].strip+'..' if link_url.size>ReplyInfoLen
+          link_url = user_name + ': '+link_url if chat_mode and user_name
+          link_url = 'reply:/'+PandoraUtils.bytes_to_hex(mes_panhash)+'/'+link_url
+          trunc_md5 = Digest::MD5.digest(link_url)[0, 10]
+          link_id = 'reply'+PandoraUtils.bytes_to_hex(trunc_md5)
+          link_tag = buf.tag_table.lookup(link_id)
+          #p '--[link_url, link_id, link_tag]='+[link_url, link_id, link_tag].inspect
+          if link_tag
+            tv_tag = link_tag.name
+          else
+            link_tag = LinkTag.new(link_id)
             if link_tag
-              tv_tag = link_tag.name
-            else
-              link_tag = LinkTag.new(link_id)
-              if link_tag
-                name_tag = buf.tag_table.lookup(name_style)
-                PandoraGtk.copy_glib_object_properties(name_tag, link_tag)
-                #link_tag.underline = Pango::AttrUnderline::SINGLE
-                buf.tag_table.add(link_tag)
-                link_tag.link = link_url
-                tv_tag = link_id
-              end
+              name_tag = buf.tag_table.lookup(time_style)
+              PandoraGtk.copy_glib_object_properties(name_tag, link_tag)
+              buf.tag_table.add(link_tag)
+              link_tag.link = link_url
+              tv_tag = link_id
             end
           end
-
-          if tv_tag
-            offset = buf_insert(buf, user_name, tv_tag, offset)
-            offset = buf_insert(buf, ':', name_style, offset)
-          else
-            offset = buf_insert(buf, user_name+':', name_style, offset)
-          end
-
-          line = buf.line_count
-          talkview.mes_ids[line] = id
-
-          offset = buf_insert(buf, ' ', nil, offset)
-
-          if insert_above
-            offset = buf_insert(buf, mes+"\n", nil, offset)
-          else
-            talkview.insert_taged_str_to_buffer(mes, buf, 'bbcode')
-          end
-
-          talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
-          talkview.show_all
         end
+        offset = buf_insert(buf, time_str, tv_tag, offset)
+        offset = buf_insert(buf, ' ', nil, offset)
+
+        #creator name_style 'URL'
+        tv_tag = nil
+        #p '====++ creator='+[creator, PandoraUtils.panhash_nil?(creator)].inspect
+        if (not PandoraUtils.panhash_nil?(creator))
+          link_url = 'pandora://'+PandoraUtils.bytes_to_hex(creator)
+          trunc_md5 = Digest::MD5.digest(link_url)[0, 10]
+          link_id = 'link'+PandoraUtils.bytes_to_hex(trunc_md5)
+          link_tag = buf.tag_table.lookup(link_id)
+          #p '--[link_url, link_id, link_tag]='+[link_url, link_id, link_tag].inspect
+          if link_tag
+            tv_tag = link_tag.name
+          else
+            link_tag = LinkTag.new(link_id)
+            if link_tag
+              name_tag = buf.tag_table.lookup(name_style)
+              PandoraGtk.copy_glib_object_properties(name_tag, link_tag)
+              #link_tag.underline = Pango::AttrUnderline::SINGLE
+              buf.tag_table.add(link_tag)
+              link_tag.link = link_url
+              tv_tag = link_id
+            end
+          end
+        end
+
+        if tv_tag
+          offset = buf_insert(buf, user_name, tv_tag, offset)
+          offset = buf_insert(buf, ':', name_style, offset)
+        else
+          offset = buf_insert(buf, user_name+':', name_style, offset)
+        end
+
+        line = buf.line_count
+        talkview.mes_ids[line] = id
+
+        offset = buf_insert(buf, ' ', nil, offset)
+
+        if insert_above
+          offset = buf_insert(buf, mes+"\n", nil, offset)
+        else
+          talkview.insert_taged_str_to_buffer(mes, buf, 'bbcode')
+        end
+
+        talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
+        talkview.show_all
 
         update_state(true) if notice
       end
@@ -9283,7 +9374,7 @@ module PandoraGtk
       p '---- load_history [max_message, sort_mode, chat_mode, talkview]='+[max_message, sort_mode, chat_mode, talkview].inspect
       if talkview and max_message and (max_message>0)
         #messages = []
-        fields = 'creator, created, destination, state, text, panstate, modified, id'
+        fields = 'creator, created, destination, state, text, panstate, modified, id, panhash'
 
         mypanhash = PandoraCrypto.current_user_or_key(true)
         myname = PandoraCrypto.short_name_of_person(nil, mypanhash)
@@ -9388,11 +9479,12 @@ module PandoraGtk
             mes = message[4]
             panstate = message[5]
             modified = message[6]
+            mes_panhash = message[8]
 
             first_id = id if (first_id.nil? or (id<first_id))
 
             add_mes_to_view(mes, id, panstate, false, creator, \
-              myname, modified, created, (creator == mypanhash))
+              myname, modified, created, (creator == mypanhash), nil, mes_panhash)
             added += 1
           end
           i += 1
@@ -9456,6 +9548,7 @@ module PandoraGtk
         if talkview
           talkview.mes_ids.clear
           talkview.buffer.text = ''
+          talkview.set_reply_message(nil)
         end
       end
     end
@@ -9547,7 +9640,7 @@ module PandoraGtk
 
     # Send message to node, before encrypt it if need
     # RU: Отправляет сообщение на узел, шифрует предварительно если надо
-    def send_mes(text, crypt=nil, sign_trust=nil, chat_mode=false)
+    def send_mes(text, crypt=nil, sign_trust=nil, chat_mode=false, reply_mes=nil)
       res = false
       creator = PandoraCrypto.current_user_or_key(true)
       if creator
@@ -9577,6 +9670,7 @@ module PandoraGtk
         dest = cab_panhash
         values = {:destination=>dest, :text=>crypt_text, :state=>state, \
           :creator=>creator, :created=>time_now, :modified=>time_now, :panstate=>panstate}
+        values[:message] = reply_mes if reply_mes
         model = PandoraUtils.get_model('Message')
         panhash = model.calc_panhash(values)
         values[:panhash] = panhash

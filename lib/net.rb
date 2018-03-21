@@ -25,7 +25,7 @@ module PandoraNet
 
   # Version of protocol
   # RU: Версия протокола
-  ProtocolVersion = 'pandora0.73'
+  ProtocolVersion = 'pandora0.74'
 
   DefTcpPort = 5577
   DefUdpPort = 5577
@@ -252,16 +252,18 @@ module PandoraNet
   DMP_Creator  = 1
   DMP_Created  = 2
   DMP_Text     = 3
-  DMP_PanState = 4
-  DMP_SignRec  = 5
+  DMP_Reply    = 4
+  DMP_PanState = 5
+  DMP_SignRec  = 6
 
   # Chat message row parameters
   # RU: Параметры сообщения чата
   CMP_Creator  = 0
   CMP_Created  = 1
   CMP_Text     = 2
-  CMP_PanState = 3
-  CMP_SignRec  = 4
+  CMP_Reply    = 3
+  CMP_PanState = 4
+  CMP_SignRec  = 5
 
   # Search request and answer field indexes
   # RU: Индексы полей в поисковом и ответом запросе
@@ -1277,7 +1279,7 @@ module PandoraNet
 
     def send_chat_messages(message_model=nil, models=nil)
       filter = 'state=0 AND IFNULL(panstate,0)&'+PandoraModel::PSF_ChatMes.to_s+'>0'
-      fields = 'creator, created, text, panstate, id, destination, panhash'
+      fields = 'creator, created, text, message, panstate, id, destination, panhash'
       message_model ||= PandoraUtils.get_model('Message', models)
       sel = message_model.select(filter, false, fields, 'created', \
         $mes_block_count)
@@ -1290,12 +1292,15 @@ module PandoraNet
         ids = [] if talkview
         while sel and (i<sel.size)
           row = sel[i]
+
           creator = row[CMP_Creator]
           panstate = row[CMP_PanState]
-          id = row[4]
-          dest = row[5]
-          panhash = row[6]
           last_ind = CMP_PanState
+
+          id = row[5]
+          dest = row[6]
+          panhash = row[7]
+
           if panstate
             panstate = (panstate & (PandoraModel::PSF_Support | \
               PandoraModel::PSF_Crypted | PandoraModel::PSF_Verified | \
@@ -1316,7 +1321,7 @@ module PandoraNet
           #  row[4] = text
           #end
           #p '---Add MASS Mes: row='+row.inspect
-          row_pson = PandoraUtils.rubyobj_to_pson(row[CMP_Creator..last_ind])
+          row_pson = PandoraUtils.rubyobj_to_pson(row[0..last_ind])
           #p log_mes+'%%%Send EC_Message: [row_pson, row_pson.len]='+\
           #  [row_pson, row_pson.bytesize].inspect
           #row, len = PandoraUtils.pson_to_rubyobj(row_pson)
@@ -3282,6 +3287,7 @@ module PandoraNet
                     created = nil
                     destination = pool.person
                     text = nil
+                    reply = nil
                     panstate = 0
                     sign = nil
                     if row.is_a?(Array)
@@ -3289,6 +3295,7 @@ module PandoraNet
                       creator  = row[DMP_Creator]
                       created  = row[DMP_Created]
                       text     = row[DMP_Text]
+                      reply    = row[DMP_Reply]
                       panstate = row[DMP_PanState]
                       panstate ||= 0
                       panstate = (panstate & (PandoraModel::PSF_Crypted | \
@@ -3300,7 +3307,8 @@ module PandoraNet
                       text = rdata
                     end
                     panstate = (panstate | PandoraModel::PSF_Support)
-                    values = {:destination=>destination, :text=>text, :state=>2, \
+                    values = {:destination=>destination, :text=>text, \
+                      :message=>reply, :state=>2, \
                       :creator=>creator, :created=>created, :modified=>time_now, \
                       :panstate=>panstate}
                     #p log_mes+'++++Recv EC_Message: values='+values.inspect
@@ -3803,6 +3811,7 @@ module PandoraNet
                           creator  = row[CMP_Creator]
                           created  = row[CMP_Created]
                           text     = row[CMP_Text]
+                          reply    = row[CMP_Reply]
                           panstate = row[CMP_PanState]
                           panstate ||= 0
                           panstate = (panstate & (PandoraModel::PSF_Crypted | \
@@ -3810,7 +3819,8 @@ module PandoraNet
                           sign = row[CMP_SignRec]
                           panstate = (panstate | PandoraModel::PSF_ChatMes)
                           time_now = Time.now.to_i
-                          values = {:destination=>destination, :text=>text, :state=>2, \
+                          values = {:destination=>destination, :text=>text, \
+                            :message=>reply, :state=>2, \
                             :creator=>creator, :created=>created, :modified=>time_now, \
                             :panstate=>panstate}
                           #p log_mes+'++++Recv MK_Chat: values='+values.inspect
@@ -4629,7 +4639,7 @@ module PandoraNet
                 if @skey and receiver
                   filter = {'destination'=>receiver, 'state'=>0, \
                     'IFNULL(panstate,0)&'+PandoraModel::PSF_ChatMes.to_s=>0}
-                  fields = 'id, creator, created, text, panstate, panhash'
+                  fields = 'id, creator, created, text, message, panstate, panhash'
                   sel = message_model.select(filter, false, fields, 'created', \
                     $mes_block_count)
                   if sel and (sel.size>0)

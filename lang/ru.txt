@@ -500,3 +500,4 @@ Holiday=>Праздник
 Resume=>Резюме
 Biography=>Биография
 Messages are saved=>Сообщения сохранены
+Reply to=>Ответ на
