@@ -7466,8 +7466,9 @@ module PandoraGtk
 
   $you_color = 'red'
   $dude_color = 'blue'
-  $tab_color = 'blue'
+  $reply_color = '#808080'
   $sys_color = 'purple'
+  $tab_color = 'blue'
   $read_time = 1.5
   $last_page = nil
 
@@ -8685,6 +8686,7 @@ module PandoraGtk
               'weight' => Pango::FontDescription::WEIGHT_BOLD)
             atalkview.buffer.create_tag('dude_bold', 'foreground' => $dude_color,  \
               'weight' => Pango::FontDescription::WEIGHT_BOLD)
+            atalkview.buffer.create_tag('reply', 'foreground' => $reply_color, 'scale' => Pango::AttrScale::SMALL)
             atalkview.buffer.create_tag('sys', 'foreground' => $sys_color, \
               'style' => Pango::FontDescription::STYLE_ITALIC)
             atalkview.buffer.create_tag('sys_bold', 'foreground' => $sys_color,  \
@@ -9225,13 +9227,59 @@ module PandoraGtk
       offset
     end
 
-    ReplyInfoLen = 18
+    $reply_mes_len = 18
+    $old_reply_mes_len = 50
+    MaxMesHistory = 100
+
+    def trunc_mes(mes, len=nil)
+      if mes
+        mes = Utf8String.new(mes).strip
+        len ||= $reply_mes_len
+        mes = mes[0, len].strip+'..' if mes.size>len
+      end
+      mes
+    end
+
+    def save_mes_history(panhash, mes, len=nil)
+      @mes_history ||= Hash.new
+      if panhash and mes.is_a?(String)
+        mes = trunc_mes(mes, len)
+        @mes_history.shift while @mes_history.size>MaxMesHistory
+        @mes_history[panhash] = mes
+      end
+      mes
+    end
+
+    def get_mes_history(panhash)
+      res = nil
+      if @mes_history
+        res = @mes_history[panhash]
+        if not res
+          model = PandoraUtils.get_model('Message')
+          if model
+            sel = model.select({:panhash=>panhash}, false, 'text, panstate, creator', 'id DESC', 1)
+            if sel and (sel.size>0)
+              row = sel[0]
+              text = row[0]
+              panstate = row[1]
+              creator = row[2]
+              encrypted = ((panstate.is_a?(Integer)) \
+                and ((panstate & PandoraModel::PSF_Crypted) > 0))
+              text = PandoraCrypto.recrypt_mes(text) if encrypted
+              res = save_mes_history(panhash, text, $old_reply_mes_len)
+            end
+          end
+        end
+      end
+      res ||= PandoraUtils.bytes_to_hex(panhash)[0, 10]
+      res
+    end
 
     # Put message to dialog
     # RU: Добавляет сообщение в диалог
     def add_mes_to_view(mes, id, panstate=nil, to_end=nil, \
     key_or_panhash=nil, myname=nil, modified=nil, created=nil, \
-    mine=nil, insert_above=nil, mes_panhash=nil)
+    mine=nil, insert_above=nil, mes_panhash=nil, reply_panhash=nil)
       chat_mode = (panstate.nil? or ((panstate & PandoraModel::PSF_ChatMes) > 0))
       talkview = @dlg_talkview
       talkview = @chat_talkview if chat_mode
@@ -9293,8 +9341,7 @@ module PandoraGtk
 
         tv_tag = time_style
         if mes_panhash
-          link_url = Utf8String.new(mes)
-          link_url = link_url[0, ReplyInfoLen].strip+'..' if link_url.size>ReplyInfoLen
+          link_url = trunc_mes(mes)
           link_url = user_name + ': '+link_url if chat_mode and user_name
           link_url = 'reply:/'+PandoraUtils.bytes_to_hex(mes_panhash)+'/'+link_url
           trunc_md5 = Digest::MD5.digest(link_url)[0, 10]
@@ -9348,6 +9395,29 @@ module PandoraGtk
           offset = buf_insert(buf, user_name+':', name_style, offset)
         end
 
+        if reply_panhash
+          reply = ' ('+get_mes_history(reply_panhash)+')'
+
+          tv_tag = 'reply'
+          link_url = 'pandora://'+PandoraUtils.bytes_to_hex(reply_panhash)
+          trunc_md5 = Digest::MD5.digest(link_url)[0, 10]
+          link_id = 'link'+PandoraUtils.bytes_to_hex(trunc_md5)
+          link_tag = buf.tag_table.lookup(link_id)
+          if link_tag
+            tv_tag = link_tag.name
+          else
+            link_tag = LinkTag.new(link_id)
+            if link_tag
+              name_tag = buf.tag_table.lookup(tv_tag)
+              PandoraGtk.copy_glib_object_properties(name_tag, link_tag)
+              buf.tag_table.add(link_tag)
+              link_tag.link = link_url
+              tv_tag = link_id
+            end
+          end
+          offset = buf_insert(buf, reply, tv_tag, offset)
+        end
+
         line = buf.line_count
         talkview.mes_ids[line] = id
 
@@ -9358,6 +9428,8 @@ module PandoraGtk
         else
           talkview.insert_taged_str_to_buffer(mes, buf, 'bbcode')
         end
+
+        save_mes_history(mes_panhash, mes)
 
         talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
         talkview.show_all
@@ -9374,7 +9446,7 @@ module PandoraGtk
       p '---- load_history [max_message, sort_mode, chat_mode, talkview]='+[max_message, sort_mode, chat_mode, talkview].inspect
       if talkview and max_message and (max_message>0)
         #messages = []
-        fields = 'creator, created, destination, state, text, panstate, modified, id, panhash'
+        fields = 'creator, created, destination, state, text, panstate, modified, id, panhash, message'
 
         mypanhash = PandoraCrypto.current_user_or_key(true)
         myname = PandoraCrypto.short_name_of_person(nil, mypanhash)
@@ -9480,11 +9552,12 @@ module PandoraGtk
             panstate = message[5]
             modified = message[6]
             mes_panhash = message[8]
+            reply = message[9]
 
             first_id = id if (first_id.nil? or (id<first_id))
 
             add_mes_to_view(mes, id, panstate, false, creator, \
-              myname, modified, created, (creator == mypanhash), nil, mes_panhash)
+              myname, modified, created, (creator == mypanhash), nil, mes_panhash, reply)
             added += 1
           end
           i += 1
@@ -9679,6 +9752,7 @@ module PandoraGtk
           filter = {:panhash=>panhash, :created=>time_now}
           sel = model.select(filter, true, 'id', 'id DESC', 1)
           if sel and (sel.size>0)
+            id = sel[0][0]
             p 'send_mes sel='+sel.inspect
             if sign
               namesvalues = model.namesvalues
@@ -9689,8 +9763,8 @@ module PandoraGtk
                 PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot create sign')+' ['+text+']')
               end
             end
-            id = sel[0][0]
-            add_mes_to_view(crypt_text, id, panstate, true, creator, nil, nil, nil, true)
+            add_mes_to_view(crypt_text, id, panstate, true, creator, nil, time_now, time_now, \
+              true, nil, panhash, reply_mes)
           else
             PandoraUI.log_message(PandoraUI::LM_Error, _('Cannot read message')+' ['+text+']')
           end
@@ -13005,6 +13079,8 @@ module PandoraGtk
     $load_history_count = PandoraUtils.get_param('load_history_count')
     $load_more_history_count = PandoraUtils.get_param('load_more_history_count')
     $sort_history_mode = PandoraUtils.get_param('sort_history_mode')
+    $reply_mes_len = PandoraUtils.get_param('reply_mes_len')
+    $old_reply_mes_len = PandoraUtils.get_param('old_reply_mes_len')
   end
 
   # Get main parameters

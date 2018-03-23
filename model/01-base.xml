@@ -382,6 +382,8 @@
     <load_history_count desc="Load message history count" type="Integer" section="view" setting="6" />
     <load_more_history_count desc="Load more history count" type="Integer" section="view" setting="50" />
     <sort_history_mode desc="Sort history mode (0-receive, 1-create)" type="Integer" section="view" setting="0" />
+    <reply_mes_len desc="Reply message lenght" type="Integer" section="view" setting="18" />
+    <old_reply_mes_len desc="Old reply message lenght" type="Integer" section="view" setting="50" />
     <def_smiles desc="Default smiles" type="String" section="view" setting="qip" />
     <icons_qip desc="Qip smile file" type="String" section="view" setting="smiles-qip.png:8x5:1p:1p|smile|sad|wink|cry|lol|shock|halo|kiss|glass|angry|tong|annoy|shame|thumb|ok|dance|music|stop|rose|kissed|sos|secret|hug|heart|cool|gun|work|dead|bomb|vomit|pardon|crazy|drink|fight|hurt|confuse|discontent|joy|fall|bingo" />
     <icons_vk desc="VK smile file" type="String" section="view" setting="smiles-vk.png:10x9:1p:1p|smile|haha|wink|lol|tong2|tong3|heart2|glass|sad|smile2|sad2|cry2|cry|cry3|shock2|sad3|smile3|lol2|halo|cry4|shock3|shock|ill|lol3|heart|kiss2|sad4|shock4|shock5|shock6|angry2|angry|tong3|sleep|kiss|sad5|angry3|nuff|cry5|cry6|smile3|lol4|cry7|tong|cry8|vomit|sad6|shock7|sad7|lol5|shock8|sad8|kiss3|sad9|angry4|shock9|devil|devil2|ufo|thumb|kill|one|two|ok|bravo|fist|palm|bravo2|nose|fuck|down|left|strong|ear|kiss4|shit|snow|apple|wine|drink|santa|rain|angry5|bear|adult|devil3|ball|sun|star|banan" />

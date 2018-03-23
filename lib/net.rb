@@ -3312,10 +3312,10 @@ module PandoraNet
                       :creator=>creator, :created=>created, :modified=>time_now, \
                       :panstate=>panstate}
                     #p log_mes+'++++Recv EC_Message: values='+values.inspect
-                    model = PandoraUtils.get_model('Message', @recv_models)
-                    panhash = model.calc_panhash(values)
+                    mes_model = PandoraUtils.get_model('Message', @recv_models)
+                    panhash = mes_model.calc_panhash(values)
                     values['panhash'] = panhash
-                    res = model.update(values, nil, nil)
+                    res = mes_model.update(values, nil, nil)
                     if res
                       if sign.is_a?(String) and (sign.bytesize>0)
                         alang = sign[0].ord
@@ -3335,8 +3335,8 @@ module PandoraNet
                     talkview = @dialog.dlg_talkview if @dialog
                     if not talkview
                       @conn_mode = (@conn_mode | PandoraNet::CM_Keep)
-                      panhash = @skey[PandoraCrypto::KV_Creator]
-                      @dialog = PandoraUI.show_cabinet(panhash, self, conn_type, \
+                      creator ||= @skey[PandoraCrypto::KV_Creator]
+                      @dialog = PandoraUI.show_cabinet(creator, self, conn_type, \
                         nil, nil, PandoraUI::CPI_Dialog)
                       if @dialog
                         if not @dialog.dlg_talkview
@@ -3348,11 +3348,11 @@ module PandoraNet
                     end
                     if talkview
                       myname = PandoraCrypto.short_name_of_person(pool.current_key)
-                      sel = model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
+                      sel = mes_model.select({:panhash=>panhash}, false, 'id', 'id DESC', 1)
                       id = nil
                       id = sel[0][0] if sel and (sel.size > 0)
                       @dialog.add_mes_to_view(text, id, panstate, nil, creator, \
-                        myname, time_now, created)
+                        myname, time_now, created, nil, nil, panhash, reply)
                       @dialog.show_page(PandoraUI::CPI_Dialog)
                     else
                       PandoraUI.log_message(PandoraUI::LM_Error, \
@@ -3850,7 +3850,7 @@ module PandoraNet
                               id = nil
                               id = sel[0][0] if sel and (sel.size > 0)
                               chat_dialog.add_mes_to_view(text, id, panstate, nil, creator, \
-                                myname, time_now, created)
+                                myname, time_now, created, nil, nil, panhash, reply)
                             else
                               PandoraUI.log_message(PandoraUI::LM_Error, \
                                 _('Chat message came, but cannot open dialog'))
