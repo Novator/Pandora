@@ -530,7 +530,8 @@ module PandoraUI
                           if res
                             # Delete old arch paths
                             unzip_mask = File.join($pandora_base_dir, dir_in_zip+'*')
-                            p unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
+                            unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
+                            p 'unzip_paths1='+unzip_paths.inspect
                             unzip_paths.each do |pathfilename|
                               p 'Remove dir: '+pathfilename
                               FileUtils.remove_dir(pathfilename) if File.directory?(pathfilename)
@@ -554,7 +555,8 @@ module PandoraUI
                               #unzip_path = File.join($pandora_base_dir, 'Pandora-master')
                               unzip_path = nil
                               p 'unzip_mask='+unzip_mask.inspect
-                              p unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
+                              unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
+                              p 'unzip_paths2='+unzip_paths.inspect
                               unzip_paths.each do |pathfilename|
                                 if File.directory?(pathfilename)
                                   unzip_path = pathfilename
@@ -1019,10 +1021,10 @@ module PandoraUI
           :sex=>[123, '123', nil, [5, 1], Time.parse('26.05.1978'), [3, '2', 1], 'bbb', 456, :aaa]}
         #str = PandoraUtils.rubyobj_to_pson(val)
         str = PandoraUtils.hash_to_namepson(val, false, 3)
-        puts [val, str.bytesize].inspect
+        p 'wizard  [val, str.bytesize]='+[val, str.bytesize].inspect
         #val2, len = PandoraUtils.pson_to_rubyobj(str)
         val2, len = PandoraUtils.namepson_to_hash(str)
-        puts [val2, len].inspect
+        p '[val2, len]='+[val2, len].inspect
         if $gtk_is_active
           PandoraGtk.show_log_bar(80)
         end

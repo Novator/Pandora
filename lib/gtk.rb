@@ -1464,7 +1464,7 @@ module PandoraGtk
       move(@x, @y)
       show_all
       present
-      p focus_btn
+      #p focus_btn
       if focus_btn
         focus_btn.grab_focus
       else
@@ -2439,8 +2439,8 @@ module PandoraGtk
             scale_x = nil
             scale_y = nil
             if @width or @height
-              p scale_x = @width.fdiv(awidth) if @width
-              p scale_y = @height.fdiv(aheight) if @height
+              scale_x = @width.fdiv(awidth) if @width
+              scale_y = @height.fdiv(aheight) if @height
               new_scale = nil
               if scale_x and (scale_x<1.0)
                 new_scale = scale_x
@@ -2462,8 +2462,8 @@ module PandoraGtk
               scale_x = @scale.fdiv(100)
               scale_y = scale_x
             end
-            p dest_width  = awidth*scale_x
-            p dest_height = aheight*scale_y
+            dest_width  = awidth*scale_x
+            dest_height = aheight*scale_y
             if @scaled_pixbuf
               @scaled_pixbuf.scale!(apixbuf, 0, 0, dest_width, dest_height, 0, 0, scale_x, scale_y)
             else
@@ -2883,8 +2883,8 @@ module PandoraGtk
               self.hide
               @treeview.show_line_panel
               res = true
-            else
-              p event.keyval
+            #else
+              #p event.keyval
           end
         end
         res
@@ -3585,7 +3585,7 @@ module PandoraGtk
                   PandoraUtils.external_open(url)
                 elsif (proto=='reply') and self.is_a?(ChatTextView)
                   puts 'Reply to link: ['+obj_type+']'
-                  p [self, self.parent, self.parent.parent]
+                  #p [self, self.parent, self.parent.parent]
                   self.set_reply_message(PandoraUtils.hex_to_bytes(obj_type), way)
                 else
                   puts 'Unknown jump: ['+url+']'
@@ -3953,8 +3953,8 @@ module PandoraGtk
                     end
                   end
                   comu = comu.strip.upcase if comu
-                  p '===closetag  [comu,params]='+[comu,params].inspect
-                  p '---open_coms='+open_coms.inspect
+                  #p '===closetag  [comu,params]='+[comu,params].inspect
+                  #p '---open_coms='+open_coms.inspect
                   p1 = dest_buf.end_iter.offset
                   p2 = p1
                   if ((strict_close_tag.nil? and BBCODES.include?(comu)) \
@@ -4941,7 +4941,7 @@ module PandoraGtk
     attr_accessor :image, :label, :stock
 
     def set_stock(astock)
-      p @stock = astock
+      @stock = astock
       #$window.register_stock(stock)
       an_image = $window.get_preset_image(stock, Gtk::IconSize::SMALL_TOOLBAR, nil)
       if (@image.is_a? Gtk::Image) and @image.icon_set
@@ -8488,7 +8488,7 @@ module PandoraGtk
             fill_property_toolbar(property_box)
             property_box.set_status_icons
             #property_box.window_width = property_box.window_height = 0
-            p [self.allocation.width, self.allocation.height]
+            #p [self.allocation.width, self.allocation.height]
             #property_box.on_resize_window(self.allocation.width, self.allocation.height)
             #property_box.on_resize_window(container.allocation.width, container.allocation.height)
             #container.signal_connect('configure-event') do |widget, event|
@@ -8776,7 +8776,7 @@ module PandoraGtk
               path = Gtk::TreePath.new(path_str)
               iter = list_store.get_iter(path)
               fixed = iter[CL_Online]
-              p 'fixed='+fixed.inspect
+              #p 'fixed='+fixed.inspect
               fixed ^= 1
               iter[CL_Online] = fixed
             end
@@ -10001,8 +10001,8 @@ module PandoraGtk
               elem_desc = elements.find{ |ed| ed[4]==name }
               elem = elem_desc[3]
               if not elem
-                p 'find by name in pipeline!!'
-                p elem = pipeline.get_by_name(name)
+                elem = pipeline.get_by_name(name)
+                #p 'find by name in pipeline!!  elem='+elem.inspect
               end
               elem[3] = elem if elem
               if elem
@@ -10212,9 +10212,10 @@ module PandoraGtk
             video_src, video_send_caps, video_send_tee, video_view1, video_can_encoder, video_can_sink \
               = get_video_sender_params(src_param, send_caps_param, send_tee_param, view1_param, \
                 can_encoder_param, can_sink_param)
-            p [src_param, send_caps_param, send_tee_param, view1_param, \
-                can_encoder_param, can_sink_param]
-            p [video_src, video_send_caps, video_send_tee, video_view1, video_can_encoder, video_can_sink]
+            #p [src_param, send_caps_param, send_tee_param, view1_param, \
+            #  can_encoder_param, can_sink_param]
+            #p [video_src, video_send_caps, video_send_tee, video_view1, \
+            #  video_can_encoder, video_can_sink]
 
             if winos
               video_src = PandoraUtils.get_param('video_src_win')
@@ -11821,7 +11822,7 @@ module PandoraGtk
       path, column = tree_view.cursor
       new_act = (action == 'Create')
     end
-    p 'path='+path.inspect
+    #p 'act_panobject  path='+path.inspect
     if path or new_act
       panobject = nil
       if (tree_view.is_a? SubjTreeView)
@@ -11908,8 +11909,8 @@ module PandoraGtk
               elsif [Gdk::Keyval::GDK_i, Gdk::Keyval::GDK_I, 1731, 1763].include?(\
               event.keyval) #i, I, ш, Ш
                 ignore_cb.active = (not ignore_cb.active?) if ignore_cb
-              else
-                p event.keyval
+              #else
+              #  p event.keyval
               end
               false
             end
@@ -12528,7 +12529,7 @@ module PandoraGtk
 
       @filters << filter_box
 
-      p '@filters='+@filters.inspect
+      p 'FilterHBox.new  @filters='+@filters.inspect
 
       filter_box
     end
@@ -12578,7 +12579,7 @@ module PandoraGtk
             row = tvc.tree_view.sel[iter.path.indices[0]]
           end
         rescue
-          p 'rescue'
+          p 'show_panobject_list  rescue'
         end
         val = nil
         if row

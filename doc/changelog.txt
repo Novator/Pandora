@@ -1,22 +1,46 @@
-===ChangeLog on: 02.03.2018
+===ChangeLog on: 23.03.2018
 
 
----Version 0.72 [1b6154] 02.03.2018 (alpha):
+---Version 0.74 [ad65f8] 23.03.2018 (alpha) commit 08895034:
 
 Features:
-* Key generation RSA-2048 with password on AES-256/Sha2-256
-* Private dialog with sign (RSA-2048) and cifer (RSA-2048[+AES-256])
-* Public chat with sign
-* Avatar in Cabinet
-* Editor in Cabinet with BBCODE and HTML markup
-* Highlights of code in editor: Ruby, Python, XLS and INI
-* Picture preview in editor of Cabinet
-* Two button in PanhashBox: choose from list, watch in cabinet
-* Record mass request button in Cabinet (only record without Relations)
-* Pared-down ncurses interface
-* Radar shows raw data from mass record list
-* Language translations in txt-files and GUI table for editing
-* Video (VP8) and audio (Vorbis) works only with GStreamer 0.1
++ Calendar tooltips Workday, Weekend and Holiday
++ Reply to messages
++ Save message history to file
++ Clear message history from database
++ Start with minimized main window (cmd parameter "-n")
++ PSON sorting are extended for complex arrays and hashes
++ Python utility for TCP redirection is appended
+
+Bug fixing:
+* Password dialog sizes is fixed
+* Calendar and other button editbox hot keys Alt+Down fixed
+* Cabinet kind detection is fixed
+* Garbage collector did wrong clearing, fixed
+* Flags "Support" and "Archive" saving bug is fixed
+* Dialogs and chats jumpings are fixed
+* Trust to key from holder estimate is fixed
+* Update button was unavailable a day
+* PSON unpacking bug with Float type is fixed
+* PSON hash sorting is normal now
+
+
+---Version 0.72 [1b6154] 02.03.2018 (alpha) commit 53c1dd4e:
+
+Features:
++ Key generation RSA-2048 with password on AES-256/Sha2-256
++ Private dialog with sign (RSA-2048) and cifer (RSA-2048[+AES-256])
++ Public chat with sign
++ Avatar in Cabinet
++ Editor in Cabinet with BBCODE and HTML markup
++ Highlights of code in editor: Ruby, Python, XLS and INI
++ Picture preview in editor of Cabinet
++ Two button in PanhashBox: choose from list, watch in cabinet
++ Record mass request button in Cabinet (only record without Relations)
++ Pared-down ncurses interface
++ Radar shows raw data from mass record list
++ Language translations in txt-files and GUI table for editing
++ Video (VP8) and audio (Vorbis) works only with GStreamer 0.1
 
 Broken:
 ~ Torrent mechanism for file request and collecting
@@ -26,5 +50,5 @@ Broken:
 ---Version 0.1 27.12.2012 (alpha):
 
 Features:
-* First prototype with raw GUI interface
++ First prototype with raw GUI interface
 

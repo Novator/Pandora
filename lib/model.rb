@@ -419,7 +419,7 @@ module PandoraModel
         pson = (pson_with_kind != nil)
         #p '--get_record_by_panhash   filter, getfields='+[filter, getfields].inspect
         sel = model.select(filter, pson, getfields, nil, 1)
-        p sel
+        #p sel
         if sel and (sel.size>0)
           if pson
             #namesvalues = panobject.namesvalues
@@ -707,7 +707,7 @@ module PandoraModel
         model = PandoraUtils.get_model(panobjectclass.ider, models)
         if model
           filter = [['modified >= ', from_time.to_i]]
-          p sel = model.select(filter, false, 'panhash', 'id ASC')
+          sel = model.select(filter, false, 'panhash', 'id ASC')
           if sel and (sel.size>0)
             res ||= []
             sel.each do |row|

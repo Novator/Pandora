@@ -991,7 +991,7 @@ module PandoraNet
 
     def add_node_to_list(akey, abaseid, aperson=nil, cur_time=nil)
       node = nil
-      p '==add_node_to_list  akey, abaseid, aperson='+[akey, abaseid, aperson].inspect
+      #p '==add_node_to_list  akey, abaseid, aperson='+[akey, abaseid, aperson].inspect
       if akey and abaseid
         node = PandoraModel.calc_node_panhash(akey, abaseid)
         if node
@@ -1019,7 +1019,7 @@ module PandoraNet
           node_model = PandoraUtils.get_model('Node', models)
           nodehash = PandoraModel::PK_Node.chr+0.chr+node
           sel = node_model.select({:panhash => nodehash}, false, 'key_hash, base_id', 'id ASC', 1)
-          p sel
+          #p sel
           if sel and (sel.size>0)
             row = sel[0]
             akey = row[0]
@@ -3970,15 +3970,15 @@ module PandoraNet
     end
 
     def init_and_check_node(a_to_person, a_to_key, a_to_base_id, models=nil)
-      p '++init_and_check_node [a_to_person, a_to_key, a_to_base_id]='+[a_to_person, a_to_key, a_to_base_id].inspect
+      #p '++init_and_check_node [a_to_person, a_to_key, a_to_base_id]='+[a_to_person, a_to_key, a_to_base_id].inspect
       @to_person = a_to_person if a_to_person
       @to_key = a_to_key if a_to_key
       @to_base_id = a_to_base_id if a_to_base_id
       if (not @to_person) and @to_key
-        p '??find person  @to_key='+PandoraUtils.bytes_to_hex(@to_key)
+        #p '??find person  @to_key='+PandoraUtils.bytes_to_hex(@to_key)
         @to_person = PandoraModel.find_person_by_key(@to_key, models)
       end
-      p '!!init_and_check_node [@to_person, @to_key, @to_base_id]='+[@to_person, @to_key, @to_base_id].inspect
+      #p '!!init_and_check_node [@to_person, @to_key, @to_base_id]='+[@to_person, @to_key, @to_base_id].inspect
       @to_node = pool.add_node_to_list(@to_key, @to_base_id, @to_person)
       if @to_key and @to_base_id and @to_person
         key = PandoraCrypto.current_user_or_key(false)
@@ -4037,7 +4037,7 @@ module PandoraNet
       #  aconn_mode, anode_id, a_dialog, send_state_add, nodehash, to_person, \
       #  to_key, to_base_id].inspect
 
-      p '@@@ init_and_check_node 111'
+      #p '@@@ init_and_check_node 111'
       init_and_check_node(to_person, to_key, to_base_id)
       pool.add_session(self)
 

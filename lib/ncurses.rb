@@ -572,6 +572,7 @@ module PandoraCui
       ch = 0
       while ch
         ch = Ncurses.getch
+        ch = ch.ord if ch.is_a?(String)
         comm = self.user_command
         if comm
           self.user_command = nil
@@ -584,16 +585,20 @@ module PandoraCui
           if (ch==27)
             sleep 0.2
             chg = Ncurses.getch
+            chg = chg.ord if chg.is_a?(String)
             ch = (chg ^ (ch << 8))
-            if (chg==208) or (chg==209)
+            stdscr.mvaddstr(Ncurses.lines - 3, 35, '2:'+chg.inspect+'-  ')
+            if ((chg==208) or (chg==209))
               chg = Ncurses.getch
+              chg = chg.ord if chg.is_a?(String)
+              stdscr.mvaddstr(Ncurses.lines - 3, 42, '3:'+chg.inspect+'-  ')
               ch = (chg ^ (ch << 8))
             end
-            stdscr.mvaddstr(Ncurses.lines - 3, 35, '2:'+ch.inspect+'-  ')
+            stdscr.mvaddstr(Ncurses.lines - 3, 49, '4:'+ch.inspect+'-  ')
             stdscr.refresh
           end
           case ch
-            when Ncurses::KEY_RESIZE
+            when Ncurses::KEY_RESIZE  #resize terminal
               is_resized = true
               break
             when Ncurses::KEY_F1, Ncurses::KEY_F5, 19  #Ctrl+S
@@ -660,17 +665,18 @@ module PandoraCui
               end
               is_resized = true
               break
-            when Ncurses::KEY_UP, Ncurses::KEY_DOWN, Ncurses::KEY_NPAGE, \
-            Ncurses::KEY_PPAGE
+            when Ncurses::KEY_UP, Ncurses::KEY_DOWN, Ncurses::KEY_PPAGE, \
+              Ncurses::KEY_NPAGE, 560, 519  #Ctrl+Up, Ctrl+Down
               if self.act_panel==0
-                if ch==Ncurses::KEY_DOWN
-                  fill_left_win(1, 1)
-                elsif ch==Ncurses::KEY_UP
-                  fill_left_win(-1, 1)
-                elsif ch==Ncurses::KEY_NPAGE
-                  fill_left_win(3, 1)
-                elsif ch==Ncurses::KEY_PPAGE
-                  fill_left_win(-3, 1)
+                case ch
+                  when Ncurses::KEY_UP
+                    fill_left_win(-1, 1)
+                  when Ncurses::KEY_DOWN
+                    fill_left_win(1, 1)
+                  when Ncurses::KEY_PPAGE, 560
+                    fill_left_win(-3, 1)
+                  when Ncurses::KEY_NPAGE, 519
+                    fill_left_win(3, 1)
                 end
                 fill_right_win(1)
                 Ncurses.doupdate
@@ -688,16 +694,22 @@ module PandoraCui
                           pos0 ||= 2
                           num = @win_height-5
                           #num = asize if num > asize
-                          if ch==Ncurses::KEY_DOWN
-                            scroll_pos += 1 if scroll_pos < asize-1
-                          elsif ch==Ncurses::KEY_UP
+                          if ch==Ncurses::KEY_UP
                             scroll_pos -= 1 if scroll_pos>0
-                          elsif ch==Ncurses::KEY_NPAGE
+                          elsif ch==Ncurses::KEY_DOWN
+                            scroll_pos += 1 if scroll_pos < asize-1
+                          elsif ch==560
+                            scroll_pos -= 3
+                            scroll_pos = 0 if scroll_pos<0
+                          elsif ch==519
                             scroll_pos += 3
                             scroll_pos = asize-1 if scroll_pos >= asize
                           elsif ch==Ncurses::KEY_PPAGE
-                            scroll_pos -= 3
+                            scroll_pos -= Ncurses.lines-4
                             scroll_pos = 0 if scroll_pos<0
+                          elsif ch==Ncurses::KEY_NPAGE
+                            scroll_pos += Ncurses.lines-4
+                            scroll_pos = asize-1 if scroll_pos >= asize
                           end
                           koef = num.fdiv(asize-1)
                           #pos0 = 2+(scroll_pos0 * koef).round
