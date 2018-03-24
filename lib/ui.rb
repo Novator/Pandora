@@ -509,11 +509,11 @@ module PandoraUI
                   zip_exists = File.exist?(zip_local)
                 end
                 if zip_exists
-                  zip_size = File.size?(zip_local)
-                  if zip_size
+                  zip_size = File.size(zip_local)
+                  if zip_size.is_a?(Integer)
                     if File.stat(zip_local).writable?
                       #zip_on_repo = 'https://codeload.github.com/Novator/Pandora/zip/master'
-                      #dir_in_zip = 'Pandora-maste'
+                      #dir_in_zip = 'Pandora-master'
                       zip_url = 'https://bitbucket.org/robux/pandora/get/master.zip'
                       dir_in_zip = 'robux-pandora'
                       http, time, step, host, path = connect_http_and_check_size(zip_url, \

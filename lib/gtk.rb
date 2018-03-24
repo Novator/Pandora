@@ -4805,7 +4805,7 @@ module PandoraGtk
       self.queue_draw if redraw_before
       need_redraw = nil
       if ids
-        if ids.is_a? Array
+        if ids.is_a?(Array)
           ids.each do |id|
             line = mes_ids.index(id)
             if line and numbers.include?(line)
@@ -4813,16 +4813,19 @@ module PandoraGtk
               break
             end
           end
-        else
+        elsif ids.is_a?(Integer)
           line = mes_ids.index(ids)
-          need_redraw = true if line and numbers.include?(line)
+          need_redraw = true if (line and numbers.include?(line))
         end
       else
         need_redraw = true
       end
       if need_redraw
         left_win = self.get_window(Gtk::TextView::WINDOW_LEFT)
-        left_win.invalidate(left_win.frame_extents, true)
+        if left_win and (not left_win.destroyed?)
+          fe = left_win.frame_extents
+          left_win.invalidate(fe, true) if fe.is_a?(Gdk::Rectangle)
+        end
       end
     end
 

@@ -4997,8 +4997,8 @@ module PandoraNet
   $hunt_overflow_pause = 1.0
   $hunt_period         = 60*3
 
-  $trust_for_chatcom  = 0.7   # trust level for all chat commands
   $special_chatcom_trusts  = {'echo'=>0.01, 'exec'=>0.9, 'sound'=>0.2, 'tunnel'=>0.8}
+  $trust_for_chatcom  = 0.7   # trust level for other chat commands
 
   # Get exchange params
   # RU: Взять параметры обмена
