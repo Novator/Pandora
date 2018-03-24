@@ -4,23 +4,23 @@
 ---Version 0.74 [ad65f8] 23.03.2018 (alpha) commit 08895034:
 
 Features:
-+ Calendar tooltips Workday, Weekend and Holiday
-+ Reply to messages
-+ Save message history to file
++ Reply to concrete messages in dialogs and chats
++ Calendar tooltips on Workday, Weekend and Holiday
++ Save dialog and chat message history to file
 + Clear message history from database
-+ Start with minimized main window (cmd parameter "-n")
-+ PSON sorting are extended for complex arrays and hashes
++ Run with minimized main window (cmd parameter "-n")
++ PSON sorting has extended for complex arrays and hashes
 + Python utility for TCP redirection is appended
 
 Bug fixing:
-* Password dialog sizes is fixed
-* Calendar and other button editbox hot keys Alt+Down fixed
-* Cabinet kind detection is fixed
-* Garbage collector did wrong clearing, fixed
-* Flags "Support" and "Archive" saving bug is fixed
-* Dialogs and chats jumpings are fixed
-* Trust to key from holder estimate is fixed
-* Update button was unavailable a day
+* Password dialog sizes is corrected
+* In date edit and other editbox hot keys Alt+Down works again
+* Inside kind detection in Cabinet is fixed
+* Garbage collector worked wrong, fixed
+* Bug on saving a record with flags "Support" and "Archive"  is fixed
+* Jumpings on new messages in dialogs and chats is partly fixed
+* Trust to key by current user at exchange moment is fixed
+* Update button has been unavailable a 24 hours, fixed
 * PSON unpacking bug with Float type is fixed
 * PSON hash sorting is normal now
 
