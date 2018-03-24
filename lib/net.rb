@@ -1011,10 +1011,10 @@ module PandoraNet
 
     def get_node_params(node, models=nil)
       res = nil
-      p '--get_node_params  node='+PandoraUtils.bytes_to_hex(node)
+      #p '--get_node_params  node='+PandoraUtils.bytes_to_hex(node)
       if node.is_a?(String) and (node.bytesize>0)
         res = @node_list[node]
-        p 'res='+res.inspect
+        #p 'res='+res.inspect
         if not res
           node_model = PandoraUtils.get_model('Node', models)
           nodehash = PandoraModel::PK_Node.chr+0.chr+node
@@ -1026,7 +1026,7 @@ module PandoraNet
             abaseid = row[1]
             aperson = PandoraModel.find_person_by_key(akey, models)
             node = add_node_to_list(akey, abaseid, aperson)
-            p '#get_node_params  node, akey, abaseid, aperson='+[node, akey, abaseid, aperson].inspect
+            #p '#get_node_params  node, akey, abaseid, aperson='+[node, akey, abaseid, aperson].inspect
             res = @node_list[node] if node
           elsif node==self.self_node
             res = [self.key_hash, self.base_id, self.person]
@@ -1205,7 +1205,7 @@ module PandoraNet
       if akind.is_a?(Integer) and (akind>0) and (akind<255)
         anoptions = akind
         apanhash = arequest
-        p '---search_in_local_bases  [opt,apanhash]='+[anoptions, PandoraUtils.bytes_to_hex(apanhash)].inspect
+        #p '---search_in_local_bases  [opt,apanhash]='+[anoptions, PandoraUtils.bytes_to_hex(apanhash)].inspect
         pson = PandoraModel.get_record_by_panhash(apanhash, nil, true, models)
         if pson
           res = pson
@@ -1665,15 +1665,15 @@ module PandoraNet
         key = @cipher[PandoraCrypto::KV_Obj]
         if res and key and (not (key.is_a? Integer))
           #if encode
-          #  p log_mes+'####bef#### CIPHER ENC buf='+res.inspect
+          #  #p log_mes+'####bef#### CIPHER ENC buf='+res.inspect
           #else
-          #  p log_mes+'####bef#### CIPHER DEC buf='+res.bytesize.inspect
+          #  #p log_mes+'####bef#### CIPHER DEC buf='+res.bytesize.inspect
           #end
           res = PandoraCrypto.recrypt(@cipher, res, encode)
           #if encode
-          #  p log_mes+'#####aff##### CIPHER ENC buf='+res.bytesize.inspect
+          #  #p log_mes+'#####aff##### CIPHER ENC buf='+res.bytesize.inspect
           #else
-          #  p log_mes+'#####aff##### CIPHER DEC buf='+res.inspect
+          #  #p log_mes+'#####aff##### CIPHER DEC buf='+res.inspect
           #end
         end
       else
@@ -1773,9 +1773,9 @@ module PandoraNet
         end
         #if cmd == EC_Media
         #  if code==0
-        #    p 'send AUDIO ('+buf.size.to_s+')'
+        #    #p 'send AUDIO ('+buf.size.to_s+')'
         #  else
-        #    p 'send VIDEO ('+buf.size.to_s+')'
+        #    #p 'send VIDEO ('+buf.size.to_s+')'
         #  end
         #end
         begin
@@ -3320,7 +3320,7 @@ module PandoraNet
                       if sign.is_a?(String) and (sign.bytesize>0)
                         alang = sign[0].ord
                         avalues = PandoraUtils.namepson_to_hash(sign[1..-1])
-                        p log_mes+'EC_Message  sign values='+avalues.inspect
+                        #p log_mes+'EC_Message  sign values='+avalues.inspect
                         res = PandoraModel.save_record(PandoraModel::PK_Sign, alang, avalues, @recv_models)
                       end
                       if id0.is_a?(Integer)
@@ -3525,11 +3525,11 @@ module PandoraNet
                     end
                   #when ECC_Query_FragHash
                   #  # запрос хэша фрагмента
-                  #  p log_mes+'ECC_Query_FragHash'
+                  #  #p log_mes+'ECC_Query_FragHash'
                   #  berhashs, len = PandoraUtils.pson_to_rubyobj(rdata)
                   #  berhashs.each do |rec|
                   #    punnet,berry,sha1 = rec
-                  #    p 'punnet,berry,sha1='+[punnet,berry,sha1].inspect
+                  #    #p 'punnet,berry,sha1='+[punnet,berry,sha1].inspect
                   #  end
                 end
               when EC_News
@@ -3636,7 +3636,7 @@ module PandoraNet
                       #if (sessions.is_a? Array) and (sessions.size>0)
                       #  # найдена сессия с рыбкой
                       #  session = sessions[0]
-                      #  p log_mes+' fish session='+session.inspect
+                      #  #p log_mes+' fish session='+session.inspect
                       #  #out_lure = take_out_lure_for_fisher(session, to_key)
                       #  #send_segment_to_fisher(out_lure)
                       #  session.donor = self
@@ -3647,7 +3647,7 @@ module PandoraNet
                       #  if (sessions.is_a? Array) and (sessions.size>0)
                       #    # найдена сессия с рыбаком
                       #    session = sessions[0]
-                      #    p log_mes+' fisher session='+session.inspect
+                      #    #p log_mes+' fisher session='+session.inspect
                       #    session.donor = self
                       #    session.fish_lure = session.registrate_fish(fish)
                       #    sthread = session.send_thread
@@ -3679,10 +3679,10 @@ module PandoraNet
                     #p log_mes + 'ECC_News_SessMode'
                     @conn_mode2 = rdata[0].ord if rdata.bytesize>0
                   when ECC_News_Answer
-                    p log_mes + '==ECC_News_Answer'
+                    #p log_mes + '==ECC_News_Answer'
                     req_answer, len = PandoraUtils.pson_to_rubyobj(rdata)
                     req, answ = req_answer
-                    p log_mes+'req,answ='+[req,answ].inspect
+                    #p log_mes+'req,answ='+[req,answ].inspect
                     kind, request = req
                     if kind==PandoraModel::PK_BlobBody
                       PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: blob is found'))
@@ -3713,12 +3713,12 @@ module PandoraNet
                       #PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: rec is searching'))
                       req, answ = req_answer
                       opt, apanhash = req
-                      p log_mes+'  !!!MY DirAnswer::::  opt, apanhash='+[opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
+                      #p log_mes+'  !!!MY DirAnswer::::  opt, apanhash='+[opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
                       if opt.is_a?(Integer)
                         akind = answ[0].ord
                         alang = answ[1].ord
                         avalues = PandoraUtils.namepson_to_hash(answ[2..-1])
-                        p log_mes+'Answer-SAVE  akind, alang, avalues='+[akind, alang, avalues].inspect
+                        #p log_mes+'Answer-SAVE  akind, alang, avalues='+[akind, alang, avalues].inspect
                         res = PandoraModel.save_record(akind, alang, avalues, @recv_models, apanhash, :auto)
                       end
                     end
@@ -3781,12 +3781,12 @@ module PandoraNet
               when EC_Mass
                 kind = rcode
                 params, len = PandoraUtils.pson_to_rubyobj(rdata)
-                p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
+                #p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
                 if (params.is_a? Array) and (params.size>=5)
                   src_node, src_time, atrust, adepth, param1, \
                     param2, param3 = params
                   if src_node != pool.self_node
-                    p log_mes+' **** Mass PROCESS src_node,param1='+[PandoraUtils.bytes_to_hex(src_node), param1].inspect
+                    #p log_mes+' **** Mass PROCESS src_node,param1='+[PandoraUtils.bytes_to_hex(src_node), param1].inspect
                     src_key = nil
                     scr_baseid = nil
                     scr_person = nil
@@ -3836,7 +3836,7 @@ module PandoraNet
                             if res and sign.is_a?(String) and (sign.bytesize>0)
                               alang = sign[0].ord
                               avalues = PandoraUtils.namepson_to_hash(sign[1..-1])
-                              p log_mes+'MK_Chat  sign values='+avalues.inspect
+                              #p log_mes+'MK_Chat  sign values='+avalues.inspect
                               res = PandoraModel.save_record(PandoraModel::PK_Sign, alang, avalues, @recv_models)
                             end
                             Thread.pass
@@ -3865,10 +3865,10 @@ module PandoraNet
                           #MRS_Kind       = MR_Param1    #1
                           #MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
                           #MRA_Answer     = MR_Param3    #~22
-                          p '  ~~~MK_Search param1,param2='+[param1, PandoraUtils.bytes_to_hex(param2)].inspect
+                          #p '  ~~~MK_Search param1,param2='+[param1, PandoraUtils.bytes_to_hex(param2)].inspect
                           #scr_baseid ||= @to_base_id
                           #resend = ((scr_baseid.nil?) or (scr_baseid != pool.base_id))
-                          #  p log_mes+'ADD search req to pool list'
+                          #  #p log_mes+'ADD search req to pool list'
                           #  pool.add_mass_record(MK_Search, params[MRS_Kind], \
                           #    params[MRS_Request], params[MRA_Answer], nil, nil, \
                           #    nil, nil, @to_node, nil, @recv_models)
@@ -3895,18 +3895,18 @@ module PandoraNet
                           req, answ = req_answer
                           opt, apanhash = req
                           if param1 == pool.self_node
-                            p log_mes+'  ~~~MY MK_Answer::::  param1, opt, apanhash='+[PandoraUtils.bytes_to_hex(param1), opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
+                            #p log_mes+'  ~~~MY MK_Answer::::  param1, opt, apanhash='+[PandoraUtils.bytes_to_hex(param1), opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
                             if opt.is_a?(Integer)
                               akind = answ[0].ord
                               alang = answ[1].ord
                               avalues = PandoraUtils.namepson_to_hash(answ[2..-1])
-                              p log_mes+'Answer-SaVE  akind, alang, avalues='+[akind, alang, avalues].inspect
+                              #p log_mes+'Answer-SaVE  akind, alang, avalues='+[akind, alang, avalues].inspect
                               res = PandoraModel.save_record(akind, alang, avalues, @recv_models, apanhash, :auto)
                             end
                             resend = false
                           else
-                            p log_mes+'  ~~~ALIAN MK_Answer::::  param1, opt, apanhash='+[PandoraUtils.bytes_to_hex(param1), \
-                              opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
+                            #p log_mes+'  ~~~ALIAN MK_Answer::::  param1, opt, apanhash='+[PandoraUtils.bytes_to_hex(param1), \
+                            #  opt, PandoraUtils.bytes_to_hex(apanhash)].inspect
                             sessions = pool.sessions_of_panhash(param1)
                             #sessions.flatten!
                             #sessions.uniq!
@@ -3925,11 +3925,11 @@ module PandoraNet
                           end
                       end
                       if (resend and ((kind<MK_Answer) or (param1 != pool.self_node)))
-                        p 'ADD MASS (resend)  [src_node,param1]='+[PandoraUtils.bytes_to_hex(src_node),param1].inspect
+                        #p 'ADD MASS (resend)  [src_node,param1]='+[PandoraUtils.bytes_to_hex(src_node),param1].inspect
                         pool.add_mass_record(kind, param1, param2, param3, src_node, \
                           src_time, atrust, adepth, keep_node, nil, @recv_models)
                       else
-                        p 'No MASS resend'
+                        #p 'No MASS resend'
                       end
                     else
                       PandoraUI.log_message(PandoraUI::LM_Trace, \
@@ -4150,7 +4150,7 @@ module PandoraNet
                 #   nil, nil, fish_trust, fish_dep, nil, nil, @recv_models)
                 #while (not @socket) and (not active_hook) \
                 #and (@conn_state == CS_Connecting)
-                #  p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
+                #  #p 'Thread.stop [to_person, to_key]='+[to_person, to_key].inspect
                 #  Thread.stop
                 #end
                 @socket = false   #Exit session
@@ -4762,8 +4762,8 @@ module PandoraNet
                 and (processed<$mass_per_cicle))
                 #and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
                   mass_rec = pool.mass_records.get_block_from_queue($max_mass_count, @to_node)
-                  p log_mes+'## FOUND mass_rec [scr,trust,depth ='+[PandoraUtils.bytes_to_hex(mass_rec[MR_SrcNode]), mass_rec[MR_Trust], \
-                    mass_rec[MR_Depth]].inspect if mass_rec
+                  #p log_mes+'## FOUND mass_rec [scr,trust,depth ='+[PandoraUtils.bytes_to_hex(mass_rec[MR_SrcNode]), mass_rec[MR_Trust], \
+                  #  mass_rec[MR_Depth]].inspect if mass_rec
                   if (mass_rec and mass_rec[MR_SrcNode] \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], \
                   :auto_to_float)) and (mass_rec[MR_SrcNode] != @to_node) and (mass_rec[MR_Depth]>0))
@@ -4773,7 +4773,7 @@ module PandoraNet
                       when MK_Fishing
                         #line = fish_order[MR_Fisher..MR_Fish_key]
                         #if init_line(line) == false
-                        #  p log_mes+'Fish order to send: '+line.inspect
+                        #  #p log_mes+'Fish order to send: '+line.inspect
                         #  PandoraUI.log_message(PandoraUI::LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
                         #    +[PandoraUtils.bytes_to_hex(fish_order[MR_Fish]), \
                         #    PandoraUtils.bytes_to_hex(fish_order[MR_Fish_key]), \
@@ -4788,7 +4788,7 @@ module PandoraNet
                       when MK_Chat
                     end
                     if params
-                      p log_mes+'-->>>> MR SEND [kind, params]'+[kind, params].inspect
+                      #p log_mes+'-->>>> MR SEND [kind, params]'+[kind, params].inspect
                       params_pson = PandoraUtils.rubyobj_to_pson(params)
                       add_send_segment(EC_Mass, true, params_pson, kind)
                     end
@@ -4906,10 +4906,10 @@ module PandoraNet
               #  rec[LHI_Session].send_comm_and_data(rec[LHI_Session].sindex, EC_Bye, ECC_Bye_NoAnswer, nil)
               #end
               #if fisher_lure
-              #  p 'free_out_lure fisher_lure='+fisher_lure.inspect
+              #  #p 'free_out_lure fisher_lure='+fisher_lure.inspect
               #  donor.free_out_lure_of_fisher(self, fisher_lure)
               #else
-              #  p 'free_fish fish_lure='+fish_lure.inspect
+              #  #p 'free_fish fish_lure='+fish_lure.inspect
               #  donor.free_fish_of_in_lure(fish_lure)
               #end
             end
