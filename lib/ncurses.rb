@@ -167,8 +167,8 @@ module PandoraCui
   end
 
   def self.set_status_field(index, text, enabled, toggle)
-    self.add_mes_to_log_win('set_status_field: '+[index, text, \
-      enabled, toggle].inspect, 1)
+    self.add_mes_to_log_win('set_status_field:  [index, _(text), enabled, toggle]='+\
+      [index, _(text), enabled, toggle].inspect, 1)
     case index
       when PandoraUI::SF_Auth
         @auth_text = text
@@ -229,7 +229,8 @@ module PandoraCui
   def self.show_panobject_list(panobject_class, widget=nil, page_sw=nil, \
   auto_create=false, fix_filter=nil)
     res = nil
-    self.add_mes_to_log_win('show_panobject_list: '+[panobject_class, widget, \
+    self.add_mes_to_log_win('show_panobject_list:  [panobject_class, widget.object_id, \
+      page_sw, auto_create, fix_filter]='+[panobject_class, widget.object_id, \
       page_sw, auto_create, fix_filter].inspect, 2)
     res
   end
@@ -237,7 +238,8 @@ module PandoraCui
   def self.show_cabinet(panhash, session, conntype, node_id, models, \
   page, fields, obj_id, edit)
     res = nil
-    self.add_mes_to_log_win('show_cabinet: '+[panhash, session, conntype, \
+    self.add_mes_to_log_win('show_cabinet  [panhash, session.object_id, conntype, \
+      node_id, models, page, fields, obj_id, edit]='+[panhash, session.object_id, conntype, \
       node_id, models, page, fields, obj_id, edit].inspect, 2)
     res
   end
