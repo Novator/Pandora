@@ -263,9 +263,11 @@ end
 
 # Redirect console output to file, because of rubyw.exe crush
 # RU: Перенаправить консольный вывод в файл из-за краша rubyw.exe
-if PandoraUtils.os_family=='windows'
-  $stdout.reopen(File.join($pandora_base_dir, 'stdout.log'), 'w')
-  $stderr = $stdout
+if $cui_mode or (PandoraUtils.os_family=='windows')
+  fn = 'stdout'
+  fn = 'stderr' if $cui_mode
+  $stderr.reopen(File.join($pandora_base_dir, fn+'.log'), 'w')
+  $stdout = $stderr if (not $cui_mode)
 end
 
 # WinAPI constants for work with the registry

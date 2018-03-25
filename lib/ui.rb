@@ -208,12 +208,12 @@ module PandoraUI
             while (processed > 0)
               search_req = pool.mass_records.get_block_from_queue($max_mass_count, Thread.current)
               if search_req
-                p '####  Search spider obj.id='+search_req.object_id.inspect
+                #p '####  Search spider obj.id='+search_req.object_id.inspect
                 if ((search_req[PandoraNet::MR_Kind] == PandoraNet::MK_Search) \
                 and (not search_req[PandoraNet::MRA_Answer]) \
                 and (search_req[PandoraNet::MR_SrcNode] != pool.self_node))
                   req = search_req[PandoraNet::MRS_Kind..PandoraNet::MRS_Request]
-                  p 'search par MRS_Kind-MRS_Request  ='+req.inspect
+                  #p 'search par MRS_Kind-MRS_Request  ='+req.inspect
                   answ = nil
                   if search_req[PandoraNet::MRS_Kind]==PandoraModel::PK_BlobBody
                     sha1 = search_req[PandoraNet::MRS_Request]
@@ -227,7 +227,7 @@ module PandoraUI
                       search_req[PandoraNet::MRS_Kind], @shed_models)
                   end
                   src_node = search_req[PandoraNet::MR_SrcNode]
-                  p '+++SEARCH answ for src_node='+[answ, PandoraUtils.bytes_to_hex(src_node)].inspect
+                  #p '+++SEARCH answ for src_node='+[answ, PandoraUtils.bytes_to_hex(src_node)].inspect
                   if answ
                     search_req[PandoraNet::MRA_Answer] = answ
                     sessions = pool.sessions_of_panhash(src_node)
@@ -237,11 +237,11 @@ module PandoraUI
                     direct_send = nil
                     answer_raw = PandoraUtils.rubyobj_to_pson([req, answ])
                     if sessions.size>0
-                      p 'sessions.size>0'
+                      #p 'sessions.size>0'
                       sessions.each do |sess|
                         if sess.active?
-                          p '@@Search MK_Answer DIR-send [src_node, answer_raw.size]='+[PandoraUtils.bytes_to_hex(src_node),\
-                            answer_raw.size].inspect
+                          #p '@@Search MK_Answer DIR-send [src_node, answer_raw.size]='+[PandoraUtils.bytes_to_hex(src_node),\
+                          #  answer_raw.size].inspect
                           sess.add_send_segment(PandoraNet::EC_News, true, answer_raw, \
                             PandoraNet::ECC_News_Answer)
                           direct_send = true
@@ -258,8 +258,8 @@ module PandoraUI
                       param2 = search_req[PandoraNet::MR_CrtTime]
                       param3 = answer_raw
 
-                      p '&&Search MK_Answer MASS-send [param1, answer_raw.size]='+[PandoraUtils.bytes_to_hex(param1), \
-                        answer_raw.size].inspect
+                      #p '&&Search MK_Answer MASS-send [param1, answer_raw.size]='+[PandoraUtils.bytes_to_hex(param1), \
+                      #  answer_raw.size].inspect
 
                       pool.add_mass_record(PandoraNet::MK_Answer, param1, param2, param3, nil, nil, \
                         nil, nil, nil, nil, @shed_models)
@@ -531,20 +531,20 @@ module PandoraUI
                             # Delete old arch paths
                             unzip_mask = File.join($pandora_base_dir, dir_in_zip+'*')
                             unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
-                            p 'unzip_paths1='+unzip_paths.inspect
+                            #p 'unzip_paths1='+unzip_paths.inspect
                             unzip_paths.each do |pathfilename|
-                              p 'Remove dir: '+pathfilename
+                              #p 'Remove dir: '+pathfilename
                               FileUtils.remove_dir(pathfilename) if File.directory?(pathfilename)
                             end
                             # Unzip arch
                             unzip_meth = 'lib'
                             res = PandoraUtils.unzip_via_lib(zip_local, $pandora_base_dir)
-                            p 'unzip_file1 res='+res.inspect
+                            #p 'unzip_file1 res='+res.inspect
                             if not res
                               PandoraUI.log_message(PandoraUI::LM_Trace, _('Was not unziped with method')+': lib')
                               unzip_meth = 'util'
                               res = PandoraUtils.unzip_via_util(zip_local, $pandora_base_dir)
-                              p 'unzip_file2 res='+res.inspect
+                              #p 'unzip_file2 res='+res.inspect
                               if not res
                                 PandoraUI.log_message(PandoraUI::LM_Warning, _('Was not unziped with method')+': util')
                               end
@@ -554,9 +554,9 @@ module PandoraUI
                               PandoraUI.log_message(PandoraUI::LM_Info, _('Arch is unzipped with method')+': '+unzip_meth)
                               #unzip_path = File.join($pandora_base_dir, 'Pandora-master')
                               unzip_path = nil
-                              p 'unzip_mask='+unzip_mask.inspect
+                              #p 'unzip_mask='+unzip_mask.inspect
                               unzip_paths = Dir.glob(unzip_mask, File::FNM_PATHNAME | File::FNM_CASEFOLD)
-                              p 'unzip_paths2='+unzip_paths.inspect
+                              #p 'unzip_paths2='+unzip_paths.inspect
                               unzip_paths.each do |pathfilename|
                                 if File.directory?(pathfilename)
                                   unzip_path = pathfilename
@@ -565,7 +565,7 @@ module PandoraUI
                               end
                               if unzip_path and Dir.exist?(unzip_path)
                                 begin
-                                  p 'Copy '+unzip_path+' to '+$pandora_app_dir
+                                  #p 'Copy '+unzip_path+' to '+$pandora_app_dir
                                   #FileUtils.copy_entry(unzip_path, $pandora_app_dir, true)
                                   FileUtils.cp_r(unzip_path+'/.', $pandora_app_dir)
                                   PandoraUI.log_message(PandoraUI::LM_Info, _('Files are updated'))
@@ -952,7 +952,7 @@ module PandoraUI
       when 'Create','Edit','Delete','Copy', 'Chat', 'Dialog', 'Opinion', \
       'Convert', 'Import', 'Export'
         if $gtk_is_active
-          p 'act_panobject()  treeview='+treeview.inspect
+          #p 'act_panobject()  treeview='+treeview.inspect
           if (not treeview) and (notebook.page >= 0)
             sw = notebook.get_nth_page(notebook.page)
             treeview = sw.children[0]
@@ -1021,10 +1021,10 @@ module PandoraUI
           :sex=>[123, '123', nil, [5, 1], Time.parse('26.05.1978'), [3, '2', 1], 'bbb', 456, :aaa]}
         #str = PandoraUtils.rubyobj_to_pson(val)
         str = PandoraUtils.hash_to_namepson(val, false, 3)
-        p 'wizard  [val, str.bytesize]='+[val, str.bytesize].inspect
+        #p 'wizard  [val, str.bytesize]='+[val, str.bytesize].inspect
         #val2, len = PandoraUtils.pson_to_rubyobj(str)
         val2, len = PandoraUtils.namepson_to_hash(str)
-        p '[val2, len]='+[val2, len].inspect
+        #p '[val2, len]='+[val2, len].inspect
         if $gtk_is_active
           PandoraGtk.show_log_bar(80)
         end

@@ -206,11 +206,11 @@ module PandoraGtk
       #self.signal_connect('response') do |widget, response|
       #  case response
       #    when Gtk::Dialog::RESPONSE_OK
-      #      p "OK"
+      #      #p "OK"
       #    when Gtk::Dialog::RESPONSE_CANCEL
-      #      p "Cancel"
+      #      #p "Cancel"
       #    when Gtk::Dialog::RESPONSE_CLOSE
-      #      p "Close"
+      #      #p "Close"
       #      dialog.destroy
       #  end
       #end
@@ -1972,7 +1972,7 @@ module PandoraGtk
           kind_list.each do |rec|
             ptype = rec[1]
             ptype.strip!
-            p '---ptype='+ptype.inspect
+            #p '---ptype='+ptype.inspect
             if PandoraModel.const_defined?(ptype)
               @panclasses << PandoraModel.const_get(ptype)
             end
@@ -2488,8 +2488,8 @@ module PandoraGtk
   # RU: Запускает загрузку картинки в файл
   def self.start_image_loading(filename, pixbuf_parent=nil, scale=nil, width=nil, height=nil)
     res = nil
-    p '--start_image_loading  [filename, pixbuf_parent, scale, width, height]='+\
-      [filename, pixbuf_parent, scale, width, height].inspect
+    #p '--start_image_loading  [filename, pixbuf_parent, scale, width, height]='+\
+    #  [filename, pixbuf_parent, scale, width, height].inspect
     filename = PandoraUtils.absolute_path(filename)
     if File.exist?(filename)
       if (scale.nil? or (scale==100)) and width.nil? and height.nil?
@@ -3414,7 +3414,7 @@ module PandoraGtk
               self.do_redo
               res = true
             #else
-            #  p event.keyval
+            #  #p event.keyval
           end
         elsif (event.keyval==Gdk::Keyval::GDK_Escape)
           @find_panel.hide if (@find_panel and (not @find_panel.destroyed?))
@@ -3727,7 +3727,7 @@ module PandoraGtk
             res[n] = remove_quotes(v.strip) if v and (v.size>0)
           end
         end
-        p 'detect_params[params, res]='+[params, res].inspect
+        #p 'detect_params[params, res]='+[params, res].inspect
         res
       end
 
@@ -3927,7 +3927,7 @@ module PandoraGtk
               i += 1
             elsif i1 and (c==close_brek)
               com = str[i1+1, i-i1-1]
-              p 'bbcode com='+com
+              #p 'bbcode com='+com
               if com and (com.size>0)
                 comu = nil
                 close = (com[0] == '/')
