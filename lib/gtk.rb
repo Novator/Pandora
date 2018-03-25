@@ -13741,7 +13741,15 @@ module PandoraGtk
       style = Gtk::Widget.default_style
       font = style.font_desc
       fs = font.size
-      fs = fs * Pango::SCALE_SMALL if fs
+      if @pango_small.nil?
+        if Pango.const_defined?('SCALE_SMALL')
+          @pango_small = Pango::SCALE_SMALL
+        else
+          @pango_small = 0.8333333333333
+        end
+      end
+      #p '----status_font  @pango_small='+@pango_small.inspect
+      fs = fs * @pango_small if fs
       font.size = fs if fs
       $status_font = font
     end
