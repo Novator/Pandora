@@ -1022,13 +1022,13 @@ module PandoraGtk
           false
         elsif (event.keyval>=65360) and (event.keyval<=65367)
           ctrl = (event.state.control_mask? or event.state.shift_mask?)
-          if event.keyval==65360 or (ctrl and event.keyval==65361)
+          if event.keyval==65360 or (ctrl and event.keyval==65361)  #Ctrl+Left, Ctrl+Home
             left_mon_btn.clicked
-          elsif event.keyval==65367 or (ctrl and event.keyval==65363)
+          elsif event.keyval==65367 or (ctrl and event.keyval==65363)  #Ctrl+Right, Ctrl+End
             right_mon_btn.clicked
-          elsif event.keyval==65365 or (ctrl and event.keyval==65362)
+          elsif event.keyval==65365 or (ctrl and event.keyval==65362)  #Ctrl+Up, Ctrl+PgUp
             left_year_btn.clicked
-          elsif event.keyval==65366 or (ctrl and event.keyval==65364)
+          elsif event.keyval==65366 or (ctrl and event.keyval==65364)  #Ctrl+Down, Ctrl+PgDown
             right_year_btn.clicked
           end
           false
@@ -10851,26 +10851,6 @@ module PandoraGtk
       #  #kind_btn.active?
       #end
 
-      #Сделать горячие клавиши:
-      #[CTRL + R], Ctrl + F5, Ctrl + Shift + R - Перезагрузить страницу
-      #[CTRL + L] Выделить УРЛ страницы
-      #[CTRL + N] Новое окно(не вкладка) - тоже что и Ctrl+T
-      #[SHIFT + ESC] (Дипетчер задач) Возможно, список текущих соединений
-      #[CTRL[+Alt] + 1] или [CTRL + 2] и т.д. - переключение между вкладками
-      #Alt+ <- / -> - Вперед/Назад
-      #Alt+Home - Домашняя страница (Профиль)
-      #Открыть файл — Ctrl + O
-      #Остановить — Esc
-      #Сохранить страницу как — Ctrl + S
-      #Найти далее — F3, Ctrl + G
-      #Найти на этой странице — Ctrl + F
-      #Отменить закрытие вкладки — Ctrl + Shift + T
-      #Перейти к предыдущей вкладке — Ctrl + Page Up
-      #Перейти к следующей вкладке — Ctrl + Page Down
-      #Журнал посещений — Ctrl + H
-      #Загрузки — Ctrl + J, Ctrl + Y
-      #Закладки — Ctrl + B, Ctrl + I
-
       local_btn = SafeCheckButton.new(_('locally'), true)
       local_btn.safe_signal_clicked do |widget|
         search_btn.clicked if local_btn.active?
@@ -14547,7 +14527,7 @@ module PandoraGtk
       ['Radar', :radar, 'Radar', '<control>R', :check],  #Gtk::Stock::GO_FORWARD
       ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
       ['>', nil, '_Wizards'],
-      ['>Cabinet', Gtk::Stock::HOME, 'Cabinet'],
+      ['>Cabinet', Gtk::Stock::HOME, 'Cabinet', '<control>B'],
       ['>Exchange', 'exchange:m', 'Exchange'],
       ['>Session', 'session:m', 'Sessions'],   #Gtk::Stock::JUSTIFY_FILL
       ['>Fisher', 'fish:m', 'Fishers'],
@@ -14638,6 +14618,25 @@ module PandoraGtk
 
     def mutex
       @mutex ||= Mutex.new
+    end
+
+    def next_or_prev_tab(step=nil, rotate=nil, num=nil)
+      nb = self.notebook
+      num ||= nb.n_pages
+      if num>0
+        n = nb.page
+        if n>=0
+          step ||= 1
+          n += step
+          if n<0
+            nb.page = num-1 if rotate
+          elsif n>=num
+            nb.page = 0 if rotate
+          else
+            nb.page = n
+          end
+        end
+      end
     end
 
     # Show main Gtk window
@@ -14923,43 +14922,60 @@ module PandoraGtk
         elsif event.state.shift_mask? \
         and (event.keyval == Gdk::Keyval::GDK_F11)
           PandoraGtk.full_screen_switch
+        elsif ((event.state.control_mask? or event.state.mod1_mask?) \
+        and (event.keyval>=Gdk::Keyval::GDK_0) and (event.keyval<=Gdk::Keyval::GDK_9))
+          nb = $window.notebook
+          num = nb.n_pages
+          if num>0
+            n = (event.keyval - Gdk::Keyval::GDK_1)
+            if (n>=0) and (n<num)
+              nb.page = n
+            else
+              nb.page = num-1
+            end
+          end
+        elsif ((event.state.control_mask? or event.state.mod1_mask?) \
+        and ((event.keyval==Gdk::Keyval::GDK_Tab) or (event.keyval==65361) \
+        or (event.keyval==65363) or (event.keyval==65362) or (event.keyval==65364) \
+        or (event.keyval==65365) or (event.keyval==65366) \
+        or (event.keyval==65360) or (event.keyval==65367))) #Home #End
+          nb = $window.notebook
+          num = nb.n_pages
+          if num>0
+            if (event.keyval==65360)
+              nb.page = 0
+            elsif (event.keyval==65367)
+              nb.page = num-1
+            else
+              rotate = (event.keyval==Gdk::Keyval::GDK_Tab)
+              step = 1
+              if (rotate and event.state.shift_mask?) \
+              or (event.keyval==65361) or (event.keyval==65362) or (event.keyval==65365)
+                step = -1
+              end
+              self.next_or_prev_tab(step, rotate, num)
+            end
+          end
         elsif event.state.control_mask?
           if [Gdk::Keyval::GDK_m, Gdk::Keyval::GDK_M, 1752, 1784].include?(event.keyval)
             $window.hide
-          elsif ((Gdk::Keyval::GDK_0..Gdk::Keyval::GDK_9).include?(event.keyval) \
-          or (event.keyval==Gdk::Keyval::GDK_Tab))
-            num = $window.notebook.n_pages
-            if num>0
-              if (event.keyval==Gdk::Keyval::GDK_Tab)
-                n = $window.notebook.page
-                if n>=0
-                  if event.state.shift_mask?
-                    n -= 1
-                  else
-                    n += 1
-                  end
-                  if n<0
-                    $window.notebook.page = num-1
-                  elsif n>=num
-                    $window.notebook.page = 0
-                  else
-                    $window.notebook.page = n
-                  end
-                end
-              else
-                n = (event.keyval - Gdk::Keyval::GDK_1)
-                if (n>=0) and (n<num)
-                  $window.notebook.page = n
-                else
-                  $window.notebook.page = num-1
-                end
-              end
-            end
+          #Сделать горячие клавиши:
+          #[CTRL + R], Ctrl + F5, Ctrl + Shift + R - Перезагрузить страницу
+          #[CTRL + L] Выделить УРЛ страницы
+          #[SHIFT + ESC] (Дипетчер задач) Возможно, список текущих соединений
+          #[CTRL[+Alt] + 1] или [CTRL + 2] и т.д. - переключение между вкладками
+          #Найти далее — F3, Ctrl + G
+          #Отменить закрытие вкладки — Ctrl + Shift + T
+          #Журнал посещений — Ctrl + H
+          #Загрузки — Ctrl + J, Ctrl + Y
+          #Закладки — Ctrl + B, Ctrl + I
           elsif [Gdk::Keyval::GDK_n, Gdk::Keyval::GDK_N].include?(event.keyval)
             continue = (not event.state.shift_mask?)
             PandoraNet.start_or_stop_hunt(continue)
           elsif [Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval)
             PandoraUI.do_menu_act('Close')
+          elsif [Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769].include?(event.keyval)
+            PandoraUI.do_menu_act('Cabinet')
           elsif [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
             curpage = nil
             if $window.notebook.n_pages>0
@@ -14972,9 +14988,13 @@ module PandoraGtk
               res = (res != nil)
             end
           else
+            #p event.keyval
             res = false
           end
+        elsif event.state.mod1_mask?  #Alt
+          #p event.keyval
         else
+          #p event.keyval
           res = false
         end
         res
