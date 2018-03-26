@@ -4830,15 +4830,10 @@ module PandoraGtk
     end
 
     def set_reply_message(mes_panhash=nil, mes=nil)
-      p '----set_reply_message   self, mes_panhash, mes='+[self, mes_panhash, mes].inspect
+      #p '----set_reply_message   self, mes_panhash, mes='+[self, mes_panhash, mes].inspect
       if @send_btn
         toolbar_box = @send_btn.parent
         cabinet = toolbar_box.parent.parent.parent
-        if @reply_box and @reply_box.destroyed?
-          cabinet.remove_widget_from_toolbar(@reply_box)
-          @reply_box = nil
-          @reply_mes = nil
-        end
         if mes_panhash
           mes_panhash = @reply_mes if (not mes_panhash.is_a?(String))
           if toolbar_box and mes_panhash.is_a?(String)
@@ -4861,8 +4856,8 @@ module PandoraGtk
               reply_box.show_all
             end
           end
-        else
-          cabinet.remove_widget_from_toolbar(reply_box)
+        elsif @reply_box
+          cabinet.remove_widget_from_toolbar(@reply_box) if (not @reply_box.destroyed?)
           @reply_box = nil
           @reply_mes = nil
         end
@@ -6881,6 +6876,7 @@ module PandoraGtk
           @vbox.show_all
           if (@def_widget and (not @def_widget.destroyed?))
             #focus = @def_widget
+            p '---matrix_is_changed  @def_widget='+@def_widget.inspect
             @def_widget.grab_focus
           end
         end
@@ -7471,7 +7467,10 @@ module PandoraGtk
   $dude_color = 'blue'
   $reply_color = '#808080'
   $sys_color = 'purple'
-  $tab_color = 'blue'
+
+  $dlg_unread_color = 'blue'
+  $chat_unread_color = '#951d82' #'purple'
+  $both_unread_color = '#F00000'
   $read_time = 1.5
   $last_page = nil
 
@@ -7615,10 +7614,14 @@ module PandoraGtk
 
     def grab_def_widget
       if @def_widget and (not @def_widget.destroyed?)
+        #p '--grab_def_widget  @def_widget='+@def_widget.inspect
         @def_widget.grab_focus
         #self.present
         GLib::Timeout.add(200) do
-          @def_widget.grab_focus if @def_widget and (not @def_widget.destroyed?)
+          #p '+++grab_def_widget200  @def_widget='+@def_widget.inspect
+          if @def_widget and (not @def_widget.destroyed?) #and @def_widget.visible?
+            @def_widget.grab_focus
+          end
           false
         end
       end
@@ -7653,7 +7656,7 @@ module PandoraGtk
     attr_accessor :room_id, :tree_view, :online_btn, :mic_btn, :webcam_btn, \
       :dlg_talkview, :chat_talkview, :area_send, :area_recv, :recv_media_pipeline, \
       :appsrcs, :session, :ximagesink, :parent_notebook, :cab_notebook, \
-      :read_thread, :recv_media_queue, :has_unread, :person_name, :captcha_entry, \
+      :read_thread, :recv_media_queue, :unread_state, :unread_chat, :person_name, :captcha_entry, \
       :sender_box, :toolbar_sw, :toolbar_box, :captcha_enter, :edit_sw, :main_hpaned, \
       :send_hpaned, :opt_btns, :cab_panhash, :session, \
       :bodywin, :fields, :obj_id, :edit, :property_box, :kind, :label_box, \
@@ -7794,7 +7797,7 @@ module PandoraGtk
 
     def hide_toolbar_btns(page=nil)
       @add_toolbar_btns.each do |btns|
-        if btns.is_a? Array
+        if btns.is_a?(Array)
           btns.each do |btn|
             btn.hide
           end
@@ -7804,11 +7807,14 @@ module PandoraGtk
 
     def show_toolbar_btns(page=nil)
       btns = @add_toolbar_btns[page]
-      if btns.is_a? Array
+      if btns.is_a?(Array)
         btns.each do |btn|
           btn.show_all
         end
       end
+      toolbar_box.queue_resize
+      toolbar_box.queue_draw
+      #toolbar_box.show
     end
 
     def add_btn_to_toolbar(stock=nil, title=nil, toggle=nil, page=nil)
@@ -7828,7 +7834,7 @@ module PandoraGtk
       btn = PandoraGtk.add_tool_btn(toolbar_box, stock, title, toggle) do |*args|
         yield(*args) if block_given?
       end
-      btns << btn if (not btns.nil?)
+      btns << btn if btns.is_a?(Array)
       btn
     end
 
@@ -8439,10 +8445,13 @@ module PandoraGtk
       #add_btn_to_toolbar(Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
     end
 
-    def grab_def_widget
-      page = cab_notebook.page
-      container = cab_notebook.get_nth_page(page)
-      container.grab_def_widget if container.is_a? CabViewport
+    def grab_cab_viewport(container=nil)
+      #p '==grab_cab_viewport'
+      if not container
+        page = cab_notebook.page
+        container = cab_notebook.get_nth_page(page)
+      end
+      container.grab_def_widget if container.is_a?(CabViewport)
     end
 
     def show_page(page=PandoraUI::CPI_Dialog, tab_signal=nil)
@@ -8874,6 +8883,11 @@ module PandoraGtk
             load_history($load_history_count, $sort_history_mode, chat_mode)
 
             container.add(main_hpaned)
+            if page==PandoraUI::CPI_Dialog
+              @dlg_edit_box = edit_box
+            else
+              @chat_edit_box = edit_box
+            end
             container.def_widget = edit_box
           when PandoraUI::CPI_Opinions
             pbox = PandoraGtk::PanobjScrolledWindow.new
@@ -8911,11 +8925,18 @@ module PandoraGtk
                 end
               end
             end
+          when PandoraUI::CPI_Dialog
+            container.def_widget = @dlg_edit_box
+          when PandoraUI::CPI_Chat
+            container.def_widget = @chat_edit_box
         end
       end
+      self.show_toolbar_btns(page)
       container.show_all
-      show_toolbar_btns(page)
-      grab_def_widget
+      self.grab_cab_viewport(container)
+      if (page==PandoraUI::CPI_Dialog) or (page==PandoraUI::CPI_Chat)
+        self.set_tab_state(nil, self)
+      end
     end
 
     # Create cabinet
@@ -8941,7 +8962,7 @@ module PandoraGtk
       @obj_id = an_id
       @edit = an_edit
 
-      @has_unread = false
+      @unread_state = 0
       @recv_media_queue = Array.new
       @recv_media_pipeline = Array.new
       @appsrcs = Array.new
@@ -9031,7 +9052,7 @@ module PandoraGtk
       toolbar_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_NEVER)
       toolbar_sw.border_width = 0
       #iw, iy = Gtk::IconSize.lookup(Gtk::IconSize::LARGE_TOOLBAR)
-      toolbar_box.show_all
+      @toolbar_box.show_all
       iw, iy = toolbar_box.size_request
       toolbar_sw.height_request = iy+6
       #toolbar_sw.add(toolbar_box)
@@ -9085,7 +9106,7 @@ module PandoraGtk
       end
       show_page(a_page)
 
-      GLib::Timeout.add(5) do
+      GLib::Timeout.add(40) do
         notebook.page = notebook.n_pages-1
         notebook.queue_resize
         notebook.queue_draw
@@ -9434,10 +9455,15 @@ module PandoraGtk
 
         save_mes_history(mes_panhash, mes)
 
-        talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
-        talkview.show_all
-
-        update_state(true) if notice
+        #talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
+        #talkview.show_all
+        if notice
+          if chat_mode
+            set_tab_state(2)
+          else
+            set_tab_state(1)
+          end
+        end
       end
     end
 
@@ -9789,12 +9815,57 @@ module PandoraGtk
 
     $statusicon = nil
 
+    def set_tab_color_with_tab_state(label)
+      color = nil
+      if @unread_state==1
+        color = Gdk::Color.parse($dlg_unread_color)
+      elsif @unread_state==2
+        color = Gdk::Color.parse($chat_unread_color)
+      elsif @unread_state==3
+        color = Gdk::Color.parse($both_unread_color)
+      end
+      @prev_color ||= nil
+      if @prev_color != color
+        @prev_color = color
+        label.modify_fg(Gtk::STATE_NORMAL, color)
+        label.modify_fg(Gtk::STATE_ACTIVE, color)
+        first_unread_cab = nil
+        if @unread_state>0
+          first_unread_cab = self
+        else
+          $window.notebook.children.each do |child|
+            if (child.is_a?(CabinetBox)) and (child.unread_state>0)
+              first_unread_cab = child
+              break
+            end
+          end
+        end
+        tab_widget = nil
+        if first_unread_cab
+          tab_widget = $window.notebook.get_tab_label(first_unread_cab)
+        end
+        if first_unread_cab and tab_widget
+          text = _('Dialog')
+          if first_unread_cab.unread_state == 2
+            text = _('Chat')
+          elsif first_unread_cab.unread_state == 3
+            text += ' '+_('Chat')
+          end
+          $statusicon.set_message(text+' ['+tab_widget.label.text+']')
+        else
+          $statusicon.set_message(nil)
+        end
+      end
+    end
+
     # Update tab color when received new data
     # RU: Обновляет цвет закладки при получении новых данных
-    def update_state(received=true, curpage=nil)
+    # dlg_chat_flag: 1 - set dialog, 2 - set chat, nil - reset current
+    def set_tab_state(dlg_chat_flag=nil, curpage=nil)
       tab_widget = $window.notebook.get_tab_label(self)
       if tab_widget
         curpage ||= $window.notebook.get_nth_page($window.notebook.page)
+        #p '--update_state  [dlg_chat_flag, curpage]='+[dlg_chat_flag, curpage].inspect
         # interrupt reading thread (if exists)
         if $last_page and $last_page.is_a?(CabinetBox) \
         and $last_page.read_thread and (curpage != $last_page)
@@ -9802,12 +9873,9 @@ module PandoraGtk
           $last_page.read_thread = nil
         end
         # set self dialog as unread
-        if received
-          @has_unread = true
-          color = Gdk::Color.parse($tab_color)
-          tab_widget.label.modify_fg(Gtk::STATE_NORMAL, color)
-          tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, color)
-          $statusicon.set_message(_('Message')+' ['+tab_widget.label.text+']')
+        if dlg_chat_flag
+          @unread_state |= dlg_chat_flag
+          set_tab_color_with_tab_state(tab_widget.label)
           PandoraUtils.play_mp3('message')
         end
         # run reading thread
@@ -9816,15 +9884,17 @@ module PandoraGtk
         and $window.has_toplevel_focus?
           #color = $window.modifier_style.text(Gtk::STATE_NORMAL)
           #curcolor = tab_widget.label.modifier_style.fg(Gtk::STATE_ACTIVE)
-          if @has_unread #curcolor and (color != curcolor)
+          if @unread_state>0 #curcolor and (color != curcolor)
             timer_setted = true
             self.read_thread = Thread.new do
               sleep(0.3)
-              if (not curpage.destroyed?) and curpage.dlg_talkview and \
-              (not curpage.dlg_talkview.destroyed?) and curpage.dlg_talkview.edit_box \
-              and (not curpage.dlg_talkview.edit_box.destroyed?)
-                curpage.dlg_talkview.edit_box.grab_focus if curpage.dlg_talkview.edit_box.visible?
-                curpage.dlg_talkview.after_addition(true)
+              if curpage and (not curpage.destroyed?) and curpage.is_a?(CabinetBox)
+              #and curpage.dlg_talkview and \
+              #(not curpage.dlg_talkview.destroyed?) and curpage.dlg_talkview.edit_box \
+              #and (not curpage.dlg_talkview.edit_box.destroyed?)
+                curpage.grab_cab_viewport
+                #curpage.dlg_talkview.edit_box.grab_focus if curpage.dlg_talkview.edit_box.visible?
+                #curpage.dlg_talkview.after_addition(true)
               end
               if $window.visible? and $window.has_toplevel_focus?
                 read_sec = $read_time-0.3
@@ -9834,20 +9904,20 @@ module PandoraGtk
                 if $window.visible? and $window.has_toplevel_focus?
                   if (not self.destroyed?) and (not tab_widget.destroyed?) \
                   and (not tab_widget.label.destroyed?)
-                    @has_unread = false
-                    tab_widget.label.modify_fg(Gtk::STATE_NORMAL, nil)
-                    tab_widget.label.modify_fg(Gtk::STATE_ACTIVE, nil)
-                    $statusicon.set_message(nil)
+                    if @active_page==PandoraUI::CPI_Dialog
+                      @unread_state &= (~1)
+                    elsif @active_page==PandoraUI::CPI_Chat
+                      @unread_state &= (~2)
+                    end
+                    set_tab_color_with_tab_state(tab_widget.label)
                   end
                 end
               end
               self.read_thread = nil
             end
+          else
+            curpage.grab_cab_viewport
           end
-        end
-        # set focus to edit_box
-        if curpage and curpage.is_a?(CabinetBox) #and curpage.edit_box
-          curpage.grab_def_widget
         end
       end
     end
@@ -10338,7 +10408,7 @@ module PandoraGtk
     # Initialize video receiver
     # RU: Инициализирует приёмщика видео
     def init_video_receiver(start=true, can_play=true, init=true)
-      p '--init_video_receiver [start, can_play, init]='+[start, can_play, init].inspect
+      #p '--init_video_receiver [start, can_play, init]='+[start, can_play, init].inspect
       if not start
         if ximagesink and PandoraUtils.elem_playing?(ximagesink)
           if can_play
@@ -10348,7 +10418,7 @@ module PandoraGtk
           end
         end
         if (not can_play) or (not ximagesink)
-          p 'Disconnect HANDLER !!!'
+          #p 'Disconnect HANDLER !!!'
           area_recv.set_expose_event(nil)
         end
       elsif (not self.destroyed?) and area_recv and (not area_recv.destroyed?)
@@ -13710,7 +13780,7 @@ module PandoraGtk
           if (page >= 0)
             cur_page = $window.notebook.get_nth_page(page)
             if cur_page.is_a?(PandoraGtk::CabinetBox)
-              cur_page.update_state(false, cur_page)
+              cur_page.set_tab_state(nil, cur_page)
             end
           else
             set_message(nil) if ($window.notebook.n_pages == 0)
@@ -14630,16 +14700,17 @@ module PandoraGtk
             $last_page.init_video_receiver(false)
           end
         end
-        if cur_page.is_a? PandoraGtk::CabinetBox
-          cur_page.update_state(false, cur_page)
+        if cur_page.is_a?(PandoraGtk::CabinetBox)
+          cur_page.set_tab_state(nil, cur_page)
           if cur_page.area_recv and (not cur_page.area_recv.destroyed?)
             cur_page.init_video_receiver(true, true, false)
           end
           if cur_page.area_send and (not cur_page.area_send.destroyed?)
             cur_page.init_video_sender(true, true)
           end
+        else
+          PandoraGtk.update_treeview_if_need(cur_page)
         end
-        PandoraGtk.update_treeview_if_need(cur_page)
         $last_page = cur_page
       end
 
@@ -14960,15 +15031,15 @@ module PandoraGtk
               #p 'read timer!!!' + $window.has_toplevel_focus?.inspect
               toplevel = ($window.has_toplevel_focus? or (PandoraUtils.os_family=='windows'))
               if toplevel and $window.visible?
-                $window.notebook.children.each do |child|
-                  if (child.is_a? CabinetBox) and (child.has_unread)
-                    #$window.notebook.page = $window.notebook.children.index(child)
-                    break
-                  end
-                end
+                #$window.notebook.children.each do |child|
+                #  if child.is_a?(CabinetBox) and (child.unread_state>0)
+                #    #$window.notebook.page = $window.notebook.children.index(child)
+                #    break
+                #  end
+                #end
                 curpage = $window.notebook.get_nth_page($window.notebook.page)
                 if curpage.is_a?(PandoraGtk::CabinetBox) and toplevel
-                  curpage.update_state(false, curpage)
+                  curpage.set_tab_state(nil, curpage)
                 else
                   PandoraGtk.update_treeview_if_need(curpage)
                 end

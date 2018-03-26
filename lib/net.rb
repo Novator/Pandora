@@ -2394,7 +2394,7 @@ module PandoraNet
           panhash = @skey[PandoraCrypto::KV_Creator]
           @dialog = PandoraUI.show_cabinet(panhash, self, conn_type, \
             nil, nil, PandoraUI::CPI_Dialog)
-          dialog.update_state(true)
+          dialog.set_tab_state(1)
           Thread.pass
           #PandoraUtils.play_mp3('online')
         end
@@ -3353,7 +3353,7 @@ module PandoraNet
                       id = sel[0][0] if sel and (sel.size > 0)
                       @dialog.add_mes_to_view(text, id, panstate, nil, creator, \
                         myname, time_now, created, nil, nil, panhash, reply)
-                      @dialog.show_page(PandoraUI::CPI_Dialog)
+                      #@dialog.show_page(PandoraUI::CPI_Dialog)
                     else
                       PandoraUI.log_message(PandoraUI::LM_Error, \
                         _('Private message came, but cannot open dialog'))
