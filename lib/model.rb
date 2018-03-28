@@ -45,6 +45,41 @@ module PandoraModel
   PSF_Opinion    = 128    # this is opinion
   PSF_Archive    = 256    # marked to delete
 
+  # Relation kinds
+  # RU: Виды связей
+  RK_Unknown  = 0
+  RK_Equal    = 1
+  RK_Similar  = 2
+  RK_Antipod  = 3
+  RK_PartOf   = 4
+  RK_Cause    = 5
+  RK_Follow   = 6
+  RK_Ignore   = 7
+  RK_CameFrom = 8
+  RK_AvatarFor  = 9
+  RK_InfoFor  = 10
+  RK_Descript = 11
+  RK_MinPublic = 235
+  RK_MaxPublic = 255
+
+  # Relation kind names
+  # RU: Имена видов связей
+  RelationNames = [
+    [RK_Unknown,    'Unknown'],
+    [RK_Equal,      'Equal'],
+    [RK_Similar,    'Similar'],
+    [RK_Antipod,    'Antipod'],
+    [RK_PartOf,     'Part of'],
+    [RK_Cause,      'Cause'],
+    [RK_Follow,     'Following'],
+    [RK_Ignore,     'Ignoring'],
+    [RK_CameFrom,   'Came from'],
+    [RK_AvatarFor,  'Avatar for'],
+    [RK_InfoFor,    'Info for'],
+    [RK_Descript,   'Descript'],
+    [RK_MinPublic,  'Public']
+  ]
+
   def self.hex_to_panhash(hexstr)
     res = PandoraUtils.hex_to_bytes(hexstr)
     res = PandoraUtils.fill_zeros_from_right(res, PanhashSize)
@@ -978,6 +1013,24 @@ module PandoraModel
     res
   end
 
+  def self.resize_pixbuf(pixbuf, width, height)
+    if pixbuf and (width or height)
+      w = pixbuf.width
+      h = pixbuf.height
+      if (w>0) and (h>0)
+        if not width
+          width = w*height/h
+        elsif not height
+          height = h*width/w
+        end
+        if ((w != width) or (h != height)) and (width>0) and (height>0)
+          pixbuf = pixbuf.scale(width, height)
+        end
+      end
+    end
+    pixbuf
+  end
+
   def self.scale_buf_to_size(pixbuf, icon_size, center=false)
     if pixbuf
       w = pixbuf.width
@@ -1100,37 +1153,6 @@ module PandoraModel
     res = res[0] if res
     res ||= 0
   end
-
-  # Relation kinds
-  # RU: Виды связей
-  RK_Unknown  = 0
-  RK_Equal    = 1
-  RK_Similar  = 2
-  RK_Antipod  = 3
-  RK_PartOf   = 4
-  RK_Cause    = 5
-  RK_Follow   = 6
-  RK_Ignore   = 7
-  RK_CameFrom = 8
-  RK_AvatarFor  = 9
-  RK_MinPublic = 235
-  RK_MaxPublic = 255
-
-  # Relation kind names
-  # RU: Имена видов связей
-  RelationNames = [
-    [RK_Unknown,    'Unknown'],
-    [RK_Equal,      'Equal'],
-    [RK_Similar,    'Similar'],
-    [RK_Antipod,    'Antipod'],
-    [RK_PartOf,     'Part of'],
-    [RK_Cause,      'Cause'],
-    [RK_Follow,     'Following'],
-    [RK_Ignore,     'Ignoring'],
-    [RK_CameFrom,   'Came from'],
-    [RK_AvatarFor,  'Avatar for'],
-    [RK_MinPublic,  'Public']
-  ]
 
   # Task Mode Names
   # RU: Имена режимов задачника

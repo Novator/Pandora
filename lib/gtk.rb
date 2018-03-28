@@ -3883,6 +3883,7 @@ module PandoraGtk
       end
 
       aformat ||= 'bbcode'
+      aformat = aformat.downcase
       if not ['markdown', 'bbcode', 'html', 'ruby', 'python', 'plain', 'xml', 'ini'].include?(aformat)
         aformat = 'bbcode' #if aformat=='auto' #need autodetect here
       end
@@ -3982,6 +3983,7 @@ module PandoraGtk
                           tv_tag = 'link'
                           link_text = str[0, i1]
                           link_url = nil
+                          tag_name = nil
                           if params and (params.size>0)
                             param_hash = detect_params(params)
                             link_url = param_hash['tag']
@@ -3993,6 +3995,7 @@ module PandoraGtk
                             tag_name, tag_params = generate_tag(param_hash)
                             p 'LINK [tag_name, tag_params]='+[tag_name, tag_params].inspect
                           end
+                          tag_name ||= tv_tag
                           link_url = link_text if not (link_url and (link_url.size>0))
                           if link_url and (link_url.size>0)
                             trunc_md5 = Digest::MD5.digest(link_url)[0, 10]
@@ -4008,7 +4011,7 @@ module PandoraGtk
                                 link_tag.foreground = '#000099'
                                 #link_tag.underline = Pango::AttrUnderline::SINGLE
                                 link_tag.link = link_url
-                                if tag_params.size>0
+                                if tag_params and (tag_params.size>0)
                                   PandoraGtk.apply_properties_to_glib_object(tag_params, link_tag)
                                 end
                                 tv_tag = link_id
@@ -4231,6 +4234,8 @@ module PandoraGtk
                                 def_proto = 'smile' if (comu=='EMOT') or (comu=='SMILE')
                                 comu = nil
                                 src = nil
+                                w2 = nil
+                                h2 = nil
                                 if params and (params.size>0)
                                   param_hash = detect_params(params)
                                   src = param_hash['tag']
@@ -4245,6 +4250,8 @@ module PandoraGtk
                                   title = param_hash['title']
                                   title ||= param_hash['caption']
                                   title ||= param_hash['name']
+                                  w2 = param_hash['width']
+                                  h2 = param_hash['height']
 
                                   if (not param_hash['style'])
                                     param_hash['style'] = Pango::FontDescription::STYLE_ITALIC
@@ -4274,7 +4281,12 @@ module PandoraGtk
                                   #end
                                   if pixbuf
                                     iter = dest_buf.end_iter
-                                    if pixbuf.is_a? Gdk::Pixbuf
+                                    if pixbuf.is_a?(Gdk::Pixbuf)
+                                      if w2 or h2
+                                        w2 = w2.to_i if w2
+                                        h2 = h2.to_i if h2
+                                        pixbuf = PandoraModel.resize_pixbuf(pixbuf, w2, h2)
+                                      end
                                       alt ||= src
                                       PandoraUtils.set_obj_property(pixbuf, 'tooltip', alt)
                                       p1 = iter.offset
@@ -8460,6 +8472,8 @@ module PandoraGtk
       if ((page == PandoraUI::CPI_Dialog) and (kind != PandoraModel::PK_Person))
         page = PandoraUI::CPI_Chat
       end
+      page = PandoraUI::CPI_Editor if (page<0) or (page>=cab_notebook.n_pages)
+      page = PandoraUI::CPI_Chat if (page == PandoraUI::CPI_Editor) and (not @has_blob)
       hide_toolbar_btns
       opt_btns.each do |opt_btn|
         opt_btn.safe_set_active(false) if (opt_btn.is_a?(SafeToggleToolButton))
@@ -8556,7 +8570,24 @@ module PandoraGtk
                 right_child = right_sw.child
                 case row_ind
                   when 0
-                    @info_wd ||= PandoraGtk::ChatTextView.new
+                    info_hash = PandoraModel.find_relation(cab_panhash, RK_InfoFor, true)
+                    if info_hash
+                      @info_wd ||= PandoraGtk::ChatTextView.new
+                      text = nil
+                      type = nil
+                      sel = PandoraModel.get_record_by_panhash(info_hash, nil, nil, nil, 'blob, type')
+                      @info_wd.buffer.text = ''
+                      if sel
+                        text = sel[0][0]
+                        type = sel[0][1]
+                      else
+                        text = _('Info')+': [url]pandora://'+PandoraUtils.bytes_to_hex(info_hash)+'[/url]'
+                      end
+                      type ||= 'bbcode'
+                      @info_wd.insert_taged_str_to_buffer(text, @info_wd.buffer, type)
+                    else
+                      @info_wd = nil
+                    end
                     cur_wd = @info_wd
                   when 1
                     #@desc_wd ||= PandoraGtk::ChatTextView.new
@@ -13456,6 +13487,19 @@ module PandoraGtk
     PandoraUI.set_status_field(PandoraUI::SF_FullScr, nil, nil, (not need_show))
   end
 
+  def self.show_page_of_current_cabinet(apage)
+    res = nil
+    page = $window.notebook.page
+    if (page >= 0)
+      cur_page = $window.notebook.get_nth_page(page)
+      if cur_page.is_a?(PandoraGtk::CabinetBox)
+        cur_page.show_page(apage)
+        res = true
+      end
+    end
+    res
+  end
+
   # Show log bar
   # RU: Показать log бар
   def self.show_log_bar(new_size=nil)
@@ -14521,13 +14565,13 @@ module PandoraGtk
       ['Box', 'box:m', 'Boxes'],
       ['Event', 'event:m', 'Events'],
       ['-', nil, '-'],
-      ['Authorize', :auth, 'Authorize', '<control>U', :check], #Gtk::Stock::DIALOG_AUTHENTICATION
+      ['Authorize', :auth, 'Authorize', '<control>K', :check], #Gtk::Stock::DIALOG_AUTHENTICATION
       ['Listen', :listen, 'Listen', '<control>L', :check],  #Gtk::Stock::CONNECT
       ['Hunt', :hunt, 'Hunt', '<control>N', :check],   #Gtk::Stock::REFRESH
       ['Radar', :radar, 'Radar', '<control>R', :check],  #Gtk::Stock::GO_FORWARD
       ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
       ['>', nil, '_Wizards'],
-      ['>Cabinet', Gtk::Stock::HOME, 'Cabinet', '<control>B'],
+      ['>Cabinet', Gtk::Stock::HOME, 'Cabinet'],
       ['>Exchange', 'exchange:m', 'Exchange'],
       ['>Session', 'session:m', 'Sessions'],   #Gtk::Stock::JUSTIFY_FILL
       ['>Fisher', 'fish:m', 'Fishers'],
@@ -14928,54 +14972,22 @@ module PandoraGtk
           num = nb.n_pages
           if num>0
             n = (event.keyval - Gdk::Keyval::GDK_1)
-            if (n>=0) and (n<num)
-              nb.page = n
-            else
-              nb.page = num-1
-            end
-          end
-        elsif ((event.state.control_mask? or event.state.mod1_mask?) \
-        and ((event.keyval==Gdk::Keyval::GDK_Tab) or (event.keyval==65361) \
-        or (event.keyval==65363) or (event.keyval==65362) or (event.keyval==65364) \
-        or (event.keyval==65365) or (event.keyval==65366) \
-        or (event.keyval==65360) or (event.keyval==65367))) #Home #End
-          nb = $window.notebook
-          num = nb.n_pages
-          if num>0
-            if (event.keyval==65360)
-              nb.page = 0
-            elsif (event.keyval==65367)
-              nb.page = num-1
-            else
-              rotate = (event.keyval==Gdk::Keyval::GDK_Tab)
-              step = 1
-              if (rotate and event.state.shift_mask?) \
-              or (event.keyval==65361) or (event.keyval==65362) or (event.keyval==65365)
-                step = -1
+            if (event.state.mod1_mask? or (not PandoraGtk.show_page_of_current_cabinet(n)))
+              if (n>=0) and (n<num)
+                nb.page = n
+              else
+                nb.page = num-1
               end
-              self.next_or_prev_tab(step, rotate, num)
             end
           end
         elsif event.state.control_mask?
           if [Gdk::Keyval::GDK_m, Gdk::Keyval::GDK_M, 1752, 1784].include?(event.keyval)
             $window.hide
-          #Сделать горячие клавиши:
-          #[CTRL + R], Ctrl + F5, Ctrl + Shift + R - Перезагрузить страницу
-          #[CTRL + L] Выделить УРЛ страницы
-          #[SHIFT + ESC] (Дипетчер задач) Возможно, список текущих соединений
-          #[CTRL[+Alt] + 1] или [CTRL + 2] и т.д. - переключение между вкладками
-          #Найти далее — F3, Ctrl + G
-          #Отменить закрытие вкладки — Ctrl + Shift + T
-          #Журнал посещений — Ctrl + H
-          #Загрузки — Ctrl + J, Ctrl + Y
-          #Закладки — Ctrl + B, Ctrl + I
           elsif [Gdk::Keyval::GDK_n, Gdk::Keyval::GDK_N].include?(event.keyval)
             continue = (not event.state.shift_mask?)
             PandoraNet.start_or_stop_hunt(continue)
           elsif [Gdk::Keyval::GDK_w, Gdk::Keyval::GDK_W, 1731, 1763].include?(event.keyval)
             PandoraUI.do_menu_act('Close')
-          elsif [Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769].include?(event.keyval)
-            PandoraUI.do_menu_act('Cabinet')
           elsif [Gdk::Keyval::GDK_d, Gdk::Keyval::GDK_D, 1751, 1783].include?(event.keyval)
             curpage = nil
             if $window.notebook.n_pages>0
@@ -14992,7 +15004,41 @@ module PandoraGtk
             res = false
           end
         elsif event.state.mod1_mask?  #Alt
-          #p event.keyval
+          #Сделать горячие клавиши:
+          #[CTRL + R], Ctrl + F5, Ctrl + Shift + R - Перезагрузить страницу
+          #[CTRL + L] Выделить УРЛ страницы
+          #[SHIFT + ESC] (Дипетчер задач) Возможно, список текущих соединений
+          #[CTRL[+Alt] + 1] или [CTRL + 2] и т.д. - переключение между вкладками
+          #Найти далее — F3, Ctrl + G
+          #Отменить закрытие вкладки — Ctrl + Shift + T
+          #Журнал посещений — Ctrl + H
+          #Загрузки — Ctrl + J, Ctrl + Y
+          #Закладки — Ctrl + B, Ctrl + I
+          if ((event.keyval==65361) \
+          or (event.keyval==65363) or (event.keyval==65362) or (event.keyval==65364) \
+          or (event.keyval==65365) or (event.keyval==65366) \
+          or (event.keyval==65360) or (event.keyval==65367)) #Home #End
+            nb = $window.notebook
+            num = nb.n_pages
+            if num>0
+              if (event.keyval==65360)
+                nb.page = 0
+              elsif (event.keyval==65367)
+                nb.page = num-1
+              else
+                step = 1
+                if (event.keyval==65361) or (event.keyval==65362) or (event.keyval==65365)
+                  step = -1
+                end
+                self.next_or_prev_tab(step, true, num)
+              end
+            end
+          elsif [Gdk::Keyval::GDK_z, Gdk::Keyval::GDK_Z, 1745, 1777].include?(event.keyval)
+            PandoraUI.do_menu_act('Cabinet')
+          else
+            p event.keyval
+            res = false
+          end
         else
           #p event.keyval
           res = false
