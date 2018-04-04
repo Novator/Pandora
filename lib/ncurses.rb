@@ -166,9 +166,9 @@ module PandoraCui
     end
   end
 
-  def self.set_status_field(index, text, enabled, toggle)
-    self.add_mes_to_log_win('set_status_field:  [index, _(text), enabled, toggle]='+\
-      [index, _(text), enabled, toggle].inspect, 1)
+  def self.set_status_field(index, text, enabled, toggle, stock)
+    self.add_mes_to_log_win('set_status_field:  [index, _(text), enabled, toggle, stock]='+\
+      [index, _(text), enabled, toggle, stock].inspect, 1)
     case index
       when PandoraUI::SF_Auth
         @auth_text = text

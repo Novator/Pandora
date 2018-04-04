@@ -424,7 +424,7 @@ module PandoraUI
           if (new_size == curr_size)
             http = nil
             step = 254
-            PandoraUI.set_status_field(PandoraUI::SF_Update, 'Ok', false)
+            PandoraUI.set_status_field(PandoraUI::SF_Update, 'Ok', false, nil, false)
             PandoraUtils.set_param('last_update', Time.now)
           else
             time = Time.now.to_i
@@ -486,7 +486,7 @@ module PandoraUI
         downloaded = false
         PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need check')
         sleep($update_lag) if not Thread.current[:all_step]
-        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Checking')
+        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Checking', nil, nil, false)
 
         main_script = File.join($pandora_app_dir, 'pandora.rb')
         curr_size = File.size?(main_script)
@@ -520,11 +520,11 @@ module PandoraUI
                         zip_size, step)
                       if http
                         PandoraUI.log_message(PandoraUI::LM_Info, _('Need update'))
-                        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need update')
+                        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need update', nil, nil, :warning)
                         Thread.stop
                         http = reconnect_if_need(http, time, zip_url)
                         if http
-                          PandoraUI.set_status_field(PandoraUI::SF_Update, 'Doing')
+                          PandoraUI.set_status_field(PandoraUI::SF_Update, 'Doing', nil, nil, false)
                           res = update_file(http, path, zip_local, host)
                           #res = true
                           if res
@@ -592,11 +592,11 @@ module PandoraUI
                         end
                       end
                     else
-                      PandoraUI.set_status_field(PandoraUI::SF_Update, 'Read only')
+                      PandoraUI.set_status_field(PandoraUI::SF_Update, 'Read only', nil, nil, :error)
                       PandoraUI.log_message(PandoraUI::LM_Warning, _('Zip is unrewritable'))
                     end
                   else
-                    PandoraUI.set_status_field(PandoraUI::SF_Update, 'Size error')
+                    PandoraUI.set_status_field(PandoraUI::SF_Update, 'Size error', nil, nil, :error)
                     PandoraUI.log_message(PandoraUI::LM_Warning, _('Zip size error'))
                   end
                 end
@@ -607,11 +607,11 @@ module PandoraUI
                   curr_size, step)
                 if http
                   PandoraUI.log_message(PandoraUI::LM_Info, _('Need update'))
-                  PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need update')
+                  PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need update', nil, nil, :warning)
                   Thread.stop
                   http = reconnect_if_need(http, time, url)
                   if http
-                    PandoraUI.set_status_field(PandoraUI::SF_Update, 'Doing')
+                    PandoraUI.set_status_field(PandoraUI::SF_Update, 'Doing', nil, nil, false)
                     # updating pandora.rb
                     downloaded = update_file(http, path, main_script, host)
                     # updating other files
@@ -638,7 +638,7 @@ module PandoraUI
             end
             if step == 255
               PandoraUtils.set_param('last_update', Time.now)
-              PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need restart')
+              PandoraUI.set_status_field(PandoraUI::SF_Update, 'Need restart', nil, nil, :info)
               Thread.stop
               #Kernel.abort('Pandora is updated. Run it again')
               puts 'Pandora is updated. Restarting..'
@@ -647,13 +647,13 @@ module PandoraUI
               $pool.close_all_session
               PandoraUtils.restart_app
             elsif step<250
-              PandoraUI.set_status_field(PandoraUI::SF_Update, 'Load error')
+              PandoraUI.set_status_field(PandoraUI::SF_Update, 'Load error', nil, nil, :error)
             end
           else
-            PandoraUI.set_status_field(PandoraUI::SF_Update, 'Read only')
+            PandoraUI.set_status_field(PandoraUI::SF_Update, 'Read only', nil, nil, :error)
           end
         else
-          PandoraUI.set_status_field(PandoraUI::SF_Update, 'Size error')
+          PandoraUI.set_status_field(PandoraUI::SF_Update, 'Size error', nil, nil, :error)
         end
         $download_thread = nil
       end
@@ -733,7 +733,7 @@ module PandoraUI
       ok_version = ((time_now - last_update.to_i) < update_period*24*3600)
       need_check = ((time_now - last_check.to_i) >= check_interval*3600)
       if ok_version
-        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Ok', need_check)
+        PandoraUI.set_status_field(PandoraUI::SF_Update, 'Ok', need_check, nil, false)
       elsif need_check
         PandoraUI.start_updating(false)
       end
@@ -853,11 +853,11 @@ module PandoraUI
 
   # Set properties of fiels in statusbar
   # RU: Задаёт свойства поля в статусбаре
-  def self.set_status_field(index, text, enabled=nil, toggle=nil)
+  def self.set_status_field(index, text, enabled=nil, toggle=nil, stock=nil)
     if $ncurses_is_active
-      PandoraCui.set_status_field(index, text, enabled, toggle)
+      PandoraCui.set_status_field(index, text, enabled, toggle, stock)
     elsif $gtk_is_active
-      $window.set_status_field(index, text, enabled, toggle) if $window \
+      $window.set_status_field(index, text, enabled, toggle, stock) if $window \
         and (not $window.destroyed?)
     end
   end

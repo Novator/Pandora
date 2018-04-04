@@ -4738,7 +4738,7 @@ module PandoraGtk
       @@crypt_buf ||= $window.get_icon_scale_buf('crypt', 'pan', 14)
       @@sign_buf ||= $window.get_icon_scale_buf('sign', 'pan', 14)
       #@@nosign_buf ||= $window.get_icon_scale_buf('nosign', 'pan', 14)
-      @@fail_buf ||= $window.get_preset_icon(Gtk::Stock::DIALOG_WARNING, nil, 14)
+      @@fail_buf ||= $window.get_preset_icon(:warning, nil, 14)
 
       super(*args)
       @mes_ids = Array.new
@@ -13949,18 +13949,30 @@ module PandoraGtk
     end
 
     def set_image(astock=nil)
-      if @image
-        @image.destroy
-        @image = nil
-      end
-      if astock
-        #$window.get_preset_iconset(astock)
-        $window.register_stock(astock)
-        @image = Gtk::Image.new(astock, Gtk::IconSize::MENU)
-        @image.set_padding(2, 2)
-        @image.set_alignment(0.5, 0.5)
-        @im_evbox.add(@image)
-        @hbox.pack_start(@im_evbox, true, true, 0)
+      astock = nil if astock.is_a?(FalseClass)
+      @stock ||= nil
+      if astock != @stock
+        @stock = astock
+        if astock
+          #$window.get_preset_iconset(astock)
+          $window.register_stock(astock)
+          if @image
+            @image.stock = astock
+          else
+            @image = Gtk::Image.new(astock, Gtk::IconSize::MENU)
+            @image.set_padding(2, 2)
+            @image.set_alignment(0.5, 0.5)
+            @im_evbox.add(@image)
+            if (not @im_evbox.parent)
+              @hbox.pack_start(@im_evbox, true, true, 0)
+              @hbox.reorder_child(@im_evbox, 0)
+            end
+          end
+          @im_evbox.show_all
+        elsif @image
+          @image.stock = nil
+          @im_evbox.hide_all
+        end
       end
     end
 
@@ -14115,7 +14127,7 @@ module PandoraGtk
 
     # Set properties of fiels in statusbar
     # RU: Задаёт свойства поля в статусбаре
-    def set_status_field(index, text, enabled=nil, toggle=nil)
+    def set_status_field(index, text, enabled=nil, toggle=nil, stock=nil)
       fld = $status_fields[index]
       if fld
         if text
@@ -14123,11 +14135,15 @@ module PandoraGtk
           str = _('Version') + ': ' + str if (index==PandoraUI::SF_Update)
           fld.set_label(str)
         end
-        fld.sensitive = enabled if (enabled != nil)
+        fld.sensitive = enabled if (not enabled.nil?)
         if (toggle != nil)
           fld.set_active(toggle)
           btn = $toggle_buttons[index]
           btn.safe_set_active(toggle) if btn and (btn.is_a? SafeToggleToolButton)
+        end
+        if (not stock.nil?) and fld.is_a?(GoodButton)
+          #p '--[text, stock]='+[text, stock].inspect
+          fld.set_image(stock)
         end
       end
     end
@@ -14351,10 +14367,16 @@ module PandoraGtk
       ind = [iname.to_s, preset]
       res = $iconsets[ind]
       if res.nil?
-        if (iname.is_a? Symbol)
-          res = Gtk::IconFactory.lookup_default(iname.to_s)
-          iname = iname.to_s if res.nil?
+        iname_sym = iname.to_sym
+        case iname_sym
+          when :info
+            iname_sym = Gtk::Stock::INFO
+          when :error
+            iname_sym = Gtk::Stock::DIALOG_ERROR
+          when :warning
+            iname_sym = Gtk::Stock::DIALOG_WARNING
         end
+        res = $window.style.lookup_icon_set(iname_sym) if $window and $window.style
         if res.nil? and preset
           buf = get_icon_buf(iname, preset)
           if buf
@@ -14384,7 +14406,7 @@ module PandoraGtk
       iconset = get_preset_iconset(iname, preset)
       if iconset
         icon_size ||= Gtk::IconSize::DIALOG
-        if icon_size.is_a? Integer
+        if icon_size.is_a?(Integer)
           icon_name = Gtk::IconSize.get_name(icon_size)
           icon_name ||= 'SIZE'+icon_size.to_s
           icon_res = Gtk::IconSize.from_name(icon_name)
@@ -14438,7 +14460,7 @@ module PandoraGtk
     # Register new stock by name of image preset
     # RU: Регистрирует новый stock по имени пресета иконки
     def register_stock(stock=:person, preset=nil, name=nil)
-      stock = stock.to_sym if stock.is_a? String
+      stock = stock.to_sym if stock.is_a?(String)
       stock_inf = nil
       preset ||= 'pan'
       suff = preset
@@ -14944,6 +14966,8 @@ module PandoraGtk
         end
         true
       end
+
+      $window.set_size_request(400, 300)
 
       $window.signal_connect('destroy') do |window|
         while (not $window.notebook.destroyed?) and ($window.notebook.children.count>0)

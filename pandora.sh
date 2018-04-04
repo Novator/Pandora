@@ -17,6 +17,8 @@
 #export LANG="ar_IR.UTF-8"
 #export LANG="ur_PA.UTF-8"
 
+#export LD_DEBUG=libs
+#export LD_LIBRARY_PATH=./ruby1.9.3:$LD_LIBRARY_PATH
 
 DIRFILE=`readlink -e "$0"`
 CURFILE=`basename "$DIRFILE"`
