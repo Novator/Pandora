@@ -4,15 +4,16 @@
 #(c) Michael Galyuk, Pandora, GNU GPLv2, free software
 
 # Advice: uncomment a line if Pandora cannot define your language correctly
+#export LANG="en_US.UTF-8"
+#export LANG="en_AU.UTF-8"
+#export LANG="ru_RU.UTF-8"
 #export LANG="de_DE.UTF-8"
 #export LANG="es_ES.UTF-8"
 #export LANG="fr_FR.UTF-8"
 #export LANG="it_IT.UTF-8"
+#export LANG="pt_BR.UTF-8"
 #export LANG="pl_PL.UTF-8"
-#export LANG="ru_RU.UTF-8"
 #export LANG="tr_TR.UTF-8"
-#export LANG="en_US.UTF-8"
-#export LANG="en_AU.UTF-8"
 #export LANG="ua_UA.UTF-8"
 #export LANG="ar_IR.UTF-8"
 #export LANG="ur_PA.UTF-8"
@@ -28,27 +29,26 @@ CURDIR=`dirname "$DIRFILE"`
 PARAMS="$1"
 RUBY=`which ruby2.3`
 if [ "$RUBY" = "" ]; then
-  RUBY=`which ruby2.0`
+  RUBY=`which ruby1.9.1`
   if [ "$RUBY" = "" ]; then
-    RUBY=`which ruby1.9.3`
+    RUBY=`ls -r1 /usr/bin/ruby2* 2>/dev/null | head -n 1`
     if [ "$RUBY" = "" ]; then
-      RUBY=`which ruby1.9.1`
+      RUBY=`ls -r1 /usr/bin/ruby1.9* 2>/dev/null | head -n 1`
       if [ "$RUBY" = "" ]; then
         RUBY=`which ruby`
       fi
     fi
   fi
 fi
+# Direct ruby setting if need
 if [ "$RUBY" = "" ]; then
+  RUBY="/usr/bin/ruby"
   if [ ! -f "$RUBY" ]; then
-    RUBY="/usr/bin/ruby"
+    RUBY="/usr/local/bin/ruby"
     if [ ! -f "$RUBY" ]; then
-      RUBY="/usr/local/bin/ruby"
-      if [ ! -f "$RUBY" ]; then
-        echo "Ruby is not found. Trying to install by \"$CURFILE init\""
-        RUBY="ruby"
-        PARAMS="init"
-      fi
+      echo "Ruby is not found. Trying to install by \"$CURFILE init\""
+      RUBY="ruby"
+      PARAMS="init"
     fi
   fi
 fi
