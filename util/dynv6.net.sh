@@ -49,3 +49,5 @@ $bin "http://dynv6.com/api/update?hostname=$hostname&ipv6=$current&token=$token"
 # save current address
 echo $current > $file
 
+#ssh -4 -g -f -N -R 127.0.0.1:5577:127.0.0.1:5577 user@robux.perm.ru
+

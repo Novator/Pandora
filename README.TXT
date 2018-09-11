@@ -58,7 +58,6 @@ Do commands in terminal:
 Download the installator and run it with administrator:
 
   https://github.com/Novator/Pandora/releases/download/0.6-alpha/pandora_setup.exe
-  http://sourceforge.net/projects/pandora-net/files/pandora_setup.exe (not recommended)
 
 
 5. INSTALLATION IN DEBIAN
@@ -66,7 +65,6 @@ Download the installator and run it with administrator:
 Download a package and install it with root:
 
   https://github.com/Novator/Pandora/releases/download/0.6-alpha/pandora-net_0.6-1ubuntu_all.deb
-  http://sourceforge.net/projects/pandora-net/files/pandora-net_0.6-1ubuntu_all.deb (not recommended)
   dpkg -i pandora-net_0.6-1ubuntu_all.deb
   apt-get -f -y install
 

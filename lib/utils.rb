@@ -1450,8 +1450,8 @@ module PandoraUtils
     res
   end
 
-  # Change file extention
-  # RU: Сменить расширение файла
+  # Create disk path
+  # RU: Создать дисковый путь
   def self.create_path(fn)
     dir = File.dirname(fn)
     if not File.directory?(dir)
