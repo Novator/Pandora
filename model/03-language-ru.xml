@@ -23,7 +23,7 @@
       <birth_place name.ru="Место рождения" />
       <father_name name.ru="Имя отца" />
       <mother_name name.ru="Имя матери" />
-      <sex name.ru="Пол" />
+      <gender name.ru="Пол" />
       <exit_day name.ru="Дата ухода" />
     </Person>
 

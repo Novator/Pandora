@@ -6195,7 +6195,7 @@ module PandoraGtk
 
   end
 
-  SexList = [[1, _('man')], [0, _('woman')], [2, _('gay')], [3, _('trans')], [4, _('lesbo')]]
+  GenderList = [[1, _('man')], [0, _('woman')], [2, _('gay')], [3, _('trans')], [4, _('lesbo')]]
 
   # Dialog with enter fields
   # RU: Диалог с полями ввода
@@ -6466,8 +6466,8 @@ module PandoraGtk
           when 'bytelist'
             if field[PandoraUtils::FI_Id]=='panhash_lang'
               entry = ByteListEntry.new(PandoraModel.lang_code_list, amodal)
-            elsif field[PandoraUtils::FI_Id]=='sex'
-              entry = ByteListEntry.new(SexList, amodal)
+            elsif field[PandoraUtils::FI_Id]=='gender'
+              entry = ByteListEntry.new(GenderList, amodal)
             elsif field[PandoraUtils::FI_Id]=='kind'
               entry = ByteListEntry.new(PandoraModel::RelationNames, amodal)
             elsif field[PandoraUtils::FI_Id]=='mode'

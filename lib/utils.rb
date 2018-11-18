@@ -38,7 +38,7 @@ module PandoraUtils
 
   # Version of GUI application
   # RU: Версия GUI приложения
-  PandoraVersion  = '0.74'
+  PandoraVersion  = '0.75'
 
   $detected_os_family = nil
 
@@ -1743,7 +1743,7 @@ module PandoraUtils
         #p 'ALTER TABLE '+table+' RENAME TO '+arch_table
         #p 'INSERT INTO '+table+' ('+new_fields+') SELECT '+new_fields+' FROM '+arch_table
         #INSERT INTO t1(val1,val2) SELECT t2.val1, t2.val2 FROM t2 WHERE t2.id = @id
-        #p 'ALTER TABLE OLD_COMPANY ADD COLUMN SEX char(1)'
+        #p 'ALTER TABLE OLD_COMPANY ADD COLUMN GENDER char(1)'
         sql = 'CREATE TABLE '+table+' '+tab_def
         begin
           res = db.execute(sql)
@@ -1808,7 +1808,7 @@ module PandoraUtils
     def recognize_filter(filter, sql_values, like_ex=nil)
       esc = false
       if filter.is_a? Hash
-        #Example: {:first_name => 'Michael', 'last_name' => 'Galyuk', :sex => 1}
+        #Example: {:first_name => 'Michael', 'last_name' => 'Galyuk', :gender => 1}
         seq = ''
         filter.each do |n,v|
           if n

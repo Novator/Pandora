@@ -13,6 +13,7 @@
 require_relative 'utils.rb'
 require_relative 'crypto.rb'
 require_relative 'net.rb'
+require_relative 'web.rb'
 
 def require_gtk
   if not $gtk_is_active
@@ -715,6 +716,17 @@ module PandoraUI
     scheduler_step = PandoraUtils.get_param('scheduler_step')
     init_scheduler(scheduler_step)
 
+    web_port = PandoraUtils.get_param('web_port')
+    if web_port and (web_port>0)
+      web_bind = PandoraUtils.get_param('web_bind')
+      web_bind ||= '127.0.0.1'
+      if PandoraWeb.activate_web(web_bind, web_port)
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Web-server is runned')+' ['+web_bind+']:'+web_port.inspect)
+      else
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Web-server fails')+' ['+web_bind+']:'+web_port.inspect)
+      end
+    end
+
     check_update = PandoraUtils.get_param('check_update')
     if (check_update==1) or (check_update==true)
       last_check = PandoraUtils.get_param('last_check')
@@ -969,7 +981,7 @@ module PandoraUI
               ider = panobject.ider
               filename = File.join($pandora_files_dir, ider+'.csv')
 
-              dialog = GoodFileChooserDialog.new(filename, false, nil, $window)
+              dialog = PandoraGtk::GoodFileChooserDialog.new(filename, false, nil, $window)
 
               filter = Gtk::FileFilter.new
               filter.name = _('Text tables')+' (*.csv,*.txt)'
@@ -991,7 +1003,7 @@ module PandoraUI
 
               if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
                 filename = dialog.filename
-                export_table(panobject, filename)
+                $window.export_table(panobject, filename)
               end
               dialog.destroy if not dialog.destroyed?
             else
@@ -1018,7 +1030,7 @@ module PandoraUI
       when 'Wizard'
         #val = ['Hello', 1500, 3.14, true, {:name=>'Michael', :family=>'Jackson'}]
         val = {:name=>'Michael', 'family'=>'Jackson', 'birthday'=>Time.parse('29.08.1958'), \
-          :sex=>[123, '123', nil, [5, 1], Time.parse('26.05.1978'), [3, '2', 1], 'bbb', 456, :aaa]}
+          :array=>[123, '123', nil, [5, 1], Time.parse('26.05.1978'), [3, '2', 1], 'bbb', 456, :aaa]}
         #str = PandoraUtils.rubyobj_to_pson(val)
         str = PandoraUtils.hash_to_namepson(val, false, 3)
         #p 'wizard  [val, str.bytesize]='+[val, str.bytesize].inspect

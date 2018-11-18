@@ -504,3 +504,5 @@ Biography=>Биография
 Messages are saved=>Сообщения сохранены
 Reply to=>Ответ на
 reply=>ответ
+Web-server is runned=>Веб-сервер запущен
+Web-server fails=>Веб-сервер сбойнул

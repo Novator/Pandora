@@ -24,7 +24,7 @@
       <birth_place name="Birth place" type="Panhash(City)" hash="4:coord(4)" />
       <father_name name="Father name" type="String" size="35" hash="5:hash(2)" />
       <mother_name name="Mother name" type="String" size="35" hash="6:hash(2)" />
-      <sex name="Sex" type="Byte" />
+      <gender name="Gender" type="Byte" />
       <exit_day name="Exit day" type="Date" />
     </Person>
 
@@ -406,6 +406,8 @@
     <udp_port desc="UDP port" type="Integer" section="net" setting="5577" />
     <udp_broadcast desc="Send UDP broadcast" type="Boolean" section="net" setting="true" />
     <listen_host desc="Listen host (any4,any6)" type="String" section="net" setting="any" />
+    <web_port desc="Web port" type="Integer" section="net" setting="0" />
+    <web_bind desc="Web bind" type="String" section="net" setting="127.0.0.1" />
     <incoming_addr desc="Incoming address" type="String" section="net" setting="" />
     <puzzle_bit_length desc="Puzzle length (bit)" type="Byte" section="net" setting="0" />
     <puzzle_sec_delay desc="Puzzle delay (sec)" type="Byte" section="net" setting="2" />

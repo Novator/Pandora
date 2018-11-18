@@ -88,6 +88,7 @@ Run these commands in terminal:
   brew install gtk+
   brew install sqlite3
   brew install Caskroom/cask/xquartz
+  brew install adwaita-icon-theme
   sudo gem update --system
   rvm implode
   \curl -sSL https://get.rvm.io | bash -s stable --ruby --autolibs=enable

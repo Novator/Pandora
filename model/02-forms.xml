@@ -9,7 +9,7 @@
       <birth_place pos="+0.10up" />
       <father_name pos="|up+0.3" />
       <mother_name pos="up+0.1" />
-      <sex pos="|left" view="bytelist" />
+      <gender pos="|left" view="bytelist" />
       <exit_day pos="left,hide" />
     </Person>
 

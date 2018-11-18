@@ -432,7 +432,6 @@ module PandoraCui
 
   def self.emulate_user_command(comm)
     self.user_command = comm
-    Ncurses.ungetch(32)
   end
 
   def self.show_status_bar(refresh=nil)
@@ -572,7 +571,7 @@ module PandoraCui
       mev = nil
       mev = Ncurses::MEVENT.new if Ncurses::MEVENT
       ch = 0
-      while ch
+      while (self.user_command != :close)
         ch = Ncurses.getch
         ch = ch.ord if ch.is_a?(String)
         comm = self.user_command
@@ -581,17 +580,19 @@ module PandoraCui
           if self.process_command(comm)
             break
           end
-        else
+        elsif ch
           stdscr.mvaddstr(Ncurses.lines - 3, 28, '1:'+ch.inspect+'  ')
           stdscr.refresh
           if (ch==27)
             sleep 0.2
             chg = Ncurses.getch
+            chg ||= 0
             chg = chg.ord if chg.is_a?(String)
             ch = (chg ^ (ch << 8))
             stdscr.mvaddstr(Ncurses.lines - 3, 35, '2:'+chg.inspect+'-  ')
             if ((chg==208) or (chg==209))
               chg = Ncurses.getch
+              chg ||= 0
               chg = chg.ord if chg.is_a?(String)
               stdscr.mvaddstr(Ncurses.lines - 3, 42, '3:'+chg.inspect+'-  ')
               ch = (chg ^ (ch << 8))
@@ -837,6 +838,7 @@ module PandoraCui
       Ncurses.start_color
       Ncurses.curs_set(0)
       Ncurses.nonl
+      Ncurses.timeout=1000
 
       stdscr = Ncurses.stdscr
       ##stdscr.intrflush(false)
