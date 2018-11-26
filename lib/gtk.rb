@@ -14526,8 +14526,8 @@ module PandoraGtk
 
     # Menu structure
     # RU: Структура меню
-    MENU_ITEMS =
-      [[nil, nil, '_World'],
+    MENU_ITEMS = [
+      [nil, nil, '_World'],
       ['Person', 'person', 'People', '<control>E'], #Gtk::Stock::ORIENTATION_PORTRAIT
       ['Community', 'community:m', 'Communities'],
       ['Blob', 'blob', 'Files', '<control>J'], #Gtk::Stock::FILE Gtk::Stock::HARDDISK

@@ -39,6 +39,7 @@ $pandora_util_dir = File.join($pandora_app_dir, 'util')        # Utilites direct
 $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')  # Database file
 $pandora_files_dir = File.join($pandora_app_dir, 'files')      # Files directory
 $pandora_doc_dir = File.join($pandora_app_dir, 'doc')          # Doc directory
+$pandora_web_dir = File.join($pandora_app_dir, 'web')          # Web files directory
 
 # Check Ruby version
 # RU: Проверить версию Ruby

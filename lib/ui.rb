@@ -717,13 +717,17 @@ module PandoraUI
     init_scheduler(scheduler_step)
 
     web_port = PandoraUtils.get_param('web_port')
-    if web_port and (web_port>0)
+    web_port ||= 0
+    web_ssl_port = PandoraUtils.get_param('web_ssl_port')
+    web_ssl_port ||= 0
+    if (web_port>0) or (web_ssl_port>0)
       web_bind = PandoraUtils.get_param('web_bind')
-      web_bind ||= '127.0.0.1'
-      if PandoraWeb.activate_web(web_bind, web_port)
-        PandoraUI.log_message(PandoraUI::LM_Info, _('Web-server is runned')+' ['+web_bind+']:'+web_port.inspect)
+      web_bind ||= '0.0.0.0'
+      ok_run = PandoraWeb.activate_web(web_bind, web_port, web_ssl_port)
+      if ok_run
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Web-server is runned')+' '+ok_run)
       else
-        PandoraUI.log_message(PandoraUI::LM_Info, _('Web-server fails')+' ['+web_bind+']:'+web_port.inspect)
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Web-server fails')+' '+[web_bind, web_port, web_ssl_port].inspect)
       end
     end
 

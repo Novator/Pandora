@@ -406,8 +406,9 @@
     <udp_port desc="UDP port" type="Integer" section="net" setting="5577" />
     <udp_broadcast desc="Send UDP broadcast" type="Boolean" section="net" setting="true" />
     <listen_host desc="Listen host (any4,any6)" type="String" section="net" setting="any" />
+    <web_bind desc="Web bind" type="String" section="net" setting="0.0.0.0" />
     <web_port desc="Web port" type="Integer" section="net" setting="0" />
-    <web_bind desc="Web bind" type="String" section="net" setting="127.0.0.1" />
+    <web_ssl_port desc="Web SSL port" type="Integer" section="net" setting="0" />
     <incoming_addr desc="Incoming address" type="String" section="net" setting="" />
     <puzzle_bit_length desc="Puzzle length (bit)" type="Byte" section="net" setting="0" />
     <puzzle_sec_delay desc="Puzzle delay (sec)" type="Byte" section="net" setting="2" />
