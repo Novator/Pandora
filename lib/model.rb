@@ -437,9 +437,9 @@ module PandoraModel
 
   # Read record by panhash
   # RU: Читает запись по панхэшу
-  def self.get_record_by_panhash(panhash, kind=nil, pson_with_kind=nil, models=nil, \
-  getfields=nil)
-    # pson_with_kind: nil - raw data, false - short panhash+pson, true - panhash+pson
+  def self.get_record_by_panhash(panhash, kind=nil, raw_with_kind=nil, models=nil, \
+  getfields=nil, ssf=nil)
+    # raw_with_kind: nil - array data, false - short panhash+binary, true - panhash+binary
     res = nil
     kind ||= PandoraUtils.kind_from_panhash(panhash)
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
@@ -451,12 +451,14 @@ module PandoraModel
           # Except private RSA keys
           filter[0] << ' AND cipher<>'+PandoraCrypto::KT_Priv.to_s
         end
-        pson = (pson_with_kind != nil)
+        #pson = (pson_with_kind != nil)
+        namevalues = (raw_with_kind != nil)
         #p '--get_record_by_panhash   filter, getfields='+[filter, getfields].inspect
-        sel = model.select(filter, pson, getfields, nil, 1)
+        #sel = model.select(filter, pson, getfields, nil, 1)
+        sel = model.select(filter, namevalues, getfields, nil, 1)
         #p sel
         if sel and (sel.size>0)
-          if pson
+          if namevalues
             #namesvalues = panobject.namesvalues
             #fields = model.matter_fields
             fields = model.clear_excess_fields(sel[0])
@@ -464,10 +466,10 @@ module PandoraModel
             # need get all fields (except: id, panhash, modified) + kind
             lang = PandoraUtils.lang_from_panhash(panhash)
             res = AsciiString.new
-            res << [kind].pack('C') if pson_with_kind
+            res << [kind].pack('C') if raw_with_kind
             res << [lang].pack('C')
             #p 'get_record_by_panhash|||  fields='+fields.inspect
-            res << PandoraUtils.hash_to_namepson(fields)
+            res << PandoraUtils.record_to_binary(fields, ssf)
           else
             res = sel
           end
@@ -498,9 +500,9 @@ module PandoraModel
 
   # Read record by sha1 or md5 hash
   # RU: Читает запись по sha1 или md5 хэшу
-  def self.get_record_by_hash(hash, kind=nil, pson_with_kind=nil, models=nil, \
-  getfields=nil)
-    # pson_with_kind: nil - raw data, false - short panhash+pson, true - panhash+pson
+  def self.get_record_by_hash(hash, kind=nil, raw_with_kind=nil, models=nil, \
+  getfields=nil, ssf=nil)
+    # raw_with_kind: nil - array data, false - short panhash+binary, true - panhash+binary
     res = nil
     kind ||= PK_Blob
     panobjectclass = PandoraModel.panobjectclass_by_kind(kind)
@@ -513,17 +515,17 @@ module PandoraModel
         else
           filter = {'sha1'=>hash}
         end
-        pson = (pson_with_kind != nil)
-        sel = model.select(filter, pson, getfields, nil, 1)
+        namevalues = (raw_with_kind != nil)
+        sel = model.select(filter, raw_with_kind, getfields, nil, 1)
         if sel and (sel.size>0)
-          if pson
+          if namevalues
             fields = model.clear_excess_fields(sel[0])
             lang = PandoraUtils.lang_from_panhash(panhash)
             res = AsciiString.new
-            res << [kind].pack('C') if pson_with_kind
+            res << [kind].pack('C') if raw_with_kind
             res << [lang].pack('C')
-            p 'get_record_by_hash|||  fields='+fields.inspect
-            res << PandoraUtils.hash_to_namepson(fields)
+            p '--get_record_by_hash  fields='+fields.inspect
+            res << PandoraUtils.record_to_binary(fields, ssf)
           else
             res = sel
           end
@@ -565,7 +567,7 @@ module PandoraModel
 
   # Save record
   # RU: Сохранить запись
-  def self.save_record(kind, lang, values, models=nil, require_panhash=nil, support=:auto)
+  def self.save_record(kind, lang, values, models=nil, require_panhash=nil, support=:auto, def_creator=nil)
     res = false
     inside_panhash = values['panhash']
     inside_panhash ||= values[:panhash]
@@ -655,6 +657,10 @@ module PandoraModel
         values['panstate'] = panstate
         values['panhash'] = panhash
         values['modified'] = Time.now.to_i
+        if def_creator and values['creator'].nil?
+          values['creator'] = def_creator
+          values['created'] ||= values['modified']
+        end
         res = model.update(values, nil, nil)
         str = '['+model.record_info(80, values, ': ')+']'
         if res
@@ -680,13 +686,13 @@ module PandoraModel
 
   # Save records from PSON array
   # RU: Сохранить записи из массива PSON
-  def self.save_records(records, models=nil, support=:auto)
+  def self.save_records(records, models=nil, support=:auto, ssf=nil)
     res = true
     if records.is_a? Array
       records.each do |record|
         kind = record[0].ord
         lang = record[1].ord
-        values = PandoraUtils.namepson_to_hash(record[2..-1])
+        values = PandoraUtils.binary_to_record(record[2..-1], ssf)
         if not PandoraModel.save_record(kind, lang, values, models, nil, support)
           PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot write a record')+' 2')
           res = false
@@ -774,8 +780,8 @@ module PandoraModel
             filter << ['modified >= ', from_time.to_i] if from_time
             filter << ['creator =', creator] if (creator.is_a? String)
             sel = model.select(filter, false, 'panhash', 'modified ASC')
-            p '--created_records kind='+kind.inspect+' sel='+sel.inspect
             if sel and (sel.size>0)
+              p '--created_records kind='+kind.inspect+' sel='+sel.inspect
               res ||= []
               sel.each do |row|
                 res << row[0]
@@ -1090,7 +1096,7 @@ module PandoraModel
   # Predefined Pandora's codes of languages and Alpha-2
   # RU: Предустановленные коды языков Пандоры и Альфа-2
   Languages = {0=>'all', 1=>'en', 2=>'zh', 3=>'es', 4=>'hi', 5=>'ru', 6=>'ar', \
-    7=>'fr', 8=>'pt', 9=>'ja', 10=>'de', 11=>'ko', 12=>'it', 13=>'be', 14=>'id', \
+    7=>'fr', 8=>'pt', 9=>'ja', 10=>'de', 11=>'ko', 12=>'it', 13=>'bn', 14=>'id', \
     15=>'ur', 16=>'te', 17=>'vi', 18=>'mr', 19=>'ta', 20=>'tr', 21=>'pl', 22=>'gu', \
     23=>'ms', 24=>'uk', 25=>'ma', 26=>'kn', 27=>'su', 28=>'my', 29=>'or', 30=>'fa', \
     31=>'pa', 32=>'ha', 33=>'tl', 34=>'ro', 35=>'nl', 36=>'sd', 37=>'th', 38=>'ps', \
@@ -1101,7 +1107,9 @@ module PandoraModel
     71=>'rw', 72=>'ki', 73=>'tk', 74=>'tt', 75=>'hy', 76=>'st', 77=>'kg', 78=>'sq', \
     79=>'ti', 80=>'mn', 81=>'ks', 82=>'da', 83=>'he', 84=>'sk', 85=>'fi', 86=>'af', \
     87=>'gn', 88=>'rn', 89=>'no', 90=>'tn', 91=>'tg', 92=>'ka', 93=>'lg', 94=>'wo', \
-    95=>'kr', 96=>'ts', 97=>'gl', 98=>'lo', 99=>'lt', 100=>'ee', 101=>'si'}
+    95=>'kr', 96=>'ts', 97=>'gl', 98=>'lo', 99=>'lt', 100=>'ee', 101=>'si', 102=>'tt', \
+    103=>'ba', 104=>'ce'}
+  #Maximum is 255!
 
   $lang_code_list = nil
 

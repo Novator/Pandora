@@ -1,0 +1,9 @@
+# Pandora language file EN=>VI
+# See full list of phrases in "ru.txt" file
+_Business=>Kinh doanh
+_Node=>Nút
+_Region=>Khu vực
+_World=>Thế giới
+People=>Những người
+Communities=>Cộng đồng
+Files=>Các tập tin

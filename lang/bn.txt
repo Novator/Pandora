@@ -1,0 +1,9 @@
+# Pandora language file EN=>BN
+# See full list of phrases in "ru.txt" file
+_Business=>ব্যবসায়
+_Node=>নোড
+_Region=>এলাকা
+_World=>বিশ্ব
+People=>সম্প্রদায়
+Communities=>সম্প্রদায়গুলি
+Files=>নথি পত্র

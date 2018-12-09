@@ -30,6 +30,8 @@ module PandoraNet
   DefTcpPort = 5577
   DefUdpPort = 5577
 
+  ProtoLenSize = 2
+
   CommSize     = 7
   CommExtSize  = 10
   SegNAttrSize = 8

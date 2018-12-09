@@ -1,0 +1,9 @@
+# Pandora language file EN=>ID
+# See full list of phrases in "ru.txt" file
+_Business=>_Bisnis
+_Node=>_Node
+_Region=>_Wilayah
+_World=>_Dunia
+People=>Orang
+Communities=>Komunitas
+Files=>Arsip

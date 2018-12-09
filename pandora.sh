@@ -127,6 +127,10 @@ case "$PARAMS" in
     ;;
   screen|--screen|-s)
     cd "$CURDIR"
+    RUBY2=`which ruby2.4`
+    if [ "$RUBY2" != "" ]; then
+      RUBY=$RUBY2
+    fi
     SCREEN=`which screen`
     if [ "$SCREEN" = "" ]; then
       $RUBY ./pandora.rb --cui

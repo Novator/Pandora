@@ -1,0 +1,9 @@
+# Pandora language file EN=>TE
+# See full list of phrases in "ru.txt" file
+_Business=>Vyāpāraṁ
+_Node=>Nōḍ
+_Region=>Prāntaṁ
+_World=>Prapan̄ca
+People=>Pīpul
+Communities=>Kamyūniṭīlu
+Files=>Phaiḷlu

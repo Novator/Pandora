@@ -909,9 +909,9 @@ module PandoraCrypto
 
   # Pack method of data before sign
   # RU: Метод упаковки данных перед подписанием
-  PSM_Pson   = 1
-  PSM_Json   = 2
-  PSM_Xml    = 3
+  #PSM_Pson   = 1
+  #PSM_Json   = 2
+  #PSM_Xml    = 3
   # Notary purpose flag, just for certification, it's not for working sign
   # RU: Нотариальный флаг, только для сертификации, но не для рабочей подписи
   PSP_Notary = 8
@@ -968,7 +968,8 @@ module PandoraCrypto
           key_hash = key[KV_Panhash]
           creator = key[KV_Creator]
           trust = PandoraModel.transform_trust(trust)
-          pack ||= PSM_Pson
+          #pack ||= PSM_Pson
+          pack ||= PandoraUtils::SSF_Pson
           pack = (pack | PSP_Notary) if notary
           resolve_flag = include_depth_to_resolve_flag(depth)
           pack = (pack | resolve_flag)

@@ -30,6 +30,8 @@ module PandoraGtk
   include PandoraUtils
   include PandoraModel
 
+  PopUpKeyval = 65383
+
   # Middle width of num char in pixels
   # RU: Средняя ширина цифрового символа в пикселах
   def self.num_char_width
@@ -82,13 +84,14 @@ module PandoraGtk
   # RU: Хороший и простой MessageDialog
   class GoodMessageDialog < Gtk::MessageDialog
 
-    def initialize(a_mes, a_title=nil, a_stock=nil, an_icon=nil)
+    def initialize(a_mes, a_title=nil, a_stock=nil, an_icon=nil, buttons=nil)
       a_stock = Gtk::MessageDialog::WARNING if a_stock==:warning
       a_stock = Gtk::MessageDialog::QUESTION if a_stock==:question
       a_stock = Gtk::MessageDialog::ERROR if a_stock==:error
       a_stock ||= Gtk::MessageDialog::INFO
+      buttons ||= Gtk::MessageDialog::BUTTONS_OK_CANCEL
       super($window, Gtk::Dialog::MODAL | Gtk::Dialog::DESTROY_WITH_PARENT, \
-        a_stock, Gtk::MessageDialog::BUTTONS_OK_CANCEL, a_mes)
+        a_stock, buttons, a_mes)
       a_title ||= 'Note'
       self.title = _(a_title)
       self.default_response = Gtk::Dialog::RESPONSE_OK
@@ -2020,15 +2023,18 @@ module PandoraGtk
         Gtk::STATE_NORMAL, Gtk::IconSize::LARGE_TOOLBAR)
       dialog.icon = anicon
       last_dir = nil
-      last_dirs.each do |dn|
-        if Dir.exists?(dn)
-          begin
-            dialog.add_shortcut_folder(dn)
-          rescue
+      if last_dirs
+        last_dirs.each do |dn|
+          if Dir.exists?(dn)
+            begin
+              dialog.add_shortcut_folder(dn)
+            rescue
+            end
+            last_dir ||= dn
           end
-          last_dir ||= dn
         end
       end
+
       last_dir ||= $pandora_files_dir
 
       dialog.signal_connect('key-press-event') do |widget, event|
@@ -8008,12 +8014,12 @@ module PandoraGtk
             if nodes and (nodes.size>0)
               nodes.each do |nodehash|
                 $pool.init_session(nil, nodehash, 0, self, nil, \
-                  persons, keys, nil, PandoraNet::CM_Captcha)
+                  persons, keys, nil, 0, PandoraNet::CM_Captcha)
               end
             elsif persons
               persons.each do |person|
                 $pool.init_session(nil, nil, 0, self, nil, \
-                  person, keys, nil, PandoraNet::CM_Captcha)
+                  person, keys, nil, 0, PandoraNet::CM_Captcha)
               end
             end
           else
@@ -8218,7 +8224,7 @@ module PandoraGtk
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::SELECT_FONT) do
         dialog = Gtk::FontSelectionDialog.new
         dialog.font_name = @selected_font
-        #dialog.preview_text = 'P2P planetary network Pandora'
+        #dialog.preview_text = 'P2P social network Pandora'
         if dialog.run == Gtk::Dialog::RESPONSE_OK
           @selected_font = dialog.font_name
           desc = Pango::FontDescription.new(@selected_font)
@@ -11401,7 +11407,7 @@ module PandoraGtk
 
       list_tree.add_events(Gdk::Event::BUTTON_PRESS_MASK)
       list_tree.signal_connect('button-press-event') do |widget, event|
-        if (event.button == 3)
+        if ((event.button == 3) or ((event.button == 1) and PandoraGtk.is_ctrl_shift_alt?(true)))
           menu.popup(nil, nil, event.button, event.time)
         end
       end
@@ -11424,6 +11430,8 @@ module PandoraGtk
           else
             res = false
           end
+        elsif event.keyval==PopUpKeyval
+          menu.popup(nil, nil, 3, 0)
         else
           res = false
         end
@@ -11733,13 +11741,27 @@ module PandoraGtk
       list_tree.append_column(column)
 
       renderer = Gtk::CellRendererText.new
-      column = Gtk::TreeViewColumn.new(_('English'), renderer, 'text' => 1)
-      column.resizable = true
-      column.reorderable = true
-      column.clickable = true
+      renderer.editable = true
+      renderer.editable_set = false
+      #renderer.background = '#BBBBBB'
+      column2 = Gtk::TreeViewColumn.new(_('English'), renderer, 'text' => 1)
+      column2.resizable = true
+      column2.reorderable = true
+      column2.clickable = true
       #column.fixed_width = 200
-      column.set_sort_column_id(1)
-      list_tree.append_column(column)
+      column2.set_sort_column_id(1)
+
+      column2.set_cell_data_func(renderer) do |tvc, renderer, model, iter|
+        color = '#D1D1D1'
+        if model.iter_is_valid?(iter) and iter and iter.path
+          row_ind = iter.path.indices[0]
+          color = '#E1E1E1' if (row_ind % 2)==0
+        end
+        renderer.background = color
+        #renderer.text = val
+      end
+
+      list_tree.append_column(column2)
 
       renderer = Gtk::CellRendererText.new
       renderer.editable = true
@@ -11749,16 +11771,12 @@ module PandoraGtk
         if path_str and (path_str.size>0)
           iter = list_tree.model.get_iter(path_str)
           if iter
-            value = iter[2]
-            #iter.set_value(2, value)
-            #ren.text = value
-            #editable.truncate_multiline=(val)
-            editable.text = value
+            value = editable.text
+            editable.text = iter[1] if (value.nil? or (value == ''))
           end
         end
         false
       end
-
       renderer.signal_connect('edited') do |ren, path_str, value|
         if path_str and (path_str.size>0)
           iter = list_tree.model.get_iter(path_str)
@@ -11769,16 +11787,23 @@ module PandoraGtk
         end
         false
       end
-      column = Gtk::TreeViewColumn.new(_('Current')+'('+$lang+')', renderer, \
-        'text' => 2)
-      column.resizable = true
-      column.reorderable = true
-      column.clickable = true
-      column.set_sort_column_id(2)
-      list_tree.append_column(column)
+      column3 = Gtk::TreeViewColumn.new(_('Enter translation to')+ \
+        ' ['+$lang+'] '+_('language'), renderer, 'text' => 2)
+      column3.resizable = true
+      column3.reorderable = true
+      column3.clickable = true
+      column3.set_sort_column_id(2)
+      list_tree.append_column(column3)
 
-      list_tree.signal_connect('row_activated') do |tree_view, path, column|
-        # download and go to record
+      list_tree.events |= Gdk::Event::BUTTON_PRESS_MASK
+      list_tree.signal_connect('button-press-event') do |tv, event|
+        res = false
+        path, column, cell_x, cell_y = list_tree.get_path_at_pos(event.x, event.y)
+        if path and (column == column3)
+          list_tree.set_cursor(path, column, true)
+          res = true
+        end
+        res
       end
 
       list_sw.add(list_tree)
@@ -12287,7 +12312,7 @@ module PandoraGtk
                 filter[0] << ' AND '+del_fil
               end
             end
-            p 'select filter[sql,values]='+filter.inspect
+            p 'update_treeview: select filter[sql,values]='+filter.inspect
             sel = panobject.select(filter, false, nil, panobject.sort)
             if sel
               treeview.sel = sel
@@ -12781,9 +12806,13 @@ module PandoraGtk
 
     hbox = Gtk::HBox.new
 
-    PandoraGtk.add_tool_btn(hbox, Gtk::Stock::ADD, 'Create') do |widget|  #:NEW
+    #PandoraGtk.add_tool_btn(hbox, Gtk::Stock::ADD, 'Create') do |widget|  #:NEW
+    menu = Gtk::Menu.new
+    btn = PandoraGtk.add_tool_btn(hbox, Gtk::Stock::ADD, 'Create', 0) do
       PandoraUI.do_menu_act('Create', treeview)
     end
+    btn.menu = menu
+
     chat_stock = :chat
     chat_item = 'Chat'
     if (panobject.is_a? PandoraModel::Person)
@@ -12875,7 +12904,7 @@ module PandoraGtk
       treeview.grab_focus
     end
 
-    menu = Gtk::Menu.new
+    #menu = Gtk::Menu.new
     menu.append(create_menu_item(['Create', Gtk::Stock::ADD, _('Create'), 'Insert'], treeview))  #:NEW
     menu.append(create_menu_item(['Edit', Gtk::Stock::EDIT.to_s+edit_opt, _('Edit'), 'Return'], treeview))
     menu.append(create_menu_item(['Delete', Gtk::Stock::DELETE, _('Delete'), 'Delete'], treeview))
@@ -12897,8 +12926,8 @@ module PandoraGtk
 
     treeview.add_events(Gdk::Event::BUTTON_PRESS_MASK)
     treeview.signal_connect('button-press-event') do |widget, event|
-      if (event.button == 3)
-        menu.popup(nil, nil, event.button, event.time)
+      if ((event.button == 3) or ((event.button == 1) and PandoraGtk.is_ctrl_shift_alt?(true)))
+        menu.popup(nil, nil, 3, event.time)
       end
     end
 
@@ -12921,6 +12950,8 @@ module PandoraGtk
         else
           res = false
         end
+      elsif event.keyval==PopUpKeyval
+        menu.popup(nil, nil, 3, 0)
       else
         res = false
       end
@@ -13197,7 +13228,7 @@ module PandoraGtk
     dlg.skip_taskbar_hint = true
     dlg.authors = ['© '+_('Michael Galyuk')+' <robux@mail.ru>']
     dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
-    dlg.comments = _('P2P planetary network')
+    dlg.comments = _('P2P social network')
     dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
     gpl_text = nil
     begin
@@ -13925,6 +13956,14 @@ module PandoraGtk
       @lab_evbox.signal_connect('button-release-event') { |*args| @release_event.call(*args) }
     end
 
+    def set_bg_color(color_str)
+      color = nil
+      color = Gdk::Color.parse(color_str) if color_str
+      self.modify_bg(Gtk::STATE_NORMAL, color)
+      @im_evbox.modify_bg(Gtk::STATE_NORMAL, color)
+      @lab_evbox.modify_bg(Gtk::STATE_NORMAL, color)
+    end
+
     def do_on_click
       @proc_on_click.call
     end
@@ -14106,7 +14145,7 @@ module PandoraGtk
 
     # Add field to statusbar
     # RU: Добавляет поле в статусбар
-    def add_status_field(index, text, tooltip=nil, stock=nil, toggle=nil, separ_pos=nil)
+    def add_status_field(index, text, tooltip=nil, stock=nil, toggle=nil, separ_pos=nil, color=nil)
       separ_pos ||= 1
       if (separ_pos & 1)>0
         $statusbar.pack_start(Gtk::SeparatorToolItem.new, false, false, 0)
@@ -14118,6 +14157,7 @@ module PandoraGtk
         yield(*args) if block_given?
       end
       btn.set_active(toggle) if not toggle.nil?
+      btn.set_bg_color(color) if color
       $statusbar.pack_start(btn, false, false, 0)
       $status_fields[index] = btn
       if (separ_pos & 2)>0
@@ -14485,43 +14525,156 @@ module PandoraGtk
       stock_inf
     end
 
+    # Import file to table
+    # RU: Загрузить файл в таблицу
+    def import_table(panobject, filename=nil)
+      res = nil
+      if File.exist?(filename)
+        creator = PandoraCrypto.current_user_or_key(true)
+        separ = '|'
+        def_flds = panobject.def_fields
+        IO.foreach(filename) do |line|
+          if (line.is_a? String) and (line.size>0)
+            #p 'FIX_LINE:'+line
+            values = Hash.new
+            fix_flds = line.split(separ)
+            if fix_flds.is_a?(Array) and (fix_flds.size>0)
+              fix_flds.each do |fix_fld|
+                if fix_fld.is_a?(String) and (fix_fld.size>0)
+                  #p 'Fix_Fld:'+fix_fld
+                  i = fix_fld.index('=')
+                  if i and (i>0)
+                    fix = fix_fld[0, i].chomp
+                    if fix and (fix.size>0)
+                      fd = panobject.class.field_des_by_fix(fix, def_flds)
+                      if fd
+                        val = fix_fld[i+1..-1]
+                        #values[fd[FI_Name]] = val
+                        values[fd[FI_Id]] = val
+                      else
+                        puts 'Field with FIX_ID='+fix+' is not found'
+                      end
+                    end
+                  end
+                end
+              end
+            end
+            if values.size>0
+              p 'SAVE FIX REC: '+values.inspect
+              res = PandoraModel.save_record(panobject.kind, 0, values, nil, nil, :yes, creator)
+              if res
+                #p 'Saved'
+              else
+                p 'Not saved'
+              end
+            else
+              p 'Empty FIX REC!'
+            end
+          end
+        end
+        res = true
+      end
+      res
+    end
+
     # Export table to file
     # RU: Выгрузить таблицу в файл
     def export_table(panobject, filename=nil)
-
+      res = nil
       ider = panobject.ider
-      separ = '|'
+      #separ = '|'
 
-      File.open(filename, 'w') do |file|
-        file.puts('# Export table ['+ider+']')
-        file.puts('# Code page: UTF-8')
+      #File.open(filename, 'w') do |file|
+      #  file.puts('# Export table ['+ider+']')
+      #  file.puts('# Code page: UTF-8')
 
-        tab_flds = panobject.tab_fields
-        #def_flds = panobject.def_fields
-        #id = df[PandoraUtils::FI_Id]
-        #tab_ind = tab_flds.index{ |tf| tf[0] == id }
-        fields = tab_flds.collect{|tf| tf[0]}
-        fields = fields.join('|')
-        file.puts('# Fields: '+fields)
+      #  tab_flds = panobject.tab_fields
+      #  #def_flds = panobject.def_fields
+      #  #id = df[PandoraUtils::FI_Id]
+      #  #tab_ind = tab_flds.index{ |tf| tf[0] == id }
+      #  fields = tab_flds.collect{|tf| tf[0]}
+      #  fields = fields.join('|')
+      #  file.puts('# Fields: '+fields)
 
-        sel = panobject.select(nil, false, nil, panobject.sort)
-        sel.each do |row|
-          line = ''
-          row.each_with_index do |cell,i|
-            line += separ if i>0
-            if cell
-              begin
-                #line += '"' + cell.to_s + '"' if cell
-                line += cell.to_s
-              rescue
+      #  sel = panobject.select(nil, false, nil, panobject.sort)
+      #  sel.each do |row|
+      #    line = ''
+      #    row.each_with_index do |cell,i|
+      #      line += separ if i>0
+      #      if cell
+      #        begin
+      #          #line += '"' + cell.to_s + '"' if cell
+      #          line += cell.to_s
+      #        rescue
+
+      ext = File.extname(filename)
+      if ext and (['.csv','.txt'].include? ext.downcase)
+        separ = '|'
+        File.open(filename, 'w') do |file|
+          file.puts('# Export table ['+ider+']')
+          file.puts('# Code page: UTF-8')
+
+          tab_flds = panobject.tab_fields
+          #def_flds = panobject.def_fields
+          #id = df[PandoraUtils::FI_Id]
+          #tab_ind = tab_flds.index{ |tf| tf[0] == id }
+          fields = tab_flds.collect{|tf| tf[0]}
+          fields = fields.join('|')
+          file.puts('# Fields: '+fields)
+
+          sel = panobject.select(nil, false, nil, panobject.sort)
+          sel.each do |row|
+            line = ''
+            formfields = panobject.get_fields_as_view(row)
+            formfields.each_with_index do |field,i|
+              line += separ if i>0
+              val = field[FI_Value]
+              if val
+                begin
+                  #line += '"' + cell.to_s + '"' if cell
+                 line += val.to_s
+                rescue
+                end
               end
             end
+            file.puts(Utf8String.new(line))
           end
           file.puts(Utf8String.new(line))
         end
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Table exported to')+' TXT: '+filename)
+        res = true
+      elsif ext and (ext.downcase=='.fix')
+        separ = '|'
+        File.open(filename, 'w') do |file|
+          tab_flds = panobject.tab_fields
+          fields = tab_flds.collect{|tf| tf[0]}
+          fields = fields.join('|')
+          sel = panobject.select(nil, false, nil, panobject.sort)
+          sel.each do |row|
+            line = ''
+            formfields = panobject.get_fields_as_view(row)
+            formfields.each_with_index do |field,i|
+              fix_code = field[FI_Fix]
+              val = field[FI_Value]
+              if fix_code and val
+                begin
+                  line += fix_code.to_s + '=' + val.to_s + separ
+                rescue
+                end
+              end
+            end
+            #file.puts(Utf8String.new('8=FIX.4.4'+separ+'9='+line.bytesize.to_s+separ+line))
+            file.puts(Utf8String.new(line))
+          end
+        end
+        PandoraUI.log_message(PandoraUI::LM_Info, _('Table exported to')+' FIX: '+filename)
+        res = true
+      else
+        PandoraUI.log_message(PandoraUI::LM_Warning, \
+          _('Table was not exported. Unknown extention')+' '+ \
+          ext[1..-1].upcase + ': '+filename)
       end
-
-      PandoraUI.log_message(PandoraUI::LM_Info, _('Table exported')+': '+filename)
+      res
     end
 
     # Menu structure
@@ -14837,8 +14990,15 @@ module PandoraGtk
         PandoraUI.do_menu_act('FullScr')
       end
 
-      path = $pandora_app_dir
-      path = '..'+path[-40..-1] if path.size>40
+      path = $def_pandora_sqlite_db
+      path2 = File.expand_path($pandora_sqlite_db)
+      if path == path2 and (not $poly_launch)
+        path = $pandora_app_dir
+      else
+        path = path2
+      end
+      path = '..'+path[-80..-1] if path.size>80
+
       pathlabel = Gtk::Label.new(path)
       pathlabel.modify_font(PandoraGtk.status_font)
       pathlabel.justify = Gtk::JUSTIFY_LEFT
@@ -14849,7 +15009,9 @@ module PandoraGtk
       add_status_field(PandoraUI::SF_Update, _('Version') + ': ' + _('Not checked'), 'Update') do
         PandoraUI.start_updating(true)
       end
-      add_status_field(PandoraUI::SF_Lang, $lang, 'Language') do
+      color = nil
+      color = 'red' if (($lang != 'en') and ($lang_trans.count<450))
+      add_status_field(PandoraUI::SF_Lang, $lang, 'Language', nil, nil, nil, color) do
         PandoraUI.do_menu_act('LangEdit')
       end
       add_status_field(PandoraUI::SF_Auth, _('Not logged'), 'Authorize', :auth, false) do
