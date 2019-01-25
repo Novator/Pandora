@@ -22,6 +22,47 @@ begin
 rescue Exception
 end
 
+$cbor_supported = nil
+begin
+  require 'cbor'
+  $cbor_supported = true
+rescue Exception
+  $cbor_supported = false
+end
+
+$msgpack_supported = nil
+NeedActivateMsgPack = false
+if NeedActivateMsgPack
+  begin
+    require 'msgpack'
+
+    begin
+      Time.now.to_msgpack  #Time is supported only from version 0.7
+    rescue Exception
+      Time.class_eval do
+        def to_msgpack(*args)
+          self.to_i.to_msgpack(*args)
+        end
+      end
+
+      DateTime.class_eval do
+        def to_msgpack(*args)
+          self.to_i.to_msgpack(*args)
+        end
+      end
+
+      Date.class_eval do
+        def to_msgpack(*args)
+          self.to_i.to_msgpack(*args)
+        end
+      end
+    end
+    $msgpack_supported = true
+  rescue Exception
+    $msgpack_supported = false
+  end
+end
+
 # Array of localization phrases
 # RU: Вектор переведеных фраз
 $lang_trans = {}
@@ -35,6 +76,15 @@ def _(frase)
 end
 
 module PandoraUtils
+
+  # Structure serialization format
+  # RU: Метод упаковки структур
+  #SSF_Error    = 0
+  SSF_Pson     = 1
+  SSF_Cbor     = 2
+  SSF_MsgPack  = 3
+  SSF_Json     = 4
+  SSF_Xml      = 5
 
   # Version of GUI application
   # RU: Версия GUI приложения
@@ -1440,6 +1490,145 @@ module PandoraUtils
     hash
   end
 
+  def self.rubyobj_to_binary(val, ssf=nil, sort_mode=nil)
+    res = nil
+    if ((ssf==SSF_Pson) or ssf.nil?)
+      res = rubyobj_to_pson(val, sort_mode)
+    elsif ssf==SSF_Cbor
+      if $cbor_supported
+        res = val.to_cbor
+      end
+    else ssf==SSF_MsgPack
+      if $msgpack_supported
+        res = MessagePack.pack(val)
+      end
+    end
+    res
+  end
+
+  def self.binary_to_rubyobj(binary, ssf=nil)
+    res = nil
+    if ((ssf==SSF_Pson) or ssf.nil?)
+      res, len = pson_to_rubyobj(binary)
+    elsif ssf==SSF_Cbor
+      if $cbor_supported and binary and (binary != '')
+        res = CBOR.decode(binary)
+      end
+    else ssf==SSF_MsgPack
+      if $msgpack_supported and binary
+        res = MessagePack.unpack(binary)
+      end
+    end
+    res
+  end
+
+  # Convert Name-Hash в Name-binary fields
+  # RU: Преобразует именованный список в Named-binary
+  def self.record_to_binary(fldvalues, ssf=nil, pack_empty=false, sort_mode=nil)
+    res = nil
+    sort_mode = 2 if sort_mode.nil?
+    if ((ssf==SSF_Pson) or ssf.nil?)
+      res = hash_to_namepson(fldvalues, pack_empty, sort_mode)
+    else
+      fldvalues2 = fldvalues
+      if (sort_mode or (not pack_empty))
+        fldvalues = fldvalues.sort_by {|k,v| k.to_s } if sort_mode
+        fldvalues2 = {}
+        fldvalues.each do |nam, val|
+          if pack_empty or (not value_is_empty?(val))
+            nam = nam.to_s
+            fldvalues2[nam] = val
+          end
+        end
+      end
+      res = rubyobj_to_binary(fldvalues2, ssf, sort_mode)
+    end
+    res
+  end
+
+  $supported_binaries = nil
+  $supported_binaries_num = nil
+  $supported_binaries_str = nil
+
+  # Return a string with codes of supported binary formates (PSON, CBOR, etc)
+  # RU: Возвращает строку, содержащую коды поддерживаемых бинарных форматов
+  # Input res_fmt: :binary - binary string, :numbers - "12"-like string
+  # :string - "1,2"-like string
+  def self.supported_binary_formats(fmt=nil)
+    res = $supported_binaries
+    if res.nil?
+      res = SSF_Pson.chr
+      res << SSF_Cbor.chr if $cbor_supported
+      res << SSF_MsgPack.chr if $msgpack_supported
+      $supported_binaries = res
+      $supported_binaries_num = ''
+      $supported_binaries_str = ''
+      res.each_byte do |b|
+        $supported_binaries_str << ',' if $supported_binaries_str.bytesize>0
+        c = (b.ord).to_s  #must be bellow 10
+        $supported_binaries_num << c
+        $supported_binaries_str << c
+      end
+    end
+    if (fmt==:numbers)
+      res = $supported_binaries_num
+    elsif (fmt==:string)
+      res = $supported_binaries_str
+    end
+    res
+  end
+
+  def self.mutual_binary_format(str, str2, fmt=nil, all=nil)
+    res = nil
+    if str and str2
+      if (fmt==:string)
+        bytes = str.split(',')
+        str = ''
+        bytes.each do |c|
+          str << (c.to_i).chr
+        end
+        fmt = :binary
+      end
+      str.each_byte do |b|
+        str2.each_byte do |b2|
+          if b==b2
+            if all
+              if res
+                res << b.chr
+              else
+                res = AsciiString.new(b.chr)
+              end
+            else
+              res = AsciiString.new(b.chr)
+              break
+            end
+          end
+        end
+        break if res and (not all)
+      end
+      if res and (not all)
+        if (fmt==:numbers)
+          res = res.to_i
+        else
+          res = res.ord
+        end
+      end
+    end
+    res
+  end
+
+  # Convert Name-binary to Name-Hash fields
+  # RU: Преобразует Name-binary в именованный список
+  def self.binary_to_record(binary, ssf=nil)
+    res = nil
+    if ((ssf==SSF_Pson) or ssf.nil?)
+      res = namepson_to_hash(binary)
+    else
+      res = binary_to_rubyobj(binary, ssf)
+    end
+    res
+  end
+
   # Change file extention
   # RU: Сменить расширение файла
   def self.change_file_ext(filename, newext='new')
@@ -1743,7 +1932,7 @@ module PandoraUtils
         #p 'ALTER TABLE '+table+' RENAME TO '+arch_table
         #p 'INSERT INTO '+table+' ('+new_fields+') SELECT '+new_fields+' FROM '+arch_table
         #INSERT INTO t1(val1,val2) SELECT t2.val1, t2.val2 FROM t2 WHERE t2.id = @id
-        #p 'ALTER TABLE OLD_COMPANY ADD COLUMN GENDER char(1)'
+        #p 'ALTER TABLE OLD_COMPANY ADD COLUMN SEX char(1)'
         sql = 'CREATE TABLE '+table+' '+tab_def
         begin
           res = db.execute(sql)
@@ -1808,7 +1997,7 @@ module PandoraUtils
     def recognize_filter(filter, sql_values, like_ex=nil)
       esc = false
       if filter.is_a? Hash
-        #Example: {:first_name => 'Michael', 'last_name' => 'Galyuk', :gender => 1}
+        #Example: {:first_name => 'Michael', 'last_name' => 'Galyuk'}
         seq = ''
         filter.each do |n,v|
           if n
@@ -2011,14 +2200,14 @@ module PandoraUtils
   $max_hash_len = 20
 
   # Base Pandora's object
-  # RU: Базовый объект Пандоры
+  # RU: Базовый объект Pandora
   class BasePanobject
     attr_accessor :namesvalues
     class << self
       def initialize(*args)
         super(*args)
         @ider = 'BasePanobject'
-        @name = 'Базовый объект Пандоры'
+        @name = 'Базовый объект Pandora'
         #@lang = true
         @table = nil
         @def_fields = Array.new
@@ -2073,8 +2262,8 @@ module PandoraUtils
 
       def field_des(fld_name, fields=nil)
         fields ||= def_fields
-        df = fields.detect{ |e| (e.is_a? Array) \
-          and (e[FI_Id].to_s == fld_name) or (e.to_s == fld_name) }
+        df = fields.detect{ |e| ((e.is_a? Array) \
+          and (e[FI_Id].to_s == fld_name) or (e.to_s == fld_name)) }
       end
 
       def has_blob_fields?
@@ -2627,7 +2816,7 @@ module PandoraUtils
       end
       res = adap.select_table(self.table, afilter, sel_fields, \
         sort, limit, like_ex)
-      if set_namesvalues and res[0].is_a? Array
+      if set_namesvalues and res[0].is_a?(Array)
         @namesvalues = {}
         tab_fields.each_with_index do |td, i|
           fld_name = td[TI_Name].to_s.downcase
@@ -3567,7 +3756,7 @@ module PandoraUtils
   end
 
   # Get Pandora version
-  # RU: Возвращает версию Пандоры
+  # RU: Возвращает версию Pandora
   def self.pandora_version
     res = PandoraVersion
   end
@@ -3575,7 +3764,7 @@ module PandoraUtils
   LIB_LIST = ['crypto', 'gtk', 'model', 'ncurses', 'net', 'ui', 'utils']
 
   # Calc hex md5 of Pandora files
-  # RU: Вычисляет шестнадцатиричный md5 файлов Пандоры
+  # RU: Вычисляет шестнадцатиричный md5 файлов Pandora
   def self.pandora_md5_sum
     res = nil
     begin
