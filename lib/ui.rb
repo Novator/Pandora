@@ -401,7 +401,10 @@ module PandoraUI
   $update_lag = 30    #time lag (sec) for update after run the programm
   $download_thread = nil
 
-  UPD_FileList = ['model/01-base.xml', 'model/02-forms.xml', 'pandora.sh', 'pandora.bat']
+  UPD_FileList = ['model/01-base.xml', 'model/02-forms.xml', \
+    'lib/crypto.rb', 'lib/gtk.rb', 'lib/model.rb', 'lib/ncurses.rb', \
+    'lib/net.rb', 'lib/ui.rb', 'lib/utils.rb', 'lib/web.rb', \
+    'pandora.sh', 'pandora.bat']
   if ($lang and ($lang != 'en'))
     UPD_FileList.concat(['model/03-language-'+$lang+'.xml', 'lang/'+$lang+'.txt'])
   end
@@ -453,13 +456,18 @@ module PandoraUI
 
     # Update file
     # RU: Обновить файл
-    def self.update_file(http, path, pfn, host='')
+    def self.update_file(http, path, pfn, host='', zip_url=nil)
       res = false
       dir = File.dirname(pfn)
       FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
       if Dir.exists?(dir)
-        filebody = PandoraNet.http_get_body_from_path(http, path, host)
+        #p 'update_file(http, path, pfn, host)='+[http, path, pfn, host].inspect
+        filebody = PandoraNet.http_get_body_from_path(http, path, host, false)
+        if ((not filebody) or (filebody.size==0)) and zip_url
+          filebody = PandoraNet.http_get_request(zip_url)
+        end
         if filebody and (filebody.size>0)
+          #p 'filebody.size='+filebody.size.to_s
           begin
             File.open(pfn, 'wb+') do |file|
               file.write(filebody)
@@ -526,7 +534,7 @@ module PandoraUI
                         http = reconnect_if_need(http, time, zip_url)
                         if http
                           PandoraUI.set_status_field(PandoraUI::SF_Update, 'Doing', nil, nil, false)
-                          res = update_file(http, path, zip_local, host)
+                          res = update_file(http, path, zip_local, host, zip_url)
                           #res = true
                           if res
                             # Delete old arch paths
@@ -978,22 +986,19 @@ module PandoraUI
               panobject = treeview.panobject
               panobject.update(nil, nil, nil)
               panobject.class.tab_fields(true)
-            elsif command=='Import'
-              p 'import'
-            elsif command=='Export'
+            elsif (command=='Import') or (command=='Export')
               panobject = treeview.panobject
               ider = panobject.ider
               filename = File.join($pandora_files_dir, ider+'.csv')
+              imp = (command=='Import')
 
-              dialog = PandoraGtk::GoodFileChooserDialog.new(filename, false, nil, $window)
+              dialog = PandoraGtk::GoodFileChooserDialog.new(filename, imp, nil, $window)
 
               filter = Gtk::FileFilter.new
               filter.name = _('Text tables')+' (*.csv,*.txt)'
               filter.add_pattern('*.csv')
               filter.add_pattern('*.txt')
               dialog.add_filter(filter)
-
-              dialog.filter = filter
 
               filter = Gtk::FileFilter.new
               filter.name = _('JavaScript Object Notation')+' (*.json)'
@@ -1005,9 +1010,15 @@ module PandoraUI
               filter.add_pattern('*.pson')
               dialog.add_filter(filter)
 
+              dialog.filter = filter
+
               if dialog.run == Gtk::Dialog::RESPONSE_ACCEPT
                 filename = dialog.filename
-                $window.export_table(panobject, filename)
+                if imp
+                  $window.import_table(panobject, filename)
+                else
+                  $window.export_table(panobject, filename)
+                end
               end
               dialog.destroy if not dialog.destroyed?
             else
@@ -1032,15 +1043,23 @@ module PandoraUI
         end
         PandoraNet.start_or_stop_hunt(continue)
       when 'Wizard'
+        proto_init = 'pandora0.3|'+PandoraUtils.supported_binaries(:string)
+        proto_init = proto_init.bytesize.to_s.ljust(2, '0')+proto_init
+        p 'proto_init='+proto_init
         #val = ['Hello', 1500, 3.14, true, {:name=>'Michael', :family=>'Jackson'}]
         val = {:name=>'Michael', 'family'=>'Jackson', 'birthday'=>Time.parse('29.08.1958'), \
-          :array=>[123, '123', nil, [5, 1], Time.parse('26.05.1978'), [3, '2', 1], 'bbb', 456, :aaa]}
-        #str = PandoraUtils.rubyobj_to_pson(val)
-        str = PandoraUtils.hash_to_namepson(val, false, 3)
-        #p 'wizard  [val, str.bytesize]='+[val, str.bytesize].inspect
-        #val2, len = PandoraUtils.pson_to_rubyobj(str)
-        val2, len = PandoraUtils.namepson_to_hash(str)
-        #p '[val2, len]='+[val2, len].inspect
+          :gender=>[123, '123', nil, [5, 1], Time.parse('26.05.1978'), [3, '2', 1], 'bbb', 456, :aaa]}
+        #ssf = PandoraUtils::SSF_Pson
+        ssf = PandoraUtils::SSF_Cbor
+        #ssf = PandoraUtils::SSF_MsgPack
+        #str = PandoraUtils.rubyobj_to_binary(val, ssf)
+        str = PandoraUtils.record_to_binary(val, ssf)
+        len = nil
+        len = str.bytesize if str
+        p 'wizard  [val, str.bytesize]='+[val, len].inspect
+        #val2 = PandoraUtils.binary_to_rubyobj(str, ssf)
+        val2 = PandoraUtils.binary_to_record(str, ssf)
+        p 'val2='+val2.inspect
         if $gtk_is_active
           PandoraGtk.show_log_bar(80)
         end

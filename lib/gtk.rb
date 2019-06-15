@@ -14,8 +14,8 @@ require 'fileutils'
 require_relative 'crypto.rb'
 require_relative 'net.rb'
 
-# GTK is cross platform graphical user interface
-# RU: Кроссплатформенный оконный интерфейс
+# Graphical user interface Gtk2
+# RU: Графический интерфейс пользователя Gtk2
 begin
   require 'gtk2'
   Gtk.init
@@ -80,7 +80,7 @@ module PandoraGtk
     res
   end
 
-  # Good and simle MessageDialog
+  # Good and simple MessageDialog
   # RU: Хороший и простой MessageDialog
   class GoodMessageDialog < Gtk::MessageDialog
 
@@ -11408,7 +11408,8 @@ module PandoraGtk
       list_tree.add_events(Gdk::Event::BUTTON_PRESS_MASK)
       list_tree.signal_connect('button-press-event') do |widget, event|
         if ((event.button == 3) or ((event.button == 1) and PandoraGtk.is_ctrl_shift_alt?(true)))
-          menu.popup(nil, nil, event.button, event.time)
+          #menu.popup(nil, nil, event.button, event.time)
+          menu.popup(nil, nil, 3, event.time)
         end
       end
 

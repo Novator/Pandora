@@ -167,7 +167,7 @@ Ask author for help:
 
 Support development:
 
-  Visa card: 5106 2110 2737 6065
+  Visa card: 5106 2180 3378 8423
   Yandex money: 410016271392944
   BitCoin: 1PanDR1Q6TL3qE1TSs2Zagt2ihhEiCBHZB
 

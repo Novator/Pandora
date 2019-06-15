@@ -17,6 +17,8 @@ import time, datetime, termios, fcntl, sys, os, socket, threading, struct, \
 # Setup functions
 # RU: Настроечные функции
 
+config = ConfigParser.SafeConfigParser()
+
 # Get parameter value from config
 # RU: Взять значение параметра из конфига
 def getparam(sect, name, akind='str'):
@@ -37,7 +39,6 @@ def getparam(sect, name, akind='str'):
 
 # Open config file and read parameters
 # RU: Открыть конфиг и прочитать параметры
-config = ConfigParser.SafeConfigParser()
 res = config.read('./pangate.ini')
 if len(res):
   host = getparam('network', 'host')
@@ -265,7 +266,7 @@ def pythonobj_to_pson(pythonobj):
   #  elem_size = data.bytesize
   #  kind, count, neg = encode_pson_kind(PT_Sym, elem_size)
   elif isinstance(pythonobj, datetime.datetime):
-    pythonobj = int(pythonobj)
+    pythonobj = int(time.mktime(pythonobj.timetuple()))
     kind, count, neg = encode_pson_kind(PT_Time, pythonobj)
     if neg: pythonobj = -pythonobj
     data << PandoraUtils.bigint_to_bytes(pythonobj)
@@ -324,7 +325,7 @@ def pson_to_pythonobj(data):
       elif basekind==PT_Time:
         val = elem_size
         if neg: val = -val
-        val = datetime.datetime(val)  #Time.at(val)
+        val = datetime.datetime.fromtimestamp(val)
       elif basekind==PT_Bool:
         if count>0:
           val = (elem_size != 0)

@@ -2,8 +2,8 @@
 # encoding: UTF-8
 # coding: UTF-8
 
-# Console interface of Pandora
-# RU: Консольный интерфейс Пандоры
+# Web interface of Pandora
+# RU: Веб интерфейс Пандоры
 #
 # This program is free software and distributed under the GNU GPLv2
 # RU: Это свободное программное обеспечение распространяется под GNU GPLv2
