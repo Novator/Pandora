@@ -317,7 +317,18 @@
       <last_trust_time name="Last received trust" type="Time" /-->
     </Node>
 
-    <Event name="Event" parent="Created" kind="225" >
+    <Change name="Change" parent="Created" kind="225" >
+      <node name="Node" type="Panhash(Node)" />
+      <kind name="Kind" type="Byte" />
+      <panhash1 name="Panhash1" type="Panhash" />
+      <panhash2 name="Panhash2" type="Panhash" />
+      <modified1 name="Modified1" type="Time" />
+      <modified2 name="Modified2" type="Time" />
+      <delta name="Delta" type="Blob" />
+      <state name="State" type="Word" />
+    </Change>
+
+    <Event name="Event" parent="Created" kind="226" >
       <node name="Node" type="Panhash(Node)" />
       <number name="Number" type="Integer" />
       <kind name="Kind" type="Byte" />

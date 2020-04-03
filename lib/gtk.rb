@@ -14739,6 +14739,7 @@ module PandoraGtk
       ['Request', 'request:m', 'Requests'],  #Gtk::Stock::SELECT_COLOR
       ['Block', 'block:m', 'Blocks'],
       ['Box', 'box:m', 'Boxes'],
+      ['Change', 'event:m', 'Changes'],
       ['Event', 'event:m', 'Events'],
       ['-', nil, '-'],
       ['Authorize', :auth, 'Authorize', '<control>K', :check], #Gtk::Stock::DIALOG_AUTHENTICATION

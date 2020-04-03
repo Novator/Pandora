@@ -508,3 +508,4 @@ Web-server is runned=>Веб-сервер запущен
 Web-server fails=>Веб-сервер сбойнул
 Table exported to=>Таблица выгружена в
 Unsupported exchange format=>Неподдерживаемый формат обмена
+Changes=>Правки
