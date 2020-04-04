@@ -562,6 +562,184 @@ module PandoraModel
     res
   end
 
+  #Разделить строку полей на массив
+  #RU: Devide string of fields to array
+  def self.split_fields(fields)
+    res = fields
+    if res.is_a?(String)
+      res.split!(',')
+      i = 0
+      res.each do |fld|
+        res[i].strip!(' \t\n\r')
+        i += 1
+      end
+    end
+    res
+  end
+
+  #Record to list with fields
+  #RU: Запись в список с полями
+  def self.record_to_sl(row, fields=nil)
+    sl = row
+    if fields.nil?
+      row0 = row
+      fields = []
+      row = []
+      row0.each do |val|
+        fields.add(val[0])
+        row.add(val[1])
+      end
+    else
+      sl = []
+      i = 0
+      row.each do |val|
+        sl.add([fields[i], val])
+        i += 1
+      end
+    end
+    fields_sorted = fields.sort # {|a,b| a[0]<=>b[0] }
+    rec = []
+    fields_sorted.each do |fld|
+      fld_up = fld.upcase
+      if (fld_up != 'ID') and (fld_up != 'HASH') and (fld_up != 'MODIFIED')
+        fld_ind = fields.index(fld)
+        if (not(fld_ind.nil?)) and (fld_ind>=0) and (fld_ind<row.size)
+          rec.add(fld_up)
+          rec.add(row[fld_ind])
+        end
+      end
+    end
+    [rec, sl]
+  end
+
+  #Record to Msgpack-buffer MD5
+  #RU: Запись в Msgpack-буфер и MD5
+  def self.rec_to_msgpack_and_hash(row, fields=nil)
+    rec, sl = record_to_sl(row, fields)
+    data = msgpack.packb(rec)
+    rec_hash = to_hex(hashlib.md5(data).digest())
+    [data, rec_hash, sl]
+  end
+
+  #Read record from base to list
+  #RU: Прочитать запись из базы в список
+  def self.read_record_to_sl(table, rec_id, fields=nil)
+    md5 = nil
+    sl = nil
+    if (not fields) or (len(fields)==0)
+      fields = tab_fields(table)
+    end
+    rows = select(table, fields, {:id=>rec_id}, 'id', 1)
+    if rows and (len(rows)>0)
+      row = rows[0]
+      if fields.is_a?(String)
+        fields = split_fields(fields)
+      end
+      md5_ind = elem_index(fields, 'hash')
+      if md5_ind>=0
+        md5 = row[md5_ind]
+        rec, sl = record_to_sl(row, fields)
+      else
+        fields.add('hash')
+        data, md5, sl = rec_to_msgpack_and_hash(row, fields)
+      end
+    end
+    [md5, sl]
+  end
+
+  #Register "Change" after comaring with old and new records
+  #RU: Зарегистрировать "Правку" после сравнения старой и новой записи
+  def self.register_record_change(table, rec_id, old_md5, old_sl, user, fields=nil)
+    res = nil
+    new_md5 = nil
+    if (not fields) or (len(fields)==0)
+      fields = tab_fields(table)
+    end
+    rows = select(table, fields, {:id=>rec_id}, 'id', 1)
+    if fields.is_a?(String)
+      fields = split_fields(fields)
+    end
+    if rows and (len(rows)>0)
+      row = rows[0]
+      new_sl = list(row)
+      md5_ind = elem_index(fields, 'hash')
+      if md5_ind>=0
+        new_data, new_md5, new_sl = rec_to_msgpack_and_hash(row, fields)
+        new_sl[md5_ind] = new_md5
+      else
+        new_data, new_md5, new_sl = rec_to_msgpack_and_hash(row, fields)
+        fields.add('hash')
+        new_sl.add(new_md5)
+      end
+    end
+    old_md5 = to_utf8(old_md5)
+    new_md5 = to_utf8(new_md5)
+    if ((not old_md5) or (len(old_md5)==0) or (old_md5!=new_md5)) and (user.size>0)
+      created = datetime_to_sec(datetime_now())
+      modified1 = 0
+      modified2 = created
+      change_list = nil
+      if old_sl and (len(old_sl)>0)
+        new_sl.each do |new_field|
+          fld_name = new_field[0]
+          new_val = new_field[1]
+          j = elem_index_by_sub_elem(old_sl, fld_name, 0)
+          need_add = false
+          if j>=0
+            old_val = old_sl[j][1]
+            modified1 = old_val if fld_name.lower()=='modified'
+            need_add = true if new_val != old_val
+          else
+            need_add = true
+          end
+          if need_add
+            change_list = [] if change_list.nil?
+            change_list.add([fld_name, new_val])
+          end
+        end
+      else
+        change_list = new_sl
+      end
+      if change_list
+        tab_ind = elem_index(tab_names, table)
+        if tab_ind>=0
+          delta, delta_md5, delta_sl = rec_to_msgpack_and_hash(change_list)
+          change_rec = [['rec_kind', tab_ind], ['rec_id', rec_id], \
+            ['modified1', modified1], ['modified2', modified2], \
+            ['created', created], ['hash1', old_md5], \
+            ['hash2', new_md5], ['delta', delta], ['user', user]]
+          rec_data, rec_md5, rec_sl = rec_to_msgpack_and_hash(change_rec)
+          change_rec.add(['hash', rec_md5])
+          fields = []
+          vals = []
+          change_rec.each do |fld_val|
+            fields.add(fld_val[0])
+            vals.add(fld_val[1])
+          end
+          res = update('changes', fields, vals, true)
+        end
+      end
+    end
+    res
+  end
+
+  #Set hash field in record
+  #RU: Задать hash-поле в записи
+  def self.set_record_hash(table, row, fields=nil, row0=nil, fields0=nil)
+    if table and row
+      fields = tab_fields(table) if (not fields) or (len(fields)==0)
+      fields = split_fields(fields)
+      data, md5, sl = rec_to_msgpack_and_hash(row, fields)
+      hash_ind = elem_index(fields, 'hash')
+      if hash_ind<0
+        fields.add('hash')
+        hash_ind = fields.index('hash')
+      end
+      row = set_arr_elem(row, hash_ind, md5) if hash_ind>=0
+    end
+    [row, fields]
+  end
+
   $keep_for_trust  = 0.5      # set "Support" flag for records with creator trust
   $max_relative_path_depth = 2
 
