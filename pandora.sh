@@ -125,6 +125,10 @@ case "$PARAMS" in
     sudo apt-get -y install ruby gstreamer0.10-ffmpeg gstreamer0.10-x openssl rubygems
     sudo gem install sqlite3 gtk2 gstreamer openssl
     ;;
+  wine|--wine)
+    cd "$CURDIR"
+    wine ./ruby193/bin/rubyw.exe pandora.rb -b base/pandora3.sqlite -p 5579 -pl
+    ;;
   screen|--screen|-s)
     cd "$CURDIR"
     RUBY2=`which ruby2.4`

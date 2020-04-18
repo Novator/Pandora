@@ -49,5 +49,13 @@ $bin "http://dynv6.com/api/update?hostname=$hostname&ipv6=$current&token=$token"
 # save current address
 echo $current > $file
 
-#ssh -4 -g -f -N -R 127.0.0.1:5577:127.0.0.1:5577 user@robux.perm.ru
+#ssh user@site.ru -4 -N -g -f -M -R 127.0.0.1:5577:127.0.0.1:5577 -o ExitOnForwardFailure=yes -o ServerAliveInterval=30
+
+while true; do
+  echo "Making forward port..."
+  #killall ssh
+  sshpass -p 'YouPassword' ssh user@site.ru -4 -N -g -M -R 127.0.0.1:5577:127.0.0.1:5577 -o ExitOnForwardFailure=yes -o ServerAliveInterval=30
+  sleep 1
+done
+
 
