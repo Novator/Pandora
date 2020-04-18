@@ -11,18 +11,6 @@ UninstPage instfiles
 
 Section "Pandora with Ruby"
   SectionIn RO
-  SetOutPath $INSTDIR
-  File /r "..\lang"
-  File /r "..\model"
-  File /r "..\web"
-  File /r "..\ruby193"
-  File "..\git.sh"
-  File "..\LICENSE.TXT"
-  File "..\pandora.bat"
-  File "..\pandora.rb"
-  File "..\pandora.sh"
-  File "..\pandora_wine.sh"
-  File "..\README.TXT"
   SetOutPath $INSTDIR\lib
   File "..\lib\*.rb"
   SetOutPath $INSTDIR\base
@@ -60,6 +48,18 @@ Section "Pandora with Ruby"
   File "..\util\restart.rb"
   SetOutPath $INSTDIR\view
   File "..\view\*"
+  SetOutPath $INSTDIR
+  File /r "..\lang"
+  File /r "..\model"
+  File /r "..\web"
+  File /r "..\ruby193"
+  File "..\git.sh"
+  File "..\LICENSE.TXT"
+  File "..\pandora.bat"
+  File "..\pandora.rb"
+  File "..\pandora.sh"
+  File "..\README.TXT"
+  File "..\util\pandora_wine.sh"
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
 

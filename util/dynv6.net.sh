@@ -55,7 +55,7 @@ while true; do
   echo "Making forward port..."
   #killall ssh
   sshpass -p 'YouPassword' ssh user@site.ru -4 -N -g -M -R 127.0.0.1:5577:127.0.0.1:5577 -o ExitOnForwardFailure=yes -o ServerAliveInterval=30
-  sleep 1
+  sleep 2
 done
 
 

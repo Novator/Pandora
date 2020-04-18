@@ -1,0 +1,21 @@
+#!/bin/sh
+
+set -e
+
+    case "$1" in
+      configure|upgrade)
+        touch /opt/pandora/base/pandora.sqlite
+        touch /opt/pandora/base/Pandora-master.zip
+        echo "Setting rights a+rw to /opt/pandora ..." >&2
+        chmod -R a+rw /opt/pandora
+        ;;
+      abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+      *)
+        echo "Postinst called with unknown argument \`$1\`" >&2
+        exit 1
+        ;;
+    esac
+
+exit 0
+
