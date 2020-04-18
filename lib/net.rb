@@ -2133,17 +2133,22 @@ module PandoraNet
       # Recognize hello data
       # RU: Распознает данные приветствия
       def recognize_hello_params
+        #p "rdata="+rdata
+        #rdata = AsciiString.new(rdata)
+        #p "rdata.class="+rdata.class.inspect
         fmt_chr = rdata[0]
         fmts = PandoraUtils.supported_binary_formats(:numbers)
         if fmts.include?(fmt_chr)
           fmt = (fmt_chr.to_i).ord
           @ssformat = fmt
-          p "fmt_chr="+fmt_chr
-          p "fmt="+fmt.to_s
-          p "rdata="+rdata
-          rdata = AsciiString.new(rdata)[1..-1]
-          p "rdata2="+rdata
-          hash = PandoraUtils.binary_to_record(rdata, @ssformat)
+          #p "fmt_chr="+fmt_chr
+          #p "fmt="+fmt.to_s
+          #p "2rdata="+rdata
+          rdata2 = rdata[1..-1]
+          rdata = rdata2
+          #p "2rdata2="+rdata
+          hash = PandoraUtils.binary_to_record(rdata2, @ssformat)
+          #p hash
           if hash.is_a?(Hash)
             params['flags']  = hash['flags']
             params['addr']   = hash['addr']
@@ -2151,13 +2156,14 @@ module PandoraNet
             params['dstkey'] = hash['tokey']
             params['notice'] = hash['notice']
             params['cipher'] = hash['cipher']
+            params['version'] = hash['version']
           else
             err_scmd('Hello data is wrong')
           end
         else
           err_scmd('Unsupported binary format='+fmt_chr+' (must be '+fmts+')')
         end
-        #p log_mes+'RECOGNIZE_params: '+hash.inspect
+        #p log_mes+'RECOGNIZE_params: '+params.inspect
       end
 
       # Sel limit of allowed pack size
@@ -3053,7 +3059,7 @@ module PandoraNet
                     trust = @skey[PandoraCrypto::KV_Trust]
                     skey_hash = @skey[PandoraCrypto::KV_Panhash]
                     init_and_check_node(@skey[PandoraCrypto::KV_Creator], skey_hash, sbase_id, @recv_models)
-                    if ((@conn_mode & CM_Double) == 0)
+                    if ((@conn_flags & CF_Double) == 0)
                       if not trust.is_a?(Float)
                         if (not hunter?)
                           if ($trust_for_unknown.is_a?(Float)) and ($trust_for_unknown > -1.0001)
@@ -4072,7 +4078,7 @@ module PandoraNet
         key = PandoraCrypto.current_user_or_key(false)
         sessions = pool.sessions_of_personkeybase(@to_person, @to_key, @to_base_id)
         if (sessions.is_a? Array) and (sessions.size>1) and (key != to_key)
-          @conn_mode = (@conn_mode | CM_Double)
+          @conn_flags = (@conn_flags | CF_Double)
         end
       end
     end

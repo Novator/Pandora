@@ -8014,12 +8014,12 @@ module PandoraGtk
             if nodes and (nodes.size>0)
               nodes.each do |nodehash|
                 $pool.init_session(nil, nodehash, 0, self, nil, \
-                  persons, keys, nil, 0, PandoraNet::CM_Captcha)
+                  persons, keys, nil, 0, PandoraNet::CF_Captcha)
               end
             elsif persons
               persons.each do |person|
                 $pool.init_session(nil, nil, 0, self, nil, \
-                  person, keys, nil, 0, PandoraNet::CM_Captcha)
+                  person, keys, nil, 0, PandoraNet::CF_Captcha)
               end
             end
           else
