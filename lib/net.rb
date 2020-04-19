@@ -3547,20 +3547,23 @@ module PandoraNet
                     questioner = pool.person
                     answerer = @skey[PandoraCrypto::KV_Creator]
                     key=nil
+                    ph_list = nil
                     #ph_list = []
                     #ph_list << PandoraModel.signed_records(questioner, from_time, pankinds, \
                     #  trust, key, models)
-                    ph_list = PandoraModel.public_records(questioner, trust, from_time, \
-                      pankinds, @send_models)
+                    #ph_list = PandoraModel.public_records(questioner, trust, from_time, \
+                    #  pankinds, @send_models)
 
                     #panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
                     #panhash_list = PandoraModel.get_panhashes_by_questioner(questioner, trust, from_time)
 
-                    p log_mes+'ECC_Query_Relation  ph_list='+ph_list.inspect
-                    ph_list = PandoraUtils.rubyobj_to_binary(ph_list, @ssformat) if ph_list
-                    @scmd = EC_News
-                    @scode = ECC_News_Panhash
-                    @sbuf = ph_list
+                    if ph_list and (ph_list.size>0)
+                      p log_mes+'ECC_Query_Relation  ph_list='+ph_list.inspect
+                      ph_list = PandoraUtils.rubyobj_to_binary(ph_list, @ssformat) if ph_list
+                      @scmd = EC_News
+                      @scode = ECC_News_Panhash
+                      @sbuf = ph_list
+                    end
                   when ECC_Query_Record  #EC_Request
                     p log_mes+'==ECC_Query_Record'
                     two_list = PandoraUtils.binary_to_rubyobj(rdata, @ssformat)
@@ -3644,6 +3647,7 @@ module PandoraNet
                     follower = nil
                     from_time = Time.now.to_i - 10*24*3600
                     pankinds = nil
+                    foll_list = nil
                     #foll_list = PandoraModel.follow_records(follower, from_time, \
                     #  pankinds, @send_models)
                     two_list << foll_list

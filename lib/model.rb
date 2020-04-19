@@ -793,8 +793,10 @@ module PandoraModel
         # ! если файл уже есть, то переопределить поле 'blob'
         # ! при этом отследить совпадение sha1
 
-        if sha1
-          fn_fs = $window.pool.blob_exists?(sha1, models, true)
+        if sha1 and (($window and $window.pool) or $pool)
+          apool = $pool
+          apool ||= $window.pool
+          fn_fs = apool.blob_exists?(sha1, models, true)
           #p '--- save_record4  fn='+fn.inspect
           if fn_fs
             fn, fs = fn_fs
