@@ -55,18 +55,36 @@ Do commands in terminal:
 
 4. INSTALLATION IN WINDOWS
 
-Download the installator and run it with administrator:
+Download the installer and run it with administrator:
 
-  https://github.com/Novator/Pandora/releases/download/0.6-alpha/pandora_setup.exe
+  https://github.com/Novator/Pandora/releases/download/0.7-alpha/pandora_setup.exe
+
+Check sums pandora_setup.exe (size 20 427 683 byte):
+MD5 bfbc13b2bbacd0af0d545964434f130c
+SHA1 dc4b75ad7ebedcad0b09a3406b46ec9a040773f8
+
+Use utility HashCheck to check sums in Windows:
+  http://code.kliu.org/hashcheck/
+or build-in Windows commands:
+  certutil -hashfile .\pandora_setup.exe MD5
+  certutil -hashfile .\pandora_setup.exe SHA1
 
 
 5. INSTALLATION IN DEBIAN
 
 Download a package and install it with root:
 
-  https://github.com/Novator/Pandora/releases/download/0.6-alpha/pandora-net_0.6-1ubuntu_all.deb
-  dpkg -i pandora-net_0.6-1ubuntu_all.deb
+  https://github.com/Novator/Pandora/releases/download/0.7-alpha/pandora-net_0.7-ubuntu.deb
+  dpkg -i pandora-net_0.7-ubuntu.deb
   apt-get -f -y install
+
+Check sums pandora-net_0.7-ubuntu.deb (size 2 014 126 byte):
+MD5 315c0275a95c3b25de80803d0d8026d5
+SHA1 7e426db674df18adf132a1d99e16056184626b97
+
+Use commands to check:
+  md5sum ./pandora-net_0.7-ubuntu.deb
+  sha1sum ./pandora-net_0.7-ubuntu.deb
 
 
 6. PREPARATION OF MACOSX

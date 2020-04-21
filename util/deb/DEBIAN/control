@@ -1,10 +1,10 @@
 Package: pandora-net
-Version: 0.60-1
+Version: 0.75-1
 Architecture: all
 Maintainer: Michael Galyuk <robux@mail.ru>
-Installed-Size: 2940
+Installed-Size: 3500
 Build-Depends: debhelper (>= 7)
-Depends:  ruby2.0 | ruby1.9.3 | ruby1.9.1 | ruby1.9 | ruby (>= 1.9), ruby-sqlite3, ruby-gtk2, ruby-gstreamer, openssl
+Depends:  ruby2.2 | ruby2.0 | ruby1.9.3 | ruby1.9.1 | ruby1.9 | ruby (>= 1.9), ruby-sqlite3, ruby-gtk2, ruby-gstreamer, openssl
 Suggests: gstreamer0.10-x, gstreamer0.10-alsa | gstreamer0.10-pulse, gstreamer0.10-ffmpeg, gstreamer0.10-plugins-good, gstreamer0.10-plugins-bad, ruby-rubyzip2 | libzip-ruby1.9.1
 Recommends: gstreamer0.10-x, gstreamer0.10-alsa | gstreamer0.10-pulse, gstreamer0.10-ffmpeg, gstreamer0.10-plugins-good, gstreamer0.10-plugins-bad, ruby-rubyzip2 | libzip-ruby1.9.1
 Section: net
