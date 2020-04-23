@@ -3318,6 +3318,7 @@ module PandoraGtk
       set_border_window_size(Gtk::TextView::WINDOW_LEFT, left_border) if left_border
 
       buf = self.buffer
+      buf.create_tag('default', {})
       buf.create_tag('bold', 'weight' => Pango::FontDescription::WEIGHT_BOLD)
       buf.create_tag('italic', 'style' => Pango::FontDescription::STYLE_ITALIC)
       buf.create_tag('strike', 'strikethrough' => true)
@@ -3630,7 +3631,7 @@ module PandoraGtk
 
     BBCODES = ['B', 'I', 'U', 'S', 'EM', 'STRIKE', 'DEL', 'STRONG', 'D', 'BR', \
       'FONT', 'SIZE', 'COLOR', 'COLOUR', 'STYLE', 'BACK', 'BACKGROUND', 'BG', \
-      'FORE', 'FOREGROUND', 'FG', 'SPAN', 'DIV', 'UL', 'LI', 'P', \
+      'FORE', 'FOREGROUND', 'FG', 'SPAN', 'DIV', 'UL', 'LI', 'P', 'DEFAULT', 'ALL', \
       'RED', 'GREEN', 'BLUE', 'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', \
       'LIME', 'AQUA', 'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER', \
       'URL', 'A', 'HREF', 'LINK', 'GOTO', 'ANCHOR', 'MARK', 'LABEL', 'QUOTE', \
@@ -3881,6 +3882,8 @@ module PandoraGtk
         [tag_name, tag_params]
       end
 
+      #=========BEGIN FORMAT BUF
+
       i = children.size
       while i>0
         i -= 1
@@ -3893,6 +3896,7 @@ module PandoraGtk
       if not ['markdown', 'bbcode', 'html', 'ruby', 'python', 'plain', 'xml', 'ini'].include?(aformat)
         aformat = 'bbcode' #if aformat=='auto' #need autodetect here
       end
+      default_setted = false
       #p 'str='+str
       case aformat
         when 'markdown'
@@ -3929,6 +3933,9 @@ module PandoraGtk
           ss = str.size
           while i<ss
             c = str[i]
+            p1 = dest_buf.end_iter.offset
+            p2 = p1
+            tv_tag = nil
             if c==open_brek
               i1 = i
               i += 1
@@ -3942,7 +3949,6 @@ module PandoraGtk
                 if close or (com[-1] == '/')
                   # -- close bbcode
                   params = nil
-                  tv_tag = nil
                   if close
                     comu = com[1..-1]
                   else
@@ -3962,8 +3968,6 @@ module PandoraGtk
                   comu = comu.strip.upcase if comu
                   #p '===closetag  [comu,params]='+[comu,params].inspect
                   #p '---open_coms='+open_coms.inspect
-                  p1 = dest_buf.end_iter.offset
-                  p2 = p1
                   if ((strict_close_tag.nil? and BBCODES.include?(comu)) \
                   or ((not strict_close_tag.nil?) and (comu==strict_close_tag)))
                     strict_close_tag = nil
@@ -4013,12 +4017,20 @@ module PandoraGtk
                             else
                               link_tag = LinkTag.new(link_id)
                               if link_tag
+                                link_tag0 = text_tag = dest_buf.tag_table.lookup('link')
+                                if link_tag0
+                                  PandoraGtk.copy_glib_object_properties(link_tag0, link_tag)
+                                else
+                                  link_tag.foreground = '#000099'
+                                  link_tag.underline = Pango::AttrUnderline::SINGLE
+                                end
                                 dest_buf.tag_table.add(link_tag)
-                                link_tag.foreground = '#000099'
-                                #link_tag.underline = Pango::AttrUnderline::SINGLE
                                 link_tag.link = link_url
                                 if tag_params and (tag_params.size>0)
                                   PandoraGtk.apply_properties_to_glib_object(tag_params, link_tag)
+                                  if link_tag0
+                                    PandoraGtk.apply_properties_to_glib_object(tag_params, link_tag0)
+                                  end
                                 end
                                 tv_tag = link_id
                               end
@@ -4081,7 +4093,7 @@ module PandoraGtk
                           end
                         when 'B', 'STRONG', 'I', 'EM', 'S', 'U', 'D', 'CODE', \
                         'INLINE', 'PRE', 'SOURCE', 'MONO', 'MONOSPACE', 'SPAN', \
-                        'DIV', 'UL', 'LI', \
+                        'DIV', 'UL', 'LI', 'DEFAULT', 'ALL', \
                         'FONT', 'STYLE', 'SIZE', \
                         'FG', 'FORE', 'FOREGROUND', 'COLOR', 'COLOUR', \
                         'BG', 'BACK', 'BACKGROUND', \
@@ -4124,9 +4136,10 @@ module PandoraGtk
                               'RIGHT', 'FILL', 'SUB', 'SUP', 'RED', 'GREEN', 'BLUE', \
                               'NAVY', 'YELLOW', 'MAGENTA', 'CYAN', 'LIME', 'AQUA', \
                               'MAROON', 'OLIVE', 'PURPLE', 'TEAL', 'GRAY', 'SILVER', \
-                              'SMALL', 'LITTLE', 'LARGE', 'BIG'
+                              'SMALL', 'LITTLE', 'LARGE', 'BIG', 'DEFAULT', 'ALL'
                                 comu = 'CYAN' if comu=='AQUA'
                                 tv_tag = comu.downcase
+                                tv_tag='default' if tv_tag=='all'
                                 text_tag = dest_buf.tag_table.lookup(tv_tag)
                                 if text_tag
                                   if tag_params.size>0
@@ -4136,7 +4149,7 @@ module PandoraGtk
                                       tv_tag = cur_name
                                     else
                                       PandoraGtk.apply_properties_to_glib_object(tag_params, text_tag)
-                                      if dest_buf.create_tag(cur_name, tag_params)
+                                      if (tv_tag != 'default') and dest_buf.create_tag(cur_name, tag_params)
                                         text_tag2 = dest_buf.tag_table.lookup(cur_name)
                                         if text_tag2
                                           PandoraGtk.copy_glib_object_properties(text_tag, text_tag2)
@@ -4144,6 +4157,7 @@ module PandoraGtk
                                         end
                                       end
                                     end
+                                    default_setted = true if tv_tag=='default'
                                   end
                                 else
                                   tv_tag = nil
@@ -4263,6 +4277,7 @@ module PandoraGtk
                                     param_hash['style'] = Pango::FontDescription::STYLE_ITALIC
                                   end
                                   #js = read_justify_param(param_hash)
+                                  param_hash['name']=nil
                                   tag_name, tag_params = generate_tag(param_hash, nil, 'text')
                                   p 'IMG-TAGS [tag_name, tag_params]='+[tag_name, tag_params].inspect
 
@@ -4295,12 +4310,12 @@ module PandoraGtk
                                       end
                                       alt ||= src
                                       PandoraUtils.set_obj_property(pixbuf, 'tooltip', alt)
-                                      p1 = iter.offset
+                                      p1_img = iter.offset
                                       dest_buf.insert(iter, pixbuf)
                                       if tv_tag
-                                        p2 = p1 + 1
+                                        p2 = p1_img + 1
                                         dest_buf.apply_tag(tv_tag, \
-                                          dest_buf.get_iter_at_offset(p1), \
+                                          dest_buf.get_iter_at_offset(p1_img), \
                                           dest_buf.get_iter_at_offset(p2))
                                       end
                                       #anchor = dest_buf.create_child_anchor(iter)
@@ -4310,7 +4325,7 @@ module PandoraGtk
                                       shift_coms(1)
                                       show_text = false
                                       if (title.is_a? String) and (title.size>0)
-                                        title = "\n\n" + title
+                                        title = "\n" + title
                                         dest_buf.insert(dest_buf.end_iter, title, tv_tag)
                                         shift_coms(title.size)
                                       end
@@ -4478,6 +4493,9 @@ module PandoraGtk
         else
           dest_buf.text = str
         #end-case-when
+      end
+      if default_setted
+        dest_buf.apply_tag('default', dest_buf.start_iter, dest_buf.end_iter)
       end
     end
 

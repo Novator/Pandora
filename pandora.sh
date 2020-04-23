@@ -30,13 +30,22 @@ CURDIR=`dirname "$DIRFILE"`
 PARAMS="$1"
 RUBY=`which ruby2.3`
 if [ "$RUBY" = "" ]; then
-  RUBY=`which ruby1.9.1`
+  RUBY=`which ruby2.2`
   if [ "$RUBY" = "" ]; then
-    RUBY=`ls -r1 /usr/bin/ruby2* 2>/dev/null | head -n 1`
+    RUBY=`which ruby2.1`
     if [ "$RUBY" = "" ]; then
-      RUBY=`ls -r1 /usr/bin/ruby1.9* 2>/dev/null | head -n 1`
+      RUBY=`which ruby2.0`
       if [ "$RUBY" = "" ]; then
-        RUBY=`which ruby`
+        RUBY=`which ruby1.9.1`
+        if [ "$RUBY" = "" ]; then
+          RUBY=`ls -r1 /usr/bin/ruby2* 2>/dev/null | head -n 1`
+          if [ "$RUBY" = "" ]; then
+            RUBY=`ls -r1 /usr/bin/ruby1.9* 2>/dev/null | head -n 1`
+            if [ "$RUBY" = "" ]; then
+              RUBY=`which ruby`
+            fi
+          fi
+        fi
       fi
     fi
   fi
@@ -131,10 +140,10 @@ case "$PARAMS" in
     ;;
   screen|--screen|-s)
     cd "$CURDIR"
-    RUBY2=`which ruby2.4`
-    if [ "$RUBY2" != "" ]; then
-      RUBY=$RUBY2
-    fi
+    #RUBY2=`which ruby2.4`
+    #if [ "$RUBY2" != "" ]; then
+    #  RUBY=$RUBY2
+    #fi
     SCREEN=`which screen`
     if [ "$SCREEN" = "" ]; then
       $RUBY ./pandora.rb --cui
