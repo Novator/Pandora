@@ -51,7 +51,7 @@
 #git log --graph --decorate --oneline
 
 ##Save version, md5 and date to history log
-echo "`./pandora.sh --version` `./pandora.sh --md5`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
+#echo "`./pandora.sh --version` `./pandora.sh --md5`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
 
 ## Push files from local to repository
 #git add --all
