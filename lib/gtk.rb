@@ -2347,7 +2347,7 @@ module PandoraGtk
       self.receives_default = true
       signal_connect('key-press-event') do |widget, event|
         res = false
-        if (event.keyval == Gdk::Keyval::GDK_F9)
+        if (event.keyval == Gdk::Keyval::GDK_F9) and event.state.control_mask?
           set_readonly(self.editable?)
           res = true
         end
@@ -4681,7 +4681,7 @@ module PandoraGtk
             @line_gc ||= nil
             if not @line_gc
               @line_gc = Gdk::GC.new(right_win)
-              @line_gc.rgb_fg_color = Gdk::Color.parse('#1A1A1A') #Gdk::Color.new(30000, 0, 30000)
+              @line_gc.rgb_fg_color = Gdk::Color.parse('#2A2A2A') #Gdk::Color.new(30000, 0, 30000)
               #@line_gc.function = Gdk::GC::AND
             end
             buf = tv.buffer
@@ -5037,7 +5037,6 @@ module PandoraGtk
       :view_mode, :color_mode, :fields, :property_box, :toolbar, :edit_btn, \
       :undopool, :redopool, :user_action
 
-
     def parent_win
       res = parent.parent.parent
     end
@@ -5179,6 +5178,20 @@ module PandoraGtk
       @undopool = nil
       @redopool = nil
       @user_action = nil
+
+      self.signal_connect('key-press-event') do |widget, event|
+        res = false
+        if not event.state.control_mask?
+          case event.keyval
+            when Gdk::Keyval::GDK_F5, Gdk::Keyval::GDK_F9
+              if @edit_btn and @edit_btn.sensitive?
+                @edit_btn.active = (not @edit_btn.active?)
+                res = true
+              end
+          end
+        end
+        res
+      end
     end
 
     def init_view_buf(buf)
@@ -6069,7 +6082,7 @@ module PandoraGtk
       tv = body_child
       if tag and (tv.is_a? Gtk::TextView)
         if (edit_btn and view_mode)
-          edit_btn.active = true
+          edit_btn.active = true if edit_btn.sensitive?
         else
           tv.set_tag(tag, params, defval, format)
         end
@@ -6388,19 +6401,19 @@ module PandoraGtk
         end
       end
 
-      self.signal_connect('key-press-event') do |widget, event|
-        btn = nil
-        case event.keyval
-          when Gdk::Keyval::GDK_F5
-            btn = PandoraGtk.find_tool_btn(toolbar, 'Edit')
-        end
-        if btn.is_a? Gtk::ToggleToolButton
-          btn.active = (not btn.active?)
-        elsif btn.is_a? Gtk::ToolButton
-          btn.clicked
-        end
-        res = (not btn.nil?)
-      end
+      #self.signal_connect('key-press-event') do |widget, event|
+      #  btn = nil
+      #  case event.keyval
+      #    when Gdk::Keyval::GDK_F5
+      #      btn = PandoraGtk.find_tool_btn(toolbar, 'Edit')
+      #  end
+      #  if btn.is_a? Gtk::ToggleToolButton
+      #    btn.active = (not btn.active?)
+      #  elsif btn.is_a? Gtk::ToolButton
+      #    btn.clicked
+      #  end
+      #  res = (not btn.nil?)
+      #end
 
       # create labels, remember them, calc middle char width
       texts_width = 0
@@ -8975,7 +8988,7 @@ module PandoraGtk
                   bodywin = nil
                   first_body_fld[PandoraUtils::FI_Widget2] = nil
                 end
-                if bodywin and bodywin.edit_btn
+                if bodywin and bodywin.edit_btn and bodywin.edit_btn.sensitive?
                   bodywin.edit_btn.active = (not bodywin.edit_btn.active?)
                 end
               end
@@ -15167,7 +15180,7 @@ module PandoraGtk
         and event.state.mod1_mask?) or ([Gdk::Keyval::GDK_q, Gdk::Keyval::GDK_Q, \
         1738, 1770].include?(event.keyval) and event.state.control_mask?) #q, Q, й, Й
           PandoraUI.do_menu_act('Quit')
-        elsif event.keyval == Gdk::Keyval::GDK_F5
+        elsif event.keyval == Gdk::Keyval::GDK_F6
           PandoraUI.do_menu_act('Hunt')
         elsif event.state.shift_mask? \
         and (event.keyval == Gdk::Keyval::GDK_F11)
