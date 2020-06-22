@@ -1932,7 +1932,7 @@ module PandoraNet
       end
       if buf
         @sbuf = buf
-      elsif buf==false
+      elsif buf.is_a?(FalseClass)
         @sbuf = nil
       else
         logmes = '(rcmd=' + rcmd.to_s + '/' + rcode.to_s + ' stage=' + stage.to_s + ')'
@@ -3287,7 +3287,7 @@ module PandoraNet
                   @stage = ES_Protocol
                   init_skey_or_error(false)
                 end
-              elsif res==false
+              elsif res.is_a?(FalseClass)
                 PandoraUI.log_message(PandoraUI::LM_Warning, _('Record came with wrong panhash'))
               else
                 PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot write a record')+' 1')
@@ -3983,7 +3983,7 @@ module PandoraNet
                             fish = params[MRF_Fish]
                             fish_key = params[MRF_Fish_key]
                             resend = (init_line([fisher, fisher_key, fisher_baseid, \
-                              fish, fish_key], pool.key_hash) == false)
+                              fish, fish_key], pool.key_hash).is_a?(FalseClass))
                           end
                         when MK_Cascade
                         when MK_CiferBox
@@ -4882,7 +4882,7 @@ module PandoraNet
                     case kind
                       when MK_Fishing
                         #line = fish_order[MR_Fisher..MR_Fish_key]
-                        #if init_line(line) == false
+                        #if init_line(line).is_a?(FalseClass)
                         #  #p log_mes+'Fish order to send: '+line.inspect
                         #  PandoraUI.log_message(PandoraUI::LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
                         #    +[PandoraUtils.bytes_to_hex(fish_order[MR_Fish]), \
@@ -5616,7 +5616,7 @@ module PandoraNet
         end
       end
       if $hunter_thread and ((not $hunter_thread.alive?) \
-      or (($hunter_thread[:active]==false) and (not continue)))
+      or (($hunter_thread[:active].is_a?(FalseClass)) and (not continue)))
         $hunter_thread.exit if $hunter_thread.alive?
         $hunter_thread = nil
       end

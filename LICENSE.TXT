@@ -110,7 +110,7 @@ This General Public License does not permit incorporating your program into prop
   http://www.gnu.org/licenses/gpl-2.0.html
 
 
-================================ RUSSIAN utf8 ========
+================================ RUSSIAN (utf8) ========
 
 Это неофициальный русский перевод Универсальной Общественной Лицензии GNU. Он не был опубликован Фондом Свободного ПО и не устанавливает законные условия распространения ПО, использующего GNU GPL, что делает только оригинальный английский текст GNU GPL. Однако мы надеемся, что этот перевод поможет людям, говорящим на русском языке, лучше понять GNU GPL.
 This is an unofficial translation of the GNU General Public License into Russian. It was not published by the Free Software Foundation, and does not legally state the distribution terms for software that uses the GNU GPL—-only the original English text of the GNU GPL does that. However, we hope that this translation will help Russian speakers understand the GNU GPL better.

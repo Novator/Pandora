@@ -21,7 +21,7 @@ begin
   Gtk.init
   $gtk_is_active = true
 rescue Exception
-  puts("Gtk cannot be activated.\nInstall packet 'ruby-gtk'")
+  puts("Error: Gtk cannot be activated.\nInstall packet 'ruby-gtk'")
 end
 
 
@@ -11375,7 +11375,7 @@ module PandoraGtk
         kind ||= 1
         if kind
           pixbuf = kind_pbs[kind-1]
-          pixbuf = nil if pixbuf==false
+          pixbuf = nil if pixbuf.is_a?(FalseClass)
           renderer.pixbuf = pixbuf
         end
       end
@@ -12730,7 +12730,7 @@ module PandoraGtk
         if val
           #p '[col, val]='+[col, val].inspect
           pixbuf = PandoraModel.get_avatar_icon(val, tvc.tree_view, its_blob, 45)
-          pixbuf = nil if pixbuf==false
+          pixbuf = nil if pixbuf.is_a?(FalseClass)
           renderer.pixbuf = pixbuf
         end
       end
@@ -13780,7 +13780,7 @@ module PandoraGtk
       base_icon0 = @base_icon
       if state
         @base_icon = @online_icon
-      elsif state==false
+      elsif state.is_a?(FalseClass)
         @base_icon = @main_icon
       end
       update_icon

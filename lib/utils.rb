@@ -311,7 +311,7 @@ module PandoraUtils
   # RU: Имя во множественном или единственном числе
   def self.get_name_or_names(mes, plural=false, lang=nil)
     sname, pname = mes.split('|')
-    if plural==false
+    if plural.is_a?(FalseClass)
       res = sname
     elsif ((not pname) or (pname=='')) and sname
       lang ||= $lang

@@ -1263,6 +1263,7 @@ module PandoraModel
         pixbuf = PandoraModel.get_image_from_url(ava_url, nil, pixbuf_parent)
         #p 'pixbuf='+pixbuf.inspect
         if pixbuf
+          #p 'scale to '+icon_size.inspect
           pixbuf = scale_buf_to_size(pixbuf, icon_size)
         elsif its_blob
           pixbuf = get_avatar_icon(panhash, pixbuf_parent, nil, icon_size)
