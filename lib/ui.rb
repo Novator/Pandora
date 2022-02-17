@@ -22,7 +22,10 @@ def require_gtk
   res = $gtk_is_active
 end
 
-def require_ncurses
+$first_curses_module = nil
+
+def require_ncurses(cui_mode=nil)
+  $first_curses_module = cui_mode
   if not $ncurses_is_active
     require_relative 'ncurses.rb'
   end
@@ -30,7 +33,7 @@ def require_ncurses
 end
 
 $gtk_is_active = false
-$ncurses_is_active = false
+$ncurses_is_active = nil
 
 module PandoraUI
 
@@ -785,7 +788,7 @@ module PandoraUI
     @hunter_count = @listener_count = @fisher_count = 0
     @play_sounds = PandoraUtils.get_param('play_sounds')
     if cui_mode
-      if require_ncurses
+      if require_ncurses(cui_mode)
         PandoraCui.do_main_loop do
           do_after_start
         end

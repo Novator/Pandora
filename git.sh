@@ -57,8 +57,8 @@
 ## Push files from local to repository
 #git add --all
 git commit -a -m "version 0.75 alpha"
-#git push -u github master
-#git push -u bitbuc master
+git push -u github main
+git push -u bitbuc master
 #git push -u github develop
 #git push -u bitbuc develop
 #git push -u robux master

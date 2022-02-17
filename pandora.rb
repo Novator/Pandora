@@ -23,7 +23,7 @@ $country = 'US'
 $lang = 'en'
 $autodetect_lang = true
 $pandora_parameters = []
-$cui_mode = false
+$cui_mode = nil
 $screen_mode = false
 $hide_on_start = false
 
@@ -146,10 +146,12 @@ while (ARGVdup.size>0) or next_arg
       $poly_launch = true
     when '-n', '--hide', '--minimize'
       $hide_on_start = true
-    when '-c','--cui', '--console'
-      $cui_mode = true
+    when '-c','--curses','--cui', '--console'
+      $cui_mode = 1
+    when '-nc','--ncurses'
+      $cui_mode = 2
     when '-s','--screen'
-      $cui_mode = true
+      $cui_mode = 1 if $cui_mode.nil?
       $screen_mode = true
     else
       if (arg.size>0)

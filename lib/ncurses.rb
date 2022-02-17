@@ -10,39 +10,45 @@
 # 2017 (c) Michael Galyuk
 # RU: 2017 (c) Михаил Галюк
 
-$curses_is_active = false
+require_relative 'ui.rb'
 
-# Init NCurses or Curses
-# RU: Инициализировать NCurses или Curses
-begin
-  require 'ncurses'
-  module Ncurses
-    Window = WINDOW
-    def self.color_pair(num)
-      COLOR_PAIR(num)
+# Try to init Curses or NCurses
+# RU: Инициализировать Curses или NCurses
+if ($first_curses_module==2) and (not $ncurses_is_active)
+  begin
+    require 'ncurses'
+    module Ncurses
+      Window = WINDOW
+      def self.color_pair(num)
+        COLOR_PAIR(num)
+      end
+      def self.lines
+        LINES()
+      end
+      def self.cols
+        COLS()
+      end
+      def self.mousemask2(flags)
+        mousemask(flags, [])
+      end
+      def self.init_screen
+        initscr
+      end
+      def self.close_screen
+        endwin
+      end
+      def self.getmouse2(mev)
+        getmouse(mev)
+        mev
+      end
     end
-    def self.lines
-      LINES()
-    end
-    def self.cols
-      COLS()
-    end
-    def self.mousemask2(flags)
-      mousemask(flags, [])
-    end
-    def self.init_screen
-      initscr
-    end
-    def self.close_screen
-      endwin
-    end
-    def self.getmouse2(mev)
-      getmouse(mev)
-      mev
-    end
+    $ncurses_is_active = 2
+  rescue => err
+    PandoraUI.log_message(PandoraUI::LM_Error, Utf8String.new(err.message))
   end
-  $ncurses_is_active = true
-rescue Exception
+end
+
+if not $ncurses_is_active
   begin
     require 'curses'
     Ncurses = Curses
@@ -83,14 +89,48 @@ rescue Exception
         win.close if win
       end
     end
-    $ncurses_is_active = true
-    $curses_is_active = true
-  rescue Exception
-    Kernel.abort('NCurses and Curses cannot be activated')
+    $ncurses_is_active = 1
+  rescue => err
+    PandoraUI.log_message(PandoraUI::LM_Error, Utf8String.new(err.message))
+  end
+end
+
+if (not $ncurses_is_active) and ($first_curses_module != 2)
+  begin
+    require 'ncurses'
+    module Ncurses
+      Window = WINDOW
+      def self.color_pair(num)
+        COLOR_PAIR(num)
+      end
+      def self.lines
+        LINES()
+      end
+      def self.cols
+        COLS()
+      end
+      def self.mousemask2(flags)
+        mousemask(flags, [])
+      end
+      def self.init_screen
+        initscr
+      end
+      def self.close_screen
+        endwin
+      end
+      def self.getmouse2(mev)
+        getmouse(mev)
+        mev
+      end
+    end
+    $ncurses_is_active = 2
+  rescue => err
+    PandoraUI.log_message(PandoraUI::LM_Error, Utf8String.new(err.message))
   end
 end
 
 
+#==Module definitions
 module PandoraCui
 
   def self.cui_inited
@@ -503,7 +543,7 @@ module PandoraCui
       if self.curse_windows
         del_windows
         #Ncurses.close_screen
-        Ncurses.refresh if $curses_is_active
+        Ncurses.refresh if $ncurses_is_active==1
       else
         self.curse_windows = []
         first_start = true
@@ -533,6 +573,8 @@ module PandoraCui
 
         stdscr.move(Ncurses.lines - 1, 0)
         edge = 0
+        stdscr.addstr('Ctrl+')
+        edge += 5
         LeftTitles.each_with_index do |title, ind|
           color = 0
           if ind==self.cur_page
@@ -838,7 +880,11 @@ module PandoraCui
       Ncurses.start_color
       Ncurses.curs_set(0)
       Ncurses.nonl
-      Ncurses.timeout=1000
+      begin
+        Ncurses.timeout=1000
+      rescue => err
+        PandoraUI.log_message(PandoraUI::LM_Warning, Utf8String.new(err.message))
+      end
 
       stdscr = Ncurses.stdscr
       ##stdscr.intrflush(false)
