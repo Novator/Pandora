@@ -60,7 +60,7 @@ git commit -a -m "version 0.75 alpha"
 #git push -u github master
 git push https://`cat ./github_token.txt`@github.com/Novator/Pandora.git
 #git push -u bitbuc master
-git push https://robux:`cat ./bitbuc_token.txt`@bitbucket.org/robux/pandora.git
+#git push https://robux:`cat ./bitbuc_token.txt`@bitbucket.org/robux/pandora.git
 #git push -u github develop
 #git push -u bitbuc develop
 #git push -u robux master
