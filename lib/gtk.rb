@@ -16,13 +16,14 @@ require_relative 'net.rb'
 
 # Graphical user interface Gtk2
 # RU: Графический интерфейс пользователя Gtk2
-begin
+#begin
   require 'gtk2'
+  #require_relative 'gtk3'
   Gtk.init
   $gtk_is_active = true
-rescue Exception
-  puts("Error: Gtk cannot be activated.\nInstall packet 'ruby-gtk'")
-end
+#rescue Exception
+#  puts("Error: Gtk cannot be activated.\nInstall packet 'ruby-gtk'")
+#end
 
 
 module PandoraGtk

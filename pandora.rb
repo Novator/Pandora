@@ -11,6 +11,7 @@
 # RU: 2012 (c) Михаил Галюк
 
 require 'socket'
+require 'fileutils'
 require_relative 'lib/utils.rb'
 require_relative 'lib/model.rb'
 require_relative 'lib/ui.rb'
@@ -112,6 +113,7 @@ while (ARGVdup.size>0) or next_arg
         next_arg = nil
       end
     end
+
   end
   case arg
     when '-h','--host'
@@ -133,9 +135,17 @@ while (ARGVdup.size>0) or next_arg
         $autodetect_lang = false
         puts 'Setted language/country '+[$lang, $country].inspect
       end
-    when '-b', '--base'
-      $pandora_sqlite_db = val if val
-      puts 'Setted base '+$pandora_sqlite_db.inspect
+    when '-d', '--database'
+      $pandora_sqlite_db = File.join($pandora_base_dir, val) if val
+      puts 'Setted db file: '+$pandora_sqlite_db.inspect
+    when '-b', '--basedir'
+      def_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')
+      $pandora_base_dir = val if val
+      puts 'Setted basedir: '+$pandora_base_dir.inspect
+      if $pandora_sqlite_db==def_sqlite_db
+        $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')
+        puts 'Setted db file: '+$pandora_sqlite_db.inspect
+      end
     when '-m', '--md5'
       puts PandoraUtils.pandora_md5_sum
       Kernel.exit(0)
@@ -165,7 +175,8 @@ while (ARGVdup.size>0) or next_arg
         puts 'Ruby script Pandora params (examples):'
         puts runit+'-h localhost     - listen address'
         puts runit+'-p '+PandoraNet::DefTcpPort.to_s+'          - listen TCP/UDP port'
-        puts runit+'-b base/pandora2.sqlite  - set filename of database'
+        puts runit+'-b ./base        - set base dir (default "~/.pandora" for AppImage)'
+        puts runit+'-d pandora2.sqlite   - set database file'
         puts runit+'-l ua|--lang ua  - set Ukrainian language'
         puts runit+'-m|--md5         - calc MD5 of all Pandora scripts'
         puts runit+'-v|--version     - show Pandora version'
@@ -181,6 +192,9 @@ end
 # Pandora Unix Socket file and its handler
 PANDORA_USOCK = '/tmp/pandora_unix_socket'
 $pserver = nil
+
+#Create BaseDir if not exist
+FileUtils.mkdir_p($pandora_base_dir) unless Dir.exists?($pandora_base_dir)
 
 # Delete Pandora unix socket
 # RU: Удаляет unix-сокет Пандоры
@@ -206,7 +220,7 @@ end
 
 MAIN_WINDOW_TITLE = 'Pandora'
 GTK_WINDOW_CLASS = 'gdkWindowToplevel'
-ANOTHER_COPY_MES = 'Another copy of Pandora is already runned'
+ANOTHER_COPY_MES = 'Another copy of Pandora is already runned (use -pl option to polylaunch run)'
 
 # Prevent second execution
 # RU: Предотвратить второй запуск

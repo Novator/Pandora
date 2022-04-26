@@ -16,7 +16,10 @@ require 'digest'
 require 'base64'
 require 'net/http'
 require 'net/https'
-require 'sqlite3'
+begin
+  require 'sqlite3'
+rescue Exception
+end
 begin
   require 'gst'
 rescue Exception

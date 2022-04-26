@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Terminal=false
+Exec=pandora.sh
+Icon=pandora
+Type=Application
+Categories=Network;
+StartupNotify=true
+Name=Pandora
+GenericName=Social network
+GenericName[ru]=Социальная сеть
+Comment=P2P social network Pandora
+Comment[ru]=P2P народная сеть Pandora

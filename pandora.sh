@@ -38,18 +38,19 @@ if [ "$RUBY" = "" ]; then
       if [ "$RUBY" = "" ]; then
         RUBY=`which ruby1.9.1`
         if [ "$RUBY" = "" ]; then
-          RUBY=`ls -r1 /usr/bin/ruby2* 2>/dev/null | head -n 1`
-          if [ "$RUBY" = "" ]; then
+          #RUBY=`ls -r1 /usr/bin/ruby2* 2>/dev/null | head -n 1`
+          #if [ "$RUBY" = "" ]; then
             RUBY=`ls -r1 /usr/bin/ruby1.9* 2>/dev/null | head -n 1`
             if [ "$RUBY" = "" ]; then
               RUBY=`which ruby`
             fi
-          fi
+          #fi
         fi
       fi
     fi
   fi
 fi
+
 # Direct ruby setting if need
 if [ "$RUBY" = "" ]; then
   RUBY="/usr/bin/ruby"
