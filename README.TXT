@@ -186,7 +186,39 @@ Ask author for help:
 
 Support development:
 
-  Visa card: 5106 2180 3378 8423
-  Yandex money: 410016271392944
-  BitCoin: 1PanDR1Q6TL3qE1TSs2Zagt2ihhEiCBHZB
+  YooMoney (ex-Yandex money): 410016271392944
+  TRX (Tron): TJq7HiueYNEyP596JehQg7vmvJTcuWknys
+  DGB (DigiByte): DLnsoa86zc7KFDErY1P21zYGbXQuJ1dHTE
+  DASH (Dash, ex-Darkcoin): XsysKkyLLYbtm2BrWMTU5L4hqThpGDejCg
+  LTC (Litecoin): LR1eq5fzeQrW1jnJxcEadUJGvXgvEqHryV
+  DOGE (Dogecoin): DUMULXsyZzM6aGnNC5cmY6mLuhcCPUV9Aa
+  XNO (Nano): nano_3ngx166fdfhdt1az4oxiorugqm3usa4ksmks1xcpeefa8ehxyhi1upxtpznx
+  XRP (Ripple): rGPc9sUvrv2gJVswv5eamWUxKQqfhFXzdY
+  XMR (Monero): 4BA5qxx9Tc7FKR9veEJNUfhcajFMMYSQVKdV9TE8AB3vQAhKPYhwsciVb3X91tBhFTDsCwi4eGHHJXXHJuRjrc9mEzDUMNv
+  ETH (Ethereum): 0xd58c62d18aB1f365C41DF4F86C20227b1849a204
+  ETC (Ethereum Classic): 0x7dd24500f5702284fbca343fb6dc495f262730ec
+  USDT-TRX (Tether TRC-20): TJq7HiueYNEyP596JehQg7vmvJTcuWknys
+  USDT-ETH (Tether ERC-20): 0xd58c62d18aB1f365C41DF4F86C20227b1849a204
+  BTC (BitCoin): 1CxfmmVURuHTLPMV6ykRuXqourMdTCKUEz
+  BTG (Bitcoin Gold): GL9eBLsxts97rdfCUZyxaxyxMnGHUbPzf9
+  BCH (Bitcoin Cash): 1CAaWL3m9AM8diTEZww17nuMiynGDwwjn4 (bitcoincash:qpa8jx9dvau9n8mjk348x6mc7kuk0dl6quqejf4rv9)
+  RVN (Ravencoin): RF2b5J9qDkmWoNrfYb9N8bTjP2k8R2zWGH
+  FIRO (Firo, ex-Zcoin): aNrMVXy5ZYxuKbV5QPuY8Gdo3tHCxPT7PJ
+  FLX (Flux, ex-ZelCash): 0x7dd24500f5702284fbca343fb6dc495f262730ec
+  BNB (Binance Chain Native): bnb152w7qrf5r7spkrvkhffq24dq7778rep9wj39g8
+  BSC (Binance Smart Contract): 0x27AC8EF3365d7Eb2A6509788153C05D7F95D1C1f
+  CLO (Callisto): 0xC16cF4141046717Face14855cb2942426313F625
+  BEAM (Beam): 14b100f6b6a5af7e54b5dd76f09f614afdcb4860fb6f9388665728bdd299772f7c3
+  GRIN (Grin): grin1hk62pv92xt6j07ffghpxdnk8m7x8x9t36d723uc4safhjkvmvc7sdwj4j5
+  ERG (Ergo): 9eyWumj6UWUXkVz7u73xPgayaCh5V1hLtrr94hwy7MYmnsGVkvk
+  ZEN (Horizen): znXzV9m7iiByAtskYJwdw9D143KhQf8Bv68
+  ZEC (Zcash): t1dciKXmAWmDkNNLFWCczrw47m5Uj4cK2gg
+  DOT (Polkadot): 13B2ynTUuhp1Hn2SPZK99ZFETqhebtoauG8FdhMzdWewcFQ1
+  CTXC (Cortex): 0xd58c62d18aB1f365C41DF4F86C20227b1849a204
+  AE (Aeternity): 0xd58c62d18aB1f365C41DF4F86C20227b1849a204
+  EXP (Expanse): 0x1961aFcdaaB241266Aded2d036584082BF29c0ca
+  KMD (Komodo): RB6GCiBNiT31K3vArMhP6jxB3HRrZKyb6h
+
+  Verify requisites here:
+  https://robux.perm.ru/pandora.html
 
