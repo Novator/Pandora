@@ -859,7 +859,7 @@ module PandoraUtils
       val = val.to_i
       min_ago = (time_now - val) / 60
       if min_ago < 0
-        res = Time.at(val).strftime('%d.%m.%Y')
+        res = Time.at(val).strftime('%d.%m.%Y %R')
       elsif min_ago == 0
         res = _('just now')
       elsif min_ago == 1

@@ -92,6 +92,8 @@ arg = nil
 val = nil
 next_arg = nil
 ARGVdup = ARGV.dup
+show_help = false
+runit = 'ruby pandora.rb'
 while (ARGVdup.size>0) or next_arg
   if next_arg
     arg = next_arg
@@ -113,7 +115,6 @@ while (ARGVdup.size>0) or next_arg
         next_arg = nil
       end
     end
-
   end
   case arg
     when '-h','--host'
@@ -163,33 +164,40 @@ while (ARGVdup.size>0) or next_arg
     when '-s','--screen'
       $cui_mode = 1 if $cui_mode.nil?
       $screen_mode = true
+    when '--shell'
+      runit = 'pandora.sh'
+    when '--appimage'
+      runit = 'Pandora-N.NN-x86_64.AppImage'
+    when '-?','--help'
+      show_help = true
     else
       if (arg.size>0)
-        runit = '  '
-        if arg=='--shell' then
-          runit += 'pandora.sh'
-        else
-          runit += 'ruby pandora.rb'
-        end
-        runit += ' '
-        puts 'Ruby script Pandora params (examples):'
-        puts runit+'-h localhost     - listen address'
-        puts runit+'-p '+PandoraNet::DefTcpPort.to_s+'          - listen TCP/UDP port'
-        puts runit+'-b ./base        - set base dir (default "~/.pandora" for AppImage)'
-        puts runit+'-d pandora2.sqlite   - set database file'
-        puts runit+'-l ua|--lang ua  - set Ukrainian language'
-        puts runit+'-m|--md5         - calc MD5 of all Pandora scripts'
-        puts runit+'-v|--version     - show Pandora version'
-        puts runit+'-pl|--poly       - allow poly (many) launch'
-        puts runit+'-n|--hide        - start hidden and minimized'
-        puts runit+'-c|--cui         - console user interface (CUI) with ncurses'
-        Kernel.exit!
+        arg += '='+val.to_s if val
+        puts('!!!Bad argument: '+arg)
+        show_help = true
       end
   end
   val = nil
 end
+if show_help
+  runit = '  '+runit+' '
+  puts 'Ruby script Pandora params (examples):'
+  puts runit+'-?|--help        - this help'
+  puts runit+'-h localhost     - listen address'
+  puts runit+'-p '+PandoraNet::DefTcpPort.to_s+'          - listen TCP/UDP port'
+  puts runit+'-b ./base        - set base dir (default "./base" or "~/.pandora" for AppImage)'
+  puts runit+'-d pandora2.sqlite   - set database file'
+  puts runit+'-l ua|--lang ua  - set Ukrainian language (other also possible)'
+  puts runit+'-m|--md5         - calc MD5 of all Pandora scripts'
+  puts runit+'-v|--version     - show Pandora version'
+  puts runit+'-pl|--poly       - allow poly (many) launch'
+  puts runit+'-n|--hide        - start hidden and minimized'
+  puts runit+'-c|--curses      - console user interface (CUI) via curses'
+  puts runit+'-nc|--ncurses    - console user interface (CUI) via ncurses'
+  Kernel.exit!
+end
 
-# Pandora Unix Socket file and its handler
+# Pandora Unix Socket file and its handle
 PANDORA_USOCK = '/tmp/pandora_unix_socket'
 $pserver = nil
 
@@ -205,7 +213,7 @@ end
 $win32api = nil
 
 # Initialize win32 unit
-# RU: Инициализирует модуль win32
+# RU: Инициализировать модуль win32
 def init_win32api
   if $win32api.nil?
     begin

@@ -50,6 +50,8 @@
 #git diff
 #git diff --stat
 #git log --graph --decorate --oneline
+#git log --graph --pretty=oneline --abbrev-commit --all --decorate
+#git log --graph --color-words --color --source --decorate --all
 
 ##Save version, md5 and date to history log
 #echo "`./pandora.sh --version` `./pandora.sh --md5`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
@@ -84,6 +86,7 @@ git push https://`cat ./github_token.txt`@github.com/Novator/Pandora.git
 #nano .gitignore
 #git rm --cached rubyfull.exe
 #git rm rubyfull.exe
+#git update-index --assume-unchanged file.txt
 
 ## Rename file or directory
 #git mv ruby.exe rubyfull.exe

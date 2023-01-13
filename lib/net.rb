@@ -275,7 +275,7 @@ module PandoraNet
   CMP_SignRec  = 5
 
   # Search request and answer field indexes
-  # RU: Индексы полей в поисковом и ответом запросе
+  # RU: Индексы полей в поисковом и ответном запросе
   #----Head sum: 70
   MRS_Kind       = MR_Param1    #1
   MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
