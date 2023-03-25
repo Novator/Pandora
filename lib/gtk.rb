@@ -3290,7 +3290,8 @@ module PandoraGtk
   end
 
 
-  $font_desc = nil
+  $chat_font_desc = nil
+  $mono_font_desc = nil
 
   # Window for view body (text or blob)
   # RU: Окно просмотра тела (текста или блоба)
@@ -4610,7 +4611,13 @@ module PandoraGtk
       @scale_width = 0
       @scale_width_in_char = nil
       super(aview_border)
-      $font_desc ||= Pango::FontDescription.new('Monospace 11')
+
+      if not $mono_font_desc
+        amono_font_desc = PandoraUtils.get_param('mono_font_desc')
+        amono_font_desc = nil if (amono_font_desc=='')
+        amono_font_desc ||= 'Monospace 11'
+        $mono_font_desc = Pango::FontDescription.new(amono_font_desc)
+      end
 
       self.signal_connect('expose-event') do |widget, event|
         tv = widget
@@ -6031,7 +6038,7 @@ module PandoraGtk
           tv.show
           tv.editable = false
         else
-          tv.modify_font($font_desc)
+          tv.modify_font($mono_font_desc)
           tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
           tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
           tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
@@ -8773,14 +8780,33 @@ module PandoraGtk
             atalkview.buffer.create_tag('sys_bold', 'foreground' => $sys_color,  \
               'weight' => Pango::FontDescription::WEIGHT_BOLD)
 
+            atalkview.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C0C0C0'))
+            atalkview.border_width = 1
+
+            if not $chat_font_desc
+              achat_font_desc = PandoraUtils.get_param('chat_font_desc')
+              achat_font_desc = nil if (achat_font_desc=='')
+              if achat_font_desc
+                $chat_font_desc = Pango::FontDescription.new(achat_font_desc)
+              else
+                $chat_font_desc = nil
+              end
+            end
+
+            atalkview.modify_font($chat_font_desc)
+
             talksw = Gtk::ScrolledWindow.new(nil, nil)
             talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
             talksw.add(atalkview)
 
             edit_box = PandoraGtk::SuperTextView.new
+            edit_box.modify_font($chat_font_desc)
+
             atalkview.edit_box = edit_box
             edit_box.wrap_mode = Gtk::TextTag::WRAP_WORD
             #edit_box.set_size_request(200, 70)
+            edit_box.border_width = 1
+            edit_box.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#8080F0'))
 
             @edit_sw = Gtk::ScrolledWindow.new(nil, nil)
             edit_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
@@ -9524,7 +9550,7 @@ module PandoraGtk
 
         save_mes_history(mes_panhash, mes)
 
-        #talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
+        talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
         #talkview.show_all
         if notice
           if chat_mode
@@ -11322,11 +11348,11 @@ module PandoraGtk
         list_store.clear
         if $pool
           $pool.mass_records.queue.each do |mr|
-            p '---Radar mass_rec='+mr[0..6].inspect
+            #p '---Radar mass_rec='+mr[0..6].inspect
             anode = mr[PandoraNet::MR_SrcNode]
             if anode
               akey, abaseid, aperson = $pool.get_node_params(anode)
-              p 'anode, akey, abaseid, aperson='+[anode, akey, abaseid, aperson].inspect
+              #p 'anode, akey, abaseid, aperson='+[anode, akey, abaseid, aperson].inspect
               sess_iter = list_store.append
               akind = mr[PandoraNet::MR_Kind]
               anick = nil

@@ -404,6 +404,8 @@
     <delete_mode desc="Delete mode (0-ask,1-silent)" type="Integer" section="view" setting="0" />
     <tab_size desc="Tab symbol size in spaces for editor" type="Integer" section="view" setting="4" />
     <max_color_lines desc="Maximum color lines for editor" type="Integer" section="view" setting="700" />
+    <mono_font_desc desc="Monospace font and size" type="String" section="view" setting="Monospace 11" />
+    <chat_font_desc desc="Chat and dialog [font and] size" type="String" section="view" setting="12" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
     <check_interval desc="Сheck interval (hour)" type="Real" section="update" setting="1" />

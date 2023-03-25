@@ -1170,7 +1170,7 @@ module PandoraNet
         atrust ||= 0
         adepth ||= 3
         adepth -= 1
-        #p '------add_mass_rec1  adepth='+adepth.inspect
+        #p '------add_mass_rec1  akind, adepth='+[akind, adepth].inspect
         if adepth >= 0
           cur_time = Time.now.to_i
           #delete_old_mass_records(cur_time)
@@ -1205,6 +1205,8 @@ module PandoraNet
                 PandoraUI.set_status_field(PandoraUI::SF_Search, @mass_records.queue.size.to_s)
                 PandoraNet.start_hunt if hunt
               when MK_Chat
+                #PandoraUI.set_status_field(PandoraUI::SF_Radar, @mass_records.queue.size.to_s)
+                #PandoraUI.update_or_show_radar_panel
                 #
             end
             #p '=======add_mass_rec2  mr='+mr.inspect
@@ -2830,6 +2832,8 @@ module PandoraNet
                     pool.check_incoming_addr(addr, host_ip) if addr
                     @sess_mode = params['mode']
                     #p log_mes+'ECC_Auth_Hello @sess_mode='+@sess_mode.inspect
+                    @conn_flags2 = params['flags']
+                    #p log_mes+'ECC_Auth_Params @conn_flags2='+@conn_flags2.inspect
                     @notice = params['notice']
                     init_skey_or_error(true)
                   else
@@ -3076,7 +3080,7 @@ module PandoraNet
                       #p log_mes+'ECC_Auth_Sign trust='+trust.inspect
                       if ($captcha_length>0) and $gtk_is_active \
                       and (trust.is_a? Integer) \
-                      and (not hunter?) and ((@sess_mode & CM_Captcha)>0)
+                      and (not hunter?) and ((@conn_flags2 & CF_Captcha)>0)
                         @skey[PandoraCrypto::KV_Trust] = 0
                         send_captcha
                         #if not hunter?
@@ -3879,12 +3883,12 @@ module PandoraNet
               when EC_Mass
                 kind = rcode
                 params = PandoraUtils.binary_to_rubyobj(rdata, @ssformat)
-                #p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
+                p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
                 if (params.is_a? Array) and (params.size>=5)
                   src_node, src_time, atrust, adepth, param1, \
                     param2, param3 = params
                   if src_node != pool.self_node
-                    #p log_mes+' **** Mass PROCESS src_node,param1='+[PandoraUtils.bytes_to_hex(src_node), param1].inspect
+                    p log_mes+' **** Mass PROCESS src_node,param1='+[PandoraUtils.bytes_to_hex(src_node), param1].inspect
                     src_key = nil
                     scr_baseid = nil
                     scr_person = nil
@@ -3904,8 +3908,8 @@ module PandoraNet
                         when MK_Chat
                           destination  = AsciiString.new(params[MRC_Dest])
                           row = PandoraUtils.binary_to_rubyobj(params[MRC_MesRow], @ssformat)
-                          #p '---MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
-                          #  MRC_MesRow, params[MRC_MesRow], row].inspect
+                          p '---MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
+                            MRC_MesRow, params[MRC_MesRow], row].inspect
                           creator  = row[CMP_Creator]
                           created  = row[CMP_Created]
                           text     = row[CMP_Text]
@@ -3963,7 +3967,7 @@ module PandoraNet
                           #MRS_Kind       = MR_Param1    #1
                           #MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
                           #MRA_Answer     = MR_Param3    #~22
-                          #p '  ~~~MK_Search param1,param2='+[param1, PandoraUtils.bytes_to_hex(param2)].inspect
+                          p '  ~~~MK_Search param1,param2='+[param1, PandoraUtils.bytes_to_hex(param2)].inspect
                           #scr_baseid ||= @to_base_id
                           #resend = ((scr_baseid.nil?) or (scr_baseid != pool.base_id))
                           #  #p log_mes+'ADD search req to pool list'
@@ -4872,13 +4876,14 @@ module PandoraNet
                 and (processed<$mass_per_cicle))
                 #and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
                   mass_rec = pool.mass_records.get_block_from_queue($max_mass_count, @to_node)
-                  #p log_mes+'## FOUND mass_rec [scr,trust,depth ='+[PandoraUtils.bytes_to_hex(mass_rec[MR_SrcNode]), mass_rec[MR_Trust], \
-                  #  mass_rec[MR_Depth]].inspect if mass_rec
+                  p log_mes+'## FOUND mass_rec [scr,trust,depth ='+[PandoraUtils.bytes_to_hex(mass_rec[MR_SrcNode]), \
+                    mass_rec[MR_Trust], mass_rec[MR_Depth]].inspect if mass_rec
                   if (mass_rec and mass_rec[MR_SrcNode] \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], \
                   :auto_to_float)) and (mass_rec[MR_SrcNode] != @to_node) and (mass_rec[MR_Depth]>0))
                     kind = mass_rec[MR_Kind]
                     params = mass_rec[MR_SrcNode..MR_Param3]
+                    #p '--MASS rec Go!  kind='+kind.inspect
                     case kind
                       when MK_Fishing
                         #line = fish_order[MR_Fisher..MR_Fish_key]
@@ -4892,10 +4897,11 @@ module PandoraNet
                         #  add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish11)
                         #end
                       when MK_Search
-                        #p log_mes+'Send search request: '+req.inspect
-                        #req_raw = PandoraUtils.rubyobj_to_pson(req)
+                        #p log_mes+'Send search request: '+mass_rec.inspect
+                        #req_raw = PandoraUtils.rubyobj_to_pson(mass_rec)
                         #add_send_segment(EC_Query, true, req_raw, ECC_Query_Search11)
                       when MK_Chat
+                        #p log_mes+'Send MK_Chat request: '+mass_rec.inspect
                     end
                     if params
                       #p log_mes+'-->>>> MR SEND [kind, params]'+[kind, params].inspect
