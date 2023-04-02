@@ -3883,12 +3883,12 @@ module PandoraNet
               when EC_Mass
                 kind = rcode
                 params = PandoraUtils.binary_to_rubyobj(rdata, @ssformat)
-                p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
+                #p log_mes+'====EC_Mass [kind, params, len]='+[kind, params, len].inspect
                 if (params.is_a? Array) and (params.size>=5)
                   src_node, src_time, atrust, adepth, param1, \
                     param2, param3 = params
                   if src_node != pool.self_node
-                    p log_mes+' **** Mass PROCESS src_node,param1='+[PandoraUtils.bytes_to_hex(src_node), param1].inspect
+                    #p log_mes+' **** Mass PROCESS src_node,param1='+[PandoraUtils.bytes_to_hex(src_node), param1].inspect
                     src_key = nil
                     scr_baseid = nil
                     scr_person = nil
@@ -3908,8 +3908,8 @@ module PandoraNet
                         when MK_Chat
                           destination  = AsciiString.new(params[MRC_Dest])
                           row = PandoraUtils.binary_to_rubyobj(params[MRC_MesRow], @ssformat)
-                          p '---MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
-                            MRC_MesRow, params[MRC_MesRow], row].inspect
+                          #p '---MRC_Dest, MRC_MesRow, params[MRC_MesRow], row='+[MRC_Dest, \
+                          #  MRC_MesRow, params[MRC_MesRow], row].inspect
                           creator  = row[CMP_Creator]
                           created  = row[CMP_Created]
                           text     = row[CMP_Text]
@@ -3967,7 +3967,7 @@ module PandoraNet
                           #MRS_Kind       = MR_Param1    #1
                           #MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
                           #MRA_Answer     = MR_Param3    #~22
-                          p '  ~~~MK_Search param1,param2='+[param1, PandoraUtils.bytes_to_hex(param2)].inspect
+                          #p '  ~~~MK_Search param1,param2='+[param1, PandoraUtils.bytes_to_hex(param2)].inspect
                           #scr_baseid ||= @to_base_id
                           #resend = ((scr_baseid.nil?) or (scr_baseid != pool.base_id))
                           #  #p log_mes+'ADD search req to pool list'
@@ -4876,8 +4876,8 @@ module PandoraNet
                 and (processed<$mass_per_cicle))
                 #and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
                   mass_rec = pool.mass_records.get_block_from_queue($max_mass_count, @to_node)
-                  p log_mes+'## FOUND mass_rec [scr,trust,depth ='+[PandoraUtils.bytes_to_hex(mass_rec[MR_SrcNode]), \
-                    mass_rec[MR_Trust], mass_rec[MR_Depth]].inspect if mass_rec
+                  #p log_mes+'## FOUND mass_rec [scr,trust,depth ='+[PandoraUtils.bytes_to_hex(mass_rec[MR_SrcNode]), \
+                  #  mass_rec[MR_Trust], mass_rec[MR_Depth]].inspect if mass_rec
                   if (mass_rec and mass_rec[MR_SrcNode] \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], \
                   :auto_to_float)) and (mass_rec[MR_SrcNode] != @to_node) and (mass_rec[MR_Depth]>0))
