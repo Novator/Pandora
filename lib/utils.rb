@@ -475,7 +475,7 @@ module PandoraUtils
           end
       end
       way = url
-      p 'parse_url  [url, proto, obj_type, way]='+[url, proto, obj_type, way].inspect
+      #p 'parse_url  [url, proto, obj_type, way]='+[url, proto, obj_type, way].inspect
     end
     res = [proto, obj_type, way] if proto and (proto.size>0) and way and (way.size>0)
     res

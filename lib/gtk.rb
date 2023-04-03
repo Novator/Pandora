@@ -844,9 +844,10 @@ module PandoraGtk
           row = 0
           col = 0
           max_col = Math.sqrt(icon_params.size).round
+          p '=====icon_params.size, max_col, preset, icon_params='+[icon_params.size, max_col, preset, icon_params].inspect
           hbox = Gtk::HBox.new
           icon_params.each_with_index do |smile, i|
-            if col>max_col
+            if col>=max_col
               vbox.pack_start(hbox, false, false, 0)
               hbox = Gtk::HBox.new
               col = 0
@@ -4243,10 +4244,10 @@ module PandoraGtk
                     comu = com
                   end
                   comu = comu.strip.upcase
-                  p '---opentag  [comu,params]='+[comu,params].inspect
+                  #p '---opentag  [comu,params]='+[comu,params].inspect
                   if strict_close_tag.nil? and BBCODES.include?(comu)
                     k = open_coms.find{ |ocf| ocf[0]==comu }
-                    p 'opentag k='+k.inspect
+                    #p 'opentag k='+k.inspect
                     if k
                       comu = nil
                     else
@@ -4297,7 +4298,7 @@ module PandoraGtk
                                   #js = read_justify_param(param_hash)
                                   param_hash['name']=nil
                                   tag_name, tag_params = generate_tag(param_hash, nil, 'text')
-                                  p 'IMG-TAGS [tag_name, tag_params]='+[tag_name, tag_params].inspect
+                                  #p 'IMG-TAGS [tag_name, tag_params]='+[tag_name, tag_params].inspect
 
                                   text_tag = dest_buf.tag_table.lookup(tag_name)
                                   if text_tag
