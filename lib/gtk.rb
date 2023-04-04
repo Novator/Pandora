@@ -191,14 +191,15 @@ module PandoraGtk
       bbox.border_width = 2
       bbox.spacing = 4
 
-      @okbutton = Gtk::Button.new(Gtk::Stock::OK)
+      @okbutton = Gtk::Button.new(:ok)
       okbutton.width_request = 110
       okbutton.signal_connect('clicked') do |*args|
         @response=2
       end
       bbox.pack_start(okbutton, false, false, 0)
 
-      @cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
+      $window.register_stock(:cancel)
+      @cancelbutton = Gtk::Button.new(:cancel)
       cancelbutton.width_request = 110
       cancelbutton.signal_connect('clicked') do |*args|
         @response=1
@@ -1662,7 +1663,7 @@ module PandoraGtk
       get_time(true)
       vbox.pack_start(hbox, false, false, 0)
 
-      btn = Gtk::Button.new(Gtk::Stock::OK)
+      btn = Gtk::Button.new(:ok)
       btn.signal_connect('clicked') do |widget|
         new_time = @entry.text
         if new_time and @@time_his
@@ -1933,7 +1934,7 @@ module PandoraGtk
       stock = stock.to_sym
       title ||= 'Panhash'
       super(HexEntry, stock, title, amodal=nil, *args)
-      @view_button = self.add_button(Gtk::Stock::HOME, 'Cabinet') do
+      @view_button = self.add_button(:home, 'Cabinet') do
         panhash = @entry.text
         if (panhash.bytesize>4) and PandoraUtils.hex?(panhash)
           panhash = PandoraUtils.hex_to_bytes(panhash)
@@ -2713,8 +2714,8 @@ module PandoraGtk
 
       #@@back_buf ||= $window.get_preset_icon(Gtk::Stock::GO_BACK, nil, btn_height)
       #@@forward_buf ||= $window.get_preset_icon(Gtk::Stock::GO_FORWARD, nil, btn_height)
-      @@find_buf ||= $window.get_preset_icon(Gtk::Stock::FIND, nil, btn_height)
-      @@replace_buf ||= $window.get_preset_icon(Gtk::Stock::FIND_AND_REPLACE, nil, btn_height)
+      @@find_buf ||= $window.get_preset_icon(:find, nil, btn_height)
+      @@replace_buf ||= $window.get_preset_icon(:replace, nil, btn_height)
       @@back_buf ||= $window.get_preset_icon(Gtk::Stock::GO_UP, nil, btn_height)
       @@forward_buf ||= $window.get_preset_icon(Gtk::Stock::GO_DOWN, nil, btn_height)
       @@all_buf ||= $window.get_preset_icon(Gtk::Stock::SELECT_ALL, nil, btn_height)
@@ -7716,7 +7717,7 @@ module PandoraGtk
   $load_more_history_count = 50
 
   CabPageInfo = [[Gtk::Stock::PROPERTIES, 'Basic'], \
-    [Gtk::Stock::HOME, 'Profile'], \
+    [:home, 'Profile'], \
     [:opinion, 'Opinions'], \
     [:relation, 'Relations'], \
     [:sign, 'Signs'], \
@@ -8007,12 +8008,12 @@ module PandoraGtk
 
       add_btn_to_toolbar
 
-      add_btn_to_toolbar(Gtk::Stock::SAVE) do |btn|
+      add_btn_to_toolbar(:save) do |btn|
         @cab_panhash = pb.save_form_fields_with_flags_to_database
         @kind = PandoraUtils.kind_from_panhash(@cab_panhash)
         construct_cab_title
       end
-      add_btn_to_toolbar(Gtk::Stock::OK) do |btn|
+      add_btn_to_toolbar(:ok) do |btn|
         self.save_and_close
       end
 
@@ -8414,12 +8415,12 @@ module PandoraGtk
 
       PandoraGtk.add_tool_btn(toolbar)
 
-      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::FIND, nil, 0) do
+      btn = PandoraGtk.add_tool_btn(toolbar, :find, nil, 0) do
         bodywin.body_child.show_hide_find_panel(false, true)
       end
       menu = Gtk::Menu.new
       btn.menu = menu
-      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::FIND_AND_REPLACE) do
+      PandoraGtk.add_menu_item(btn, menu, :replace) do
         bodywin.body_child.show_hide_find_panel(true, true)
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::JUMP_TO) do
@@ -8468,11 +8469,11 @@ module PandoraGtk
 
       PandoraGtk.add_tool_btn(toolbar)
 
-      pb.save_btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE) do
+      pb.save_btn = PandoraGtk.add_tool_btn(toolbar, :save) do
         @cab_panhash = pb.save_form_fields_with_flags_to_database
         @kind = PandoraUtils.kind_from_panhash(@cab_panhash)
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) do
+      PandoraGtk.add_tool_btn(toolbar, :ok) do
         pb.save_form_fields_with_flags_to_database
         self.destroy
       end
@@ -8484,8 +8485,8 @@ module PandoraGtk
     def fill_view_toolbar
       add_btn_to_toolbar(Gtk::Stock::ADD, 'Add')
       add_btn_to_toolbar(Gtk::Stock::DELETE, 'Delete')
-      add_btn_to_toolbar(Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
-      add_btn_to_toolbar(Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
+      add_btn_to_toolbar(:ok, 'Ok') { |*args| @response=2 }
+      add_btn_to_toolbar(:cancel, 'Cancel') { |*args| @response=1 }
       @zoom_100 = add_btn_to_toolbar(Gtk::Stock::ZOOM_100, 'Show 1:1', true) do
         @zoom_fit.safe_set_active(false)
         true
@@ -10879,7 +10880,7 @@ module PandoraGtk
       #vpaned = Gtk::VPaned.new
       vbox = self
 
-      search_btn = Gtk::ToolButton.new(Gtk::Stock::FIND, _('Search'))
+      search_btn = Gtk::ToolButton.new(:find, _('Search'))
       search_btn.tooltip_text = _('Start searching')
       PandoraGtk.set_readonly(search_btn, true)
 
@@ -13474,7 +13475,7 @@ module PandoraGtk
   def self.show_search_panel(text=nil)
     sw = SearchBox.new(text)
 
-    image = Gtk::Image.new(Gtk::Stock::FIND, Gtk::IconSize::SMALL_TOOLBAR)
+    image = Gtk::Image.new(:find, Gtk::IconSize::SMALL_TOOLBAR)
     image.set_padding(2, 0)
 
     label_box = TabLabelBox.new(image, _('Search'), sw) do
@@ -13789,7 +13790,7 @@ module PandoraGtk
       end
       menu.append(checkmenuitem)
 
-      menuitem = Gtk::ImageMenuItem.new(Gtk::Stock::PROPERTIES)
+      menuitem = Gtk::ImageMenuItem.new(:setup)
       alabel = menuitem.children[0]
       alabel.set_text(_('All parameters')+'..', true)
       menuitem.signal_connect('activate') do |w|
@@ -13808,7 +13809,7 @@ module PandoraGtk
       end
       menu.append(menuitem)
 
-      menuitem = Gtk::ImageMenuItem.new(Gtk::Stock::QUIT)
+      menuitem = Gtk::ImageMenuItem.new(:quit)
       alabel = menuitem.children[0]
       alabel.set_text(_('_Quit'), true)
       menuitem.signal_connect('activate') do |w|
@@ -14372,19 +14373,22 @@ module PandoraGtk
           iX = index - (iY*numX)
           dX = bord + iX*(cellX+padd)
           dY = bord + iY*(cellY+padd)
-          #p '[cellX, cellY, iX, iY, dX, dY]='+[cellX, cellY, iX, iY, dX, dY].inspect
+          #p '~~~~[preset, cellX, cellY, iX, iY, dX, dY]='+[preset, cellX, cellY, iX, iY, dX, dY].inspect
           draft_buf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, cellX, cellY)
           preset_buf.copy_area(dX, dY, cellX, cellY, draft_buf, 0, 0)
           #draft_buf = Gdk::Pixbuf.new(preset_buf, 0, 0, 21, 24)
 
           pixs = draft_buf.pixels
+          #p '+++pixs='+pixs.class.inspect
+          pixs = pixs.pack('C*') if pixs.is_a?(Array)
+          #p '>>>pixs='+pixs.class.inspect
           if pixs.is_a?(String)
-            pixs = AsciiString.new(draft_buf.pixels)
+            pixs = AsciiString.new(pixs)
             pix_size = draft_buf.n_channels
             width = draft_buf.width
             height = draft_buf.height
             w = width * pix_size  #buf.rowstride
-            #p '[pixs.bytesize, width, height, w]='+[pixs.bytesize, width, height, w].inspect
+            #p '///[pixs.bytesize, width, height, w]='+[pixs.bytesize, width, height, w].inspect
 
             bg = pixs[0, pix_size]   #top left pixel consider background
 
@@ -14446,15 +14450,14 @@ module PandoraGtk
 
             left = left/pix_size
             right = right/pix_size
-            #p '====[top,bottom,left,right]='+[top,bottom,left,right].inspect
 
             width2 = right-left+1
             height2 = bottom-top+1
-            #p '  ---[width2,height2]='+[width2,height2].inspect
+            #p '====[preset,emot,top,bottom,left,right,width2,height2]='+[preset,emot,top,bottom,left,right,width2,height2].inspect
 
             if (width2>0) and (height2>0) \
             and ((left>0) or (top>0) or (width2<width) or (height2<height))
-              # Crop borders
+              #p '---Crop borders to left, top, width2, height2='+[left, top, width2, height2].inspect
               buf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, width2, height2)
               draft_buf.copy_area(left, top, width2, height2, buf, 0, 0)
             else
@@ -14809,7 +14812,7 @@ module PandoraGtk
       ['Delegation', 'delegation:m', 'Delegations'],
       ['Registry', 'registry:m', 'Registry'],
       [nil, nil, '_Node'],
-      ['Parameter', Gtk::Stock::PROPERTIES, 'Parameters'],
+      ['Parameter', 'setup', 'Parameters'],
       ['-', nil, '-'],
       ['Key', 'key', 'Keys'],   #Gtk::Stock::GOTO_BOTTOM
       ['Sign', 'sign:m', 'Signs'],
@@ -14824,21 +14827,21 @@ module PandoraGtk
       ['Listen', :listen, 'Listen', '<control>L', :check],  #Gtk::Stock::CONNECT
       ['Hunt', :hunt, 'Hunt', '<control>N', :check],   #Gtk::Stock::REFRESH
       ['Radar', :radar, 'Radar', '<control>R', :check],  #Gtk::Stock::GO_FORWARD
-      ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
+      ['Search', :find, 'Search', '<control>T'],
       ['>', nil, '_Wizards'],
-      ['>Cabinet', Gtk::Stock::HOME, 'Cabinet'],
+      ['>Cabinet', :home, 'Cabinet'],
       ['>Exchange', 'exchange:m', 'Exchange'],
       ['>Session', 'session:m', 'Sessions'],   #Gtk::Stock::JUSTIFY_FILL
       ['>Fisher', 'fish:m', 'Fishers'],
       ['>Wizard', Gtk::Stock::PREFERENCES.to_s+':m', '_Wizards'],
       ['-', nil, '-'],
       ['>', nil, '_Help'],
-      ['>Guide', Gtk::Stock::HELP.to_s+':m', 'Guide', 'F1'],
+      ['>Guide', 'help:m', 'Guide', 'F1'],
       ['>Readme', ':m', 'README.TXT'],
       ['>DocPath', Gtk::Stock::OPEN.to_s+':m', 'Documentation'],
-      ['>About', Gtk::Stock::ABOUT, '_About'],
+      ['>About', :about, '_About'],
       ['Close', Gtk::Stock::CLOSE.to_s+':', '_Close', '<control>W'],
-      ['Quit', Gtk::Stock::QUIT, '_Quit', '<control>Q']
+      ['Quit', :quit, '_Quit', '<control>Q']
       ]
 
     # Fill main menu
@@ -15115,7 +15118,7 @@ module PandoraGtk
       add_status_field(PandoraUI::SF_Harvest, '0', 'Files', :blob) do
         PandoraUI.do_menu_act('Blob')
       end
-      add_status_field(PandoraUI::SF_Search, '0', 'Search', Gtk::Stock::FIND) do
+      add_status_field(PandoraUI::SF_Search, '0', 'Search', :find) do
         PandoraUI.do_menu_act('Search')
       end
       resize_eb = Gtk::EventBox.new
