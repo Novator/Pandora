@@ -407,6 +407,7 @@
     <max_color_lines desc="Maximum color lines for editor" type="Integer" section="view" setting="700" />
     <mono_font_desc desc="Monospace font and size" type="String" section="view" setting="Monospace 11" />
     <chat_font_desc desc="Chat and dialog [font and] size" type="String" section="view" setting="12" />
+    <encrypt_dialog desc="Encrypt dialog messages at opening" type="Boolean" section="view" setting="false" />
 
     <check_update desc="Check update" type="Boolean" section="update" setting="true" />
     <check_interval desc="Сheck interval (hour)" type="Real" section="update" setting="1" />

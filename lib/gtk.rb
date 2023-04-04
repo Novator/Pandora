@@ -844,7 +844,7 @@ module PandoraGtk
           row = 0
           col = 0
           max_col = Math.sqrt(icon_params.size).round
-          p '=====icon_params.size, max_col, preset, icon_params='+[icon_params.size, max_col, preset, icon_params].inspect
+          #p '=====icon_params.size, max_col, preset, icon_params='+[icon_params.size, max_col, preset, icon_params].inspect
           hbox = Gtk::HBox.new
           icon_params.each_with_index do |smile, i|
             if col>=max_col
@@ -8024,7 +8024,10 @@ module PandoraGtk
 
     def fill_dlg_toolbar(page, atalkview, chat_mode=false)
       if (page==PandoraUI::CPI_Dialog)
-        crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', false)
+        encrypt_dialog = PandoraUtils.get_param('encrypt_dialog')
+        crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', encrypt_dialog) do |widget|
+          PandoraUtils.set_param('encrypt_dialog', widget.active?) if not widget.destroyed?
+        end
       end
 
       sign_scale = nil
