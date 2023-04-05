@@ -14171,7 +14171,7 @@ module PandoraGtk
     attr_accessor :log_view, :notebook, \
       :pool, :focus_timer, :radar_hpaned, :task_offset, \
       :radar_sw, :log_vpaned, :log_sw, :accel_group, :menubar, \
-      :toolbar, :hand_cursor, :regular_cursor
+      :toolbar, :hand_cursor, :regular_cursor, :is_maximized
 
 
     include PandoraUtils
@@ -14989,6 +14989,8 @@ module PandoraGtk
       super(*args)
       $window = self
 
+      $window.is_maximized = false
+
       main_icon = nil
       begin
         main_icon = Gdk::Pixbuf.new(File.join($pandora_view_dir, 'pandora.ico'))
@@ -15178,7 +15180,8 @@ module PandoraGtk
           point = $window.window.pointer[1,2]
           wh = $window.window.geometry[2,2]
           $pointoff = [(wh[0]-point[0]), (wh[1]-point[1])]
-          if $window.window.state == Gdk::EventWindowState::MAXIMIZED
+          if $window.is_maximized
+          #if ($window.window.state == Gdk::EventWindowState::MAXIMIZED
             wbord = 6
             w, h = [(point[0]+$pointoff[0]-wbord), (point[1]+$pointoff[1]-wbord)]
             $window.move(0, 0)
@@ -15361,9 +15364,10 @@ module PandoraGtk
       #end
 
       $window.signal_connect('window-state-event') do |widget, event_window_state|
-        if (event_window_state.changed_mask == Gdk::EventWindowState::ICONIFIED) \
+        if ((event_window_state.changed_mask & Gdk::EventWindowState::ICONIFIED)>0) \
           and ((event_window_state.new_window_state & Gdk::EventWindowState::ICONIFIED)>0)
         then
+          $window.is_maximized = false
           if notebook.page >= 0
             sw = notebook.get_nth_page(notebook.page)
             if (sw.is_a? CabinetBox) and (not sw.destroyed?)
@@ -15375,6 +15379,8 @@ module PandoraGtk
             $window.hide
             #$window.skip_taskbar_hint = true
           end
+        else
+          $window.is_maximized = ((event_window_state.new_window_state & Gdk::EventWindowState::MAXIMIZED)>0)
         end
       end
 
