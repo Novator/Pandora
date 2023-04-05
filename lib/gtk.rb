@@ -52,13 +52,20 @@ module PandoraGtk
     alig = btn.children[0]
     if alig.is_a? Gtk::Bin
       hbox = alig.child
-      if (hbox.is_a? Gtk::Box) and (hbox.children.size>1)
+      if (hbox.is_a?(Gtk::Box)) and (hbox.children.size>1)
         lab = hbox.children[1]
-        if lab.is_a? Gtk::Label
+        if lab.is_a?(Gtk::Label)
           if text.nil?
             lab.destroy
           else
-            lab.text = text
+            ttt = nil
+            i = text.index(' (')
+            if i and (i>1)
+              ttt = text
+              text = text[0..i-1]
+            end
+            lab.text = _(text)
+            btn.tooltip_text = _(ttt) if ttt
           end
         end
       end
@@ -192,6 +199,7 @@ module PandoraGtk
       bbox.spacing = 4
 
       @okbutton = Gtk::Button.new(:ok)
+      PandoraGtk.set_button_text(@okbutton, 'OK')
       okbutton.width_request = 110
       okbutton.signal_connect('clicked') do |*args|
         @response=2
@@ -200,6 +208,7 @@ module PandoraGtk
 
       $window.register_stock(:cancel)
       @cancelbutton = Gtk::Button.new(:cancel)
+      PandoraGtk.set_button_text(@cancelbutton, 'Cancel')
       cancelbutton.width_request = 110
       cancelbutton.signal_connect('clicked') do |*args|
         @response=1
@@ -1664,6 +1673,7 @@ module PandoraGtk
       vbox.pack_start(hbox, false, false, 0)
 
       btn = Gtk::Button.new(:ok)
+      PandoraGtk.set_button_text(btn, 'OK (save and close)')
       btn.signal_connect('clicked') do |widget|
         new_time = @entry.text
         if new_time and @@time_his
@@ -4368,14 +4378,16 @@ module PandoraGtk
                                 param_hash = detect_params(params)
                                 name = param_hash['tag']
                                 name ||= param_hash['name']
-                                name ||= _('Noname')
+                                #name ||= _('Noname') if comu != 'BUTTON'
                                 width = param_hash['width']
                                 size = param_hash['size']
+                                value = param_hash['value']
                                 values = param_hash['values']
-                                values ||= param_hash['value']
+                                values ||= value
                                 values = values.split(',') if values
                                 default = param_hash['default']
-                                default ||= values[0] if values
+                                default ||= value if value
+                                #default ||= values[0] if values
                                 values ||= default
                                 type = param_hash['type']
                                 kind = param_hash['kind']
@@ -4456,8 +4468,31 @@ module PandoraGtk
                                   widget = PanhashBox.new('Panhash('+kind+')')
                                   widget.text = default if default
                                 elsif type=='LIST'
-                                  widget = ByteListEntry.new(PandoraModel::RelationNames)
-                                  widget.text = default if default
+                                  #p '##### ByteListEntry values='+values.inspect
+                                  code_name_list = nil
+                                  if values.is_a?(Array) and (values.size>0)
+                                    code_name_list = {}
+                                    values.each_with_index do |a_val, v_ind|
+                                      val_ind = v_ind
+                                      ii = a_val.index('=>')
+                                      if ii and (ii>0)
+                                        begin
+                                          val_ind = a_val[0..ii-1].to_i
+                                        rescue => err
+                                          PandoraUI.log_message(PandoraUI::LM_Warning, \
+                                            _('Index must be integer')+': '+Utf8String.new(err.message))
+                                          val_ind = v_ind
+                                        end
+                                        a_val = a_val[ii+2..-1]
+                                      end
+                                      a_val = a_val.strip
+                                      code_name_list[val_ind] = a_val
+                                      default = val_ind if default.nil?
+                                    end
+                                  end
+                                  code_name_list = PandoraModel::RelationNames if not code_name_list
+                                  widget = ByteListEntry.new(code_name_list)
+                                  widget.text = default.to_s if default
                                 else #'BUTTON'
                                   default ||= name
                                   widget = Gtk::Button.new(_(default))
@@ -4547,13 +4582,21 @@ module PandoraGtk
             open_brek = '<'
             close_brek = '>'
           end
-          if params.is_a? String
-            params = '='+params
-          elsif params.is_a? Hash
+          if params.is_a?(String) and (params.size>0)
+            if params[0] == ' '
+              params = params
+            else
+              params = '='+params
+            end
+          elsif params.is_a?(Hash)
             all = ''
             params.each do |k,v|
               all << ' '
-              all << k.to_s + '="' + v.to_s + '"'
+              all << k.to_s
+              if v
+                v = '"' + v.to_s + '"' if v[0] != '"'
+                all << '=' + v.to_s
+              end
             end
             params = all
           else
@@ -5164,7 +5207,7 @@ module PandoraGtk
               if (not @format.is_a?(String)) or (@format.size==0) or (fmt != 'auto')
                 @format = fmt
               end
-              p '--fill_body2  format='+@format
+              #p '--fill_body2  format='+@format
             end
           end
           bodywin.body_child = bodywid
@@ -6036,7 +6079,7 @@ module PandoraGtk
       if tv and (tv.is_a? Gtk::TextView)
         tv.hide
         text_changed = false
-        p '----set_buffers1  @format='+@format.inspect
+        #p '----set_buffers1  @format='+@format.inspect
         @format ||= 'bbcode'
         #if not ['markdown', 'bbcode', 'html', 'xml', 'ini', 'ruby', 'python', 'plain'].include?(@format)
           #@format = 'bbcode' #if aformat=='auto' #need autodetect here
@@ -6094,7 +6137,7 @@ module PandoraGtk
           set_tags(raw_buffer, 0, raw_buffer.line_count)
         end
         fmt_btn = property_box.format_btn
-        p '----set_buffers2  [@format, fmt_btn]='+[@format, fmt_btn].inspect
+        #p '----set_buffers2  [@format, fmt_btn]='+[@format, fmt_btn].inspect
         fmt_btn.label = @format if (fmt_btn and (fmt_btn.label != @format))
         tv.show
         tv.grab_focus
@@ -6476,7 +6519,7 @@ module PandoraGtk
       max_entry_height = 0
       @def_widget = nil
       @fields.each do |field|
-        #p 'field='+field.inspect
+        #p '>>>>field='+field.inspect
         max_size = 0
         fld_size = 0
         aview = field[PandoraUtils::FI_View]
@@ -6527,6 +6570,7 @@ module PandoraGtk
               entry = PanhashBox.new(atype, amodal)
             end
           when 'bytelist'
+            #p '---field[PandoraUtils::FI_Id]='+field[PandoraUtils::FI_Id].inspect
             if field[PandoraUtils::FI_Id]=='panhash_lang'
               entry = ByteListEntry.new(PandoraModel.lang_code_list, amodal)
             elsif field[PandoraUtils::FI_Id]=='gender'
@@ -6961,9 +7005,7 @@ module PandoraGtk
     # Save raw fields with form flags, sign and relations
     # RU: Сохранить сырые поля с флагами формы, подписью и связями
     def save_flds_with_form_flags(flds_hash, lang=nil, created0=nil)
-
-      p '---save_flds_with_form_flags   flds_hash='+flds_hash.inspect
-
+      #p '---save_flds_with_form_flags   flds_hash='+flds_hash.inspect
       time_now = Time.now.to_i
       if (panobject.is_a? PandoraModel::Created)
         if created0 and flds_hash['created'] \
@@ -8008,12 +8050,12 @@ module PandoraGtk
 
       add_btn_to_toolbar
 
-      add_btn_to_toolbar(:save) do |btn|
+      add_btn_to_toolbar(:save, 'Save') do |btn|
         @cab_panhash = pb.save_form_fields_with_flags_to_database
         @kind = PandoraUtils.kind_from_panhash(@cab_panhash)
         construct_cab_title
       end
-      add_btn_to_toolbar(:ok) do |btn|
+      add_btn_to_toolbar(:ok, 'OK (save and close)') do |btn|
         self.save_and_close
       end
 
@@ -8373,43 +8415,43 @@ module PandoraGtk
       end
       menu.append(Gtk::SeparatorMenuItem.new)
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Edit') do
-        bodywin.insert_tag('edit/', 'Edit value="Text" size="40"')
+        bodywin.insert_tag('edit/', {:name=>'Edit', :value=>'Text', :size=>'40'})
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Spin') do
-        bodywin.insert_tag('spin/', 'Spin values="42,48,52" default="48"')
+        bodywin.insert_tag('spin/', ' name="Spin" values="42,48,52" default="48"')
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Integer') do
-        bodywin.insert_tag('integer/', 'Integer value="42" width="70"')
+        bodywin.insert_tag('integer/', ' name="Integer" value="42" width="70"')
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Hex') do
-        bodywin.insert_tag('hex/', 'Hex value="01a5ff" size="20"')
+        bodywin.insert_tag('hex/', ' name="Hex" value="01a5ff" size="20"')
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Real') do
-        bodywin.insert_tag('real/', 'Real value="0.55"')
+        bodywin.insert_tag('real/', {:value=>'"0.55"', :name=>'Real'})
       end
       PandoraGtk.add_menu_item(btn, menu, :date, 'Date') do
-        bodywin.insert_tag('date/', 'Date value="current"')
+        bodywin.insert_tag('date/', ' name="Date" value="current"')
       end
       PandoraGtk.add_menu_item(btn, menu, :time, 'Time') do
-        bodywin.insert_tag('time/', 'Time value="current"')
+        bodywin.insert_tag('time/', ' name="Time" value="current"')
       end
-      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Coord') do
-        bodywin.insert_tag('coord/', 'Coord')
+      PandoraGtk.add_menu_item(btn, menu, :coord, 'Coord') do
+        bodywin.insert_tag('coord/', {:name=>'Coord'})
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::OPEN, 'Filename') do
-        bodywin.insert_tag('filename/', 'Filename value="./picture1.jpg"')
+        bodywin.insert_tag('filename/', ' name="Filename" value="./picture1.jpg"')
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Base64') do
-        bodywin.insert_tag('base64/', 'Base64 value="SGVsbG8=" size="30"')
+        bodywin.insert_tag('base64/', ' name="Base64" value="SGVsbG8=" size="30"')
       end
       PandoraGtk.add_menu_item(btn, menu, :panhash, 'Panhash') do
-        bodywin.insert_tag('panhash/', 'Panhash kind="Person,Community,Blob"')
+        bodywin.insert_tag('panhash/', ' name="Panhash" kind="Person,Community,Blob"')
       end
       PandoraGtk.add_menu_item(btn, menu, :list, 'Bytelist') do
-        bodywin.insert_tag('bytelist/', 'List values="red, green, blue"')
+        bodywin.insert_tag('bytelist/', ' name="ByteList" values="1=>red, 2=>green, 3=>blue" default="2"')
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Button') do
-        bodywin.insert_tag('button/', 'Button value="Order"')
+        bodywin.insert_tag('button/', ' value="Order"')
       end
       menu.show_all
 
@@ -8469,11 +8511,11 @@ module PandoraGtk
 
       PandoraGtk.add_tool_btn(toolbar)
 
-      pb.save_btn = PandoraGtk.add_tool_btn(toolbar, :save) do
+      pb.save_btn = PandoraGtk.add_tool_btn(toolbar, :save, 'Save') do
         @cab_panhash = pb.save_form_fields_with_flags_to_database
         @kind = PandoraUtils.kind_from_panhash(@cab_panhash)
       end
-      PandoraGtk.add_tool_btn(toolbar, :ok) do
+      PandoraGtk.add_tool_btn(toolbar, :ok, 'OK (save and close)') do
         pb.save_form_fields_with_flags_to_database
         self.destroy
       end
@@ -8485,7 +8527,7 @@ module PandoraGtk
     def fill_view_toolbar
       add_btn_to_toolbar(Gtk::Stock::ADD, 'Add')
       add_btn_to_toolbar(Gtk::Stock::DELETE, 'Delete')
-      add_btn_to_toolbar(:ok, 'Ok') { |*args| @response=2 }
+      add_btn_to_toolbar(:ok, 'OK (save and close)') { |*args| @response=2 }
       add_btn_to_toolbar(:cancel, 'Cancel') { |*args| @response=1 }
       @zoom_100 = add_btn_to_toolbar(Gtk::Stock::ZOOM_100, 'Show 1:1', true) do
         @zoom_fit.safe_set_active(false)
@@ -8746,7 +8788,7 @@ module PandoraGtk
           when PandoraUI::CPI_Editor
             #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
             #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-            #p [kind, @fields, PandoraUtils.bytes_to_hex(cab_panhash)]
+            #p '=====[kind, @fields, cab_panhash='+[kind, @fields, PandoraUtils.bytes_to_hex(cab_panhash)].inspect
             @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit, nil, @tree_view)
             if property_box.text_fields and (property_box.text_fields.size>0)
               #p property_box.text_fields
@@ -15068,8 +15110,7 @@ module PandoraGtk
       add_status_field(PandoraUI::SF_Log, nil, 'Logbar', :log, false, 0) do
         PandoraUI.do_menu_act('LogBar')
       end
-      add_status_field(PandoraUI::SF_FullScr, nil, 'Full screen', \
-      Gtk::Stock::FULLSCREEN, false, 0) do
+      add_status_field(PandoraUI::SF_FullScr, nil, 'Full screen', :fullscreen, false, 0) do
         PandoraUI.do_menu_act('FullScr')
       end
 
