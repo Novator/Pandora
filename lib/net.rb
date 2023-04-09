@@ -3540,23 +3540,23 @@ module PandoraNet
               when EC_Query
                 case rcode
                   when ECC_Query_Relation
-                    #p log_mes+'===ECC_Query_Relation'
+                    p log_mes+'===ECC_Query_Relation'
                     from_time = rdata[0, 4].unpack('N')[0]
                     pankinds = rdata[4..-1]
                     trust = skey_trust
-                    #p log_mes+'from_time, pankinds, trust='+[from_time, pankinds, trust].inspect
+                    p log_mes+'from_time, pankinds, trust='+[from_time, pankinds, trust].inspect
                     pankinds = PandoraCrypto.allowed_kinds(trust, pankinds)
-                    #p log_mes+'pankinds='+pankinds.inspect
+                    p log_mes+'pankinds='+pankinds.inspect
 
                     questioner = pool.person
                     answerer = @skey[PandoraCrypto::KV_Creator]
                     key=nil
-                    ph_list = nil
+                    #ph_list = nil
                     #ph_list = []
                     #ph_list << PandoraModel.signed_records(questioner, from_time, pankinds, \
                     #  trust, key, models)
-                    #ph_list = PandoraModel.public_records(questioner, trust, from_time, \
-                    #  pankinds, @send_models)
+                    ph_list = PandoraModel.public_records(questioner, trust, from_time, \
+                      pankinds, @send_models)
 
                     #panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
                     #panhash_list = PandoraModel.get_panhashes_by_questioner(questioner, trust, from_time)
@@ -3638,16 +3638,16 @@ module PandoraNet
                   when ECC_News_Panhash
                     p log_mes+'==ECC_News_Panhash   rdata='+rdata.inspect
                     ph_list = PandoraUtils.binary_to_rubyobj(rdata, @ssformat)
-                    #p log_mes+'ph_list, len='+[ph_list, len].inspect
+                    p log_mes+'ph_list, len='+[ph_list, len].inspect
                     # Check non-existing records
                     need_ph_list = PandoraModel.needed_records(ph_list, @send_models)
-                    #p log_mes+'need_ph_list='+ need_ph_list.inspect
+                    p log_mes+'need_ph_list='+ need_ph_list.inspect
 
                     two_list = [need_ph_list]
 
                     questioner = pool.person #me
                     answerer = @skey[PandoraCrypto::KV_Creator]
-                    #p '[questioner, answerer]='+[questioner, answerer].inspect
+                    p '[questioner, answerer]='+[questioner, answerer].inspect
                     follower = nil
                     from_time = Time.now.to_i - 10*24*3600
                     pankinds = nil
@@ -4687,7 +4687,7 @@ module PandoraNet
                   when QS_NewsQuery
                     # запросить список новых панхэшей
                     if @to_person
-                      pankinds = 1.chr + 11.chr
+                      pankinds = 1.chr + 11.chr + 12.chr + 14.chr #Person, Comunity, File, Relation
                       from_time = Time.now.to_i - 10*24*3600
                       #questioner = @rkey[PandoraCrypto::KV_Creator]
                       #answerer = @skey[PandoraCrypto::KV_Creator]
@@ -6012,12 +6012,13 @@ module PandoraNet
     res
   end
 
-  def self.find_search_request(kind, request)
-    mr = $pool.add_mass_record(MK_Search, kind, request)
-    if not mr
-      #
-    end
-  end
+  #def self.find_search_request(kind, request)
+  #  mr = $pool.add_mass_record(MK_Search, kind, request)
+  #  if not mr
+  #    #
+  #  end
+  #  mr
+  #end
 
 end
 
