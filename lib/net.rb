@@ -3781,10 +3781,10 @@ module PandoraNet
                     #p log_mes + 'ECC_News_SessMode'
                     @conn_mode2 = rdata[0].ord if rdata.bytesize>0
                   when ECC_News_Answer
-                    #p log_mes + '==ECC_News_Answer'
+                    p log_mes + '==ECC_News_Answer'
                     req_answer = PandoraUtils.binary_to_rubyobj(rdata, @ssformat)
                     req, answ = req_answer
-                    #p log_mes+'req,answ='+[req,answ].inspect
+                    p log_mes+'req,answ='+[req,answ].inspect
                     kind, request = req
                     if kind==PandoraModel::PK_BlobBody
                       PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: blob is found'))
@@ -4214,13 +4214,15 @@ module PandoraNet
                 @conn_thread = Thread.current
                 begin
                   @conn_state = CS_Connecting
-                  asocket = TCPSocket.open(host, port)
-                  @socket = asocket
-                rescue
+                  #p '--1--con'
+                  @socket = TCPSocket.open(host, port)
+                  asocket = @socket
+                  #p '--2--con'
+                rescue => err
                   asocket = nil
                   @socket = asocket
                   if (not work_time) or ((Time.now.to_i - work_time.to_i)>15)
-                    PandoraUI.log_message(PandoraUI::LM_Warning, _('Fail connect to')+': '+server)
+                    PandoraUI.log_message(PandoraUI::LM_Warning, _('Fail connect to')+': '+server+' '+err.message)
                     conn_period = 15
                   else
                     sleep(conn_period-1)
@@ -4983,15 +4985,17 @@ module PandoraNet
             #Thread.critical = true
             #Thread.critical = false
             #p log_mes+'check close'
-            if socket and (not socket.closed?)
+            if @socket and (not @socket.closed?)
+              asocket = @socket
               #p log_mes+'before close_write'
               #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
               #socket.flush
               #socket.print('\000')
-              socket.close_write
+              asocket.close_write
+              @socket = nil
               #p log_mes+'before close'
               sleep(0.05)
-              socket.close
+              asocket.close if asocket and (not asocket.closed?)
               #p log_mes+'closed!'
             end
             if socket.is_a? IPSocket

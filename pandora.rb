@@ -85,6 +85,7 @@ Encoding.default_external = 'UTF-8'
 Encoding.default_internal = 'UTF-8'
 BasicSocket.do_not_reverse_lookup = true
 Thread.abort_on_exception = true
+#Thread.abort_on_exception = false
 
 # Expand the arguments of command line
 # RU: Разобрать аргументы командной строки

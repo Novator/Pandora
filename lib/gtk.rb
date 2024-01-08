@@ -11644,7 +11644,7 @@ module PandoraGtk
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
-        $pool.mass_records.each do |mr|
+        $pool.mass_records.queue.each do |mr|
           if mr
             sess_iter = list_store.append
             sess_iter[0] = mr[PandoraNet::MR_Kind]
