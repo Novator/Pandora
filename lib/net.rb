@@ -275,7 +275,7 @@ module PandoraNet
   CMP_SignRec  = 5
 
   # Search request and answer field indexes
-  # RU: Индексы полей в поисковом и ответом запросе
+  # RU: Индексы полей в поисковом и ответном запросе
   #----Head sum: 70
   MRS_Kind       = MR_Param1    #1
   MRS_Request    = MR_Param2    #~140    #sum: 33+(~141)=  ~174
@@ -1170,7 +1170,7 @@ module PandoraNet
         atrust ||= 0
         adepth ||= 3
         adepth -= 1
-        #p '------add_mass_rec1  adepth='+adepth.inspect
+        #p '------add_mass_rec1  akind, adepth='+[akind, adepth].inspect
         if adepth >= 0
           cur_time = Time.now.to_i
           #delete_old_mass_records(cur_time)
@@ -1205,6 +1205,8 @@ module PandoraNet
                 PandoraUI.set_status_field(PandoraUI::SF_Search, @mass_records.queue.size.to_s)
                 PandoraNet.start_hunt if hunt
               when MK_Chat
+                #PandoraUI.set_status_field(PandoraUI::SF_Radar, @mass_records.queue.size.to_s)
+                #PandoraUI.update_or_show_radar_panel
                 #
             end
             #p '=======add_mass_rec2  mr='+mr.inspect
@@ -1932,7 +1934,7 @@ module PandoraNet
       end
       if buf
         @sbuf = buf
-      elsif buf==false
+      elsif buf.is_a?(FalseClass)
         @sbuf = nil
       else
         logmes = '(rcmd=' + rcmd.to_s + '/' + rcode.to_s + ' stage=' + stage.to_s + ')'
@@ -2830,6 +2832,8 @@ module PandoraNet
                     pool.check_incoming_addr(addr, host_ip) if addr
                     @sess_mode = params['mode']
                     #p log_mes+'ECC_Auth_Hello @sess_mode='+@sess_mode.inspect
+                    @conn_flags2 = params['flags']
+                    #p log_mes+'ECC_Auth_Params @conn_flags2='+@conn_flags2.inspect
                     @notice = params['notice']
                     init_skey_or_error(true)
                   else
@@ -3076,7 +3080,7 @@ module PandoraNet
                       #p log_mes+'ECC_Auth_Sign trust='+trust.inspect
                       if ($captcha_length>0) and $gtk_is_active \
                       and (trust.is_a? Integer) \
-                      and (not hunter?) and ((@sess_mode & CM_Captcha)>0)
+                      and (not hunter?) and ((@conn_flags2 & CF_Captcha)>0)
                         @skey[PandoraCrypto::KV_Trust] = 0
                         send_captcha
                         #if not hunter?
@@ -3287,7 +3291,7 @@ module PandoraNet
                   @stage = ES_Protocol
                   init_skey_or_error(false)
                 end
-              elsif res==false
+              elsif res.is_a?(FalseClass)
                 PandoraUI.log_message(PandoraUI::LM_Warning, _('Record came with wrong panhash'))
               else
                 PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot write a record')+' 1')
@@ -3536,23 +3540,23 @@ module PandoraNet
               when EC_Query
                 case rcode
                   when ECC_Query_Relation
-                    #p log_mes+'===ECC_Query_Relation'
+                    p log_mes+'===ECC_Query_Relation'
                     from_time = rdata[0, 4].unpack('N')[0]
                     pankinds = rdata[4..-1]
                     trust = skey_trust
-                    #p log_mes+'from_time, pankinds, trust='+[from_time, pankinds, trust].inspect
+                    p log_mes+'from_time, pankinds, trust='+[from_time, pankinds, trust].inspect
                     pankinds = PandoraCrypto.allowed_kinds(trust, pankinds)
-                    #p log_mes+'pankinds='+pankinds.inspect
+                    p log_mes+'pankinds='+pankinds.inspect
 
                     questioner = pool.person
                     answerer = @skey[PandoraCrypto::KV_Creator]
                     key=nil
-                    ph_list = nil
+                    #ph_list = nil
                     #ph_list = []
                     #ph_list << PandoraModel.signed_records(questioner, from_time, pankinds, \
                     #  trust, key, models)
-                    #ph_list = PandoraModel.public_records(questioner, trust, from_time, \
-                    #  pankinds, @send_models)
+                    ph_list = PandoraModel.public_records(questioner, trust, from_time, \
+                      pankinds, @send_models)
 
                     #panhash_list = PandoraModel.get_panhashes_by_kinds(kind_list, from_time)
                     #panhash_list = PandoraModel.get_panhashes_by_questioner(questioner, trust, from_time)
@@ -3634,16 +3638,16 @@ module PandoraNet
                   when ECC_News_Panhash
                     p log_mes+'==ECC_News_Panhash   rdata='+rdata.inspect
                     ph_list = PandoraUtils.binary_to_rubyobj(rdata, @ssformat)
-                    #p log_mes+'ph_list, len='+[ph_list, len].inspect
+                    p log_mes+'ph_list, len='+[ph_list, len].inspect
                     # Check non-existing records
                     need_ph_list = PandoraModel.needed_records(ph_list, @send_models)
-                    #p log_mes+'need_ph_list='+ need_ph_list.inspect
+                    p log_mes+'need_ph_list='+ need_ph_list.inspect
 
                     two_list = [need_ph_list]
 
                     questioner = pool.person #me
                     answerer = @skey[PandoraCrypto::KV_Creator]
-                    #p '[questioner, answerer]='+[questioner, answerer].inspect
+                    p '[questioner, answerer]='+[questioner, answerer].inspect
                     follower = nil
                     from_time = Time.now.to_i - 10*24*3600
                     pankinds = nil
@@ -3777,10 +3781,10 @@ module PandoraNet
                     #p log_mes + 'ECC_News_SessMode'
                     @conn_mode2 = rdata[0].ord if rdata.bytesize>0
                   when ECC_News_Answer
-                    #p log_mes + '==ECC_News_Answer'
+                    p log_mes + '==ECC_News_Answer'
                     req_answer = PandoraUtils.binary_to_rubyobj(rdata, @ssformat)
                     req, answ = req_answer
-                    #p log_mes+'req,answ='+[req,answ].inspect
+                    p log_mes+'req,answ='+[req,answ].inspect
                     kind, request = req
                     if kind==PandoraModel::PK_BlobBody
                       PandoraUI.log_message(PandoraUI::LM_Trace, _('Answer: blob is found'))
@@ -3983,7 +3987,7 @@ module PandoraNet
                             fish = params[MRF_Fish]
                             fish_key = params[MRF_Fish_key]
                             resend = (init_line([fisher, fisher_key, fisher_baseid, \
-                              fish, fish_key], pool.key_hash) == false)
+                              fish, fish_key], pool.key_hash).is_a?(FalseClass))
                           end
                         when MK_Cascade
                         when MK_CiferBox
@@ -4210,13 +4214,15 @@ module PandoraNet
                 @conn_thread = Thread.current
                 begin
                   @conn_state = CS_Connecting
-                  asocket = TCPSocket.open(host, port)
-                  @socket = asocket
-                rescue
+                  #p '--1--con'
+                  @socket = TCPSocket.open(host, port)
+                  asocket = @socket
+                  #p '--2--con'
+                rescue => err
                   asocket = nil
                   @socket = asocket
                   if (not work_time) or ((Time.now.to_i - work_time.to_i)>15)
-                    PandoraUI.log_message(PandoraUI::LM_Warning, _('Fail connect to')+': '+server)
+                    PandoraUI.log_message(PandoraUI::LM_Warning, _('Fail connect to')+': '+server+' '+err.message)
                     conn_period = 15
                   else
                     sleep(conn_period-1)
@@ -4683,7 +4689,7 @@ module PandoraNet
                   when QS_NewsQuery
                     # запросить список новых панхэшей
                     if @to_person
-                      pankinds = 1.chr + 11.chr
+                      pankinds = 1.chr + 11.chr + 12.chr + 14.chr #Person, Comunity, File, Relation
                       from_time = Time.now.to_i - 10*24*3600
                       #questioner = @rkey[PandoraCrypto::KV_Creator]
                       #answerer = @skey[PandoraCrypto::KV_Creator]
@@ -4872,17 +4878,18 @@ module PandoraNet
                 and (processed<$mass_per_cicle))
                 #and ((send_state & (CSF_Message | CSF_Messaging)) == 0) \
                   mass_rec = pool.mass_records.get_block_from_queue($max_mass_count, @to_node)
-                  #p log_mes+'## FOUND mass_rec [scr,trust,depth ='+[PandoraUtils.bytes_to_hex(mass_rec[MR_SrcNode]), mass_rec[MR_Trust], \
-                  #  mass_rec[MR_Depth]].inspect if mass_rec
+                  #p log_mes+'## FOUND mass_rec [scr,trust,depth ='+[PandoraUtils.bytes_to_hex(mass_rec[MR_SrcNode]), \
+                  #  mass_rec[MR_Trust], mass_rec[MR_Depth]].inspect if mass_rec
                   if (mass_rec and mass_rec[MR_SrcNode] \
                   and (@sess_trust >= PandoraModel.transform_trust(mass_rec[MR_Trust], \
                   :auto_to_float)) and (mass_rec[MR_SrcNode] != @to_node) and (mass_rec[MR_Depth]>0))
                     kind = mass_rec[MR_Kind]
                     params = mass_rec[MR_SrcNode..MR_Param3]
+                    #p '--MASS rec Go!  kind='+kind.inspect
                     case kind
                       when MK_Fishing
                         #line = fish_order[MR_Fisher..MR_Fish_key]
-                        #if init_line(line) == false
+                        #if init_line(line).is_a?(FalseClass)
                         #  #p log_mes+'Fish order to send: '+line.inspect
                         #  PandoraUI.log_message(PandoraUI::LM_Trace, _('Send bob')+': [fish,fishkey]->[host,port]' \
                         #    +[PandoraUtils.bytes_to_hex(fish_order[MR_Fish]), \
@@ -4892,10 +4899,11 @@ module PandoraNet
                         #  add_send_segment(EC_Query, true, line_raw, ECC_Query_Fish11)
                         #end
                       when MK_Search
-                        #p log_mes+'Send search request: '+req.inspect
-                        #req_raw = PandoraUtils.rubyobj_to_pson(req)
+                        #p log_mes+'Send search request: '+mass_rec.inspect
+                        #req_raw = PandoraUtils.rubyobj_to_pson(mass_rec)
                         #add_send_segment(EC_Query, true, req_raw, ECC_Query_Search11)
                       when MK_Chat
+                        #p log_mes+'Send MK_Chat request: '+mass_rec.inspect
                     end
                     if params
                       #p log_mes+'-->>>> MR SEND [kind, params]'+[kind, params].inspect
@@ -4977,15 +4985,17 @@ module PandoraNet
             #Thread.critical = true
             #Thread.critical = false
             #p log_mes+'check close'
-            if socket and (not socket.closed?)
+            if @socket and (not @socket.closed?)
+              asocket = @socket
               #p log_mes+'before close_write'
               #socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
               #socket.flush
               #socket.print('\000')
-              socket.close_write
+              asocket.close_write
+              @socket = nil
               #p log_mes+'before close'
               sleep(0.05)
-              socket.close
+              asocket.close if asocket and (not asocket.closed?)
               #p log_mes+'closed!'
             end
             if socket.is_a? IPSocket
@@ -5616,7 +5626,7 @@ module PandoraNet
         end
       end
       if $hunter_thread and ((not $hunter_thread.alive?) \
-      or (($hunter_thread[:active]==false) and (not continue)))
+      or (($hunter_thread[:active].is_a?(FalseClass)) and (not continue)))
         $hunter_thread.exit if $hunter_thread.alive?
         $hunter_thread = nil
       end
@@ -6006,12 +6016,13 @@ module PandoraNet
     res
   end
 
-  def self.find_search_request(kind, request)
-    mr = $pool.add_mass_record(MK_Search, kind, request)
-    if not mr
-      #
-    end
-  end
+  #def self.find_search_request(kind, request)
+  #  mr = $pool.add_mass_record(MK_Search, kind, request)
+  #  if not mr
+  #    #
+  #  end
+  #  mr
+  #end
 
 end
 

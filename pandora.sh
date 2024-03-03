@@ -28,7 +28,7 @@ CURDIR=`dirname "$DIRFILE"`
 
 # Searching a path to ruby
 PARAMS="$1"
-RUBY=`which ruby2.3`
+RUBY=`which ruby2.6`
 if [ "$RUBY" = "" ]; then
   RUBY=`which ruby2.2`
   if [ "$RUBY" = "" ]; then
@@ -38,18 +38,19 @@ if [ "$RUBY" = "" ]; then
       if [ "$RUBY" = "" ]; then
         RUBY=`which ruby1.9.1`
         if [ "$RUBY" = "" ]; then
-          RUBY=`ls -r1 /usr/bin/ruby2* 2>/dev/null | head -n 1`
-          if [ "$RUBY" = "" ]; then
+          #RUBY=`ls -r1 /usr/bin/ruby2* 2>/dev/null | head -n 1`
+          #if [ "$RUBY" = "" ]; then
             RUBY=`ls -r1 /usr/bin/ruby1.9* 2>/dev/null | head -n 1`
             if [ "$RUBY" = "" ]; then
               RUBY=`which ruby`
             fi
-          fi
+          #fi
         fi
       fi
     fi
   fi
 fi
+
 # Direct ruby setting if need
 if [ "$RUBY" = "" ]; then
   RUBY="/usr/bin/ruby"
@@ -69,10 +70,13 @@ case "$PARAMS" in
     echo "Shell script Pandora params:"
     echo "  $CURFILE --help     - show this help"
     echo "  $CURFILE --init     - install necessary packets with apt-get (recommended)"
+    echo "  $CURFILE --full     - download zip from GitHub and update current files"
     echo "  $CURFILE --gem-init - install minimum packets, install ruby packet with rubygem"
+    echo "  $CURFILE --wine     - run via wine emulator"
+    echo "  $CURFILE --screen|-s - run inside screen"
     echo "  $CURFILE [params]   - run Pandora with original params"
     if [ -f "$RUBY" ]; then
-      $RUBY ./pandora.rb --shell
+      $RUBY ./pandora.rb --help --shell
     fi
     ;;
   full|full-init|--full|--full-init|-fi)
@@ -117,6 +121,7 @@ case "$PARAMS" in
         export DISPLAY=$DISPTH\:0
         sudo gem install sqlite3
         sudo gem install gtk2
+        sudo gem install curses
         echo "It is recommended to reboot your computer."
         ;;
       linux*)
@@ -132,7 +137,7 @@ case "$PARAMS" in
   gem-init|gem-install|--gem-init|--gem-install|-gi|--gem|gem)
     echo "Installing Ruby and necessary packages with apt-get and rubygem.."
     sudo apt-get -y install ruby gstreamer0.10-ffmpeg gstreamer0.10-x openssl rubygems
-    sudo gem install sqlite3 gtk2 gstreamer openssl
+    sudo gem install sqlite3 gtk2 gstreamer openssl curses
     ;;
   wine|--wine)
     cd "$CURDIR"

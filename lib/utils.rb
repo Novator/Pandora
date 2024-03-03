@@ -16,7 +16,10 @@ require 'digest'
 require 'base64'
 require 'net/http'
 require 'net/https'
-require 'sqlite3'
+begin
+  require 'sqlite3'
+rescue Exception
+end
 begin
   require 'gst'
 rescue Exception
@@ -88,7 +91,7 @@ module PandoraUtils
 
   # Version of GUI application
   # RU: Версия GUI приложения
-  PandoraVersion  = '0.75'
+  PandoraVersion  = '0.77'
 
   $detected_os_family = nil
 
@@ -311,7 +314,7 @@ module PandoraUtils
   # RU: Имя во множественном или единственном числе
   def self.get_name_or_names(mes, plural=false, lang=nil)
     sname, pname = mes.split('|')
-    if plural==false
+    if plural.is_a?(FalseClass)
       res = sname
     elsif ((not pname) or (pname=='')) and sname
       lang ||= $lang
@@ -472,7 +475,7 @@ module PandoraUtils
           end
       end
       way = url
-      p 'parse_url  [url, proto, obj_type, way]='+[url, proto, obj_type, way].inspect
+      #p 'parse_url  [url, proto, obj_type, way]='+[url, proto, obj_type, way].inspect
     end
     res = [proto, obj_type, way] if proto and (proto.size>0) and way and (way.size>0)
     res
@@ -856,7 +859,7 @@ module PandoraUtils
       val = val.to_i
       min_ago = (time_now - val) / 60
       if min_ago < 0
-        res = Time.at(val).strftime('%d.%m.%Y')
+        res = Time.at(val).strftime('%d.%m.%Y %R')
       elsif min_ago == 0
         res = _('just now')
       elsif min_ago == 1

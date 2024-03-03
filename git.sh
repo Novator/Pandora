@@ -26,6 +26,7 @@
 #git remote add bitbuc https://bitbucket.org/robux/pandora.git
 #git remote add origin https://github.com/Novator/Pandora.git
 #git remote add robux ssh://user@git.site.biz:222/pandora
+#git remote set-url github https://github.com/Novator/Pandora.git
 #git clone --depth=1 git://git.site.biz/pandora
 #git push -u origin master
 
@@ -49,15 +50,19 @@
 #git diff
 #git diff --stat
 #git log --graph --decorate --oneline
+#git log --graph --pretty=oneline --abbrev-commit --all --decorate
+#git log --graph --color-words --color --source --decorate --all
 
 ##Save version, md5 and date to history log
 #echo "`./pandora.sh --version` `./pandora.sh --md5`  `date +"%d.%m.%Y %T"`" >> ./doc/versions.txt
 
 ## Push files from local to repository
 #git add --all
-git commit -a -m "version 0.75 alpha"
-git push -u github master
-git push -u bitbuc master
+git commit -a -m "version 0.77 alpha"
+#git push -u github master
+git push https://`cat ./github_token.txt`@github.com/Novator/Pandora.git
+#git push -u bitbuc master
+#git push https://robux:`cat ./bitbuc_token.txt`@bitbucket.org/robux/pandora.git
 #git push -u github develop
 #git push -u bitbuc develop
 #git push -u robux master
@@ -81,6 +86,7 @@ git push -u bitbuc master
 #nano .gitignore
 #git rm --cached rubyfull.exe
 #git rm rubyfull.exe
+#git update-index --assume-unchanged file.txt
 
 ## Rename file or directory
 #git mv ruby.exe rubyfull.exe

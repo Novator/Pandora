@@ -806,11 +806,12 @@ module PandoraModel
           end
 
           if harvest_blob
-            harvest_blob = nil
-            #!!!reqs = $window.pool.find_search_request(sha1, PandoraModel::PK_BlobBody)
-            #unless (reqs.is_a? Array) and (reqs.size>0)
-            #  harvest_blob = sha1
-            #end
+            harvest_blob = sha1
+          #  harvest_blob = nil
+          #  reqs = $pool.find_search_request(sha1, PandoraModel::PK_BlobBody)
+          #  unless (reqs.is_a? Array) and (reqs.size>0)
+          #    harvest_blob = sha1
+          #  end
           end
         end
       end
@@ -849,9 +850,9 @@ module PandoraModel
           PandoraUI.log_message(PandoraUI::LM_Warning, _('Cannot record')+' '+str)
         end
       end
-      #p '--save_rec5   harvest_blob='+harvest_blob.inspect
+      p '--save_rec5   harvest_blob='+harvest_blob.inspect
       if (harvest_blob.is_a? String)
-        reqs = $window.pool.add_mass_record(MK_Search, PandoraModel::PK_BlobBody, \
+        reqs = $pool.add_mass_record(PandoraNet::MK_Search, PandoraModel::PK_BlobBody, \
           harvest_blob)
       end
     else
@@ -1263,6 +1264,7 @@ module PandoraModel
         pixbuf = PandoraModel.get_image_from_url(ava_url, nil, pixbuf_parent)
         #p 'pixbuf='+pixbuf.inspect
         if pixbuf
+          #p 'scale to '+icon_size.inspect
           pixbuf = scale_buf_to_size(pixbuf, icon_size)
         elsif its_blob
           pixbuf = get_avatar_icon(panhash, pixbuf_parent, nil, icon_size)

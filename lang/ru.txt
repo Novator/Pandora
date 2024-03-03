@@ -509,3 +509,7 @@ Web-server fails=>Веб-сервер сбойнул
 Table exported to=>Таблица выгружена в
 Unsupported exchange format=>Неподдерживаемый формат обмена
 Changes=>Правки
+Coordinates=>Координаты
+OK (save and close)=>OK (сохранить и закрыть)
+Save=>Сохранить
+Cancel=>Отмена

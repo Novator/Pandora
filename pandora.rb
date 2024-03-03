@@ -11,6 +11,7 @@
 # RU: 2012 (c) Михаил Галюк
 
 require 'socket'
+require 'fileutils'
 require_relative 'lib/utils.rb'
 require_relative 'lib/model.rb'
 require_relative 'lib/ui.rb'
@@ -23,7 +24,7 @@ $country = 'US'
 $lang = 'en'
 $autodetect_lang = true
 $pandora_parameters = []
-$cui_mode = false
+$cui_mode = nil
 $screen_mode = false
 $hide_on_start = false
 
@@ -84,6 +85,7 @@ Encoding.default_external = 'UTF-8'
 Encoding.default_internal = 'UTF-8'
 BasicSocket.do_not_reverse_lookup = true
 Thread.abort_on_exception = true
+#Thread.abort_on_exception = false
 
 # Expand the arguments of command line
 # RU: Разобрать аргументы командной строки
@@ -91,6 +93,8 @@ arg = nil
 val = nil
 next_arg = nil
 ARGVdup = ARGV.dup
+show_help = false
+runit = 'ruby pandora.rb'
 while (ARGVdup.size>0) or next_arg
   if next_arg
     arg = next_arg
@@ -133,9 +137,17 @@ while (ARGVdup.size>0) or next_arg
         $autodetect_lang = false
         puts 'Setted language/country '+[$lang, $country].inspect
       end
-    when '-b', '--base'
-      $pandora_sqlite_db = val if val
-      puts 'Setted base '+$pandora_sqlite_db.inspect
+    when '-d', '--database'
+      $pandora_sqlite_db = File.join($pandora_base_dir, val) if val
+      puts 'Setted db file: '+$pandora_sqlite_db.inspect
+    when '-b', '--basedir'
+      def_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')
+      $pandora_base_dir = val if val
+      puts 'Setted basedir: '+$pandora_base_dir.inspect
+      if $pandora_sqlite_db==def_sqlite_db
+        $pandora_sqlite_db = File.join($pandora_base_dir, 'pandora.sqlite')
+        puts 'Setted db file: '+$pandora_sqlite_db.inspect
+      end
     when '-m', '--md5'
       puts PandoraUtils.pandora_md5_sum
       Kernel.exit(0)
@@ -146,39 +158,52 @@ while (ARGVdup.size>0) or next_arg
       $poly_launch = true
     when '-n', '--hide', '--minimize'
       $hide_on_start = true
-    when '-c','--cui', '--console'
-      $cui_mode = true
+    when '-c','--curses','--cui', '--console'
+      $cui_mode = 1
+    when '-nc','--ncurses'
+      $cui_mode = 2
     when '-s','--screen'
-      $cui_mode = true
+      $cui_mode = 1 if $cui_mode.nil?
       $screen_mode = true
+    when '--shell'
+      runit = 'pandora.sh'
+    when '--appimage'
+      runit = 'Pandora-N.NN-x86_64.AppImage'
+    when '-?','--help'
+      show_help = true
     else
       if (arg.size>0)
-        runit = '  '
-        if arg=='--shell' then
-          runit += 'pandora.sh'
-        else
-          runit += 'ruby pandora.rb'
-        end
-        runit += ' '
-        puts 'Ruby script Pandora params (examples):'
-        puts runit+'-h localhost     - listen address'
-        puts runit+'-p '+PandoraNet::DefTcpPort.to_s+'          - listen TCP/UDP port'
-        puts runit+'-b base/pandora2.sqlite  - set filename of database'
-        puts runit+'-l ua|--lang ua  - set Ukrainian language'
-        puts runit+'-m|--md5         - calc MD5 of all Pandora scripts'
-        puts runit+'-v|--version     - show Pandora version'
-        puts runit+'-pl|--poly       - allow poly (many) launch'
-        puts runit+'-n|--hide        - start hidden and minimized'
-        puts runit+'-c|--cui         - console user interface (CUI) with ncurses'
-        Kernel.exit!
+        arg += '='+val.to_s if val
+        puts('!!!Bad argument: '+arg)
+        show_help = true
       end
   end
   val = nil
 end
+if show_help
+  runit = '  '+runit+' '
+  puts 'Ruby script Pandora params (examples):'
+  puts runit+'-?|--help        - this help'
+  puts runit+'-h localhost     - listen address'
+  puts runit+'-p '+PandoraNet::DefTcpPort.to_s+'          - listen TCP/UDP port'
+  puts runit+'-b ./base        - set base dir (default "./base" or "~/.pandora" for AppImage)'
+  puts runit+'-d pandora2.sqlite   - set database file'
+  puts runit+'-l ua|--lang ua  - set Ukrainian language (other also possible)'
+  puts runit+'-m|--md5         - calc MD5 of all Pandora scripts'
+  puts runit+'-v|--version     - show Pandora version'
+  puts runit+'-pl|--poly       - allow poly (many) launch'
+  puts runit+'-n|--hide        - start hidden and minimized'
+  puts runit+'-c|--curses      - console user interface (CUI) via curses'
+  puts runit+'-nc|--ncurses    - console user interface (CUI) via ncurses'
+  Kernel.exit!
+end
 
-# Pandora Unix Socket file and its handler
+# Pandora Unix Socket file and its handle
 PANDORA_USOCK = '/tmp/pandora_unix_socket'
 $pserver = nil
+
+#Create BaseDir if not exist
+FileUtils.mkdir_p($pandora_base_dir) unless Dir.exists?($pandora_base_dir)
 
 # Delete Pandora unix socket
 # RU: Удаляет unix-сокет Пандоры
@@ -189,7 +214,7 @@ end
 $win32api = nil
 
 # Initialize win32 unit
-# RU: Инициализирует модуль win32
+# RU: Инициализировать модуль win32
 def init_win32api
   if $win32api.nil?
     begin
@@ -204,7 +229,7 @@ end
 
 MAIN_WINDOW_TITLE = 'Pandora'
 GTK_WINDOW_CLASS = 'gdkWindowToplevel'
-ANOTHER_COPY_MES = 'Another copy of Pandora is already runned'
+ANOTHER_COPY_MES = 'Another copy of Pandora is already runned (use -pl option to polylaunch run)'
 
 # Prevent second execution
 # RU: Предотвратить второй запуск
@@ -267,8 +292,8 @@ end
 if $cui_mode or (PandoraUtils.os_family=='windows')
   fn = 'stdout'
   fn = 'stderr' if $cui_mode
-  $stderr.reopen(File.join($pandora_base_dir, fn+'.log'), 'w')
-  $stdout = $stderr if (not $cui_mode)
+  #$stderr.reopen(File.join($pandora_base_dir, fn+'.log'), 'w')
+  #$stdout = $stderr if (not $cui_mode)
 end
 
 # WinAPI constants for work with the registry

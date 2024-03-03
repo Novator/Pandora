@@ -16,13 +16,14 @@ require_relative 'net.rb'
 
 # Graphical user interface Gtk2
 # RU: Графический интерфейс пользователя Gtk2
-begin
+#begin
   require 'gtk2'
+  #require_relative 'gtk3'
   Gtk.init
   $gtk_is_active = true
-rescue Exception
-  puts("Gtk cannot be activated.\nInstall packet 'ruby-gtk'")
-end
+#rescue Exception
+#  puts("Error: Gtk cannot be activated.\nInstall packet 'ruby-gtk'")
+#end
 
 
 module PandoraGtk
@@ -51,13 +52,20 @@ module PandoraGtk
     alig = btn.children[0]
     if alig.is_a? Gtk::Bin
       hbox = alig.child
-      if (hbox.is_a? Gtk::Box) and (hbox.children.size>1)
+      if (hbox.is_a?(Gtk::Box)) and (hbox.children.size>1)
         lab = hbox.children[1]
-        if lab.is_a? Gtk::Label
+        if lab.is_a?(Gtk::Label)
           if text.nil?
             lab.destroy
           else
-            lab.text = text
+            ttt = nil
+            i = text.index(' (')
+            if i and (i>1)
+              ttt = text
+              text = text[0..i-1]
+            end
+            lab.text = _(text)
+            btn.tooltip_text = _(ttt) if ttt
           end
         end
       end
@@ -190,14 +198,17 @@ module PandoraGtk
       bbox.border_width = 2
       bbox.spacing = 4
 
-      @okbutton = Gtk::Button.new(Gtk::Stock::OK)
+      @okbutton = Gtk::Button.new(:ok)
+      PandoraGtk.set_button_text(@okbutton, 'OK')
       okbutton.width_request = 110
       okbutton.signal_connect('clicked') do |*args|
         @response=2
       end
       bbox.pack_start(okbutton, false, false, 0)
 
-      @cancelbutton = Gtk::Button.new(Gtk::Stock::CANCEL)
+      $window.register_stock(:cancel)
+      @cancelbutton = Gtk::Button.new(:cancel)
+      PandoraGtk.set_button_text(@cancelbutton, 'Cancel')
       cancelbutton.width_request = 110
       cancelbutton.signal_connect('clicked') do |*args|
         @response=1
@@ -741,8 +752,10 @@ module PandoraGtk
         if (event.keyval==Gdk::Keyval::GDK_Tab)
           if preset=='qip'
             @vk_btn.do_on_click
+          elsif preset=='vk'
+            @vk_btn.do_on_click
           else
-            @qip_btn.do_on_click
+            @gg_btn.do_on_click
           end
           true
         elsif [Gdk::Keyval::GDK_b, Gdk::Keyval::GDK_B, 1737, 1769].include?(event.keyval)
@@ -765,6 +778,7 @@ module PandoraGtk
           if not @qip_btn.active?
             @qip_btn.set_active(true)
             @vk_btn.set_active(false)
+            @gg_btn.set_active(false)
             move_and_show('qip')
           end
         end
@@ -774,19 +788,32 @@ module PandoraGtk
           if not @vk_btn.active?
             @vk_btn.set_active(true)
             @qip_btn.set_active(false)
+            @gg_btn.set_active(false)
             move_and_show('vk')
           end
         end
         hbox.pack_start(@vk_btn, true, true, 0)
+        $window.register_stock(:peka, 'gg')
+        @gg_btn = GoodButton.new(:peka_gg, 'gg', -1) do |*args|
+          if not @gg_btn.active?
+            @gg_btn.set_active(true)
+            @vk_btn.set_active(false)
+            @qip_btn.set_active(false)
+            move_and_show('gg')
+          end
+        end
+        hbox.pack_start(@gg_btn, true, true, 0)
         $window.register_stock(:bomb, 'qip')
         @poly_btn = GoodButton.new(:bomb_qip, nil, false)
         @poly_btn.tooltip_text = _('Many smiles')
         hbox.pack_start(@poly_btn, false, false, 0)
         root_vbox.pack_start(hbox, false, true, 0)
-        if preset=='vk'
+        if preset=='qip'
+          @qip_btn.set_active(true)
+        elsif preset=='vk'
           @vk_btn.set_active(true)
         else
-          @qip_btn.set_active(true)
+          @gg_btn.set_active(true)
         end
         root_vbox.pack_start(@smile_box, true, true, 0)
       end
@@ -827,9 +854,10 @@ module PandoraGtk
           row = 0
           col = 0
           max_col = Math.sqrt(icon_params.size).round
+          #p '=====icon_params.size, max_col, preset, icon_params='+[icon_params.size, max_col, preset, icon_params].inspect
           hbox = Gtk::HBox.new
           icon_params.each_with_index do |smile, i|
-            if col>max_col
+            if col>=max_col
               vbox.pack_start(hbox, false, false, 0)
               hbox = Gtk::HBox.new
               col = 0
@@ -1644,7 +1672,8 @@ module PandoraGtk
       get_time(true)
       vbox.pack_start(hbox, false, false, 0)
 
-      btn = Gtk::Button.new(Gtk::Stock::OK)
+      btn = Gtk::Button.new(:ok)
+      PandoraGtk.set_button_text(btn, 'OK (save and close)')
       btn.signal_connect('clicked') do |widget|
         new_time = @entry.text
         if new_time and @@time_his
@@ -1915,7 +1944,7 @@ module PandoraGtk
       stock = stock.to_sym
       title ||= 'Panhash'
       super(HexEntry, stock, title, amodal=nil, *args)
-      @view_button = self.add_button(Gtk::Stock::HOME, 'Cabinet') do
+      @view_button = self.add_button(:home, 'Cabinet') do
         panhash = @entry.text
         if (panhash.bytesize>4) and PandoraUtils.hex?(panhash)
           panhash = PandoraUtils.hex_to_bytes(panhash)
@@ -2695,8 +2724,8 @@ module PandoraGtk
 
       #@@back_buf ||= $window.get_preset_icon(Gtk::Stock::GO_BACK, nil, btn_height)
       #@@forward_buf ||= $window.get_preset_icon(Gtk::Stock::GO_FORWARD, nil, btn_height)
-      @@find_buf ||= $window.get_preset_icon(Gtk::Stock::FIND, nil, btn_height)
-      @@replace_buf ||= $window.get_preset_icon(Gtk::Stock::FIND_AND_REPLACE, nil, btn_height)
+      @@find_buf ||= $window.get_preset_icon(:find, nil, btn_height)
+      @@replace_buf ||= $window.get_preset_icon(:replace, nil, btn_height)
       @@back_buf ||= $window.get_preset_icon(Gtk::Stock::GO_UP, nil, btn_height)
       @@forward_buf ||= $window.get_preset_icon(Gtk::Stock::GO_DOWN, nil, btn_height)
       @@all_buf ||= $window.get_preset_icon(Gtk::Stock::SELECT_ALL, nil, btn_height)
@@ -3289,7 +3318,8 @@ module PandoraGtk
   end
 
 
-  $font_desc = nil
+  $chat_font_desc = nil
+  $mono_font_desc = nil
 
   # Window for view body (text or blob)
   # RU: Окно просмотра тела (текста или блоба)
@@ -4225,10 +4255,10 @@ module PandoraGtk
                     comu = com
                   end
                   comu = comu.strip.upcase
-                  p '---opentag  [comu,params]='+[comu,params].inspect
+                  #p '---opentag  [comu,params]='+[comu,params].inspect
                   if strict_close_tag.nil? and BBCODES.include?(comu)
                     k = open_coms.find{ |ocf| ocf[0]==comu }
-                    p 'opentag k='+k.inspect
+                    #p 'opentag k='+k.inspect
                     if k
                       comu = nil
                     else
@@ -4279,7 +4309,7 @@ module PandoraGtk
                                   #js = read_justify_param(param_hash)
                                   param_hash['name']=nil
                                   tag_name, tag_params = generate_tag(param_hash, nil, 'text')
-                                  p 'IMG-TAGS [tag_name, tag_params]='+[tag_name, tag_params].inspect
+                                  #p 'IMG-TAGS [tag_name, tag_params]='+[tag_name, tag_params].inspect
 
                                   text_tag = dest_buf.tag_table.lookup(tag_name)
                                   if text_tag
@@ -4348,14 +4378,16 @@ module PandoraGtk
                                 param_hash = detect_params(params)
                                 name = param_hash['tag']
                                 name ||= param_hash['name']
-                                name ||= _('Noname')
+                                #name ||= _('Noname') if comu != 'BUTTON'
                                 width = param_hash['width']
                                 size = param_hash['size']
+                                value = param_hash['value']
                                 values = param_hash['values']
-                                values ||= param_hash['value']
+                                values ||= value
                                 values = values.split(',') if values
                                 default = param_hash['default']
-                                default ||= values[0] if values
+                                default ||= value if value
+                                #default ||= values[0] if values
                                 values ||= default
                                 type = param_hash['type']
                                 kind = param_hash['kind']
@@ -4436,8 +4468,31 @@ module PandoraGtk
                                   widget = PanhashBox.new('Panhash('+kind+')')
                                   widget.text = default if default
                                 elsif type=='LIST'
-                                  widget = ByteListEntry.new(PandoraModel::RelationNames)
-                                  widget.text = default if default
+                                  #p '##### ByteListEntry values='+values.inspect
+                                  code_name_list = nil
+                                  if values.is_a?(Array) and (values.size>0)
+                                    code_name_list = {}
+                                    values.each_with_index do |a_val, v_ind|
+                                      val_ind = v_ind
+                                      ii = a_val.index('=>')
+                                      if ii and (ii>0)
+                                        begin
+                                          val_ind = a_val[0..ii-1].to_i
+                                        rescue => err
+                                          PandoraUI.log_message(PandoraUI::LM_Warning, \
+                                            _('Index must be integer')+': '+Utf8String.new(err.message))
+                                          val_ind = v_ind
+                                        end
+                                        a_val = a_val[ii+2..-1]
+                                      end
+                                      a_val = a_val.strip
+                                      code_name_list[val_ind] = a_val
+                                      default = val_ind if default.nil?
+                                    end
+                                  end
+                                  code_name_list = PandoraModel::RelationNames if not code_name_list
+                                  widget = ByteListEntry.new(code_name_list)
+                                  widget.text = default.to_s if default
                                 else #'BUTTON'
                                   default ||= name
                                   widget = Gtk::Button.new(_(default))
@@ -4527,13 +4582,21 @@ module PandoraGtk
             open_brek = '<'
             close_brek = '>'
           end
-          if params.is_a? String
-            params = '='+params
-          elsif params.is_a? Hash
+          if params.is_a?(String) and (params.size>0)
+            if params[0] == ' '
+              params = params
+            else
+              params = '='+params
+            end
+          elsif params.is_a?(Hash)
             all = ''
             params.each do |k,v|
               all << ' '
-              all << k.to_s + '="' + v.to_s + '"'
+              all << k.to_s
+              if v
+                v = '"' + v.to_s + '"' if v[0] != '"'
+                all << '=' + v.to_s
+              end
             end
             params = all
           else
@@ -4609,7 +4672,13 @@ module PandoraGtk
       @scale_width = 0
       @scale_width_in_char = nil
       super(aview_border)
-      $font_desc ||= Pango::FontDescription.new('Monospace 11')
+
+      if not $mono_font_desc
+        amono_font_desc = PandoraUtils.get_param('mono_font_desc')
+        amono_font_desc = nil if (amono_font_desc=='')
+        amono_font_desc ||= 'Monospace 11'
+        $mono_font_desc = Pango::FontDescription.new(amono_font_desc)
+      end
 
       self.signal_connect('expose-event') do |widget, event|
         tv = widget
@@ -5138,7 +5207,7 @@ module PandoraGtk
               if (not @format.is_a?(String)) or (@format.size==0) or (fmt != 'auto')
                 @format = fmt
               end
-              p '--fill_body2  format='+@format
+              #p '--fill_body2  format='+@format
             end
           end
           bodywin.body_child = bodywid
@@ -6010,7 +6079,7 @@ module PandoraGtk
       if tv and (tv.is_a? Gtk::TextView)
         tv.hide
         text_changed = false
-        p '----set_buffers1  @format='+@format.inspect
+        #p '----set_buffers1  @format='+@format.inspect
         @format ||= 'bbcode'
         #if not ['markdown', 'bbcode', 'html', 'xml', 'ini', 'ruby', 'python', 'plain'].include?(@format)
           #@format = 'bbcode' #if aformat=='auto' #need autodetect here
@@ -6030,7 +6099,7 @@ module PandoraGtk
           tv.show
           tv.editable = false
         else
-          tv.modify_font($font_desc)
+          tv.modify_font($mono_font_desc)
           tv.modify_base(Gtk::STATE_NORMAL, Gdk::Color.parse('#000000'))
           tv.modify_text(Gtk::STATE_NORMAL, Gdk::Color.parse('#ffff33'))
           tv.modify_cursor(Gdk::Color.parse('#ff1111'), Gdk::Color.parse('#ff1111'))
@@ -6068,7 +6137,7 @@ module PandoraGtk
           set_tags(raw_buffer, 0, raw_buffer.line_count)
         end
         fmt_btn = property_box.format_btn
-        p '----set_buffers2  [@format, fmt_btn]='+[@format, fmt_btn].inspect
+        #p '----set_buffers2  [@format, fmt_btn]='+[@format, fmt_btn].inspect
         fmt_btn.label = @format if (fmt_btn and (fmt_btn.label != @format))
         tv.show
         tv.grab_focus
@@ -6450,7 +6519,7 @@ module PandoraGtk
       max_entry_height = 0
       @def_widget = nil
       @fields.each do |field|
-        #p 'field='+field.inspect
+        #p '>>>>field='+field.inspect
         max_size = 0
         fld_size = 0
         aview = field[PandoraUtils::FI_View]
@@ -6501,6 +6570,7 @@ module PandoraGtk
               entry = PanhashBox.new(atype, amodal)
             end
           when 'bytelist'
+            #p '---field[PandoraUtils::FI_Id]='+field[PandoraUtils::FI_Id].inspect
             if field[PandoraUtils::FI_Id]=='panhash_lang'
               entry = ByteListEntry.new(PandoraModel.lang_code_list, amodal)
             elsif field[PandoraUtils::FI_Id]=='gender'
@@ -6935,9 +7005,7 @@ module PandoraGtk
     # Save raw fields with form flags, sign and relations
     # RU: Сохранить сырые поля с флагами формы, подписью и связями
     def save_flds_with_form_flags(flds_hash, lang=nil, created0=nil)
-
-      p '---save_flds_with_form_flags   flds_hash='+flds_hash.inspect
-
+      #p '---save_flds_with_form_flags   flds_hash='+flds_hash.inspect
       time_now = Time.now.to_i
       if (panobject.is_a? PandoraModel::Created)
         if created0 and flds_hash['created'] \
@@ -7691,7 +7759,7 @@ module PandoraGtk
   $load_more_history_count = 50
 
   CabPageInfo = [[Gtk::Stock::PROPERTIES, 'Basic'], \
-    [Gtk::Stock::HOME, 'Profile'], \
+    [:home, 'Profile'], \
     [:opinion, 'Opinions'], \
     [:relation, 'Relations'], \
     [:sign, 'Signs'], \
@@ -7982,12 +8050,12 @@ module PandoraGtk
 
       add_btn_to_toolbar
 
-      add_btn_to_toolbar(Gtk::Stock::SAVE) do |btn|
+      add_btn_to_toolbar(:save, 'Save') do |btn|
         @cab_panhash = pb.save_form_fields_with_flags_to_database
         @kind = PandoraUtils.kind_from_panhash(@cab_panhash)
         construct_cab_title
       end
-      add_btn_to_toolbar(Gtk::Stock::OK) do |btn|
+      add_btn_to_toolbar(:ok, 'OK (save and close)') do |btn|
         self.save_and_close
       end
 
@@ -7999,7 +8067,10 @@ module PandoraGtk
 
     def fill_dlg_toolbar(page, atalkview, chat_mode=false)
       if (page==PandoraUI::CPI_Dialog)
-        crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', false)
+        encrypt_dialog = PandoraUtils.get_param('encrypt_dialog')
+        crypt_btn = add_btn_to_toolbar(:crypt, 'Encrypt|(Ctrl+K)', encrypt_dialog) do |widget|
+          PandoraUtils.set_param('encrypt_dialog', widget.active?) if not widget.destroyed?
+        end
       end
 
       sign_scale = nil
@@ -8344,54 +8415,54 @@ module PandoraGtk
       end
       menu.append(Gtk::SeparatorMenuItem.new)
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Edit') do
-        bodywin.insert_tag('edit/', 'Edit value="Text" size="40"')
+        bodywin.insert_tag('edit/', {:name=>'Edit', :value=>'Text', :size=>'40'})
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Spin') do
-        bodywin.insert_tag('spin/', 'Spin values="42,48,52" default="48"')
+        bodywin.insert_tag('spin/', ' name="Spin" values="42,48,52" default="48"')
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Integer') do
-        bodywin.insert_tag('integer/', 'Integer value="42" width="70"')
+        bodywin.insert_tag('integer/', ' name="Integer" value="42" width="70"')
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Hex') do
-        bodywin.insert_tag('hex/', 'Hex value="01a5ff" size="20"')
+        bodywin.insert_tag('hex/', ' name="Hex" value="01a5ff" size="20"')
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Real') do
-        bodywin.insert_tag('real/', 'Real value="0.55"')
+        bodywin.insert_tag('real/', {:value=>'"0.55"', :name=>'Real'})
       end
       PandoraGtk.add_menu_item(btn, menu, :date, 'Date') do
-        bodywin.insert_tag('date/', 'Date value="current"')
+        bodywin.insert_tag('date/', ' name="Date" value="current"')
       end
       PandoraGtk.add_menu_item(btn, menu, :time, 'Time') do
-        bodywin.insert_tag('time/', 'Time value="current"')
+        bodywin.insert_tag('time/', ' name="Time" value="current"')
       end
-      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Coord') do
-        bodywin.insert_tag('coord/', 'Coord')
+      PandoraGtk.add_menu_item(btn, menu, :coord, 'Coord') do
+        bodywin.insert_tag('coord/', {:name=>'Coord'})
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::OPEN, 'Filename') do
-        bodywin.insert_tag('filename/', 'Filename value="./picture1.jpg"')
+        bodywin.insert_tag('filename/', ' name="Filename" value="./picture1.jpg"')
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Base64') do
-        bodywin.insert_tag('base64/', 'Base64 value="SGVsbG8=" size="30"')
+        bodywin.insert_tag('base64/', ' name="Base64" value="SGVsbG8=" size="30"')
       end
       PandoraGtk.add_menu_item(btn, menu, :panhash, 'Panhash') do
-        bodywin.insert_tag('panhash/', 'Panhash kind="Person,Community,Blob"')
+        bodywin.insert_tag('panhash/', ' name="Panhash" kind="Person,Community,Blob"')
       end
       PandoraGtk.add_menu_item(btn, menu, :list, 'Bytelist') do
-        bodywin.insert_tag('bytelist/', 'List values="red, green, blue"')
+        bodywin.insert_tag('bytelist/', ' name="ByteList" values="1=>red, 2=>green, 3=>blue" default="2"')
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::INDEX, 'Button') do
-        bodywin.insert_tag('button/', 'Button value="Order"')
+        bodywin.insert_tag('button/', ' value="Order"')
       end
       menu.show_all
 
       PandoraGtk.add_tool_btn(toolbar)
 
-      btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::FIND, nil, 0) do
+      btn = PandoraGtk.add_tool_btn(toolbar, :find, nil, 0) do
         bodywin.body_child.show_hide_find_panel(false, true)
       end
       menu = Gtk::Menu.new
       btn.menu = menu
-      PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::FIND_AND_REPLACE) do
+      PandoraGtk.add_menu_item(btn, menu, :replace) do
         bodywin.body_child.show_hide_find_panel(true, true)
       end
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::JUMP_TO) do
@@ -8440,11 +8511,11 @@ module PandoraGtk
 
       PandoraGtk.add_tool_btn(toolbar)
 
-      pb.save_btn = PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::SAVE) do
+      pb.save_btn = PandoraGtk.add_tool_btn(toolbar, :save, 'Save') do
         @cab_panhash = pb.save_form_fields_with_flags_to_database
         @kind = PandoraUtils.kind_from_panhash(@cab_panhash)
       end
-      PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::OK) do
+      PandoraGtk.add_tool_btn(toolbar, :ok, 'OK (save and close)') do
         pb.save_form_fields_with_flags_to_database
         self.destroy
       end
@@ -8456,8 +8527,8 @@ module PandoraGtk
     def fill_view_toolbar
       add_btn_to_toolbar(Gtk::Stock::ADD, 'Add')
       add_btn_to_toolbar(Gtk::Stock::DELETE, 'Delete')
-      add_btn_to_toolbar(Gtk::Stock::OK, 'Ok') { |*args| @response=2 }
-      add_btn_to_toolbar(Gtk::Stock::CANCEL, 'Cancel') { |*args| @response=1 }
+      add_btn_to_toolbar(:ok, 'OK (save and close)') { |*args| @response=2 }
+      add_btn_to_toolbar(:cancel, 'Cancel') { |*args| @response=1 }
       @zoom_100 = add_btn_to_toolbar(Gtk::Stock::ZOOM_100, 'Show 1:1', true) do
         @zoom_fit.safe_set_active(false)
         true
@@ -8717,7 +8788,7 @@ module PandoraGtk
           when PandoraUI::CPI_Editor
             #@bodywin = BodyScrolledWindow.new(@fields, nil, nil)
             #bodywin.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
-            #p [kind, @fields, PandoraUtils.bytes_to_hex(cab_panhash)]
+            #p '=====[kind, @fields, cab_panhash='+[kind, @fields, PandoraUtils.bytes_to_hex(cab_panhash)].inspect
             @property_box ||= PropertyBox.new(kind, @fields, cab_panhash, obj_id, edit, nil, @tree_view)
             if property_box.text_fields and (property_box.text_fields.size>0)
               #p property_box.text_fields
@@ -8772,14 +8843,33 @@ module PandoraGtk
             atalkview.buffer.create_tag('sys_bold', 'foreground' => $sys_color,  \
               'weight' => Pango::FontDescription::WEIGHT_BOLD)
 
+            atalkview.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#C0C0C0'))
+            atalkview.border_width = 1
+
+            if not $chat_font_desc
+              achat_font_desc = PandoraUtils.get_param('chat_font_desc')
+              achat_font_desc = nil if (achat_font_desc=='')
+              if achat_font_desc
+                $chat_font_desc = Pango::FontDescription.new(achat_font_desc)
+              else
+                $chat_font_desc = nil
+              end
+            end
+
+            atalkview.modify_font($chat_font_desc)
+
             talksw = Gtk::ScrolledWindow.new(nil, nil)
             talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
             talksw.add(atalkview)
 
             edit_box = PandoraGtk::SuperTextView.new
+            edit_box.modify_font($chat_font_desc)
+
             atalkview.edit_box = edit_box
             edit_box.wrap_mode = Gtk::TextTag::WRAP_WORD
             #edit_box.set_size_request(200, 70)
+            edit_box.border_width = 1
+            edit_box.modify_bg(Gtk::STATE_NORMAL, Gdk::Color.parse('#8080F0'))
 
             @edit_sw = Gtk::ScrolledWindow.new(nil, nil)
             edit_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
@@ -9523,7 +9613,7 @@ module PandoraGtk
 
         save_mes_history(mes_panhash, mes)
 
-        #talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
+        talkview.after_addition(to_end) if (not to_end.is_a? FalseClass)
         #talkview.show_all
         if notice
           if chat_mode
@@ -10832,7 +10922,7 @@ module PandoraGtk
       #vpaned = Gtk::VPaned.new
       vbox = self
 
-      search_btn = Gtk::ToolButton.new(Gtk::Stock::FIND, _('Search'))
+      search_btn = Gtk::ToolButton.new(:find, _('Search'))
       search_btn.tooltip_text = _('Start searching')
       PandoraGtk.set_readonly(search_btn, true)
 
@@ -11321,11 +11411,11 @@ module PandoraGtk
         list_store.clear
         if $pool
           $pool.mass_records.queue.each do |mr|
-            p '---Radar mass_rec='+mr[0..6].inspect
+            #p '---Radar mass_rec='+mr[0..6].inspect
             anode = mr[PandoraNet::MR_SrcNode]
             if anode
               akey, abaseid, aperson = $pool.get_node_params(anode)
-              p 'anode, akey, abaseid, aperson='+[anode, akey, abaseid, aperson].inspect
+              #p 'anode, akey, abaseid, aperson='+[anode, akey, abaseid, aperson].inspect
               sess_iter = list_store.append
               akind = mr[PandoraNet::MR_Kind]
               anick = nil
@@ -11375,7 +11465,7 @@ module PandoraGtk
         kind ||= 1
         if kind
           pixbuf = kind_pbs[kind-1]
-          pixbuf = nil if pixbuf==false
+          pixbuf = nil if pixbuf.is_a?(FalseClass)
           renderer.pixbuf = pixbuf
         end
       end
@@ -11554,7 +11644,7 @@ module PandoraGtk
 
       update_btn.signal_connect('clicked') do |*args|
         list_store.clear
-        $pool.mass_records.each do |mr|
+        $pool.mass_records.queue.each do |mr|
           if mr
             sess_iter = list_store.append
             sess_iter[0] = mr[PandoraNet::MR_Kind]
@@ -12730,7 +12820,7 @@ module PandoraGtk
         if val
           #p '[col, val]='+[col, val].inspect
           pixbuf = PandoraModel.get_avatar_icon(val, tvc.tree_view, its_blob, 45)
-          pixbuf = nil if pixbuf==false
+          pixbuf = nil if pixbuf.is_a?(FalseClass)
           renderer.pixbuf = pixbuf
         end
       end
@@ -13427,7 +13517,7 @@ module PandoraGtk
   def self.show_search_panel(text=nil)
     sw = SearchBox.new(text)
 
-    image = Gtk::Image.new(Gtk::Stock::FIND, Gtk::IconSize::SMALL_TOOLBAR)
+    image = Gtk::Image.new(:find, Gtk::IconSize::SMALL_TOOLBAR)
     image.set_padding(2, 0)
 
     label_box = TabLabelBox.new(image, _('Search'), sw) do
@@ -13742,7 +13832,7 @@ module PandoraGtk
       end
       menu.append(checkmenuitem)
 
-      menuitem = Gtk::ImageMenuItem.new(Gtk::Stock::PROPERTIES)
+      menuitem = Gtk::ImageMenuItem.new(:setup)
       alabel = menuitem.children[0]
       alabel.set_text(_('All parameters')+'..', true)
       menuitem.signal_connect('activate') do |w|
@@ -13761,7 +13851,7 @@ module PandoraGtk
       end
       menu.append(menuitem)
 
-      menuitem = Gtk::ImageMenuItem.new(Gtk::Stock::QUIT)
+      menuitem = Gtk::ImageMenuItem.new(:quit)
       alabel = menuitem.children[0]
       alabel.set_text(_('_Quit'), true)
       menuitem.signal_connect('activate') do |w|
@@ -13780,7 +13870,7 @@ module PandoraGtk
       base_icon0 = @base_icon
       if state
         @base_icon = @online_icon
-      elsif state==false
+      elsif state.is_a?(FalseClass)
         @base_icon = @main_icon
       end
       update_icon
@@ -14081,7 +14171,7 @@ module PandoraGtk
     attr_accessor :log_view, :notebook, \
       :pool, :focus_timer, :radar_hpaned, :task_offset, \
       :radar_sw, :log_vpaned, :log_sw, :accel_group, :menubar, \
-      :toolbar, :hand_cursor, :regular_cursor
+      :toolbar, :hand_cursor, :regular_cursor, :is_maximized
 
 
     include PandoraUtils
@@ -14325,19 +14415,22 @@ module PandoraGtk
           iX = index - (iY*numX)
           dX = bord + iX*(cellX+padd)
           dY = bord + iY*(cellY+padd)
-          #p '[cellX, cellY, iX, iY, dX, dY]='+[cellX, cellY, iX, iY, dX, dY].inspect
+          #p '~~~~[preset, cellX, cellY, iX, iY, dX, dY]='+[preset, cellX, cellY, iX, iY, dX, dY].inspect
           draft_buf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, cellX, cellY)
           preset_buf.copy_area(dX, dY, cellX, cellY, draft_buf, 0, 0)
           #draft_buf = Gdk::Pixbuf.new(preset_buf, 0, 0, 21, 24)
 
           pixs = draft_buf.pixels
+          #p '+++pixs='+pixs.class.inspect
+          pixs = pixs.pack('C*') if pixs.is_a?(Array)
+          #p '>>>pixs='+pixs.class.inspect
           if pixs.is_a?(String)
-            pixs = AsciiString.new(draft_buf.pixels)
+            pixs = AsciiString.new(pixs)
             pix_size = draft_buf.n_channels
             width = draft_buf.width
             height = draft_buf.height
             w = width * pix_size  #buf.rowstride
-            #p '[pixs.bytesize, width, height, w]='+[pixs.bytesize, width, height, w].inspect
+            #p '///[pixs.bytesize, width, height, w]='+[pixs.bytesize, width, height, w].inspect
 
             bg = pixs[0, pix_size]   #top left pixel consider background
 
@@ -14399,15 +14492,14 @@ module PandoraGtk
 
             left = left/pix_size
             right = right/pix_size
-            #p '====[top,bottom,left,right]='+[top,bottom,left,right].inspect
 
             width2 = right-left+1
             height2 = bottom-top+1
-            #p '  ---[width2,height2]='+[width2,height2].inspect
+            #p '====[preset,emot,top,bottom,left,right,width2,height2]='+[preset,emot,top,bottom,left,right,width2,height2].inspect
 
             if (width2>0) and (height2>0) \
             and ((left>0) or (top>0) or (width2<width) or (height2<height))
-              # Crop borders
+              #p '---Crop borders to left, top, width2, height2='+[left, top, width2, height2].inspect
               buf = Gdk::Pixbuf.new(Gdk::Pixbuf::COLORSPACE_RGB, true, 8, width2, height2)
               draft_buf.copy_area(left, top, width2, height2, buf, 0, 0)
             else
@@ -14762,7 +14854,7 @@ module PandoraGtk
       ['Delegation', 'delegation:m', 'Delegations'],
       ['Registry', 'registry:m', 'Registry'],
       [nil, nil, '_Node'],
-      ['Parameter', Gtk::Stock::PROPERTIES, 'Parameters'],
+      ['Parameter', 'setup', 'Parameters'],
       ['-', nil, '-'],
       ['Key', 'key', 'Keys'],   #Gtk::Stock::GOTO_BOTTOM
       ['Sign', 'sign:m', 'Signs'],
@@ -14777,21 +14869,21 @@ module PandoraGtk
       ['Listen', :listen, 'Listen', '<control>L', :check],  #Gtk::Stock::CONNECT
       ['Hunt', :hunt, 'Hunt', '<control>N', :check],   #Gtk::Stock::REFRESH
       ['Radar', :radar, 'Radar', '<control>R', :check],  #Gtk::Stock::GO_FORWARD
-      ['Search', Gtk::Stock::FIND, 'Search', '<control>T'],
+      ['Search', :find, 'Search', '<control>T'],
       ['>', nil, '_Wizards'],
-      ['>Cabinet', Gtk::Stock::HOME, 'Cabinet'],
+      ['>Cabinet', :home, 'Cabinet'],
       ['>Exchange', 'exchange:m', 'Exchange'],
       ['>Session', 'session:m', 'Sessions'],   #Gtk::Stock::JUSTIFY_FILL
       ['>Fisher', 'fish:m', 'Fishers'],
       ['>Wizard', Gtk::Stock::PREFERENCES.to_s+':m', '_Wizards'],
       ['-', nil, '-'],
       ['>', nil, '_Help'],
-      ['>Guide', Gtk::Stock::HELP.to_s+':m', 'Guide', 'F1'],
+      ['>Guide', 'help:m', 'Guide', 'F1'],
       ['>Readme', ':m', 'README.TXT'],
       ['>DocPath', Gtk::Stock::OPEN.to_s+':m', 'Documentation'],
-      ['>About', Gtk::Stock::ABOUT, '_About'],
+      ['>About', :about, '_About'],
       ['Close', Gtk::Stock::CLOSE.to_s+':', '_Close', '<control>W'],
-      ['Quit', Gtk::Stock::QUIT, '_Quit', '<control>Q']
+      ['Quit', :quit, '_Quit', '<control>Q']
       ]
 
     # Fill main menu
@@ -14896,6 +14988,8 @@ module PandoraGtk
     def initialize(*args)
       super(*args)
       $window = self
+
+      $window.is_maximized = false
 
       main_icon = nil
       begin
@@ -15018,8 +15112,7 @@ module PandoraGtk
       add_status_field(PandoraUI::SF_Log, nil, 'Logbar', :log, false, 0) do
         PandoraUI.do_menu_act('LogBar')
       end
-      add_status_field(PandoraUI::SF_FullScr, nil, 'Full screen', \
-      Gtk::Stock::FULLSCREEN, false, 0) do
+      add_status_field(PandoraUI::SF_FullScr, nil, 'Full screen', :fullscreen, false, 0) do
         PandoraUI.do_menu_act('FullScr')
       end
 
@@ -15068,7 +15161,7 @@ module PandoraGtk
       add_status_field(PandoraUI::SF_Harvest, '0', 'Files', :blob) do
         PandoraUI.do_menu_act('Blob')
       end
-      add_status_field(PandoraUI::SF_Search, '0', 'Search', Gtk::Stock::FIND) do
+      add_status_field(PandoraUI::SF_Search, '0', 'Search', :find) do
         PandoraUI.do_menu_act('Search')
       end
       resize_eb = Gtk::EventBox.new
@@ -15087,7 +15180,8 @@ module PandoraGtk
           point = $window.window.pointer[1,2]
           wh = $window.window.geometry[2,2]
           $pointoff = [(wh[0]-point[0]), (wh[1]-point[1])]
-          if $window.window.state == Gdk::EventWindowState::MAXIMIZED
+          if $window.is_maximized
+          #if ($window.window.state == Gdk::EventWindowState::MAXIMIZED
             wbord = 6
             w, h = [(point[0]+$pointoff[0]-wbord), (point[1]+$pointoff[1]-wbord)]
             $window.move(0, 0)
@@ -15270,9 +15364,10 @@ module PandoraGtk
       #end
 
       $window.signal_connect('window-state-event') do |widget, event_window_state|
-        if (event_window_state.changed_mask == Gdk::EventWindowState::ICONIFIED) \
+        if ((event_window_state.changed_mask & Gdk::EventWindowState::ICONIFIED)>0) \
           and ((event_window_state.new_window_state & Gdk::EventWindowState::ICONIFIED)>0)
         then
+          $window.is_maximized = false
           if notebook.page >= 0
             sw = notebook.get_nth_page(notebook.page)
             if (sw.is_a? CabinetBox) and (not sw.destroyed?)
@@ -15284,6 +15379,8 @@ module PandoraGtk
             $window.hide
             #$window.skip_taskbar_hint = true
           end
+        else
+          $window.is_maximized = ((event_window_state.new_window_state & Gdk::EventWindowState::MAXIMIZED)>0)
         end
       end
 
