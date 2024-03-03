@@ -12888,7 +12888,7 @@ module PandoraGtk
           end
           renderer.foreground = color
           val ||= ''
-          renderer.text = val
+          renderer.text = val if val
         end
       else
         p 'Field ['+id.inspect+'] is not found in table ['+panobject.ider+']'
