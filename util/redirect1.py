@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+#(c) Michael Galyuk, Pandora, GNU GPLv2+, free software
+
 import socket, threading, select, sys, datetime
 
 terminateAll = False

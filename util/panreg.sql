@@ -1,5 +1,5 @@
 -- MySQL dump for Pandora Registrator
--- 2012 (c) Michael Galyuk, P2P social network Pandora, GNU GPLv2
+-- 2012 (c) Michael Galyuk, P2P social network Pandora, GNU GPLv2+
 -- Use the command to [re]create a table:
 -- mysql -u ivan -p12345 -h mysql.local.host.ru -f database < ./panreg.sql
 

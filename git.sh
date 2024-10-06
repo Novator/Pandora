@@ -4,7 +4,7 @@
 ## Uncomment necessary line, comment out unnecessary, and run the script.
 ## RU: Популярные команды git, используемые для сопровождения Пандоры на Гитхабе
 ## RU: Раскомментируй нужные строки, закомментируй ненужные, и запусти скрипт.
-## 2012(c) Michael Galyuk, Pandora, GNU GPLv2, free software
+## 2012(c) Michael Galyuk, Pandora, GNU GPLv2+, free software
 
 ## Init git on your computer
 ## (Change name and email!)
@@ -29,6 +29,8 @@
 #git remote set-url github https://github.com/Novator/Pandora.git
 #git clone --depth=1 git://git.site.biz/pandora
 #git push -u origin master
+#git remote set-url github https://`cat ./github_token.txt`@github.com/Novator/Pandora.git
+#git remote set-url bitbuc https://robux:`cat ./bitbuc_token.txt`@bitbucket.org/robux/pandora.git
 
 ## Change remote url to HTTPS or SSH way
 #git remote set-url github https://github.com/Novator/Pandora.git

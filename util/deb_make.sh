@@ -1,5 +1,7 @@
 #!/bin/sh
 
+#(c) Michael Galyuk, Pandora, GNU GPLv2+, free software
+
 #cp -f ./GitHub/Pandora/* ./deb/opt/pandora
 #cp -rf ./GitHub/Pandora/base ./deb/opt/pandora
 #cp -rf ./GitHub/Pandora/doc ./deb/opt/pandora

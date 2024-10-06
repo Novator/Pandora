@@ -1,5 +1,7 @@
 #!/bin/sh -e
 
+#(c) Michael Galyuk, Pandora, GNU GPLv2+, free software
+
 while true; do
   echo "SSH port forward..."
   #killall ssh

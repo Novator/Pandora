@@ -2,7 +2,7 @@
 
 # The script for running Pangate (Pandora gate) on external host at internet
 # RU: Скрипт для запуска Pangate (шлюз Пандоры) на внешнем хосте в интернете
-# 2012 (c) Michael Galyuk, P2P social network Pandora, free software, GNU GPLv2
+# 2012 (c) Michael Galyuk, P2P social network Pandora, free software, GNU GPLv2+
 # RU: 2012 (c) Михаил Галюк, P2P социальная сеть Пандора, свободное ПО
 
 

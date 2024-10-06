@@ -2,7 +2,7 @@
 
 # The script for running Pandora in console (ncurses) mode
 # RU: Скрипт для запуска Пандоры в консольном (ncurses) режиме
-# 2017 (c) Michael Galyuk, P2P social network Pandora, free software, GNU GPLv2
+# 2017 (c) Michael Galyuk, P2P social network Pandora, free software, GNU GPLv2+
 # RU: 2017 (c) Михаил Галюк, P2P социальная сеть Пандора, свободное ПО
 
 # Use "-d" parameter for deamon launching. Example for /etc/crontab:

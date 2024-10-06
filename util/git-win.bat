@@ -1,3 +1,4 @@
+rem (c) Michael Galyuk, Pandora, GNU GPLv2+, free software
 rem .\pandora.bat --version >> .\doc\versions.txt
 rem .\pandora.bat --md5 >> .\doc\versions.txt
 rem date /T >> .\doc\versions.txt

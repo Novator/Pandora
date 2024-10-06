@@ -5,8 +5,8 @@
 # Graphical user interface of Pandora
 # RU: Графический интерфейс Пандоры
 #
-# This program is free software and distributed under the GNU GPLv2
-# RU: Это свободное программное обеспечение распространяется под GNU GPLv2
+# This program is free software and distributed under the GNU GPLv2+
+# RU: Это свободное программное обеспечение распространяется под GNU GPLv2+
 # 2012 (c) Michael Galyuk
 # RU: 2012 (c) Михаил Галюк
 
@@ -8081,13 +8081,20 @@ module PandoraGtk
       sign_scale.sensitive = sign_btn.active?
       add_btn_to_toolbar(sign_scale)
 
+      toolbar = Gtk::Toolbar.new
+      toolbar.show_arrow = true
+      toolbar.toolbar_style = Gtk::Toolbar::Style::ICONS
+
       if not chat_mode
-        require_sign_btn = add_btn_to_toolbar(:require, 'Require sign', false)
+        #require_sign_btn = add_btn_to_toolbar(:require, 'Require sign', false)
+        PandoraGtk.add_tool_btn(toolbar, :require, 'Require sign', false)
       end
 
-      btn = add_btn_to_toolbar(:message, 'Load more history|('+$load_more_history_count.to_s+')', 0) do |widget|
-        load_history($load_more_history_count, $sort_history_mode, chat_mode)
-      end
+      btn =
+        #add_btn_to_toolbar(:message, 'Load more history|('+$load_more_history_count.to_s+')', 0) do |widget|
+        PandoraGtk.add_tool_btn(toolbar, :message, 'Load more history|('+$load_more_history_count.to_s+')', 0) do |widget|
+          load_history($load_more_history_count, $sort_history_mode, chat_mode)
+        end
       menu = Gtk::Menu.new
       btn.menu = menu
       PandoraGtk.add_menu_item(btn, menu, Gtk::Stock::CLEAR, 'Clear screen') do |mi|
@@ -8105,10 +8112,13 @@ module PandoraGtk
       menu.show_all
 
       if not chat_mode
-        add_btn_to_toolbar
+        #add_btn_to_toolbar
+        PandoraGtk.add_tool_btn(toolbar)
 
         is_online = (@session != nil)
-        @online_btn = add_btn_to_toolbar(Gtk::Stock::CONNECT, 'Online', is_online) \
+        @online_btn =
+          #add_btn_to_toolbar(Gtk::Stock::CONNECT, 'Online', is_online) \
+          PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::CONNECT, 'Online', is_online) \
         do |widget|
           p 'widget.active?='+widget.active?.inspect
           if widget.active? #and (not widget.inconsistent?)
@@ -8131,7 +8141,9 @@ module PandoraGtk
           end
         end
 
-        @webcam_btn = add_btn_to_toolbar(:webcam, 'Webcam', false) do |widget|
+        @webcam_btn =
+        #add_btn_to_toolbar(:webcam, 'Webcam', false) do |widget|
+        PandoraGtk.add_tool_btn(toolbar, :webcam, 'Webcam', false) do |widget|
           if widget.active?
             if init_video_sender(true)
               online_btn.active = true
@@ -8142,7 +8154,9 @@ module PandoraGtk
           end
         end
 
-        @mic_btn = add_btn_to_toolbar(:mic, 'Mic', false) do |widget|
+        @mic_btn =
+        #add_btn_to_toolbar(:mic, 'Mic', false) do |widget|
+        PandoraGtk.add_tool_btn(toolbar, :mic, 'Mic', false) do |widget|
           if widget.active?
             if init_audio_sender(true)
               online_btn.active = true
@@ -8153,7 +8167,9 @@ module PandoraGtk
           end
         end
 
-        record_btn = add_btn_to_toolbar(Gtk::Stock::MEDIA_RECORD, 'Record', false) do |widget|
+        record_btn =
+        #add_btn_to_toolbar(Gtk::Stock::MEDIA_RECORD, 'Record', false) do |widget|
+        PandoraGtk.add_tool_btn(toolbar, Gtk::Stock::MEDIA_RECORD, 'Record', false) do |widget|
           if widget.active?
             #start record video and audio
             sleep(0.5)
@@ -8164,7 +8180,8 @@ module PandoraGtk
         end
       end
 
-      add_btn_to_toolbar
+      #add_btn_to_toolbar
+      PandoraGtk.add_tool_btn(toolbar)
 
       def_smiles = PandoraUtils.get_param('def_smiles')
       smile_btn = SmileButton.new(def_smiles) do |preset, label|
@@ -8174,15 +8191,23 @@ module PandoraGtk
         atalkview.edit_box.buffer.insert_at_cursor(smile_img)
       end
       smile_btn.tooltip_text = _('Smile')+' (Alt+Down)'
-      add_btn_to_toolbar(smile_btn)
+      #add_btn_to_toolbar(smile_btn)
+      PandoraGtk.add_tool_btn(toolbar, smile_btn)
 
       if page==PandoraUI::CPI_Dialog
-        game_btn = add_btn_to_toolbar(:game, 'Game')
-        game_btn = add_btn_to_toolbar(:box, 'Box')
-        add_btn_to_toolbar
+        game_btn =
+          #add_btn_to_toolbar(:game, 'Game')
+          PandoraGtk.add_tool_btn(toolbar, :game, 'Game')
+        game_btn =
+          #add_btn_to_toolbar(:box, 'Box')
+          PandoraGtk.add_tool_btn(toolbar, :box, 'Box')
+        #add_btn_to_toolbar
+        PandoraGtk.add_tool_btn(toolbar)
       end
 
-      send_btn = add_btn_to_toolbar(:send, 'Send') do |widget|
+      send_btn =
+      #add_btn_to_toolbar(:send, 'Send') do |widget|
+      PandoraGtk.add_tool_btn(toolbar, :send, 'Send') do |widget|
         mes = atalkview.edit_box.buffer.text
         if mes != ''
           sign_trust = nil
@@ -8197,6 +8222,15 @@ module PandoraGtk
         false
       end
       send_btn.sensitive = false
+
+      #PandoraGtk.add_tool_btn(toolbar, :ok, 'OK (save and close)') do
+      #  pb.save_form_fields_with_flags_to_database
+      #  self.destroy
+      #end
+
+      toolbar.show_all
+      add_btn_to_toolbar(toolbar)
+
       atalkview.crypt_btn = crypt_btn
       atalkview.sign_btn = sign_btn
       atalkview.smile_btn = smile_btn
@@ -8860,6 +8894,7 @@ module PandoraGtk
 
             talksw = Gtk::ScrolledWindow.new(nil, nil)
             talksw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+            #talksw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_NEVER)
             talksw.add(atalkview)
 
             edit_box = PandoraGtk::SuperTextView.new
@@ -8873,6 +8908,7 @@ module PandoraGtk
 
             @edit_sw = Gtk::ScrolledWindow.new(nil, nil)
             edit_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
+            #edit_sw.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_NEVER)
             edit_sw.add(edit_box)
 
             edit_box.grab_focus
@@ -9150,7 +9186,9 @@ module PandoraGtk
       cab_notebook.show_tabs = false
       cab_notebook.show_border = false
       cab_notebook.border_width = 0
-      @toolbar_box = Gtk::HBox.new #Toolbar.new HBox.new
+      @toolbar_box = Gtk::HBox.new
+      #@toolbar_box = Gtk::Toolbar.new
+      #@toolbar_box.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_NEVER)
       main_vbox.pack_start(cab_notebook, true, true, 0)
 
       @opt_btns = []
@@ -9208,6 +9246,7 @@ module PandoraGtk
 
       @toolbar_sw = Gtk::ScrolledWindow.new(nil, nil)
       toolbar_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_NEVER)
+      #toolbar_sw.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
       toolbar_sw.border_width = 0
       #iw, iy = Gtk::IconSize.lookup(Gtk::IconSize::LARGE_TOOLBAR)
       @toolbar_box.show_all
@@ -15240,7 +15279,7 @@ module PandoraGtk
       if PandoraUtils.os_family=='windows'
         mplayer = PandoraUtils.get_param('win_mp3_player')
       else
-        mplayer = PandoraUtils.get_param('linux_mp3_player')
+        mplayer = PandoraUtils.get_param('lin_mp3_player')
       end
       $mp3_player = mplayer if ((mplayer.is_a? String) and (mplayer.size>0))
 

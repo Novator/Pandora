@@ -31,17 +31,22 @@ https://github.com/Novator/Pandora/wiki/P2P-social-network-Pandora
 See the user manual with pictures in wiki to quick start:
 https://github.com/Novator/Pandora/wiki/Install-and-first-run
 
+Pandora is distributed with GNU GPLv2 license, also you can
+distribute the code with 3 version, or any later version of GNU GPL.
+Original files: text, binary (like images, icons) and others also are
+licensed under GNU GPLv2 or later.
+
 
 2. SYSTEM REQUIREMENTS
 
 Mandatory:
-- Linux, Windows or Mac OS
-- Ruby1.9 or higher script engine
-- GTK2 graphical library
-- SQLite3 database library
-- OpenSSL crypto library
+- GNU/Linux, Windows or Mac OS
+- Ruby1.9 or higher script engine (Ruby License)
+- GTK2 graphical library (LGPLv2.1+)
+- SQLite3 database library (Public domain)
+- OpenSSL crypto library (Apache 2.0)
 Optional:
-- GStreamer0.1 media library
+- GStreamer0.1 media library (LGPLv2.1+)
 
 
 3. INSTALLATION IN UBUNTU

@@ -5,8 +5,8 @@
 # Pandora logic model
 # RU: Логическая модель Пандоры
 #
-# This program is free software and distributed under the GNU GPLv2
-# RU: Это свободное программное обеспечение распространяется под GNU GPLv2
+# This program is free software and distributed under the GNU GPLv2+
+# RU: Это свободное программное обеспечение распространяется под GNU GPLv2+
 # 2012 (c) Michael Galyuk
 # RU: 2012 (c) Михаил Галюк
 

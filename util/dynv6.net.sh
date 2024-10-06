@@ -1,4 +1,7 @@
 #!/bin/sh -e
+
+#(c) Michael Galyuk, Pandora, GNU GPLv2+, free software
+
 hostname=$1
 device=$2
 file=$HOME/.dynv6.addr6
