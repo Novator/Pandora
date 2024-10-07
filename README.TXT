@@ -33,8 +33,8 @@ https://github.com/Novator/Pandora/wiki/Install-and-first-run
 
 Pandora is distributed with GNU GPLv2 license, also you can
 distribute the code with 3 version, or any later version of GNU GPL.
-Original files: text, binary (like images, icons) and others also are
-licensed under GNU GPLv2 or later.
+Media file licenses (images, icons, sounds) are listed in file:
+./view/media.licenses
 
 
 2. SYSTEM REQUIREMENTS
@@ -47,6 +47,7 @@ Mandatory:
 - OpenSSL crypto library (Apache 2.0)
 Optional:
 - GStreamer0.1 media library (LGPLv2.1+)
+- NCurses library (LGPLv2.1)
 
 
 3. INSTALLATION IN UBUNTU

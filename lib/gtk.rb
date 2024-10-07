@@ -778,7 +778,7 @@ module PandoraGtk
           if not @qip_btn.active?
             @qip_btn.set_active(true)
             @vk_btn.set_active(false)
-            @gg_btn.set_active(false)
+            #@gg_btn.set_active(false)
             move_and_show('qip')
           end
         end
@@ -788,21 +788,21 @@ module PandoraGtk
           if not @vk_btn.active?
             @vk_btn.set_active(true)
             @qip_btn.set_active(false)
-            @gg_btn.set_active(false)
+            #@gg_btn.set_active(false)
             move_and_show('vk')
           end
         end
         hbox.pack_start(@vk_btn, true, true, 0)
-        $window.register_stock(:peka, 'gg')
-        @gg_btn = GoodButton.new(:peka_gg, 'gg', -1) do |*args|
-          if not @gg_btn.active?
-            @gg_btn.set_active(true)
-            @vk_btn.set_active(false)
-            @qip_btn.set_active(false)
-            move_and_show('gg')
-          end
-        end
-        hbox.pack_start(@gg_btn, true, true, 0)
+        #$window.register_stock(:peka, 'gg')
+        #@gg_btn = GoodButton.new(:peka_gg, 'gg', -1) do |*args|
+        #  if not @gg_btn.active?
+        #    @gg_btn.set_active(true)
+        #    @vk_btn.set_active(false)
+        #    @qip_btn.set_active(false)
+        #    move_and_show('gg')
+        #  end
+        #end
+        #hbox.pack_start(@gg_btn, true, true, 0)
         $window.register_stock(:bomb, 'qip')
         @poly_btn = GoodButton.new(:bomb_qip, nil, false)
         @poly_btn.tooltip_text = _('Many smiles')
@@ -812,8 +812,8 @@ module PandoraGtk
           @qip_btn.set_active(true)
         elsif preset=='vk'
           @vk_btn.set_active(true)
-        else
-          @gg_btn.set_active(true)
+        #else
+          #@gg_btn.set_active(true)
         end
         root_vbox.pack_start(@smile_box, true, true, 0)
       end
