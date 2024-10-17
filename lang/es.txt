@@ -68,7 +68,6 @@ Parameters=>Opciones
 Expenditures=>Expenditures
 _Region=>_Región
 States=>País
-Rights to logo are owned by 21th Century Fox=>Derechos sobre el logotipo de pertenecen a la empresa 21th Century Fox
 Events=>Evento
 Projects=>Proyectos
 Nomenclatures=>Nomenclatura

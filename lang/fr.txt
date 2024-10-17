@@ -48,7 +48,6 @@ Things=>Choses
 Documents=>Documents
 Addresses=>Adresses
 Towns=>Villes
-Rights to logo are owned by 21th Century Fox=>Les droits sur le logo sont la propriété de 21ème siècle Fox
 Michael Galyuk=>Michel Galyuk
 _Quit=>_Quitter
 On line!=>En ligne!

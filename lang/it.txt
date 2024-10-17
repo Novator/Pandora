@@ -74,7 +74,6 @@ Storages=>Magazzini
 Services=>Servizio
 Opinions=>Viste
 Articles=>Articoli
-Rights to logo are owned by 21th Century Fox=>Diritti di logo appartengono a una società 21th Century Fox
 Laws=>Leggi
 _Region=>_Regione
 Documents=>Documenti

@@ -116,7 +116,6 @@ Opinions=>Opiniões
 Connect=>Conectar
 Relate=>Relacionar
 Search=>Pesquisa
-Rights to logo are owned by 21th Century Fox=>Os direitos do logotipo pertencem à empresa 21th Century Fox
 Things=>Coisas
 Projects=>Projetos
 Authorize=>Autorizar

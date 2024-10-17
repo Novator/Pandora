@@ -115,7 +115,6 @@ Opinions=>Мнения
 Connect=>Подключить
 Relate=>Связать
 Search=>Поиск
-Rights to logo are owned by 21th Century Fox=>Права на логотип принадлежат компании 21th Century Fox
 Things=>Вещи
 Projects=>Проекты
 Authorize=>Авторизация

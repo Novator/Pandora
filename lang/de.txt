@@ -22,7 +22,6 @@ Storages=>Lager
 Towns=>Städte
 Communities=>Gemeinschaften
 Free software=>Freie Software
-Rights to logo are owned by 21th Century Fox=>Die Rechte an dem Logo von 21th Century Fox im Besitz
 Punishments=>Strafen
 Offenses=>Verbrechen
 _Close=>_Schließen

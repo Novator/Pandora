@@ -198,6 +198,7 @@ module PandoraGtk
       bbox.border_width = 2
       bbox.spacing = 4
 
+      $window.register_stock(:ok)
       @okbutton = Gtk::Button.new(:ok)
       PandoraGtk.set_button_text(@okbutton, 'OK')
       okbutton.width_request = 110
@@ -13388,7 +13389,6 @@ module PandoraGtk
     dlg.website = 'https://github.com/Novator/Pandora'
     dlg.skip_taskbar_hint = true
     dlg.authors = ['© '+_('Michael Galyuk')+' <robux@mail.ru>']
-    dlg.artists = ['© '+_('Rights to logo are owned by 21th Century Fox')]
     dlg.comments = _('P2P social network')
     dlg.copyright = _('Free software')+' 2012, '+_('Michael Galyuk')
     gpl_text = nil
