@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #The script runs Pandora, installs Ruby, and sets environment on GNU/Linux
-#(c) Michael Galyuk, Pandora, GNU GPLv2+, free software
+#(c) Michael Galyuk, Pandora, GNU GPLv2, free software
 
 # Advice: uncomment a line if Pandora cannot define your language correctly
 #export LANG="en_US.UTF-8"

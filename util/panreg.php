@@ -2,7 +2,7 @@
 
 // The Pandora Registrator updates and returns 'active_nodes' table
 // RU: Регистратор Пандоры обновляет и возвращает таблицу 'active_nodes'
-// 2012 (c) Michael Galyuk, P2P social network Pandora, free software, GNU GPLv2+
+// 2012 (c) Michael Galyuk, P2P social network Pandora, free software, GNU GPLv2
 // RU: 2012 (c) Михаил Галюк, P2P социальная сеть Пандора, свободное ПО
 
 // Usage: http://robux.biz/panreg.php?node=<node_in_hex>[&ips=<list_of_ip>&time=1&hex=1]

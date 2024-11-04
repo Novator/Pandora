@@ -1,6 +1,6 @@
 #!/bin/sh -e
 
-#(c) Michael Galyuk, Pandora, GNU GPLv2+, free software
+#(c) Michael Galyuk, Pandora, GNU GPLv2, free software
 
 hostname=$1
 device=$2

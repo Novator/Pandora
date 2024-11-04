@@ -5,8 +5,8 @@
 # Web interface of Pandora
 # RU: Веб интерфейс Пандоры
 #
-# This program is free software and distributed under the GNU GPLv2+
-# RU: Это свободное программное обеспечение распространяется под GNU GPLv2+
+# This program is free software and distributed under the GNU GPLv2
+# RU: Это свободное программное обеспечение распространяется под GNU GPLv2
 # 2018 (c) Michael Galyuk
 # RU: 2018 (c) Михаил Галюк
 

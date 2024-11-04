@@ -31,10 +31,7 @@ https://github.com/Novator/Pandora/wiki/P2P-social-network-Pandora
 See the user manual with pictures in wiki to quick start:
 https://github.com/Novator/Pandora/wiki/Install-and-first-run
 
-Pandora is distributed with GNU GPLv2 license, also you can
-distribute the code with 3 version, or any later version of GNU GPL.
-Media file licenses (images, icons, sounds) are listed in file:
-./view/media.licenses
+Pandora is distributed with GNU GPLv2 license.
 
 
 2. SYSTEM REQUIREMENTS

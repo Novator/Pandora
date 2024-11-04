@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#(c) Michael Galyuk, Pandora, GNU GPLv2+, free software
+#(c) Michael Galyuk, Pandora, GNU GPLv2, free software
 
 echo "Testing of Pandora: the 2nd node"
 

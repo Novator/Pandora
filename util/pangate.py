@@ -4,8 +4,8 @@
 # The Pandora Gate collects connections for owner of gate
 # RU: Шлюз Пандоры собирает соединения для владельца шлюза
 #
-# This program is distributed under the GNU GPLv2+
-# RU: Эта программа распространяется под GNU GPLv2+
+# This program is distributed under the GNU GPLv2
+# RU: Эта программа распространяется под GNU GPLv2
 # 2012 (c) Michael Galyuk, P2P social network Pandora, free software
 # RU: 2012 (c) Михаил Галюк, P2P социальная сеть Пандора, свободное ПО
 

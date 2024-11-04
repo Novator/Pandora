@@ -99,6 +99,7 @@ git push https://`cat ./github_token.txt`@github.com/Novator/Pandora.git
 ## Getting changes from repository to local (with or without merge)
 #git pull
 #git fetch
+#git fetch --depth=30 origin new-version
 
 ## Merge pull from another brunch
 #git pull https://github.com/rc5hack/Pandora master

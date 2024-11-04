@@ -4,7 +4,7 @@
 # RU: Скрипт для перенаправления внешнего порта 5577 на внутренний, созданный ssh
 # Maybe usefull when you have a channel made with ssh -R command:
 # ssh -4 -g [-f] -N -R 127.0.0.1:5577:127.0.0.1:5577 user@222.222.222.222
-# 2012 (c) Michael Galyuk, P2P social network Pandora, free software, GNU GPLv2+
+# 2012 (c) Michael Galyuk, P2P social network Pandora, free software, GNU GPLv2
 # RU: 2012 (c) Михаил Галюк, P2P социальная сеть Пандора, свободное ПО
 
 
