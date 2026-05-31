@@ -380,7 +380,7 @@ module PandoraUtils
           end
           fullname = File.join(path, zf.name)
           dir = File.dirname(fullname)
-          if not Dir.exists?(dir)
+          if not Dir.exist?(dir)
             FileUtils.mkdir_p(dir)
             File.chmod(0777, dir) if unix
           end
@@ -403,7 +403,7 @@ module PandoraUtils
   # RU: Распаковывает архив с помощью внешней утилиты
   def self.unzip_via_util(arch, path, overwrite=true)
     res = nil
-    if File.exist?(arch) and Dir.exists?(path)
+    if File.exist?(arch) and Dir.exist?(path)
       if not $unziper
         if PandoraUtils.os_family=='windows'
           unzip = File.join($pandora_util_dir, 'unzip.exe')

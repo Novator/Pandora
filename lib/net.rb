@@ -1452,11 +1452,11 @@ module PandoraNet
           if sel and (sel.size>0)
             sel.each do |row|
               addr = row[0]
-              addr.strip! if addr
+              addr = addr.strip if addr
               port = row[1]
               proto = 'tcp'
               host = row[2]
-              host.strip! if host
+              host = host.strip if host
               key_hash_i = row[3]
               #key_hash_i.strip! if key_hash_i.is_a? String
               key_hash_i ||= key_hash

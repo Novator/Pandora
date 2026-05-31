@@ -203,7 +203,7 @@ PANDORA_USOCK = '/tmp/pandora_unix_socket'
 $pserver = nil
 
 #Create BaseDir if not exist
-FileUtils.mkdir_p($pandora_base_dir) unless Dir.exists?($pandora_base_dir)
+FileUtils.mkdir_p($pandora_base_dir) unless Dir.exist?($pandora_base_dir)
 
 # Delete Pandora unix socket
 # RU: Удаляет unix-сокет Пандоры

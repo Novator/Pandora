@@ -462,8 +462,8 @@ module PandoraUI
     def self.update_file(http, path, pfn, host='', zip_url=nil)
       res = false
       dir = File.dirname(pfn)
-      FileUtils.mkdir_p(dir) unless Dir.exists?(dir)
-      if Dir.exists?(dir)
+      FileUtils.mkdir_p(dir) unless Dir.exist?(dir)
+      if Dir.exist?(dir)
         #p 'update_file(http, path, pfn, host)='+[http, path, pfn, host].inspect
         filebody = PandoraNet.http_get_body_from_path(http, path, host, false)
         if ((not filebody) or (filebody.size==0)) and zip_url
@@ -1067,6 +1067,7 @@ module PandoraUI
           PandoraGtk.show_log_bar(80)
         end
       when 'Cabinet'
+        p '************Cab'
         current_user = PandoraCrypto.current_user_or_key(true, true)
         if current_user
           PandoraUI.show_cabinet(current_user, nil, nil, nil, nil, PandoraUI::CPI_Profile)

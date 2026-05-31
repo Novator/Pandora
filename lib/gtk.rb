@@ -2055,7 +2055,7 @@ module PandoraGtk
       last_dir = nil
       if last_dirs
         last_dirs.each do |dn|
-          if Dir.exists?(dn)
+          if Dir.exist?(dn)
             begin
               dialog.add_shortcut_folder(dn)
             rescue
@@ -2188,7 +2188,7 @@ module PandoraGtk
         fn = dialog.filename
         dn = nil
         dn = File.dirname(fn) if fn
-        if Dir.exists?(dn) and (@@last_dirs[0] != dn)
+        if Dir.exist?(dn) and (@@last_dirs[0] != dn)
           @@last_dirs.delete(dn)
           @@last_dirs.unshift(dn)
           @@last_dirs.pop while @@last_dirs.count>FileDialogHistorySize
@@ -7760,7 +7760,7 @@ module PandoraGtk
   $load_more_history_count = 50
 
   CabPageInfo = [[Gtk::Stock::PROPERTIES, 'Basic'], \
-    [:home, 'Profile'], \
+    [:home, 'Cabinet'], \
     [:opinion, 'Opinions'], \
     [:relation, 'Relations'], \
     [:sign, 'Signs'], \
@@ -8650,6 +8650,7 @@ module PandoraGtk
         container = container.child if page==PandoraUI::CPI_Property
         need_init = false if (container.children.size>0)
       end
+      p '----show_page1 [need_init,page] ='+[need_init,page].inspect
       if need_init
         case page
           when PandoraUI::CPI_Property
@@ -9126,12 +9127,16 @@ module PandoraGtk
             container.def_widget = @chat_edit_box
         end
       end
+      p '----show_page2.1'
       self.show_toolbar_btns(page)
+      p '----show_page2.2'
       container.show_all
+      p '----show_page2.3'
       self.grab_cab_viewport(container)
       if (page==PandoraUI::CPI_Dialog) or (page==PandoraUI::CPI_Chat)
         self.set_tab_state(nil, self)
       end
+      p '----show_page2.4'
     end
 
     # Create cabinet
@@ -9302,14 +9307,27 @@ module PandoraGtk
         opt_btns[PandoraUI::CPI_Dialog-btn_offset].hide
         a_page = PandoraUI::CPI_Chat if a_page == PandoraUI::CPI_Dialog
       end
+      p '---init_cab1'
       show_page(a_page)
+      p '---init_cab2'
 
-      GLib::Timeout.add(40) do
-        notebook.page = notebook.n_pages-1
+      if notebook.n_pages>0
+      GLib::Timeout.add(500) do
+        p '---notebook0'
+        notebook ||= $window.notebook
+        p '---notebook1='+notebook.inspect
+        notebook.page = notebook.n_pages-1 if notebook.n_pages>0
+        p '---notebook2='+notebook.inspect
         notebook.queue_resize
+        p '---notebook3='+notebook.inspect
         notebook.queue_draw
+        p '---notebook4='+notebook.inspect
         false
       end
+      else
+        notebook.show
+      end
+      p '---init_cab3'
     end
 
     MaxTitleLen = 15
@@ -9902,7 +9920,7 @@ module PandoraGtk
             PandoraUI.log_message(PandoraUI::LM_Info, _('Messages are saved')+' ['+fn+']')
             dn = nil
             dn = File.dirname(fn) if fn
-            if Dir.exists?(dn) and (@@last_dirs[0] != dn)
+            if Dir.exist?(dn) and (@@last_dirs[0] != dn)
               @@last_dirs.delete(dn)
               @@last_dirs.unshift(dn)
               @@last_dirs.pop while @@last_dirs.count>FileDialogHistorySize
@@ -13510,8 +13528,8 @@ module PandoraGtk
   node_id=nil, models=nil, page=nil, fields=nil, obj_id=nil, edit=nil, tree_view=nil)
     sw = nil
 
-    #p '---show_cabinet(panhash, session.id, conntype, node_id, models, page, fields, obj_id, edit)=' \
-    #  +[panhash, session.object_id, conntype, node_id, models, page, fields, obj_id, edit].inspect
+    p '---show_cabinet(panhash, session.id, conntype, node_id, models, page, fields, obj_id, edit)=' \
+      +[panhash, session.object_id, conntype, node_id, models, page, fields, obj_id, edit].inspect
 
     room_id = nil
     room_id = AsciiString.new(PandoraUtils.fill_zeros_from_right(panhash, \
@@ -13527,7 +13545,9 @@ module PandoraGtk
     if tree_view.is_a?(SubjTreeView)
       notebook = tree_view.get_notebook
     end
+    p '--show_cab1'
     notebook ||= $window.notebook
+    p '--show_cab2'
     if room_id and notebook
       notebook.children.each do |child|
         if (child.is_a?(CabinetBox) and ((child.room_id==room_id) \
@@ -13547,6 +13567,7 @@ module PandoraGtk
         end
       end
     end
+    p '%%%%%%%%%%%%%%'
     sw ||= CabinetBox.new(panhash, room_id, page, fields, obj_id, edit, session, tree_view)
     sw
   end
